@@ -96,7 +96,7 @@ def load_user(user_id):
 
 
 # Import des routes (APRES la création de l'app)
-from app.routes import auth, admin, banking, db_csv_store
+from app.routes import auth, admin, banking
 
 
 # Sécurité : bloquer les extensions dangereuses dans /static/uploads
@@ -192,6 +192,41 @@ def close_db_managers(exception=None):
             g.db_manager.close()
         except Exception as e:
             logging.error(f"Erreur lors de la fermeture de la connexion DB: {e}")
+
+def setup_database():
+    with app.app_context():
+        print("🔍 Tentative d'initialisation de la base de données...")
+        try:
+            from app.models import DatabaseManager
+            db_manager = DatabaseManager(app.config['DB_CONFIG'])
+            
+            # FIX: On force un test de connexion simple avant de créer les tables
+            # pour vérifier si MySQL répond vraiment à ce stade
+            pool = db_manager._get_connection_pool()
+            if not pool:
+                print("❌ Impossible d'initialiser le Pool de connexion.")
+                return
+
+            # Exécution du script de création
+            db_manager.create_tables() 
+            
+            # FIX: Petit message de succès explicite
+            print("✅ Schéma de base de données vérifié avec succès.")
+            logging.info("Schéma de base de données vérifié (toutes les tables).")
+            
+        except ImportError as e:
+            print(f"❌ Erreur d'importation dans setup_database: {e}")
+        except Exception as e:
+            # FIX: On imprime l'erreur complète dans la console Docker pour débugger
+            print("\n" + "="*50)
+            print(f"❌ ÉCHEC DE CRÉATION DES TABLES !")
+            print(f"Détail de l'erreur : {str(e)}")
+            print("="*50 + "\n")
+            
+            # On logue aussi l'erreur complète
+            logging.error(f"Erreur fatale lors de l'initialisation des tables: {e}", exc_info=True)
+
+setup_database()
 # Point d'entrée pour l'exécution directe (UNIQUEMENT pour le développement)
 if __name__ == '__main__':
     # Ajoutez le répertoire racine au chemin Python pour les imports absolus

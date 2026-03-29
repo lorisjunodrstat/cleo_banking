@@ -1,0 +1,29 @@
+# Environnement virtuel
+venv/
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Logs et données temporaires
+*.log
+uploads/
+*.sqlite3
+
+# IDE et système
+.DS_Store
+.vscode/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Tests
+test/
+Test_*.py

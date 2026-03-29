@@ -121,6 +121,8 @@ class Utilisateur(UserMixin):
             logger.error(f"Erreur création utilisateur : {e}")
             return False
 
+
+
 class DatabaseManager:
     """
     Gère la connexion à la base de données en utilisant un pool de connexions
@@ -223,6 +225,7 @@ class DatabaseManager:
         try:
             # Utilisation du gestionnaire de contexte pour la création des tables.
             with self.get_cursor() as cursor:
+                cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
 
                 # Table utilisateurs
                 create_users_table_query = """
@@ -270,6 +273,115 @@ class DatabaseManager:
                 """
                 cursor.execute(create_banques_table_query)
 
+
+                # Table Plan comptable
+                create_plan_comptable_table_query = """
+                CREATE TABLE IF NOT EXISTS plans_comptables (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    nom VARCHAR(100) NOT NULL,
+                    description TEXT,
+                    devise VARCHAR(3) DEFAULT 'CHF',
+                    utilisateur_id INT NOT NULL,
+                    actif TINYINT(1) DEFAULT 1,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                );
+                """
+                cursor.execute(create_plan_comptable_table_query)
+
+                #Table equipes
+                create_equipes_table_query = """
+                CREATE TABLE IF NOT EXISTS equipes (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                nom VARCHAR(100) NOT NULL,
+                description VARCHAR(255) NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
+                );"""
+                cursor.execute(create_equipes_table_query)
+
+                # Table employe
+                create_employes_table_query = """
+                CREATE TABLE IF NOT EXISTS employes (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    nom VARCHAR(100) NOT NULL,
+                    prenom VARCHAR(100) NOT NULL,
+                    email VARCHAR(150),
+                    telephone VARCHAR(20),
+                    rue VARCHAR(255),
+                    code_postal VARCHAR(10),
+                    commune VARCHAR(100),
+                    genre ENUM('M', 'F') NOT NULL,
+                    date_de_naissance DATE NOT NULL,
+                    code_acces_salaire VARCHAR(50),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                );"""
+                cursor.execute(create_employes_table_query)
+                
+
+                # Table contrats
+                create_contrats_table_query = """
+                CREATE TABLE IF NOT EXISTS contrats (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    heures_hebdo DECIMAL(4,2) NOT NULL,
+                    date_debut DATE NOT NULL,
+                    date_fin DATE,
+                    salaire_horaire DECIMAL(7,2) DEFAULT 24.05,
+                    jour_estimation_salaire INT DEFAULT 15,
+                    versement_10 BOOLEAN DEFAULT TRUE,
+                    versement_25 BOOLEAN DEFAULT TRUE,
+                    indemnite_vacances_tx DECIMAL(5,2),
+                    indemnite_jours_feries_tx DECIMAL(5,2),
+                    indemnite_jour_conges_tx DECIMAL(5,2),
+                    indemnite_repas_tx DECIMAL(5,2),
+                    indemnite_retenues_tx DECIMAL(5,2),
+                    cotisation_avs_tx DECIMAL(5,2),
+                    cotisation_ac_tx DECIMAL(5,2),
+                    cotisation_accident_n_prof_tx DECIMAL(5,2),
+                    cotisation_assurance_indemnite_maladie_tx DECIMAL(5,2),
+                    cotisation_cap_tx DECIMAL(5,2),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
+                );
+                """
+                cursor.execute(create_contrats_table_query)
+
+                # Table heures_simules
+                create_heures_simules_table_query = """
+                CREATE TABLE heures_simulees (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                employe_id INT NOT NULL,
+                equipe_id INT NULL,
+                date DATE NOT NULL,
+                h1d TIME,            -- heure début
+                h2f TIME,            -- heure fin
+                total_h FLOAT,       -- heures totales
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES utilisateurs(id),
+                FOREIGN KEY (employe_id) REFERENCES employes(id),
+                FOREIGN KEY (equipe_id) REFERENCES equipes(id)
+                );"""
+                cursor.execute(create_heures_simules_table_query)
+
+                # Tables types_cotisation 
+                create_types_cotisation_table_query = """
+                CREATE TABLE IF NOT EXISTS types_cotisation (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                user_id INT NOT NULL,
+                nom VARCHAR(100) NOT NULL,
+                description TEXT,
+                est_obligatoire BOOLEAN DEFAULT FALSE,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                );"""
+                cursor.execute(create_types_cotisation_table_query)
+
+                
+                
                 # Table comptes_principaux
                 create_comptes_table_query = """
                 CREATE TABLE IF NOT EXISTS comptes_principaux (
@@ -474,20 +586,9 @@ class DatabaseManager:
                 """
                 cursor.execute(create_ecritures_table_query)
 
-                # Table Plan comptable
-                create_plan_comptable_table_query = """
-                CREATE TABLE IF NOT EXISTS plans_comptables (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    nom VARCHAR(100) NOT NULL,
-                    description TEXT,
-                    devise VARCHAR(3) DEFAULT 'CHF',
-                    utilisateur_id INT NOT NULL,
-                    actif TINYINT(1) DEFAULT 1,
-                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
-                );
-                """
-                cursor.execute(create_plan_comptable_table_query)
-
+                
+    
+                
                 # Table plan_category
                 create_plan_categorie_table_query = """
                 CREATE TABLE IF NOT EXISTS plan_categorie (
@@ -570,23 +671,7 @@ class DatabaseManager:
                 """
                 cursor.execute(create_heures_travail_table_query)
 
-                # Table heures_simules
-                create_heures_simules_table_query = """
-                CREATE TABLE heures_simulees (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
-                employe_id INT NOT NULL,
-                equipe_id INT NULL,
-                date DATE NOT NULL,
-                h1d TIME,            -- heure début
-                h2f TIME,            -- heure fin
-                total_h FLOAT,       -- heures totales
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                FOREIGN KEY (employe_id) REFERENCES employes(id),
-                FOREIGN KEY (equipe_id) REFERENCES equipes(id)
-                );"""
-                cursor.execute(create_heures_simules_table_query)
+                
 
                 # Table salaires
                 create_salaires_table_query = """
@@ -646,46 +731,9 @@ class DatabaseManager:
                 """
                 cursor.execute(create_synthese_mensuelle_table_query)
 
-                # Table contrats
-                create_contrats_table_query = """
-                CREATE TABLE IF NOT EXISTS contrats (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    user_id INT NOT NULL,
-                    heures_hebdo DECIMAL(4,2) NOT NULL,
-                    date_debut DATE NOT NULL,
-                    date_fin DATE,
-                    salaire_horaire DECIMAL(7,2) DEFAULT 24.05,
-                    jour_estimation_salaire INT DEFAULT 15,
-                    versement_10 BOOLEAN DEFAULT TRUE,
-                    versement_25 BOOLEAN DEFAULT TRUE,
-                    indemnite_vacances_tx DECIMAL(5,2),
-                    indemnite_jours_feries_tx DECIMAL(5,2),
-                    indemnite_jour_conges_tx DECIMAL(5,2),
-                    indemnite_repas_tx DECIMAL(5,2),
-                    indemnite_retenues_tx DECIMAL(5,2),
-                    cotisation_avs_tx DECIMAL(5,2),
-                    cotisation_ac_tx DECIMAL(5,2),
-                    cotisation_accident_n_prof_tx DECIMAL(5,2),
-                    cotisation_assurance_indemnite_maladie_tx DECIMAL(5,2),
-                    cotisation_cap_tx DECIMAL(5,2),
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
-                );
-                """
-                cursor.execute(create_contrats_table_query)
 
-                # Tables types_cotisation 
-                create_types_cotisation_table_query = """
-                CREATE TABLE IF NOT EXISTS types_cotisation (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                user_id INT NOT NULL,
-                nom VARCHAR(100) NOT NULL,
-                description TEXT,
-                est_obligatoire BOOLEAN DEFAULT FALSE,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
-                );"""
-                cursor.execute(create_types_cotisation_table_query)
+
+                
 
                 # Tables types_indemnite 
                 create_types_indemnite_table_query = """
@@ -697,7 +745,7 @@ class DatabaseManager:
                 est_obligatoire BOOLEAN DEFAULT FALSE,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
-              );"""
+                );"""
                 cursor.execute(create_types_indemnite_table_query)
 
                 # cotisations_contrat
@@ -714,7 +762,7 @@ class DatabaseManager:
                 UNIQUE KEY unique_contrat_type_annee (contrat_id, type_cotisation_id, annee),
                 FOREIGN KEY (contrat_id) REFERENCES contrats(id) ON DELETE CASCADE,
                 FOREIGN KEY (type_cotisation_id) REFERENCES types_cotisation(id) ON DELETE CASCADE
-               );
+                );
                 """
                 cursor.execute(create_cotisations_contrat_table_query)
 
@@ -729,7 +777,7 @@ class DatabaseManager:
                 annee YEAR NOT NULL,
                 actif BOOLEAN DEFAULT TRUE,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE KEY unique_contrat_type_annee (contrat_id, type_indemnite_id, annee),
+                UNIQUE KEY unique_indemnite_contrat_annee (contrat_id, type_indemnite_id, annee),
                 FOREIGN KEY (contrat_id) REFERENCES contrats(id) ON DELETE CASCADE,
                 FOREIGN KEY (type_indemnite_id) REFERENCES types_indemnite(id) ON DELETE CASCADE
                 );
@@ -778,7 +826,7 @@ class DatabaseManager:
                 type_valeur ENUM('taux','fixe') NOT NULL DEFAULT 'fixe',
                 ordre INT NOT NULL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (type_coti_id) REFERENCES types_cotisation(id) ON DELETE CASCADE
+                FOREIGN KEY (type_cotisation_id) REFERENCES types_cotisation(id) ON DELETE CASCADE
                  );"""
                 cursor.execute(create_baremes_cotisation_table_query)
 
@@ -797,38 +845,9 @@ class DatabaseManager:
                 cursor.execute(create_plages_horaires_table_query)
 
 
-                # Table employe
-                create_employes_table_query = """
-                CREATE TABLE IF NOT EXISTS employes (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    user_id INT NOT NULL,
-                    nom VARCHAR(100) NOT NULL,
-                    prenom VARCHAR(100) NOT NULL,
-                    email VARCHAR(150),
-                    telephone VARCHAR(20),
-                    rue VARCHAR(255),
-                    code_postal VARCHAR(10),
-                    commune VARCHAR(100),
-                    genre ENUM('M', 'F') NOT NULL,
-                    date_de_naissance DATE NOT NULL,
-                    code_acces_salaire VARCHAR(50),
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
-                );"""
-                cursor.execute(create_employes_table_query)
+                
 
-                #Table equipes
-                create_equipes_table_query = """
-                CREATE TABLE IF NOT EXISTS equipes (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
-                nom VARCHAR(100) NOT NULL,
-                description VARCHAR(255) NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-                );"""
-                cursor.execute(create_equipes_table_query)
-
+                
 
                 #Table equipes_employes
                 create_equipes_employes_table_query = """
@@ -842,6 +861,8 @@ class DatabaseManager:
                 );"""
                 cursor.execute(create_equipes_employes_table_query)
 
+               
+
                 #Table competences
                 create_competences_table_query = """
                 CREATE TABLE IF NOT EXISTS competences (
@@ -849,7 +870,7 @@ class DatabaseManager:
                 user_id INT NOT NULL,
                 nom VARCHAR(100) NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id)
+                FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
                 );
                 """
                 cursor.execute(create_competences_table_query)
@@ -865,9 +886,6 @@ class DatabaseManager:
                 FOREIGN KEY (employe_id) REFERENCES employes(id) ON DELETE CASCADE
                 );"""
                 cursor.execute(create_equipes_competences_table_query)
-
-
-
 
                 # #Table equipes_competences_requises
                 create_equipes_competences_requises_table_query = """
@@ -891,7 +909,7 @@ class DatabaseManager:
                 type_regle VARCHAR(50) NOT NULL,
                 params_json JSON NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id)
+                FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
                 );"""
                 cursor.execute(create_planning_regles_table_query)
 
@@ -909,16 +927,17 @@ class DatabaseManager:
                 logo_path VARCHAR(255),  -- ex: 'uploads/logos/user_123.png'
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
                 );"""
                 cursor.execute(create_entreprise_table_query)
 
 
-
+                cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
             logger.info("Toutes les tables ont été vérifiées/créées avec succès.")
-
+            print("✅ Toutes les tables ont été créées ou vérifiées.")
         except Exception as e:
             logger.error(f"Erreur lors de la création des tables : {e}")
+
 
 class PeriodeFavorite:
     def __init__(self, db):
