@@ -83,16 +83,12 @@ def profil_utilisateur(user_id):
             flash("Utilisateur non trouvé", "danger")
             return redirect(url_for('banking.dashboard'))
 
-        # 2. Récupérer les comptes (en utilisant votre logique existante)
-        # Note : Votre fonction get_comptes_utilisateur retourne déjà les soldes
-        comptes = g.models.compte_model.get_all_accounts(user_id)
 
         # 3. Rendu de la page avec les variables attendues par le template
         return render_template(
             'users/detail_utilisateur.htmll', 
             user_id=user_id, 
-            utilisateur=utilisateur,
-            comptes=comptes
+            utilisateur=utilisateur
         )
 
     except Exception as e:
