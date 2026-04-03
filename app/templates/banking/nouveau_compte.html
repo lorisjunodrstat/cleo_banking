@@ -29,7 +29,7 @@
                                     <option value="{{ banque.id }}" 
                                             data-couleur="{{ banque.couleur }}"
                                             {{ 'selected' if request.form.banque_id == banque.id|string else '' }}>
-                                        {{ banque.nom }} ({{ banque.code_banque }})
+                                        {{ banque.nom }} ({{ banque.code_banque }} -- {{ banque.id }})
                                     </option>
                                     {% endfor %}
                                 </select>
