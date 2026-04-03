@@ -71,9 +71,9 @@ def profil_utilisateur(user_id):
     try:
         # 1. Récupérer les infos de l'utilisateur (pour le nom, email, etc.)
         # On suppose que vous avez un user_model accessible via g.models
-        user_id = g.models.user_model.get_by_id(user_id)
+        utilisateur = g.models.user_model.get_by_id(user_id, g.db_manager)
         
-        if not user_id:
+        if not utilisateur:
             flash("Utilisateur non trouvé", "danger")
             return redirect(url_for('banking.dashboard'))
 
@@ -85,6 +85,7 @@ def profil_utilisateur(user_id):
         return render_template(
             'user/detail_utilisateur.htmll', 
             user_id=user_id, 
+            utilisateur=utilisateur,
             comptes=comptes
         )
 
