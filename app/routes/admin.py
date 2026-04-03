@@ -84,17 +84,16 @@ def supprimer_utilisateur(user_id):
 
 @bp.route('/utilisateur/<int:user_id>')
 def detail_utilisateur(user_id):
+    """Affiche les détails d'un utilisateur."""
     try:
-        with g.db_manager.get_cursor(dictionary=True) as cursor:
-            # On récupère uniquement l'utilisateur
-            cursor.execute("SELECT * FROM utilisateurs WHERE id = %s", (user_id,))
-            utilisateur = cursor.fetchone()
+        user_id = g.models.user_model.get_by_id(user_id)
+        utilisateur = cursor.fetchone()
             
-            if not utilisateur:
-                flash('Utilisateur non trouvé', 'error')
-                return redirect(url_for('banking.index'))
-            
-            return render_template('users/detail_utilisateur.html', utilisateur=utilisateur)
+        if not utilisateur:
+            flash('Utilisateur non trouvé', 'error')
+            return redirect(url_for('banking.banking_dashboard'))
+                
+        return render_template('users/detail_utilisateur.html', utilisateur=utilisateur)
     except Exception as e:
         flash(f"Erreur : {str(e)}", "danger")
         return redirect(url_for('banking.banking_dashboard'))

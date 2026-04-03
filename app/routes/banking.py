@@ -75,7 +75,7 @@ def profil_utilisateur(user_id):
         
         if not user_id:
             flash("Utilisateur non trouvé", "danger")
-            return redirect(url_for('banking.index'))
+            return redirect(url_for('banking.dashboard'))
 
         # 2. Récupérer les comptes (en utilisant votre logique existante)
         # Note : Votre fonction get_comptes_utilisateur retourne déjà les soldes
