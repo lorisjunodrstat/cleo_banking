@@ -235,6 +235,7 @@ class DatabaseManager:
                     prenom VARCHAR(255) NOT NULL,
                     email VARCHAR(255) NOT NULL UNIQUE,
                     mot_de_passe VARCHAR(255) NOT NULL,
+                    actif BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 """
