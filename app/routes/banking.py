@@ -65,7 +65,49 @@ def get_comptes_utilisateur(user_id):
             return []
 
 
+@bp.route('/utilisateur/<int:user_id>/profil')
+@login_required
+def profil_utilisateur(user_id):
+    try:
+        # 1. Récupérer les infos de l'utilisateur (pour le nom, email, etc.)
+        # On suppose que vous avez un user_model accessible via g.models
+        user_id = g.models.user_model.get_by_id(user_id)
+        
+        if not user_id:
+            flash("Utilisateur non trouvé", "danger")
+            return redirect(url_for('banking.index'))
 
+        # 2. Récupérer les comptes (en utilisant votre logique existante)
+        # Note : Votre fonction get_comptes_utilisateur retourne déjà les soldes
+        comptes = get_comptes_utilisateur(user_id)
+
+        # 3. Rendu de la page avec les variables attendues par le template
+        return render_template(
+            'user/detail_utilisateur.htmll', 
+            user_id=user_id, 
+            comptes=comptes
+        )
+
+    except Exception as e:
+        logging.error(f"Erreur lors de l'affichage du profil pour l'utilisateur {user_id}: {e}")
+        flash("Une erreur est survenue lors du chargement du profil.", "danger")
+        return redirect(url_for('banking/dashboard.html'))
+
+def get_comptes_utilisateur(user_id):
+    """Retourne les comptes avec sous-comptes et soldes"""
+    try:
+        comptes = g.models.compte_model.get_by_user_id(user_id)
+        for compte in comptes:
+            # Récupération des sous-comptes
+            compte['sous_comptes'] = g.models.sous_compte_model.get_by_compte_principal_id(compte['id'])
+            # Récupération du solde total (principal + sous-comptes)
+            compte['solde_total'] = g.models.compte_model.get_solde_total_avec_sous_comptes(compte['id'])
+            
+        logging.info(f"Comptes détaillés récupérés pour l'utilisateur {user_id}: {len(comptes)}")
+        return comptes
+    except Exception as e:
+        logging.error(f"Erreur lors de la récupération des comptes pour l'utilisateur {user_id}: {e}")
+        return []
 
 @bp.route('/')
 def banking_home(): # Nom unique
