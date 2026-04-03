@@ -236,7 +236,8 @@ class DatabaseManager:
                     email VARCHAR(255) NOT NULL UNIQUE,
                     mot_de_passe VARCHAR(255) NOT NULL,
                     actif BOOLEAN DEFAULT TRUE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    date_modification TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 );
                 """
                 cursor.execute(create_users_table_query)
@@ -397,6 +398,7 @@ class DatabaseManager:
                     solde DECIMAL(15,2) DEFAULT 0.00,
                     solde_possible DECIMAL(15,2) DEFAULT -10000.00,
                     devise VARCHAR(3) DEFAULT 'CHF',
+                    plan_comptable_id int DEFAULT NULL,
                     date_ouverture DATE,
                     actif BOOLEAN DEFAULT TRUE,
                     date_creation TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -9023,7 +9025,7 @@ class TypeCotisation:
         try:
             with self.db.get_cursor as cursor:
                 query = """
-                INSERT INTO types_cotisation (user_id, nom, description, est_obligatoire
+                INSERT INTO types_cotisation (user_id, nom, description, est_obligatoire)
                 VALUES (%s, %s, %s, %s)"""
                 cursor.execute(query, (user_id, nom, description, est_obligatoire))
                 return cursor.lastrowid
@@ -9039,7 +9041,7 @@ class TypeCotisation:
                 WHERE user_id = %s
                 ORDER BY nom"""
                 cursor.execute(query, (user_id,))
-                return cursor.fetchall
+                return cursor.fetchall()
         except Exception as e:
             logger.error(f"Erreur récupération types_cotisation : {e}")
             return []
@@ -9054,7 +9056,7 @@ class TypeCotisation:
                 cursor.execute(query, params)
                 return cursor.rowcount > 0
         except Exception as e:
-            logger(f"Erreur mise à jour type cotisation : {e}")
+            logger.error(f"Erreur mise à jour type cotisation : {e}")
     def delete(self, type_id:int, user_id:int)-> bool:
         try:
             with self.db.get_cursor() as cursor:
@@ -9073,7 +9075,7 @@ class TypeIndemnite:
         try:
             with self.db.get_cursor as cursor:
                 query = """
-                INSERT INTO types_indemnite (user_id, nom, description, est_obligatoire
+                INSERT INTO types_indemnite (user_id, nom, description, est_obligatoire)
                 VALUES (%s, %s, %s, %s)"""
                 cursor.execute(query, (user_id, nom, description, est_obligatoire))
                 return cursor.lastrowid
@@ -9089,7 +9091,7 @@ class TypeIndemnite:
                 WHERE user_id = %s
                 ORDER BY nom"""
                 cursor.execute(query, (user_id,))
-                return cursor.fetchall
+                return cursor.fetchall()
         except Exception as e:
             logger.error(f"Erreur récupération types_indemnite : {e}")
             return []
@@ -9104,7 +9106,7 @@ class TypeIndemnite:
                 cursor.execute(query, params)
                 return cursor.rowcount > 0
         except Exception as e:
-            logger(f"Erreur mise à jour type indemnite : {e}")
+            logger.error(f"Erreur mise à jour type indemnite : {e}")
     def delete(self, type_id:int, user_id:int)-> bool:
         try:
             with self.db.get_cursor() as cursor:

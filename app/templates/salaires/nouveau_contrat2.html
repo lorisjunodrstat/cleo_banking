@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header py-3" style="background-color: cornflowerblue;">
+            <h5 class="m-0 font-weight-bold">{{ 'Modifier le contrat' if contrat else 'Nouveau contrat' }}</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST">
+                <!-- Champs de base du contrat -->
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <label class="form-label">Employeur <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="employeur" 
+                               value="{{ contrat.employeur if contrat else '' }}" required>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Heures hebdo <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" class="form-control" name="heures_hebdo"
+                               value="{{ contrat.heures_hebdo if contrat else 38.0 }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Salaire horaire (CHF) <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" class="form-control" name="salaire_horaire"
+                               value="{{ contrat.salaire_horaire if contrat else 24.05 }}" required>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Date début <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" name="date_debut"
+                               value="{{ contrat.date_debut if contrat else '' }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Date fin (optionnel)</label>
+                        <input type="date" class="form-control" name="date_fin"
+                               value="{{ contrat.date_fin if contrat else '' }}">
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Jour estimation salaire</label>
+                        <input type="number" min="1" max="31" class="form-control" name="jour_estimation_salaire"
+                               value="{{ contrat.jour_estimation_salaire if contrat else 15 }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Versements</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="versement_10" id="v10"
+                                   {% if contrat and contrat.versement_10 %}checked{% endif %}>
+                            <label class="form-check-label" for="v10">Le 10</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="versement_25" id="v25"
+                                   {% if contrat and contrat.versement_25 %}checked{% endif %}>
+                            <label class="form-check-label" for="v25">Le 25</label>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Section Cotisations -->
+                <h6 class="mb-3">Cotisations à appliquer (Année {{ annee }})</h6>
+                {% if types_cotisations %}
+                <table class="table table-sm table-bordered mb-4">
+                    <thead class="table-light">
+                        <tr>
+                            <th width="5%">Appliquer</th>
+                            <th width="35%">Type</th>
+                            <th width="25%">Taux (%) ou Montant fixe</th>
+                            <th width="35%">Base de calcul</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for tc in types_cotisations %}
+                        {% set ex = cotisations_existantes.get(tc.id) %}
+                        <tr>
+                            <td class="text-center">
+                                <input type="checkbox" name="cot_{{ tc.id }}_actif" value="1" 
+                                       {% if ex and ex.actif %}checked{% endif %}>
+                            </td>
+                            <td>
+                                <strong>{{ tc.nom }}</strong>
+                                {% if tc.description %}<br><small class="text-muted">{{ tc.description }}</small>{% endif %}
+                            </td>
+                            <td>
+                                <input type="number" step="0.01" class="form-control form-control-sm" 
+                                       name="cot_{{ tc.id }}_taux" 
+                                       value="{{ ex.taux if ex else '' }}">
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm" name="cot_{{ tc.id }}_base">
+                                    <option value="brut" {% if not ex or ex.base_calcul == 'brut' %}selected{% endif %}>Brut</option>
+                                    <option value="brut_tot" {% if ex and ex.base_calcul == 'brut_tot' %}selected{% endif %}>Brut total</option>
+                                </select>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="alert alert-warning">
+                    Aucun type de cotisation défini. 
+                    <a href="{{ url_for('banking.types_cotisations_nouveau') }}" target="_blank">Créez-en d'abord</a>.
+                </div>
+                {% endif %}
+
+                <!-- Section Indemnités -->
+                <h6 class="mb-3">Indemnités à appliquer (Année {{ annee }})</h6>
+                {% if types_indemnites %}
+                <table class="table table-sm table-bordered mb-4">
+                    <thead class="table-light">
+                        <tr>
+                            <th width="5%">Appliquer</th>
+                            <th width="35%">Type</th>
+                            <th width="25%">Taux (%) ou Montant fixe</th>
+                            <th width="35%">Base de calcul</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ti in types_indemnites %}
+                        {% set ex = indemnites_existantes.get(ti.id) %}
+                        <tr>
+                            <td class="text-center">
+                                <input type="checkbox" name="ind_{{ ti.id }}_actif" value="1" 
+                                       {% if ex and ex.actif %}checked{% endif %}>
+                            </td>
+                            <td>
+                                <strong>{{ ti.nom }}</strong>
+                                {% if ti.description %}<br><small class="text-muted">{{ ti.description }}</small>{% endif %}
+                            </td>
+                            <td>
+                                <input type="number" step="0.01" class="form-control form-control-sm" 
+                                       name="ind_{{ ti.id }}_taux" 
+                                       value="{{ ex.taux if ex else '' }}">
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm" name="ind_{{ ti.id }}_base">
+                                    <option value="brut" {% if not ex or ex.base_calcul == 'brut' %}selected{% endif %}>Brut</option>
+                                    <option value="brut_tot" {% if ex and ex.base_calcul == 'brut_tot' %}selected{% endif %}>Brut total</option>
+                                </select>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="alert alert-warning">
+                    Aucun type d'indemnité défini. 
+                    <a href="{{ url_for('banking.types_indemnites_nouveau') }}" target="_blank">Créez-en d'abord</a>.
+                </div>
+                {% endif %}
+
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <a href="{{ url_for('banking.gestion_contrat') }}" class="btn btn-secondary">Annuler</a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Enregistrer le contrat et ses paramètres
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

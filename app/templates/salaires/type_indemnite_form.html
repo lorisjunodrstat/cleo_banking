@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Modifier' if action == 'edit' else 'Nouveau' }} type de indemnite{% endblock %}
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header py-3" style="background-color: cornflowerblue;">
+            <h5 class="m-0 font-weight-bold">
+                {{ 'Modifier' if action == 'edit' else 'Nouveau' }} type de indemnite
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Nom <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" name="nom" value="{{ type.nom if type else '' }}" required
+                        maxlength="100">
+                    <small class="text-muted">Ex: AVS, AC, LPP, Assurance accident...</small>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control" name="description"
+                        rows="3">{{ type.description if type else '' }}</textarea>
+                </div>
+
+                <div class="form-check mb-4">
+                    <input class="form-check-input" type="checkbox" name="est_obligatoire" id="est_obligatoire" {% if
+                        type and type.est_obligatoire %}checked{% endif %}>
+                    <label class="form-check-label" for="est_obligatoire">
+                        indemnite obligatoire (s'affichera par défaut dans les contrats)
+                    </label>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2">
+                    <a href="{{ url_for('banking.types_indemnite_index') }}" class="btn btn-secondary">Annuler</a>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
