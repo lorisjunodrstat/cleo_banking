@@ -59,12 +59,12 @@ class Utilisateur(UserMixin):
     def get_by_id(user_id: int, db):
         try:
             with db.get_cursor(dictionary=True) as cursor:
-                query = "SELECT id, nom, prenom, email, mot_de_passe FROM utilisateurs WHERE id = %s"
+                query = "SELECT id, nom, prenom, email, mot_de_passe, created_at FROM utilisateurs WHERE id = %s"
                 cursor.execute(query, (user_id,))
                 row = cursor.fetchone()
                 if row:
                     # On envoie l'ID en premier pour correspondre au nouveau __init__
-                    return Utilisateur(row['id'], row['nom'], row['prenom'], row['email'], row['mot_de_passe'])
+                    return Utilisateur(row['id'], row['nom'], row['prenom'], row['email'], row['mot_de_passe'], row['created_at'])
                 return None
         except Exception as e:
             # Note: évite logger ici pour ne pas relancer la récursion
