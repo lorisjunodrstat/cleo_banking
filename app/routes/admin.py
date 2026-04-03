@@ -83,37 +83,20 @@ def supprimer_utilisateur(user_id):
     return redirect(url_for('admin.liste_utilisateurs'))
 
 @bp.route('/utilisateur/<int:user_id>')
-@bp.route('/profil_utilisateur')
-def detail_utilisateur(user_id=None):
-    """Page de détail d'un utilisateur avec ses comptes bancaires"""
-    if user_id is None:
-        user_id = current_user.id
-    
+def detail_utilisateur(user_id):
     try:
         with g.db_manager.get_cursor(dictionary=True) as cursor:
-            # Récupérer l'utilisateur
-            cursor.execute("SELECT * FROM utilisateurs WHERE id = %s AND actif = TRUE", (user_id,))
+            # On récupère uniquement l'utilisateur
+            cursor.execute("SELECT * FROM utilisateurs WHERE id = %s", (user_id,))
             utilisateur = cursor.fetchone()
             
             if not utilisateur:
                 flash('Utilisateur non trouvé', 'error')
-                return redirect(url_for('banking.banking_dashboard'))
+                return redirect(url_for('banking.index'))
             
-            # Récupérer ses comptes bancaires
-            cursor.execute("""
-                SELECT c.*, b.nom as nom_banque, b.couleur as couleur_banque
-                FROM comptes_principaux c
-                LEFT JOIN banques b ON c.banque_id = b.id
-                WHERE c.utilisateur_id = %s AND c.actif = TRUE
-                ORDER BY c.date_creation DESC
-            """, (user_id,))
-            comptes = cursor.fetchall()
-            
-            return render_template('users/detail_utilisateur.html', 
-                                 utilisateur=utilisateur, 
-                                 comptes=comptes)
-    except Error as e:
-        flash(f'Erreur lors de la récupération des données: {str(e)}', 'error')
+            return render_template('users/detail_utilisateur.html', utilisateur=utilisateur)
+    except Exception as e:
+        flash(f"Erreur : {str(e)}", "danger")
         return redirect(url_for('banking.banking_dashboard'))
 
 @bp.route('/api/utilisateurs')
