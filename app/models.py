@@ -1256,7 +1256,7 @@ class ComptePrincipal:
             logger.error(f"839Erreur lors du calcul du solde avec écritures: {e}")
             return Decimal('0')
 
-    def get_all_accounts(self) -> List[Dict]:
+    def get_all_accounts(self, user_id: int) -> List[Dict]:
         # Cette méthode de classe n'est pas cohérente avec les autres méthodes d'instance.
         # Il est préférable de la rendre une méthode d'instance si possible.
         # Si vous devez la garder en l'état, voici la correction.
@@ -1272,11 +1272,11 @@ class ComptePrincipal:
                     u.nom as utilisateur_nom, u.prenom as utilisateur_prenom
                 FROM comptes_principaux c
                 JOIN banques b ON c.banque_id = b.id
-                JOIN utilisateurs u ON c.utilisateur_id = u.id
-                WHERE c.actif = TRUE
+                JOIN utilisateurs u ON c.utilisateur_id = %s
+                WHERE c.actif = TRUE AND c.utilisateur_id = %s
                 ORDER BY b.nom, c.nom_compte
                 """
-                cursor.execute(query)
+                cursor.execute(query, (user_id, user_id))
                 comptes = cursor.fetchall()
                 return comptes if comptes else []
         except Error as e:
