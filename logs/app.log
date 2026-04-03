@@ -1,0 +1,42 @@
+2026-04-03 16:58:19,936 - app.models - INFO - Initialisation du pool de connexions avec DBUtils...
+2026-04-03 16:58:19,948 - app.models - INFO - Pool de connexions DBUtils initialisé avec succès.
+2026-04-03 16:58:19,949 - app.models - INFO - Vérification et création des tables de la base de données...
+2026-04-03 16:58:19,955 - app.models - ERROR - Erreur dans le gestionnaire de curseur : (1050, "Table 'heures_simulees' already exists")
+Traceback (most recent call last):
+  File "/app/app/models.py", line 195, in get_cursor
+    yield cursor
+  File "/app/app/models.py", line 368, in create_tables
+    cursor.execute(create_heures_simules_table_query)
+  File "/usr/local/lib/python3.11/site-packages/dbutils/steady_db.py", line 680, in tough_method
+    raise error  # re-raise the original error again
+    ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/dbutils/steady_db.py", line 605, in tough_method
+    result = method(*args, **kwargs)  # try to execute
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pymysql/cursors.py", line 153, in execute
+    result = self._query(query)
+             ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pymysql/cursors.py", line 322, in _query
+    conn.query(q)
+  File "/usr/local/lib/python3.11/site-packages/pymysql/connections.py", line 563, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pymysql/connections.py", line 825, in _read_query_result
+    result.read()
+  File "/usr/local/lib/python3.11/site-packages/pymysql/connections.py", line 1199, in read
+    first_packet = self.connection._read_packet()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pymysql/connections.py", line 775, in _read_packet
+    packet.raise_for_error()
+  File "/usr/local/lib/python3.11/site-packages/pymysql/protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "/usr/local/lib/python3.11/site-packages/pymysql/err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+pymysql.err.OperationalError: (1050, "Table 'heures_simulees' already exists")
+2026-04-03 16:58:19,969 - app.models - ERROR - Erreur lors de la création des tables : (1050, "Table 'heures_simulees' already exists")
+2026-04-03 16:58:19,969 - root - INFO - Schéma de base de données vérifié (toutes les tables).
+2026-04-03 16:58:19,971 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.29.0.4:5000
+2026-04-03 16:58:19,971 - werkzeug - INFO - [33mPress CTRL+C to quit[0m

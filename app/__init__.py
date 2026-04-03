@@ -26,7 +26,7 @@ load_dotenv(dotenv_path=env_path)
 
 # --- Configuration de la journalisation ---
 
-log_dir = BASE_DIR / 'logs'
+log_dir = Path('/logs')
 log_dir.mkdir(parents=True, exist_ok=True)
 
 file_handler = RotatingFileHandler(
