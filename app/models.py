@@ -1170,13 +1170,13 @@ class ComptePrincipal:
                 query = """
                 INSERT INTO comptes_principaux
                 (utilisateur_id, banque_id, nom_compte, numero_compte, iban, bic,
-                type_compte, solde, solde_initial,solde_possible, devise, date_ouverture)
+                type_compte, solde, solde_possible, solde_initial, devise, date_ouverture)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 values = (
                     data['utilisateur_id'], data['banque_id'], data['nom_compte'],
                     data['numero_compte'], data.get('iban', ''), data.get('bic', ''),
-                    data['type_compte'], data.get('solde', 0), data.get('solde_initial', 0), data.get('solde_possible', 0), data.get('devise', 'CHF'),
+                    data['type_compte'], data.get('solde', 0), data.get('solde_possible', 0), data.get('solde_initial', 0), data.get('devise', 'CHF'),
                     data.get('date_ouverture')
                 )
                 cursor.execute(query, values)

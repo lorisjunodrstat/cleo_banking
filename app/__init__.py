@@ -6,6 +6,8 @@ Application Flask - Fichier d'initialisation principal
 
 import os
 import sys
+from pathlib import Path
+from dotenv import load_dotenv
 from flask import Flask, g, redirect, url_for, request_started, request_finished, current_app, render_template
 from flask_login import LoginManager, current_user
 from dotenv import load_dotenv
@@ -17,13 +19,15 @@ import logging
 from logging.handlers import RotatingFileHandler
 
 # Charge les variables d'environnement avec chemin absolu
-env_path = Path('/var/www/webroot/ROOT') / '.env'
+BASE_DIR = Path(__file__).resolve().parent
+env_path = BASE_DIR / '.env'
 load_dotenv(dotenv_path=env_path)
 
+
 # --- Configuration de la journalisation ---
-log_dir = os.path.join('/var/www/webroot/ROOT', 'logs')
-if not os.path.exists(log_dir):
-    os.makedirs(log_dir)
+
+log_dir = BASE_DIR / 'logs'
+log_dir.mkdir(parents=True, exist_ok=True)
 
 file_handler = RotatingFileHandler(
     os.path.join(log_dir, 'app.log'),
