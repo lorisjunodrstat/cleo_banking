@@ -89,7 +89,7 @@ def profil_utilisateur(user_id):
 
         # 3. Rendu de la page avec les variables attendues par le template
         return render_template(
-            'user/detail_utilisateur.htmll', 
+            'users/detail_utilisateur.htmll', 
             user_id=user_id, 
             utilisateur=utilisateur,
             comptes=comptes
