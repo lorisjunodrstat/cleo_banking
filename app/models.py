@@ -1176,7 +1176,7 @@ class ComptePrincipal:
                 values = (
                     data['utilisateur_id'], data['banque_id'], data['nom_compte'],
                     data['numero_compte'], data.get('iban', ''), data.get('bic', ''),
-                    data['type_compte'], data.get('solde', 0), data.get('solde_initial', 0), data.get('solde_possible', -10000.00), data.get('devise', 'CHF'),
+                    data['type_compte'], data.get('solde', 0), data.get('solde_initial', 0), data.get('solde_possible', 0), data.get('devise', 'CHF'),
                     data.get('date_ouverture')
                 )
                 cursor.execute(query, values)
