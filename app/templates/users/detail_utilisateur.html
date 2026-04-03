@@ -3,6 +3,7 @@
 {% block title %}Profil de {{ utilisateur.nom }}{% endblock %}
 
 {% block content %}
+{% if utilisateur %}
 <div class="container py-4">
     <div class="row justify-content-center">
         <div class="col-md-8">
@@ -67,4 +68,15 @@
         </div>
     </div>
 </div>
+{% else %}
+    <div class="container py-4">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="alert alert-danger" role="alert">
+                    Utilisateur non trouvé.
+                </div>
+            </div>
+        </div>
+    </div>
+{% endif %}
 {% endblock %}
