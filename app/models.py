@@ -13552,6 +13552,9 @@ class ModelManager:
             self._cache[name] = cls(self._db)
         return self._cache[name]
     @property
+    def user_model(self):
+        return self._get_model('user', Utilisateur)
+    @property
     def banque_model(self):
         return self._get_model('banque', Banque)
     @property
