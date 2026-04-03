@@ -5689,6 +5689,37 @@ class CategorieTransaction:
         except Exception as e:
             logger.error(f"Erreur récupération catégories transaction: {e}")
             return []
+    def get_categories_pour_plusieurs_transactions(self, transaction_ids: List[int], user_id: int) -> Dict[int, List[Dict]]:
+        """
+        Récupère les catégories de plusieurs transactions en UNE SEULE requête.
+        Retourne un dictionnaire : { transaction_id: [liste_de_categories] }
+        """
+        if not transaction_ids:
+            return {}
+
+        try:
+            with self.db.get_cursor() as cursor:
+                # Utilisation de IN (%s, %s, ...) pour filtrer par IDs
+                format_strings = ','.join(['%s'] * len(transaction_ids))
+                query = f"""
+                    SELECT tc.transaction_id, c.id, c.nom, c.couleur, c.icone
+                    FROM transaction_categories tc
+                    JOIN categories_transactions c ON tc.categorie_id = c.id
+                    WHERE tc.transaction_id IN ({format_strings}) AND tc.utilisateur_id = %s
+                """
+                cursor.execute(query, tuple(transaction_ids) + (user_id,))
+                rows = cursor.fetchall()
+
+                # On organise le résultat par ID de transaction
+                resultat = {tid: [] for tid in transaction_ids}
+                for row in rows:
+                    tid = row.pop('transaction_id') # On retire l'ID de la transaction du dict de la catégorie
+                    resultat[tid].append(row)
+                return resultat
+
+        except Exception as e:
+            logger.error(f"Erreur récupération groupée catégories: {e}")
+            return {}
     def dissocier_categorie_transaction(self, transaction_id: int, categorie_id: int, user_id: int) -> Tuple[bool, str]:
         """Dissocie une catégorie spécifique d'une transaction"""
         try:
