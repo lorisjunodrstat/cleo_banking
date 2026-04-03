@@ -103,6 +103,27 @@
                             <div class="row">
                                 <div class="col-md-8">
                                     <div class="mb-3">
+                                        <label for="solde_possible" class="form-label">
+                                            <i class="fas fa-coins me-1"></i>Solde possible
+                                        </label>
+                                        <input type="number" class="form-control" id="solde_possible" name="solde_possible" step="0.01" min="0" placeholder="0.00"
+                                            value="{{ request.form.solde_possible if request.form else '0.00' }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label for="devise" class="form-label">Devise</label>
+                                        <select class="form-select" id="devise" name="devise">
+                                            <option value="CHF" {{ 'selected' if request.form.devise=='CHF' else '' }}>CHF</option>
+                                            <option value="EUR" {{ 'selected' if request.form.devise=='EUR' else '' }}>EUR</option>
+                                            <option value="USD" {{ 'selected' if request.form.devise=='USD' else '' }}>USD</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <div class="mb-3">
                                         <label for="solde" class="form-label">
                                             <i class="fas fa-coins me-1"></i>Solde initial
                                         </label>

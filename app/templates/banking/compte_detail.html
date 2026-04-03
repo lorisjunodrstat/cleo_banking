@@ -92,12 +92,16 @@
                         </div>
 
                         <div class="row">
-                            <div class="col-sm-6">
+                            <div class="col-sm-4">
                                 <small class="text-muted">Numéro de compte :</small>
                                 <div><code>{{ compte.numero_compte }}</code></div>
                             </div>
+                            <div class="col-sm-4">
+                                <small class="text-muted">Solde possible :</small>
+                                <div><code>{{ compte.solde_possible }}</code></div>
+                            </div>
                             {% if compte.iban %}
-                            <div class="col-sm-6">
+                            <div class="col-sm-4">
                                 <small class="text-muted">IBAN :</small>
                                 <div><code>{{ compte.iban }}</code></div>
                             </div>

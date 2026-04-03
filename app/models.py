@@ -394,6 +394,7 @@ class DatabaseManager:
                     bic VARCHAR(11),
                     type_compte ENUM('courant', 'epargne', 'compte_jeune', 'autre') DEFAULT 'courant',
                     solde DECIMAL(15,2) DEFAULT 0.00,
+                    solde_possible DECIMAL(15,2) DEFAULT -10000.00,
                     devise VARCHAR(3) DEFAULT 'CHF',
                     date_ouverture DATE,
                     actif BOOLEAN DEFAULT TRUE,
@@ -1111,7 +1112,7 @@ class ComptePrincipal:
                 query = """
                 SELECT
                     c.id, c.banque_id, c.nom_compte, c.numero_compte, c.iban, c.bic,
-                    c.type_compte, c.solde, c.solde_initial, c.devise, c.date_ouverture,
+                    c.type_compte, c.solde, c.solde_initial, c.solde_possible, c.devise, c.date_ouverture,
                     c.actif, c.date_creation,
                     b.id as banque_id, b.nom as nom_banque, b.code_banque, b.couleur as couleur_banque,
                     b.logo_url
@@ -1169,13 +1170,13 @@ class ComptePrincipal:
                 query = """
                 INSERT INTO comptes_principaux
                 (utilisateur_id, banque_id, nom_compte, numero_compte, iban, bic,
-                type_compte, solde, solde_initial, devise, date_ouverture)
+                type_compte, solde, solde_initial,solde_possible, devise, date_ouverture)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 values = (
                     data['utilisateur_id'], data['banque_id'], data['nom_compte'],
                     data['numero_compte'], data.get('iban', ''), data.get('bic', ''),
-                    data['type_compte'], data.get('solde', 0), data.get('solde_initial', 0), data.get('devise', 'CHF'),
+                    data['type_compte'], data.get('solde', 0), data.get('solde_initial', 0), data.get('solde_possible', -10000.00), data.get('devise', 'CHF'),
                     data.get('date_ouverture')
                 )
                 cursor.execute(query, values)
@@ -1265,7 +1266,7 @@ class ComptePrincipal:
                 query = """
                 SELECT
                     c.id, c.utilisateur_id, c.banque_id, c.nom_compte, c.numero_compte,
-                    c.iban, c.bic, c.type_compte, c.solde, c.solde_initial, c.devise, c.date_ouverture, c.actif,
+                    c.iban, c.bic, c.type_compte, c.solde, c.solde_initial, c.solde_possible, c.devise, c.date_ouverture, c.actif,
                     b.nom as banque_nom, b.code_banque, b.couleur as banque_couleur,
                     u.nom as utilisateur_nom, u.prenom as utilisateur_prenom
                 FROM comptes_principaux c
@@ -1670,7 +1671,7 @@ class TransactionFinanciere:
         try:
             with self.db.get_cursor() as cursor:
                 if compte_type == 'compte_principal':
-                    cursor.execute("SELECT solde FROM comptes_principaux WHERE id = %s", (compte_id,))
+                    cursor.execute("SELECT solde, COALESCE(solde_possible, 0) AS solde_possible FROM comptes_principaux WHERE id = %s", (compte_id,))
                 elif compte_type == 'sous_compte':
                     cursor.execute("SELECT solde FROM sous_comptes WHERE id = %s", (compte_id,))
                 else:
@@ -1683,7 +1684,21 @@ class TransactionFinanciere:
                     return False, Decimal('0')
 
                 solde_actuel = Decimal(str(result['solde']))
-                return solde_actuel >= montant, solde_actuel
+                solde_possible = Decimal(str(result['solde_possible'])) if compte_type == 'compte_principal' and 'solde_possible' in result else Decimal('0')
+
+                solde_projete = solde_actuel - montant
+                solde_suffisant = solde_projete >= solde_possible
+
+                if not solde_suffisant:
+                    logger.warning(
+                        f"Solde insuffisant pour {compte_type} ID {compte_id}. "
+                        f"Solde: {solde_actuel}, Montant: {montant}, Solde possible: {solde_possible}"
+                        f"Solde projeté: {solde_projete}"
+                    )
+
+
+
+                return solde_suffisant, solde_actuel
         except Error as e:
             logger.error(f"Erreur validation solde: {e}")
             return False, Decimal('0')
@@ -1728,6 +1743,22 @@ class TransactionFinanciere:
                 return Decimal(str(result['solde_initial'])) if result and 'solde_initial' in result else Decimal('0')
         except Error as e:
             logger.error(f"Erreur récupération solde initial: {e}")
+            return Decimal('0')
+    def _get_solde_possible(self, compte_type: str, compte_id: int) -> Decimal:
+        """Récupère le solde possible d'un compte"""
+        logger.debug(f"Récupération du solde possible pour {compte_type} ID {compte_id}")
+
+        try:
+            with self.db.get_cursor() as cursor:
+                if compte_type == 'compte_principal':
+                    cursor.execute("SELECT solde_possible FROM comptes_principaux WHERE id = %s", (compte_id,))
+                else:
+                    cursor.execute("SELECT solde_possible FROM sous_comptes WHERE id = %s", (compte_id,))
+
+                result = cursor.fetchone()
+                return Decimal(str(result['solde_possible'])) if result and 'solde_possible' in result else Decimal('0')
+        except Error as e:
+            logger.error(f"Erreur récupération solde possible: {e}")
             return Decimal('0')
 
     def _update_subsequent_transactions(self, cursor, compte_type: str, compte_id: int,
@@ -1783,9 +1814,17 @@ class TransactionFinanciere:
                 else:
                     solde_initial = self._get_solde_initial(compte_type, compte_id)
                     solde_avant = solde_initial
+
+                if compte_type == 'compte_principal':
+                    cursor.execute("SELECT COALESCE(solde_possible, 0) AS solde_possible FROM comptes_principaux WHERE id = %s", (compte_id,))
+                    result = cursor.fetchone()
+                    if result:
+                        solde_possible = Decimal(str(result['solde_possible']))
+                        
                 # Pour les transactions de débit, vérifier le solde suffisant si demandé
                 if validate_balance and type_transaction in ['retrait', 'transfert_sortant', 'transfert_externe']:
-                    if solde_avant < montant:
+                    solde_limite = solde_possible if compte_type == 'compte_principal' else Decimal('0')
+                    if solde_avant - montant < solde_limite:
                         return False, "Solde insuffisant", None
                 # Calculer le nouveau solde
                 if type_transaction in ['depot', 'transfert_entrant', 'recredit_annulation']:
@@ -1805,7 +1844,7 @@ class TransactionFinanciere:
                 else:
                     query = """
                     INSERT INTO transactions
-                    (sous_compte_id, type_transaction, montant, description, utilisateur_id, date_transaction, solde_apres, referreference_transfert)
+                    (sous_compte_id, type_transaction, montant, description, utilisateur_id, date_transaction, solde_apres, reference_transfert)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """
                     cursor.execute(query, (compte_id, type_transaction, float(montant),
@@ -2554,7 +2593,7 @@ class TransactionFinanciere:
         """
         try:
             if compte_type == 'compte_principal':
-                cursor.execute("SELECT solde FROM comptes_principaux WHERE id = %s", (compte_id,))
+                cursor.execute("SELECT solde, COALESCE(solde_possible, 0) AS solde_possible FROM comptes_principaux WHERE id = %s", (compte_id,))
             elif compte_type == 'sous_compte':
                 cursor.execute("SELECT solde FROM sous_comptes WHERE id = %s", (compte_id,))
             else:
@@ -2568,7 +2607,8 @@ class TransactionFinanciere:
 
             # Assurer la précision décimale en convertissant le résultat de la requête
             solde_actuel = Decimal(str(result['solde']))
-            return solde_actuel >= montant, solde_actuel
+            solde_limite = Decimal(str(result['solde_possible'])) if 'solde_possible' in result else Decimal('0')
+            return (solde_actuel - montant) >= solde_limite, solde_actuel
         except Exception as e:
             logger.error(f"Erreur lors de la validation du solde: {e}")
             return False, Decimal('0')
@@ -2716,6 +2756,11 @@ class TransactionFinanciere:
         Insère une transaction dans la base de données et met à jour les soldes.
         """
         try:
+            solde_possible = Decimal('0')
+            if compte_type == 'compte_principal':
+                cursor.execute("SELECT COALESCE(solde_possible, 0) AS solde_possible FROM comptes_principaux WHERE id = %s", (compte_id,))
+                res_sp = cursor.fetchone()
+                solde_possible = Decimal(str(res_sp['solde_possible'])) if res_sp and 'solde_possible' in res_sp else Decimal('0')
             # Trouver la transaction précédente pour calculer le solde_avant
             previous = self._get_previous_transaction_with_cursor(cursor, compte_type, compte_id, date_transaction)
 
@@ -2728,8 +2773,9 @@ class TransactionFinanciere:
                 solde_avant = solde_initial
 
             # Pour les transactions de débit, vérifier le solde suffisant si demandé
-            if validate_balance and type_transaction in ['retrait', 'transfert_sortant', 'transfert_externe', 'transfert_compte_vers_sous']:
-                if solde_avant < montant:
+            if validate_balance and type_transaction in ['retrait', 'transfert_sortant', 'transfert_externe', 'transfert_compte_vers_sous', 'transfert_sous_vers_compte']:
+                solde_limite = solde_possible if compte_type == 'compte_principal' else Decimal('0')
+                if solde_avant - montant < solde_limite:
                     return False, "Solde insuffisant", None
 
             # Calculer le nouveau solde
@@ -2973,12 +3019,10 @@ class TransactionFinanciere:
                 #    return False, "Compte destination non trouvé ou non autorisé"
 
                 # Récupérer les soldes
-                solde_source = self._get_solde_compte_with_cursor(cursor, source_type, source_id)
-                solde_dest = self._get_solde_compte_with_cursor(cursor, dest_type, dest_id)
-
-                # Vérifier le solde source
-                if solde_source < montant:
+                solde_ok, _ = self._valider_solde_suffisant_with_cursor(cursor, source_type, source_id, montant)
+                if not solde_ok:
                     return False, "Solde insuffisant sur le compte source"
+
 
                 # Générer une référence unique
                 timestamp = int(time.time())
@@ -3053,12 +3097,13 @@ class TransactionFinanciere:
                     return False, "Le sous-compte n'appartient pas à ce compte"
 
                 # Vérifier le solde du compte
-                cursor.execute("SELECT solde FROM comptes_principaux WHERE id = %s", (compte_id,))
+                cursor.execute("SELECT solde, COALESCE(solde_possible, 0) AS solde_possible FROM comptes_principaux WHERE id = %s", (compte_id,))
                 result = cursor.fetchone()
                 if not result:
                     return False, "Compte non trouvé"
                 solde_compte = Decimal(str(result['solde']))
-                if solde_compte < montant:
+                solde_possible = Decimal(str(result['solde_possible']))
+                if solde_compte - montant < solde_possible:
                     return False, "Solde insuffisant sur le compte"
 
                 # Générer référence et description
@@ -4012,6 +4057,7 @@ class TransactionFinanciere:
                         c.bic,
                         c.type_compte,
                         c.solde,
+                        c.solde_possible,
                         c.devise,
                         c.date_ouverture,
                         'interne' AS type_compte_origine
@@ -4030,6 +4076,7 @@ class TransactionFinanciere:
                         cp.bic,
                         cp.type_compte,
                         0.00 AS solde,
+                        cp.solde_possible,
                         cp.devise,
                         cp.date_ouverture,
                         'externe' AS type_compte_origine
