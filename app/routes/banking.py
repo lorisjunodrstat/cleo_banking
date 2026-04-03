@@ -376,13 +376,13 @@ def banking_compte_detail(compte_id):
     )
     
     # 🔥 NOUVEAU : Récupérer les catégories pour chaque transaction
-    categories_par_transaction = {}
-    for mouvement in mouvements:
-        categories = g.models.categorie_transaction_model.get_categories_transaction(
-            mouvement['id'], 
+    mouvement_ids = [m['id'] for m in mouvements]
+
+    # Une seule requête au lieu de 200 !
+    categories_par_transaction = g.models.categorie_transaction_model.get_categories_pour_plusieurs_transactions(
+        mouvement_ids, 
             user_id
-        )
-        categories_par_transaction[mouvement['id']] = categories
+)
     
     # Utiliser les statistiques corrigées plutôt que le calcul manuel
     stats_compte = g.models.transaction_financiere_model.get_statistiques_compte(
@@ -439,15 +439,13 @@ def banking_compte_detail(compte_id):
         except ValueError:
             # Si la conversion en entier échoue, on ignore le filtre
             pass
-    if sort == 'date_desc':
-        filtred_mouvements.sort(
-            key=lambda x: x['date_transaction'] if isinstance(x['date_transaction'], datetime) 
-            else datetime.strptime(str(x['date_transaction']), '%Y-%m-%d %H:%M:%S'),
-            reverse=True)
-    else:  # date_asc par défaut
-        filtred_mouvements.sort(
-            key=lambda x: x['date_transaction'] if isinstance(x['date_transaction'], datetime) 
-            else datetime.strptime(str(x['date_transaction']), '%Y-%m-%d %H:%M:%S'))
+    def sort_key(x):
+        dt = x['date_transaction']
+        if isinstance(dt, datetime):
+            return dt
+        return datetime.strptime(str(dt), '%Y-%m-%d %H:%M:%S')
+    is_desc = (sort == 'date_desc')
+    filtred_mouvements = sorted(filtred_mouvements, key=sort_key, reverse=is_desc)
     # 🔥 PAGINATION : Calculer les données de pagination
     total_mouvements = len(filtred_mouvements)
     total_pages = (total_mouvements + per_page - 1) // per_page
