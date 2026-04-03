@@ -86,17 +86,30 @@ def supprimer_utilisateur(user_id):
 def detail_utilisateur(user_id):
     """Affiche les détails d'un utilisateur."""
     try:
-        user_id = g.models.user_model.get_by_id(user_id)
-        utilisateur = cursor.fetchone()
-            
-        if not utilisateur:
-            flash('Utilisateur non trouvé', 'error')
+        db = g.db_manager.get_db()  # Récupérer la connexion à la base de données
+        if not db:
+        # Si g.db_manager n'est pas dispo, on tente la suggestion de VS Code
+            # ou on redirige avec une erreur
+            flash("Base de données non accessible", "danger")
             return redirect(url_for('banking.banking_dashboard'))
-                
-        return render_template('users/detail_utilisateur.html', utilisateur=utilisateur)
+        utilisateur = g.models.user_model.get_by_id(user_id, db)
+        
+        if not utilisateur:
+            flash("Utilisateur non trouvé", "danger")
+            return redirect(url_for('banking.dashboard'))
+
+
+        # 3. Rendu de la page avec les variables attendues par le template
+        return render_template(
+            'users/detail_utilisateur.html', 
+            user_id=user_id, 
+            utilisateur=utilisateur
+        )
+
     except Exception as e:
-        flash(f"Erreur : {str(e)}", "danger")
-        return redirect(url_for('banking.banking_dashboard'))
+        flash("Une erreur est survenue lors du chargement du profil.", "danger")
+        return redirect(url_for('banking/dashboard.html'))
+
 
 @bp.route('/api/utilisateurs')
 def api_utilisateurs():
