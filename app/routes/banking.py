@@ -8074,7 +8074,7 @@ def synthese_mensuelle():
 @login_required
 def cotisation_index():
     """Liste tous les types de cotisations de l'utilisateur"""
-    types = g.models.type_cotisation_model.get_all_by_user(current_user.id)
+    types = g.models.type_cotisations_model.get_all_by_user(current_user.id)
     return render_template('salaires/types_cotisations.html', types=types)
 
 @bp.route('/cotisation/nouveau', methods=['GET', 'POST'])
@@ -8087,7 +8087,7 @@ def cotisation_nouveau():
             flash("Le nom est requis.", "warning")
             return redirect(url_for('banking.types_cotisations_nouveau'))
         
-        type_id = g.models.type_cotisation_model.create(
+        type_id = g.models.type_cotisations_model.create(
             user_id=current_user.id,
             nom=nom,
             description=request.form.get('description', ''),
@@ -8095,7 +8095,7 @@ def cotisation_nouveau():
         )
         if type_id:
             flash(f"Type de cotisation « {nom} » créé avec succès.", "success")
-            return redirect(url_for('banking.types_cotisations_index'))
+            return redirect(url_for('banking.cotisation_index'))
         else:
             flash("Erreur lors de la création.", "danger")
     
@@ -8113,22 +8113,22 @@ def cotisation_modifier(type_id):
         }
         if not data['nom']:
             flash("Le nom est requis.", "warning")
-            return redirect(url_for('types_cotisations.modifier', type_id=type_id))
+            return redirect(url_for('banking.types_cotisations_modifier', type_id=type_id))
         
-        success = g.models.type_cotisation_model.update(type_id, current_user.id, data)
+        success = g.models.type_cotisations_model.update(type_id, current_user.id, data)
         if success:
             flash("Type de cotisation mis à jour.", "success")
-            return redirect(url_for('banking.types_cotisations_index'))
+            return redirect(url_for('banking.cotisation_index'))
         else:
             flash("Erreur lors de la mise à jour ou accès refusé.", "danger")
     
     # Récupérer le type spécifique
-    all_types = g.models.type_cotisation_model.get_all_by_user(current_user.id)
+    all_types = g.models.type_cotisations_model.get_all_by_user(current_user.id)
     type_cot = next((t for t in all_types if t['id'] == type_id), None)
     
     if not type_cot:
         flash("Type de cotisation non trouvé.", "warning")
-        return redirect(url_for('banking.types_cotisations_index'))
+        return redirect(url_for('banking.cotisation_index'))
     
     return render_template('salaires/type_cotisation_form.html', type=type_cot, action='edit')
 
@@ -8136,12 +8136,12 @@ def cotisation_modifier(type_id):
 @login_required
 def cotisation_supprimer(type_id):
     """Supprimer un type de cotisation"""
-    success = g.models.type_cotisation_model.delete(type_id, current_user.id)
+    success = g.models.type_cotisations_model.delete(type_id, current_user.id)
     if success:
         flash("Type de cotisation supprimé.", "success")
     else:
         flash("Impossible de supprimer (peut-être utilisé dans un contrat).", "warning")
-    return redirect(url_for('banking.types_cotisations_index'))
+    return redirect(url_for('banking.cotisation_index'))
 
 
 
@@ -8175,7 +8175,7 @@ def indemnite_nouveau():
         )
         if type_id:
             flash(f"Type de indemnite « {nom} » créé avec succès.", "success")
-            return redirect(url_for('banking.types_indemnites_index'))
+            return redirect(url_for('banking.indemnite_index'))
         else:
             flash("Erreur lors de la création.", "danger")
     
@@ -8193,12 +8193,12 @@ def indemnite_modifier(type_id):
         }
         if not data['nom']:
             flash("Le nom est requis.", "warning")
-            return redirect(url_for('banking.types_indemnites_modifier', type_id=type_id))
+            return redirect(url_for('banking.indemnite_index', type_id=type_id))
         
         success = g.models.type_indemnite_model.update(type_id, current_user.id, data)
         if success:
             flash("Type de indemnite mis à jour.", "success")
-            return redirect(url_for('banking.types_indemnites_index'))
+            return redirect(url_for('banking.indemnite_index'))
         else:
             flash("Erreur lors de la mise à jour ou accès refusé.", "danger")
     
@@ -8208,7 +8208,7 @@ def indemnite_modifier(type_id):
     
     if not type_cot:
         flash("Type de indemnite non trouvé.", "warning")
-        return redirect(url_for('banking.types_indemnites_index'))
+        return redirect(url_for('banking.indemnite_index'))
     
     return render_template('salaires/type_indemnite_form.html', type=type_cot, action='edit')
 
@@ -8221,7 +8221,7 @@ def indemnite_supprimer(type_id):
         flash("Type de indemnite supprimé.", "success")
     else:
         flash("Impossible de supprimer (peut-être utilisé dans un contrat).", "warning")
-    return redirect(url_for('banking.types_indemnites_index'))
+    return redirect(url_for('banking.indemnite_index'))
 
 ########
 
@@ -8255,7 +8255,7 @@ def nouveau_contrat2():
         }
 
     # Charger les types disponibles (créés à l'étape 1)
-    types_cotisations = g.models.type_cotisation_model.get_all_by_user(user_id)
+    types_cotisations = g.models.type_cotisations_model.get_all_by_user(user_id)
     types_indemnites = g.models.type_indemnite_model.get_all_by_user(user_id)
 
     if request.method == 'POST':
@@ -8614,7 +8614,7 @@ def dashboard_employes():
 @login_required
 def liste_types_cotisation():
     current_user_id = current_user.id
-    types = g.models.type_cotisation_model.get_all_by_user(current_user_id)
+    types = g.models.type_cotisations_model.get_all_by_user(current_user_id)
     return render_template('cotisations/types_list.html', types=types)
 
 @bp.route('/cotisations/types/nouveau', methods=['GET', 'POST'])
@@ -8625,7 +8625,7 @@ def editer_type_cotisation(type_id=None):
     type_cotisation = None
 
     if type_id:
-        types = g.models.type_cotisation_model.get_all_by_user(current_user_id)
+        types = g.models.type_cotisations_model.get_all_by_user(current_user_id)
         type_cotisation = next((t for t in types if t['id'] == type_id), None)
         if not type_cotisation:
             abort(404)
@@ -8640,12 +8640,12 @@ def editer_type_cotisation(type_id=None):
         else:
             data = {'nom': nom, 'description': description, 'est_obligatoire': est_obligatoire}
             if type_id:
-                if g.models.type_cotisation_model.update(type_id, current_user_id, data):
+                if g.models.type_cotisations_model.update(type_id, current_user_id, data):
                     flash("Type de cotisation mis à jour.", "success")
                 else:
                     flash("Aucune modification effectuée.", "warning")
             else:
-                if g.models.type_cotisation_model.create(current_user_id, nom, description, est_obligatoire):
+                if g.models.type_cotisations_model.create(current_user_id, nom, description, est_obligatoire):
                     flash("Nouveau type de cotisation créé.", "success")
                 else:
                     flash("Erreur lors de la création.", "error")
@@ -8657,7 +8657,7 @@ def editer_type_cotisation(type_id=None):
 @login_required
 def supprimer_type_cotisation(type_id):
     current_user_id = current_user.id
-    if g.models.type_cotisation_model.delete(type_id, current_user_id):
+    if g.models.type_cotisations_model.delete(type_id, current_user_id):
         flash("Type de cotisation supprimé.", "success")
     else:
         flash("Impossible de supprimer ce type.", "error")
@@ -8935,7 +8935,7 @@ def gestion_cotisations_contrat(contrat_id):
         return redirect(url_for('banking.gestion_cotisations_contrat', contrat_id=contrat_id, annee=annee))
 
     # GET
-    types_cotis = g.models.type_cotisation_model.get_all_by_user(current_user.id)
+    types_cotis = g.models.type_cotisations_model.get_all_by_user(current_user.id)
     types_indem = g.models.type_indemnite_model.get_all_by_user(current_user.id)
     cotis_actuelles = g.models.cotisations_contrat_model.get_for_contrat_and_annee(contrat_id, annee)
     indem_actuelles = g.models.indemnites_contrat_model.get_for_contrat_and_annee(contrat_id, annee)
