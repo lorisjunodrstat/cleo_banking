@@ -8171,7 +8171,7 @@ def indemnite_nouveau():
             flash("Le nom est requis.", "warning")
             return redirect(url_for('banking.types_indemnites_nouveau'))
         
-        type_id = g.models.type_indemnite_model.create(
+        type_id = g.models.type_indemnites_model.create(
             user_id=current_user.id,
             nom=nom,
             description=description,
@@ -8199,7 +8199,7 @@ def indemnite_modifier(type_id):
             flash("Le nom est requis.", "warning")
             return redirect(url_for('banking.indemnite_index', type_id=type_id))
         
-        success = g.models.type_indemnite_model.update(type_id, current_user.id, data)
+        success = g.models.type_indemnites_model.update(type_id, current_user.id, data)
         if success:
             flash("Type de indemnite mis à jour.", "success")
             return redirect(url_for('banking.indemnite_index'))
@@ -8220,7 +8220,7 @@ def indemnite_modifier(type_id):
 @login_required
 def indemnite_supprimer(type_id):
     """Supprimer un type de indemnite"""
-    success = g.models.type_indemnite_model.delete(type_id, current_user.id)
+    success = g.models.type_indemnites_model.delete(type_id, current_user.id)
     if success:
         flash("Type de indemnite supprimé.", "success")
     else:
@@ -8699,12 +8699,12 @@ def editer_type_indemnite(type_id=None):
         else:
             data = {'nom': nom, 'description': description, 'est_obligatoire': est_obligatoire}
             if type_id:
-                if g.models.type_indemnite_model.update(type_id, current_user_id, data):
+                if g.models.type_indemnites_model.update(type_id, current_user_id, data):
                     flash("Type d'indemnité mis à jour.", "success")
                 else:
                     flash("Aucune modification effectuée.", "warning")
             else:
-                if g.models.type_indemnite_model.create(current_user_id, nom, description, est_obligatoire):
+                if g.models.type_indemnites_model.create(current_user_id, nom, description, est_obligatoire):
                     flash("Nouveau type d'indemnité créé.", "success")
                 else:
                     flash("Erreur lors de la création.", "error")
@@ -8716,7 +8716,7 @@ def editer_type_indemnite(type_id=None):
 @login_required
 def supprimer_type_indemnite(type_id):
     current_user_id = current_user.id
-    if g.models.type_indemnite_model.delete(type_id, current_user_id):
+    if g.models.type_indemnites_model.delete(type_id, current_user_id):
         flash("Type d'indemnité supprimé.", "success")
     else:
         flash("Impossible de supprimer ce type.", "error")
