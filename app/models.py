@@ -9023,7 +9023,7 @@ class TypeCotisation:
     def create(self, user_id: int, nom: str, description: str ="", est_obligatoire: bool = False)-> int:
         """Crée un type de cotisation"""
         try:
-            with self.db.get_cursor as cursor:
+            with self.db.get_cursor() as cursor:
                 query = """
                 INSERT INTO types_cotisation (user_id, nom, description, est_obligatoire)
                 VALUES (%s, %s, %s, %s)"""
@@ -9074,14 +9074,15 @@ class TypeIndemnite:
     def create(self, user_id: int, nom: str, description: str ="", est_obligatoire: bool = False)-> int:
         """Crée un type d'indemnité"""
         try:
-            with self.db.get_cursor as cursor:
+            with self.db.get_cursor() as cursor:
                 query = """
                 INSERT INTO types_indemnite (user_id, nom, description, est_obligatoire)
                 VALUES (%s, %s, %s, %s)"""
                 cursor.execute(query, (user_id, nom, description, est_obligatoire))
-                return cursor.lastrowid
-        except Exception as e:
+                return True
+        except Error as e:
             logger.error(f"Erreur création type_cotisation {e}")
+            return False
     def get_all_by_user(self, user_id: int)-> List[Dict]:
         """récupère toutes les indemnités de l'utilisateur"""
         try:
