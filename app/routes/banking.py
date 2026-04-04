@@ -8083,6 +8083,8 @@ def cotisation_nouveau():
     """Créer un nouveau type de cotisation"""
     if request.method == 'POST':
         nom = request.form.get('nom', '').strip()
+        description = request.form.get('description', '').strip()
+        est_obligatoire = 'est_obligatoire' in request.form
         if not nom:
             flash("Le nom est requis.", "warning")
             return redirect(url_for('banking.types_cotisations_nouveau'))
@@ -8090,8 +8092,8 @@ def cotisation_nouveau():
         type_id = g.models.type_cotisations_model.create(
             user_id=current_user.id,
             nom=nom,
-            description=request.form.get('description', ''),
-            est_obligatoire='est_obligatoire' in request.form
+            description=description,
+            est_obligatoire=est_obligatoire
         )
         if type_id:
             flash(f"Type de cotisation « {nom} » créé avec succès.", "success")
@@ -8163,6 +8165,8 @@ def indemnite_nouveau():
     """Créer un nouveau type de indemnite"""
     if request.method == 'POST':
         nom = request.form.get('nom', '').strip()
+        description=request.form.get('description', ''),
+        est_obligatoire='est_obligatoire' in request.form
         if not nom:
             flash("Le nom est requis.", "warning")
             return redirect(url_for('banking.types_indemnites_nouveau'))
@@ -8170,8 +8174,8 @@ def indemnite_nouveau():
         type_id = g.models.type_indemnite_model.create(
             user_id=current_user.id,
             nom=nom,
-            description=request.form.get('description', ''),
-            est_obligatoire='est_obligatoire' in request.form
+            description=description,
+            est_obligatoire=est_obligatoire 
         )
         if type_id:
             flash(f"Type de indemnite « {nom} » créé avec succès.", "success")
@@ -8617,7 +8621,7 @@ def liste_types_cotisation():
     types = g.models.type_cotisations_model.get_all_by_user(current_user_id)
     return render_template('cotisations/types_list.html', types=types)
 
-@bp.route('/cotisations/types/nouveau', methods=['GET', 'POST'])
+##@bp.route('/cotisations/types/nouveau', methods=['GET', 'POST'])
 @bp.route('/cotisations/types/<int:type_id>/editer', methods=['GET', 'POST'])
 @login_required
 def editer_type_cotisation(type_id=None):
