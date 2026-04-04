@@ -8128,7 +8128,7 @@ def cotisation_modifier(type_id):
     
     if not type_cot:
         flash("Type de cotisation non trouvé.", "warning")
-        return redirect(banking.types_cotisations_index'))
+        return redirect(url_for('banking.types_cotisations_index'))
     
     return render_template('salaires/type_cotisation_form.html', type=type_cot, action='edit')
 
@@ -8141,7 +8141,7 @@ def cotisation_supprimer(type_id):
         flash("Type de cotisation supprimé.", "success")
     else:
         flash("Impossible de supprimer (peut-être utilisé dans un contrat).", "warning")
-    return redirect(banking.types_cotisations_index'))
+    return redirect(url_for('banking.types_cotisations_index'))
 
 
 
