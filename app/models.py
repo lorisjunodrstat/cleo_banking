@@ -9028,9 +9028,10 @@ class TypeCotisation:
                 INSERT INTO types_cotisation (user_id, nom, description, est_obligatoire)
                 VALUES (%s, %s, %s, %s)"""
                 cursor.execute(query, (user_id, nom, description, est_obligatoire))
-                return cursor.lastrowid
-        except Exception as e:
+                return True
+        except Error as e:
             logger.error(f"Erreur création type_cotisation {e}")
+            return False
     def get_all_by_user(self, user_id: int)-> List[Dict]:
         """récupère toutes les cotisations de l'utilisateur"""
         try:
