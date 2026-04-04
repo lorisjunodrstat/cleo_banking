@@ -8154,7 +8154,7 @@ def cotisation_supprimer(type_id):
 @login_required
 def indemnite_index():
     """Liste tous les types de indemnites de l'utilisateur"""
-    types = g.models.type_indemnite_model.get_all_by_user(current_user.id)
+    types = g.models.type_indemnites_model.get_all_by_user(current_user.id)
     return render_template('salaires/types_indemnites.html', types=types)
 
 @bp.route('/indemnite/nouveau', methods=['GET', 'POST'])
@@ -8203,7 +8203,7 @@ def indemnite_modifier(type_id):
             flash("Erreur lors de la mise à jour ou accès refusé.", "danger")
     
     # Récupérer le type spécifique
-    all_types = g.models.type_indemnite_model.get_all_by_user(current_user.id)
+    all_types = g.models.type_indemnites_model.get_all_by_user(current_user.id)
     type_cot = next((t for t in all_types if t['id'] == type_id), None)
     
     if not type_cot:
@@ -8256,7 +8256,7 @@ def nouveau_contrat2():
 
     # Charger les types disponibles (créés à l'étape 1)
     types_cotisations = g.models.type_cotisations_model.get_all_by_user(user_id)
-    types_indemnites = g.models.type_indemnite_model.get_all_by_user(user_id)
+    types_indemnites = g.models.type_indemnites_model.get_all_by_user(user_id)
 
     if request.method == 'POST':
         try:
@@ -8669,7 +8669,7 @@ def supprimer_type_cotisation(type_id):
 @login_required
 def liste_types_indemnite():
     current_user_id = current_user.id
-    types = g.models.type_indemnite_model.get_all_by_user(current_user_id)
+    types = g.models.type_indemnites_model.get_all_by_user(current_user_id)
     return render_template('indemnites/types_list.html', types=types)
 
 @bp.route('/indemnites/types/nouveau', methods=['GET', 'POST'])
@@ -8680,7 +8680,7 @@ def editer_type_indemnite(type_id=None):
     type_indemnite = None
 
     if type_id:
-        types = g.models.type_indemnite_model.get_all_by_user(current_user_id)
+        types = g.models.type_indemnites_model.get_all_by_user(current_user_id)
         type_indemnite = next((t for t in types if t['id'] == type_id), None)
         if not type_indemnite:
             abort(404)
@@ -8936,7 +8936,7 @@ def gestion_cotisations_contrat(contrat_id):
 
     # GET
     types_cotis = g.models.type_cotisations_model.get_all_by_user(current_user.id)
-    types_indem = g.models.type_indemnite_model.get_all_by_user(current_user.id)
+    types_indem = g.models.type_indemnites_model.get_all_by_user(current_user.id)
     cotis_actuelles = g.models.cotisations_contrat_model.get_for_contrat_and_annee(contrat_id, annee)
     indem_actuelles = g.models.indemnites_contrat_model.get_for_contrat_and_annee(contrat_id, annee)
 
