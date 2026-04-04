@@ -8333,7 +8333,7 @@ def nouveau_contrat2():
         return redirect(url_for('banking.gestion_contrat'))
 
     return render_template(
-        'salaires/nouveau_contrat.html',
+        'salaires/nouveau_contrat2.html',
         contrat=contrat,
         types_cotisations=types_cotisations,
         types_indemnites=types_indemnites,
