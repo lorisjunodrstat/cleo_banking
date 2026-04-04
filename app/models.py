@@ -353,7 +353,7 @@ class DatabaseManager:
 
                 # Table heures_simules
                 create_heures_simules_table_query = """
-                CREATE TABLE heures_simulees (
+                CREATE TABLE IF NOT EXISTS heures_simulees (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 user_id INT NOT NULL,
                 employe_id INT NOT NULL,
@@ -5915,7 +5915,7 @@ class StatistiquesBancaires:
             with self.db.get_cursor() as cursor:
                 query = """
                 SELECT
-                    DATE_FORMAT(t.date_transaction, '%Y-%m') as mois,
+                    DATE_FORMAT(t.date_transaction, '%%Y-%%m') as mois,
                     SUM(CASE
                         WHEN t.type_transaction IN ('transfert_compte_vers_sous', 'depot')
                         THEN t.montant ELSE 0 END) as epargne_mensuelle
@@ -5925,7 +5925,7 @@ class StatistiquesBancaires:
                 WHERE cp.utilisateur_id = %s
                     AND t.date_transaction >= DATE_SUB(NOW(), INTERVAL %s MONTH)
                     AND t.type_transaction IN ('transfert_compte_vers_sous', 'depot')
-                GROUP BY DATE_FORMAT(t.date_transaction, '%Y-%m')
+                GROUP BY DATE_FORMAT(t.date_transaction, '%%Y-%%m')
                 ORDER BY mois DESC
                 """
                 cursor.execute(query, (user_id, nb_mois))
