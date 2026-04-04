@@ -8066,6 +8066,282 @@ def synthese_mensuelle():
                         svg_horaire_mois_data=svg_horaire_mois_data,
                         now=datetime.now())
 
+####PArtie cotisation set indemnites
+
+
+
+@bp.route('/cotisation/index')
+@login_required
+def cotisation_index():
+    """Liste tous les types de cotisations de l'utilisateur"""
+    types = g.models.type_cotisation_model.get_all_by_user(current_user.id)
+    return render_template('salaires/types_cotisations.html', types=types)
+
+@bp.route('/cotisation/nouveau', methods=['GET', 'POST'])
+@login_required
+def cotisation_nouveau():
+    """Créer un nouveau type de cotisation"""
+    if request.method == 'POST':
+        nom = request.form.get('nom', '').strip()
+        if not nom:
+            flash("Le nom est requis.", "warning")
+            return redirect(url_for('banking.types_cotisations_nouveau'))
+        
+        type_id = g.models.type_cotisation_model.create(
+            user_id=current_user.id,
+            nom=nom,
+            description=request.form.get('description', ''),
+            est_obligatoire='est_obligatoire' in request.form
+        )
+        if type_id:
+            flash(f"Type de cotisation « {nom} » créé avec succès.", "success")
+            return redirect(url_for('banking.types_cotisations_index'))
+        else:
+            flash("Erreur lors de la création.", "danger")
+    
+    return render_template('salaires/type_cotisation_form.html', type=None, action='create')
+
+@bp.route('/<int:type_id>/modifier', methods=['GET', 'POST'])
+@login_required
+def cotisation_modifier(type_id):
+    """Modifier un type de cotisation existant"""
+    if request.method == 'POST':
+        data = {
+            'nom': request.form.get('nom', '').strip(),
+            'description': request.form.get('description', ''),
+            'est_obligatoire': 'est_obligatoire' in request.form
+        }
+        if not data['nom']:
+            flash("Le nom est requis.", "warning")
+            return redirect(url_for('types_cotisations.modifier', type_id=type_id))
+        
+        success = g.models.type_cotisation_model.update(type_id, current_user.id, data)
+        if success:
+            flash("Type de cotisation mis à jour.", "success")
+            return redirect(url_for('banking.types_cotisations_index'))
+        else:
+            flash("Erreur lors de la mise à jour ou accès refusé.", "danger")
+    
+    # Récupérer le type spécifique
+    all_types = g.models.type_cotisation_model.get_all_by_user(current_user.id)
+    type_cot = next((t for t in all_types if t['id'] == type_id), None)
+    
+    if not type_cot:
+        flash("Type de cotisation non trouvé.", "warning")
+        return redirect(banking.types_cotisations_index'))
+    
+    return render_template('salaires/type_cotisation_form.html', type=type_cot, action='edit')
+
+@bp.route('/<int:type_id>/supprimer', methods=['POST'])
+@login_required
+def cotisation_supprimer(type_id):
+    """Supprimer un type de cotisation"""
+    success = g.models.type_cotisation_model.delete(type_id, current_user.id)
+    if success:
+        flash("Type de cotisation supprimé.", "success")
+    else:
+        flash("Impossible de supprimer (peut-être utilisé dans un contrat).", "warning")
+    return redirect(banking.types_cotisations_index'))
+
+
+
+
+
+
+
+
+@bp.route('/indemnite/index')
+@login_required
+def indemnite_index():
+    """Liste tous les types de indemnites de l'utilisateur"""
+    types = g.models.type_indemnite_model.get_all_by_user(current_user.id)
+    return render_template('salaires/types_indemnites.html', types=types)
+
+@bp.route('/indemnite/nouveau', methods=['GET', 'POST'])
+@login_required
+def indemnite_nouveau():
+    """Créer un nouveau type de indemnite"""
+    if request.method == 'POST':
+        nom = request.form.get('nom', '').strip()
+        if not nom:
+            flash("Le nom est requis.", "warning")
+            return redirect(url_for('banking.types_indemnites_nouveau'))
+        
+        type_id = g.models.type_indemnite_model.create(
+            user_id=current_user.id,
+            nom=nom,
+            description=request.form.get('description', ''),
+            est_obligatoire='est_obligatoire' in request.form
+        )
+        if type_id:
+            flash(f"Type de indemnite « {nom} » créé avec succès.", "success")
+            return redirect(url_for('banking.types_indemnites_index'))
+        else:
+            flash("Erreur lors de la création.", "danger")
+    
+    return render_template('salaires/type_indemnite_form.html', type=None, action='create')
+
+@bp.route('/<int:type_id>/modifier', methods=['GET', 'POST'])
+@login_required
+def indemnite_modifier(type_id):
+    """Modifier un type de indemnite existant"""
+    if request.method == 'POST':
+        data = {
+            'nom': request.form.get('nom', '').strip(),
+            'description': request.form.get('description', ''),
+            'est_obligatoire': 'est_obligatoire' in request.form
+        }
+        if not data['nom']:
+            flash("Le nom est requis.", "warning")
+            return redirect(url_for('banking.types_indemnites_modifier', type_id=type_id))
+        
+        success = g.models.type_indemnite_model.update(type_id, current_user.id, data)
+        if success:
+            flash("Type de indemnite mis à jour.", "success")
+            return redirect(url_for('banking.types_indemnites_index'))
+        else:
+            flash("Erreur lors de la mise à jour ou accès refusé.", "danger")
+    
+    # Récupérer le type spécifique
+    all_types = g.models.type_indemnite_model.get_all_by_user(current_user.id)
+    type_cot = next((t for t in all_types if t['id'] == type_id), None)
+    
+    if not type_cot:
+        flash("Type de indemnite non trouvé.", "warning")
+        return redirect(url_for('banking.types_indemnites_index'))
+    
+    return render_template('salaires/type_indemnite_form.html', type=type_cot, action='edit')
+
+@bp.route('/<int:type_id>/supprimer', methods=['POST'])
+@login_required
+def indemnite_supprimer(type_id):
+    """Supprimer un type de indemnite"""
+    success = g.models.type_indemnite_model.delete(type_id, current_user.id)
+    if success:
+        flash("Type de indemnite supprimé.", "success")
+    else:
+        flash("Impossible de supprimer (peut-être utilisé dans un contrat).", "warning")
+    return redirect(url_for('banking.types_indemnites_index'))
+
+########
+
+
+@bp.route('/nouveau_contrat2', methods=['GET', 'POST'])
+@login_required
+def nouveau_contrat2():
+    user_id = current_user.id
+    contrat_id = request.args.get('contrat_id', type=int)
+    annee = datetime.now().year
+    
+    # Données pour pré-remplir (si modification)
+    contrat = {}
+    cotisations_existantes = {}
+    indemnites_existantes = {}
+    
+    if contrat_id:
+        contrat = g.models.contrat_model.get_by_id(contrat_id)
+        if not contrat or contrat['user_id'] != user_id:
+            flash("Contrat introuvable ou accès refusé.", "danger")
+            return redirect(url_for('banking.gestion_contrat'))
+            
+        # Charger les affectations existantes pour l'année
+        cotisations_existantes = {
+            c['type_cotisation_id']: c 
+            for c in g.models.cotisations_contrat_model.get_for_contrat_and_annee(contrat_id, annee)
+        }
+        indemnites_existantes = {
+            i['type_indemnite_id']: i 
+            for i in g.models.indemnites_contrat_model.get_for_contrat_and_annee(contrat_id, annee)
+        }
+
+    # Charger les types disponibles (créés à l'étape 1)
+    types_cotisations = g.models.type_cotisation_model.get_all_by_user(user_id)
+    types_indemnites = g.models.type_indemnite_model.get_all_by_user(user_id)
+
+    if request.method == 'POST':
+        try:
+            data = {
+                'id': contrat_id,
+                'user_id': user_id,
+                'employeur': request.form.get('employeur', '').strip(),
+                'heures_hebdo': float(request.form.get('heures_hebdo')),
+                'salaire_horaire': float(request.form.get('salaire_horaire')),
+                'date_debut': request.form.get('date_debut'),
+                'date_fin': request.form.get('date_fin') or None,
+                'jour_estimation_salaire': int(request.form.get('jour_estimation_salaire') or 15),
+                'versement_10': 'versement_10' in request.form,
+                'versement_25': 'versement_25' in request.form,
+            }
+        except ValueError:
+            flash("Valeurs numériques invalides.", "danger")
+            return redirect(request.url)
+
+        # 1. Création / Mise à jour du contrat
+        new_contrat_id = g.models.contrat_model.create_or_update(data)
+        if not new_contrat_id:
+            flash("Erreur lors de la sauvegarde du contrat.", "danger")
+            return redirect(request.url)
+
+        # 2. Sauvegarde des cotisations sélectionnées
+        for tc in types_cotisations:
+            tid = tc['id']
+            if request.form.get(f'cot_{tid}_actif') == '1':
+                g.models.cotisations_contrat_model.assigner_a_contrat(
+                    contrat_id=new_contrat_id,
+                    type_cotisation_id=tid,
+                    taux=float(request.form.get(f'cot_{tid}_taux', 0) or 0),
+                    annee=annee,
+                    base_calcul=request.form.get(f'cot_{tid}_base', 'brut')
+                )
+            else:
+                # Désactiver si décoché
+                try:
+                    with g.models.cotisations_contrat_model.db.get_cursor() as cur:
+                        cur.execute(
+                            "UPDATE cotisations_contrat SET actif = FALSE WHERE contrat_id = %s AND type_cotisation_id = %s AND annee = %s",
+                            (new_contrat_id, tid, annee)
+                        )
+                except Exception:
+                    pass  # Silencieux si non existant
+
+        # 3. Sauvegarde des indemnités sélectionnées
+        for ti in types_indemnites:
+            tid = ti['id']
+            if request.form.get(f'ind_{tid}_actif') == '1':
+                g.models.indemnites_contrat_model.assigner_a_contrat(
+                    contrat_id=new_contrat_id,
+                    type_indemnite_id=tid,
+                    taux=float(request.form.get(f'ind_{tid}_taux', 0) or 0),
+                    annee=annee,
+                    base_calcul=request.form.get(f'ind_{tid}_base', 'brut')
+                )
+            else:
+                try:
+                    with g.models.indemnites_contrat_model.db.get_cursor() as cur:
+                        cur.execute(
+                            "UPDATE indemnites_contrat SET actif = FALSE WHERE contrat_id = %s AND type_indemnite_id = %s AND annee = %s",
+                            (new_contrat_id, tid, annee)
+                        )
+                except Exception:
+                    pass
+
+        flash("Contrat enregistré avec ses cotisations et indemnités.", "success")
+        return redirect(url_for('banking.gestion_contrat'))
+
+    return render_template(
+        'salaires/nouveau_contrat.html',
+        contrat=contrat,
+        types_cotisations=types_cotisations,
+        types_indemnites=types_indemnites,
+        cotisations_existantes=cotisations_existantes,
+        indemnites_existantes=indemnites_existantes,
+        annee=annee,
+        today=date.today()
+    )
+
+#######
+
+
 @bp.route('/contrat', methods=['GET', 'POST'])
 @login_required
 def gestion_contrat():
