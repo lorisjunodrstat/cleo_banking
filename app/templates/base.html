@@ -202,6 +202,30 @@
                             </a>
                         </li>
                     </ul>
+                    <ul class="dropdown-menu">
+                        <li>
+                            <h6 class="dropdown-header"><i class="fas fa-pen-fancy me-2"></i>Gestion des cotisations/indemnites</h6>
+                        </li>
+                        <li><a class="dropdown-item" href="{{ url_for('banking.indemnite_index') }}">
+                                <i class="fas fa-list me-2"></i>Liste des indemnités
+                            </a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('banking.indemnite_nouveau') }}">
+                                <i class="fas fa-plus-square me-2"></i>Nouvell eindemnité
+                            </a>
+                        </li>
+                        <li><a class="dropdown-item" href="{{ url_for('banking.cotisation_index') }}">
+                                <i class="fas fa-list me-2"></i>Liste des cotisations
+                            </a>
+                        </li>
+                        <li><a class="dropdown-item" href="{{ url_for('banking.cotisation_nouveau') }}">
+                                <i class="fas fa-plus-square me-2"></i>Nouvelle cotisation
+                            </a>
+                        </li>
+                        <li><a class="dropdown-item" href="{{ url_for('banking.nouveau_contrat2') }}">
+                                <i class="fas fa-list me-2"></i>Nouveau contrat de travail
+                            </a></li>
+                    </ul>
+
                 </li>
                 <!-- Menu EMPLOYE -->
                 <li class="nav-item dropdown">
