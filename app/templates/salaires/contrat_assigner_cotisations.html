@@ -1,10 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container mt-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1><i class="fas fa-briefcase-fill me-2"></i>Mes Contrats</h1>
+        </div>
+    </div>
+    <div class="row">
     <h4>Gestion des cotisations et indemnités</h4>
-    <p class="text-muted">
-        Contrat : <strong>{{ contrat.employeur }}</strong> – Année : {{ annee }}
-    </p>
+    </div>
+    <div class="row">
+        <p class="text-muted">
+            Contrat : <strong>{{ contrat.employeur }}</strong> – Année : {{ annee }}
+        </p>
+    </div>
     
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}

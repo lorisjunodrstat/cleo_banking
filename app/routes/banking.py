@@ -1064,7 +1064,7 @@ def banking_compte_evolution_echanges(compte_id):
     #comptes_cibles_possibles = top_comptes
     #logging.info(f"banking 728 {len(comptes_cibles_possibles)} Comptes cibles possibles pour le compte {compte_id} : {comptes_cibles_possibles}")
     # Valeurs par défaut
-    all_comptes = g.models.compte_model.get_all_accounts()
+    all_comptes = g.models.compte_model.get_all_accounts(user_id)
     comptes_cibles_possibles = [
         {'compte_id': compte['id'], 'nom_compte': compte['nom_compte']} 
         for compte in all_comptes
@@ -1557,7 +1557,7 @@ def depot():
     user_id = current_user.id
     comptes = g.models.compte_model.get_by_user_id(user_id)
     print(f'Voici les comptes de l\'utilisateur {user_id} : {comptes}')
-    all_comptes = g.models.compte_model.get_all_accounts()
+    all_comptes = g.models.compte_model.get_all_accounts(user_id=user_id)
     
     if request.method == 'POST':
         # Récupération des données du formulaire
@@ -1616,7 +1616,7 @@ def retrait():
     user_id = current_user.id
     comptes = g.models.compte_model.get_by_user_id(user_id)
     print(f'Voici les comptes de l\'utilisateur {user_id} : {comptes}')
-    all_comptes = g.models.compte_model.get_all_accounts()
+    all_comptes = g.models.compte_model.get_all_accounts(user_id=user_id)
     
     if request.method == 'POST':
         # Récupération des données du formulaire
@@ -1666,7 +1666,7 @@ def banking_transfert():
         compte['id'] = int(compte['id'])
     
     # Récupérer TOUS les comptes pour le transfert global
-    all_comptes_global = g.models.compte_model.get_all_accounts()
+    all_comptes_global = g.models.compte_model.get_all_accounts(user_id=user_id)
     
     # Sous-comptes de l'utilisateur
     sous_comptes = []
@@ -2402,7 +2402,7 @@ def import_csv_upload():
 
     # Récupérer les comptes de l'utilisateur
     user_id = current_user.id
-    comptes = g.models.compte_model.get_all_accounts()
+    comptes = g.models.compte_model.get_all_accounts(user_id=user_id)
     sous_comptes = g.models.sous_compte_model.get_all_sous_comptes_by_user_id(user_id)
 
     comptes_possibles = []
@@ -2829,7 +2829,7 @@ def import_csv_upload_temp():
         rows.append(row_dict)
 
     user_id = current_user.id
-    comptes = g.models.compte_model.get_all_accounts()
+    comptes = g.models.compte_model.get_all_accounts(user_id)
     sous_comptes = g.models.sous_compte_model.get_all_sous_comptes_by_user_id(user_id)
 
     comptes_possibles = []
@@ -4648,7 +4648,7 @@ def nouvelle_ecriture_from_selected():
         return redirect(url_for('banking.transactions_sans_ecritures'))
     
     # Récupérer les données pour les formulaires
-    comptes = g.models.compte_model.get_all_accounts()
+    comptes = g.models.compte_model.get_all_accounts(user_id = current_user.id)
     categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
     contacts = g.models.contact_model.get_all(current_user.id)
     
@@ -4910,7 +4910,7 @@ def nouvelle_ecriture():
             flash(f'Erreur: {str(e)}', 'danger')
     
     elif request.method == 'GET':
-        comptes = g.models.compte_model.get_all_accounts()
+        comptes = g.models.compte_model.get_all_accounts(user_id = current_user.id)
         categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
         contacts = g.models.contact_model.get_all(current_user.id)
         categories_avec_complementaires = g.models.categorie_comptable_model.get_categories_avec_complementaires(current_user.id)
@@ -5020,7 +5020,7 @@ def nouvelle_ecriture_multiple():
     
     # GET request processing (reste inchangé)
     elif request.method == 'GET':
-        comptes = g.models.compte_model.get_all_accounts()
+        comptes = g.models.compte_model.get_all_accounts(user_id=current_user.id)
         categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
         contacts = g.models.contact_model.get_all(current_user.id)
         categories_avec_conplementaires = g.models.categorie_comptable_model.get_categories_avec_complementaires(current_user.id)
@@ -5411,7 +5411,7 @@ def nouvelle_ecriture_from_transactions():
 
     # Récupérer les données pour les formulaires
     # Assurez-vous que ces fonctions existent et retournent les bonnes données
-    comptes = g.models.compte_model.get_all_accounts()
+    comptes = g.models.compte_model.get_all_accounts(user_id=current_user.id)
     categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
     contacts = g.models.contact_model.get_all(current_user.id)
 
