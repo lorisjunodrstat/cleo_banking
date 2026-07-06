@@ -94,23 +94,9 @@ def profil_utilisateur(user_id):
     except Exception as e:
         logging.error(f"Erreur lors de l'affichage du profil pour l'utilisateur {user_id}: {e}")
         flash("Une erreur est survenue lors du chargement du profil.", "danger")
-        return redirect(url_for('banking/dashboard.html'))
+        return redirect(url_for('banking.banking_dashboard'))
 
-def get_comptes_utilisateur(user_id):
-    """Retourne les comptes avec sous-comptes et soldes"""
-    try:
-        comptes = g.models.compte_model.get_by_user_id(user_id)
-        for compte in comptes:
-            # Récupération des sous-comptes
-            compte['sous_comptes'] = g.models.sous_compte_model.get_by_compte_principal_id(compte['id'])
-            # Récupération du solde total (principal + sous-comptes)
-            compte['solde_total'] = g.models.compte_model.get_solde_total_avec_sous_comptes(compte['id'])
-            
-        logging.info(f"Comptes détaillés récupérés pour l'utilisateur {user_id}: {len(comptes)}")
-        return comptes
-    except Exception as e:
-        logging.error(f"Erreur lors de la récupération des comptes pour l'utilisateur {user_id}: {e}")
-        return []
+
 
 @bp.route('/')
 def banking_home(): # Nom unique
