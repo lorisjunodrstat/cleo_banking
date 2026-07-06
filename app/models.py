@@ -1262,7 +1262,7 @@ class ComptePrincipal:
         # Cette méthode de classe n'est pas cohérente avec les autres méthodes d'instance.
         # Il est préférable de la rendre une méthode d'instance si possible.
         # Si vous devez la garder en l'état, voici la correction.
-        """Récupère TOUS les comptes actifs de tous les utilisateurs"""
+        comptes = []
         try:
             with self.db.get_cursor() as cursor:
                 query = """
@@ -1271,19 +1271,49 @@ class ComptePrincipal:
                     c.iban, c.bic, c.type_compte, c.solde, c.solde_initial, c.solde_possible, 
                     c.devise, c.date_ouverture, c.actif,
                     b.nom as banque_nom, b.code_banque, b.couleur as banque_couleur,
-                    u.nom as utilisateur_nom, u.prenom as utilisateur_prenom
+                    u.nom as utilisateur_nom, u.prenom as utilisateur_prenom,
+                    'compte_principal' as type_compte
                 FROM comptes_principaux c
                 JOIN banques b ON c.banque_id = b.id
                 JOIN utilisateurs u ON c.utilisateur_id = u.id
                 WHERE c.actif = TRUE
-                ORDER BY b.nom, c.nom_compte
+                
+                UNION ALL
+                
+                SELECT
+                    sc.id as id, 
+                    c.utilisateur_id,
+                    c.banque_id, 
+                    sc.nom_sous_compte as nom_compte, 
+                    '' as numero_compte, 
+                    '' as iban, 
+                    '' as bic, 
+                    'sous_compte' as type_compte,
+                    sc.solde, 
+                    0 as solde_initial,
+                    0 as solde_possible, 
+                    c.devise, 
+                    NULL as date_ouverture, 
+                    sc.actif,
+                    b.nom as banque_nom, 
+                    b.code_banque, 
+                    b.couleur as banque_couleur,
+                    u.nom as utilisateur_nom, 
+                    u.prenom as utilisateur_prenom,
+                    'sous_compte' as type_compte
+                FROM sous_comptes sc
+                JOIN comptes_principaux c ON sc.compte_principal_id = c.id
+                JOIN banques b ON c.banque_id = b.id
+                JOIN utilisateurs u ON c.utilisateur_id = u.id
+                WHERE sc.actif = TRUE AND c.utilisateur_id = %s
+                
+                ORDER BY banque_nom, nom_compte
                 """
-                cursor.execute(query)  # Pas de paramètre
+                cursor.execute(query, (user_id,))
                 comptes = cursor.fetchall()
-                logger.info(f"Tous les comptes récupérés: {len(comptes)}")
                 return comptes if comptes else []
         except Error as e:
-            logger.error(f"Erreur SQL (global accounts): {e}")
+            logger.error(f"Erreur SQL: {e}")
             return []
 
 
