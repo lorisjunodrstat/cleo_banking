@@ -694,17 +694,21 @@ def banking_compte_rapport(compte_id):
     # Agréger les montants par catégorie ou par "Non catégorisé"
     repartition_cats = {}
     transactions_non_categorisees = []
-    for tx in tx_avec_cats:
-        tx_cats = g.models.categorie_transaction_model.get_categories_transaction(tx['id'], user_id)
-        if not tx_cats:
-            cat_name = "Non catégorisé"
-            transactions_non_categorisees.append(tx)
-        else:
-            # Si une transaction a plusieurs catégories, on peut choisir la première ou agréger différemment
-            # Pour simplifier, on prend la première.
-            cat_name = tx_cats[0]['nom']
-        repartition_cats[cat_name] = repartition_cats.get(cat_name, Decimal('0')) + Decimal(str(tx['montant']))
+    tx_ids = [tx['id'] for tx in tx_avec_cats]
+    categories_map = g.models.categorie_transaction_model.get_categories_pour_plusieurs_transactions(tx_ids, user_id)
+    tx_cats = categories_map.get(tx['id'], [])
 
+    #for tx in tx_avec_cats:
+    #    tx_cats = g.models.categorie_transaction_model.get_categories_transaction(tx['id'], user_id)
+    #    if not tx_cats:
+    #        cat_name = "Non catégorisé"
+    #        transactions_non_categorisees.append(tx)
+    #    else:
+    #        # Si une transaction a plusieurs catégories, on peut choisir la première ou agréger différemment
+    #        # Pour simplifier, on prend la première.
+    #        cat_name = tx_cats[0]['nom']
+    #    repartition_cats[cat_name] = repartition_cats.get(cat_name, Decimal('0')) + Decimal(str(tx['montant']))
+    
     # 3. Lien vers le comparatif
     lien_comparatif = url_for('banking.banking_comparaison', compte1_id=compte_id, periode=periode, date_ref=date_ref.isoformat())
 
@@ -759,7 +763,7 @@ def banking_compte_rapport(compte_id):
             "total_sorties": stats.get('total_sorties', 0.0),
         },
         "repartition_par_categories": repartition_cats,
-        "all_transaxtions": tx_avec_cats,
+        "all_transactions": tx_avec_cats,
         "transactions_non_categorisees": transactions_non_categorisees,
         "liste_categories": g.models.categorie_transaction_model.get_categories_utilisateur(user_id),
         "lien_comparatif": lien_comparatif,
@@ -2388,7 +2392,7 @@ def import_csv_upload():
 
     # Récupérer les comptes de l'utilisateur
     user_id = current_user.id
-    comptes = g.models.compte_model.get_all_accounts(user_id=user_id)
+    comptes = g.models.compte_model.get_all_accounts()
     sous_comptes = g.models.sous_compte_model.get_all_sous_comptes_by_user_id(user_id)
 
     comptes_possibles = []
@@ -2791,20 +2795,37 @@ def import_csv_upload_temp():
         flash("Veuillez uploader un fichier CSV.", "danger")
         return redirect(url_for('banking.import_csv_upload_temp'))
 
-    stream = io.TextIOWrapper(file.stream, encoding='utf-8')
-    raw_lines = stream.read().splitlines()
+    #stream = io.TextIOWrapper(file.stream, encoding='utf-8')
+    #raw_lines = stream.read().splitlines()
+    file_content = file.read().decode('utf-8-sig') 
+    raw_lines = file_content.splitlines()
     if not raw_lines:
         flash("Fichier vide", "danger")
         return redirect(url_for('banking.import_csv_upload_temp'))
 
     sample = '\n'.join(raw_lines[:5])
+    
     try:
-        delimiter = csv_mod.Sniffer().sniff(sample, delimiters=";,|\t").delimiter
-    except:
-        delimiter = ';'
+        #delimiter = csv_mod.Sniffer().sniff(sample, delimiters=";,|\t").delimiter
+        dialect = csv_mod.Sniffer().sniff(sample, delimiters=";,|\t")
+        delimiter = dialect.delimiter
+    #except:
+    #    delimiter = ';'
+    except csv_mod.Error:
+        # Fallback intelligent
+        if ',' in sample: delimiter = ','
+        else: delimiter = ';'
+        
+    f = io.StringIO(file_content)
+    reader_raw = csv_mod.reader(f, delimiter=delimiter)
 
     reader_raw = csv_mod.reader(raw_lines, delimiter=delimiter)
-    headers_raw = next(reader_raw)
+    try:
+        headers_raw = next(reader_raw)
+    except StopIteration:
+        flash("Fichier CSV illisible : aucune ligne détectée.", "danger")
+        return redirect(url_for('banking.import_csv_upload_temp'))
+    #headers_raw = next(reader_raw)
     headers = [h.strip().strip('"') for h in headers_raw]
     rows = []
     for row_raw in reader_raw:
@@ -2815,7 +2836,7 @@ def import_csv_upload_temp():
         rows.append(row_dict)
 
     user_id = current_user.id
-    comptes = g.models.compte_model.get_all_accounts(user_id)
+    comptes = g.models.compte_model.get_all_accounts()
     sous_comptes = g.models.sous_compte_model.get_all_sous_comptes_by_user_id(user_id)
 
     comptes_possibles = []
@@ -4634,7 +4655,8 @@ def nouvelle_ecriture_from_selected():
         return redirect(url_for('banking.transactions_sans_ecritures'))
     
     # Récupérer les données pour les formulaires
-    comptes = g.models.compte_model.get_all_accounts(user_id = current_user.id)
+    comptes = g.models.compte_model.get_all_accounts()
+    #comptes = g.models.compte_model.get_all_accounts(user_id = current_user.id)
     categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
     contacts = g.models.contact_model.get_all(current_user.id)
     
