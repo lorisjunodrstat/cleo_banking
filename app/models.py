@@ -1262,27 +1262,28 @@ class ComptePrincipal:
         # Cette méthode de classe n'est pas cohérente avec les autres méthodes d'instance.
         # Il est préférable de la rendre une méthode d'instance si possible.
         # Si vous devez la garder en l'état, voici la correction.
-        comptes = []
+        """Récupère TOUS les comptes actifs de tous les utilisateurs"""
         try:
-            # Correction de l'utilisation de db
             with self.db.get_cursor() as cursor:
                 query = """
                 SELECT
                     c.id, c.utilisateur_id, c.banque_id, c.nom_compte, c.numero_compte,
-                    c.iban, c.bic, c.type_compte, c.solde, c.solde_initial, c.solde_possible, c.devise, c.date_ouverture, c.actif,
+                    c.iban, c.bic, c.type_compte, c.solde, c.solde_initial, c.solde_possible, 
+                    c.devise, c.date_ouverture, c.actif,
                     b.nom as banque_nom, b.code_banque, b.couleur as banque_couleur,
                     u.nom as utilisateur_nom, u.prenom as utilisateur_prenom
                 FROM comptes_principaux c
                 JOIN banques b ON c.banque_id = b.id
-                JOIN utilisateurs u ON c.utilisateur_id = %s
-                WHERE c.actif = TRUE AND c.utilisateur_id = %s
+                JOIN utilisateurs u ON c.utilisateur_id = u.id
+                WHERE c.actif = TRUE
                 ORDER BY b.nom, c.nom_compte
                 """
-                cursor.execute(query, (user_id, user_id))
+                cursor.execute(query)  # Pas de paramètre
                 comptes = cursor.fetchall()
+                logger.info(f"Tous les comptes récupérés: {len(comptes)}")
                 return comptes if comptes else []
         except Error as e:
-            logger.error(f"Erreur SQL: {e}")
+            logger.error(f"Erreur SQL (global accounts): {e}")
             return []
 
 
