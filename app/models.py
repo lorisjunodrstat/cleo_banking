@@ -3044,7 +3044,7 @@ class TransactionFinanciere:
             date_transaction = datetime.now()
 
         try:
-            with self.db.get_cursor() as cursor:
+            with self.db.get_cursor(dictionary=True, commit=True) as cursor:
                 # Vérifier l'appartenance des comptes
                 if not self._verifier_appartenance_compte_with_cursor(cursor, source_type, source_id, user_id):
                     return False, "Compte source non trouvé ou non autorisé"
