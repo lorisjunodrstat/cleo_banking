@@ -4,32 +4,33 @@
 
 <form method="post" id="mapping-form">
   <div class="mb-3">
-        <label>Date *</label>
-        <select name="col_date" required>
-            <option value="">-- Choisir --</option>
-            {% for h in session.csv_headers %}
-                <option value="{{ h }}">{{ h }}</option>
-            {% endfor %}
-        </select>
-        
-        <!-- FORMAT DE DATE -->
-        <select name="date_format" required>
-            <option value="%Y-%m-%d">YYYY-MM-DD (2022-01-03)</option>
-            <option value="%Y/%m/%d">YYYY/MM/DD (2022/01/03)</option>
-            <option value="%d-%m-%Y">DD-MM-YYYY (03-01-2022)</option>
-            <option value="%d/%m/%Y">DD/MM/YYYY (03/01/2022)</option>
-            <option value="%d.%m.%Y">DD.MM.YYYY (03.01.2022)</option>
-            <option value="%m-%d-%Y">MM-DD-YYYY (01-03-2022)</option>
-            <option value="%m/%d/%Y">MM/DD/YYYY (01/03/2022)</option>
-            <option value="%d-%m-%y">DD-MM-YY (03-01-22)</option>
-            <option value="%d/%m/%y">DD/MM/YY (03/01/22)</option>
-            <option value="%d.%m.%y">DD.MM.YY (03.01.22)</option>
-            <option value="%Y-%m-%d %H:%M">YYYY-MM-DD HH:MM (2022-01-03 14:30)</option>
-            <option value="%d-%m-%Y %H:%M">DD-MM-YYYY HH:MM (03-01-2022 14:30)</option>
-            <option value="%d/%m/%Y %H:%M">DD/MM/YYYY HH:MM (03/01/2022 14:30)</option>
-            <option value="%d.%m.%Y %H:%M">DD.MM.YYYY HH:MM (03.01.2022 14:30)</option>
-        </select>
-    </div>
+    <label>Date *</label>
+    <select name="col_date" required>
+      <option value="">-- Choisir --</option>
+      {% for h in session.csv_headers %}
+        <option value="{{ h }}">{{ h }}</option>
+      {% endfor %}
+    </select>
+    
+    <!-- FORMAT DE DATE -->
+    <label>Format de date</label>
+    <select name="date_format" required>
+      <option value="%Y-%m-%d">YYYY-MM-DD (2022-01-03)</option>
+      <option value="%Y/%m/%d">YYYY/MM/DD (2022/01/03)</option>
+      <option value="%d-%m-%Y">DD-MM-YYYY (03-01-2022)</option>
+      <option value="%d/%m/%Y">DD/MM/YYYY (03/01/2022)</option>
+      <option value="%d.%m.%Y">DD.MM.YYYY (03.01.2022)</option>
+      <option value="%m-%d-%Y">MM-DD-YYYY (01-03-2022)</option>
+      <option value="%m/%d/%Y">MM/DD/YYYY (01/03/2022)</option>
+      <option value="%d-%m-%y">DD-MM-YY (03-01-22)</option>
+      <option value="%d/%m/%y">DD/MM/YY (03/01/22)</option>
+      <option value="%d.%m.%y">DD.MM.YY (03.01.22)</option>
+      <option value="%Y-%m-%d %H:%M">YYYY-MM-DD HH:MM (2022-01-03 14:30)</option>
+      <option value="%d-%m-%Y %H:%M">DD-MM-YYYY HH:MM (03-01-2022 14:30)</option>
+      <option value="%d/%m/%Y %H:%M">DD/MM/YYYY HH:MM (03/01/2022 14:30)</option>
+      <option value="%d.%m.%Y %H:%M">DD.MM.YYYY HH:MM (03.01.2022 14:30)</option>
+    </select>   {# ✅ BALISE MANQUANTE ICI #}
+  </div>
   <div class="mb-3">
     <label>Montant
       <select name="col_montant" class="form-select" required>
