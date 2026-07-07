@@ -2810,14 +2810,15 @@ def import_csv_upload_temp():
         rows.append(row_dict)
 
     user_id = current_user.id
-    comptes = g.models.compte_model.get_all_accounts()
-    sous_comptes = g.models.sous_compte_model.get_all_sous_comptes_by_user_id(user_id)
+    comptes_unifies = g.models.compte_model.get_all_accounts(user_id)
 
     comptes_possibles = []
-    for c in comptes:
-        comptes_possibles.append({'id': c['id'], 'nom': c['nom_compte'], 'type': 'compte_principal'})
-    for sc in sous_comptes:
-        comptes_possibles.append({'id': sc['id'], 'nom': sc['nom_sous_compte'], 'type': 'sous_compte'})
+    for c in comptes_unifies:
+        comptes_possibles.append({
+            'id': c['id'],
+            'nom': c.get('nom_compte') or c.get('nom_sous_compte'),
+            'type': c.get('type_compte', 'compte_principal')
+        })
 
     csv_data = {
         'csv_headers': headers,
