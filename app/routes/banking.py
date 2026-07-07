@@ -2845,7 +2845,7 @@ def import_csv_upload_temp():
         comptes_possibles.append({
             'id': c['id'],
             'nom': c.get('nom_compte') or c.get('nom_sous_compte'),
-            'type': c.get('type_compte', 'compte_principal')
+            'type': c.get('type_logique', 'compte_principal')
         })
 
     csv_data = {
