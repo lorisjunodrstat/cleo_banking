@@ -2657,7 +2657,7 @@ def import_csv_distinct_confirm():
     )
 
     return render_template(
-        'banking/import_csv_distinct_confirm_temp.html',
+        'banking/import_csv_distinct_confirm.html',
         compte_names=compte_names,
         comptes_possibles=comptes_possibles
     )
