@@ -1300,7 +1300,7 @@ class ComptePrincipal:
                     b.couleur as banque_couleur,
                     u.nom as utilisateur_nom, 
                     u.prenom as utilisateur_prenom,
-                    'sous_compte' as type_compte
+                    'sous_compte' as type_logique
                 FROM sous_comptes sc
                 JOIN comptes_principaux c ON sc.compte_principal_id = c.id
                 JOIN banques b ON c.banque_id = b.id
@@ -3068,11 +3068,28 @@ class TransactionFinanciere:
         try:
             with self.db.get_cursor(dictionary=True, commit=True) as cursor:
                 # Vérifier l'appartenance des comptes
+                logger.info(f"🔍 Vérification existence compte source: type={source_type}, id={source_id}")
                 if not self._verifier_existence_compte_with_cursor(cursor, source_type, source_id):
+                    logger.error(f"❌ Compte source INEXISTANT: type={source_type}, id={source_id}")
+                    # Debug: vérifier directement dans la base
+                    if source_type == 'compte_principal':
+                        cursor.execute("SELECT id, actif FROM comptes_principaux WHERE id = %s", (source_id,))
+                    else:
+                        cursor.execute("SELECT id, actif FROM sous_comptes WHERE id = %s", (source_id,))
+                    result = cursor.fetchone()
+                    logger.error(f"🔍 Résultat requête directe: {result}")
                     return False, "Compte source inexistant"
 
-                if not self._verifier_existence_compte_with_cursor(cursor, dest_type, dest_id):
-                    return False, "Compte destination inexistant"
+            logger.info(f"🔍 Vérification existence compte destination: type={dest_type}, id={dest_id}")
+            if not self._verifier_existence_compte_with_cursor(cursor, dest_type, dest_id):
+                logger.error(f"❌ Compte destination INEXISTANT: type={dest_type}, id={dest_id}")
+                if dest_type == 'compte_principal':
+                    cursor.execute("SELECT id, actif FROM comptes_principaux WHERE id = %s", (dest_id,))
+                else:
+                    cursor.execute("SELECT id, actif FROM sous_comptes WHERE id = %s", (dest_id,))
+                result = cursor.fetchone()
+                logger.error(f"🔍 Résultat requête directe: {result}")
+                return False, "Compte destination inexistant"
 
                 # Récupérer les soldes
                 solde_ok, _ = self._valider_solde_suffisant_with_cursor(cursor, source_type, source_id, montant)
