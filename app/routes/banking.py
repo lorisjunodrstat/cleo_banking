@@ -425,7 +425,8 @@ def banking_compte_detail(compte_id):
     )
     
     # Filtrer les mouvements
-    filtred_mouvements = mouvements
+    filtred_mouvements = list(mouvements)
+
     if filter_type != 'tous':
         if filter_type == 'entree':
             filtred_mouvements = [m for m in filtred_mouvements if m['type_transaction'] in ['depot', 'transfert_entrant', 'transfert_sous_vers_compte', 'recredit_annulation']]
@@ -2357,8 +2358,8 @@ def import_csv_upload():
         return redirect(url_for('banking.import_csv_upload'))
 
     # Lire le CSV
-    stream = io.TextIOWrapper(file.stream, encoding='utf-8')
-    raw_lines = stream.read().splitlines()
+    file_content = file.read().decode('utf-8-sig')
+    raw_lines = file_content.splitlines()
     if not raw_lines:
         flash("Fichier vide", "danger")
         return redirect(url_for('banking.import_csv_upload'))
@@ -2772,6 +2773,7 @@ def import_csv_final_distinct():
         flash(f"❌ {err}", "danger")
 
     return redirect(url_for('banking.banking_dashboard'))
+
 ### Méthodes avec fichiers temp 
 
 
