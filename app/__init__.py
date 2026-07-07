@@ -44,24 +44,27 @@ root_logger.setLevel(logging.INFO)
 
 # Initialisation Flask
 app = Flask(__name__)
+
+# ✅ Configuration de la session (UNE SEULE FOIS)
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_FILE_DIR'] = os.path.join(BASE_DIR, 'flask_sessions')
-app.config['SESSION_FILE_THRESHOLD'] = 500 * 1024  # 500 Ko par session
 app.config['SESSION_PERMANENT'] = True
-app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 heure
-app.config['SESSION_COOKIE_SECURE'] = False  # True en production avec HTTPS
+app.config['PERMANENT_SESSION_LIFETIME'] = 3600
+app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
+# Créer le dossier de sessions
+os.makedirs(app.config['SESSION_FILE_DIR'], exist_ok=True)
+
+# ✅ Initialiser Flask-Session (APRÈS avoir défini secret_key)
+app.secret_key = os.environ.get('SECRET_KEY', 'votre-cle-secrete-tres-longue-et-complexe')
 from flask_session import Session
 Session(app)
-# Créer le dossier de sessions s'il n'existe pas
-os.makedirs(app.config['SESSION_FILE_DIR'], exist_ok=True)
+
 # --- Chemins d'upload ---
 UPLOAD_FOLDER_LOGOS = os.path.join(app.static_folder, 'uploads', 'logos')
 os.makedirs(UPLOAD_FOLDER_LOGOS, exist_ok=True)
-app.secret_key = os.environ.get('SECRET_KEY', 'votre-cle-secrete-tres-longue-et-complexe')
-
 # Configuration de la base de données avec PyMySQL
 app.config['DB_CONFIG'] = DB_CONFIG
 

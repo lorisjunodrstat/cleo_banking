@@ -2407,10 +2407,13 @@ def import_csv_upload():
 @bp.route('/import/csv/map', methods=['GET'])
 @login_required
 def import_csv_map():
+    print(f"=== DEBUG: csv_headers = {session.get('csv_headers')}")
+    print(f"=== DEBUG: csv_rows count = {len(session.get('csv_rows', []))}")
+    
     if 'csv_headers' not in session:
+        flash("Session expirée. Veuillez recommencer.", "warning")
         return redirect(url_for('banking.import_csv_upload'))
     return render_template('banking/import_csv_map.html')
-
 
 @bp.route('/import/csv/confirm', methods=['POST'])
 @login_required
@@ -2787,7 +2790,7 @@ def import_csv_final_distinct():
 @login_required
 def import_csv_upload_temp():
     if request.method == 'GET':
-        return render_template('banking/import_csv_upload.html')
+        return render_template('banking/import_csv_upload_temp.html')
     
     file = request.files.get('csv_file')
     if not file or not file.filename.endswith('.csv'):
@@ -2934,7 +2937,7 @@ def import_csv_confirm_temp():
 
     comptes_possibles = csv_data['comptes_possibles']
     # ❌ PLUS DE db_csv_store.save() ICI
-    return render_template('banking/import_csv_confirm.html', rows=rows_for_template, comptes_possibles=comptes_possibles)
+    return render_template('banking/import_csv_confirm_temp.html, rows=rows_for_template, comptes_possibles=comptes_possibles)
 
 
 @bp.route('/import/temp/csv/final', methods=['POST'])

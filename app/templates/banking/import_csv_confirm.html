@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h2>Étape 2 : Valider les comptes pour chaque ligne</h2>
-
+<h3>Méthode avec fichier :</h3>
 <form method="post" action="{{ url_for('banking.import_csv_final') }}">
   {% for row in rows %}
   <fieldset class="border p-3 mb-4">
