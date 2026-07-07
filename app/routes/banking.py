@@ -2422,12 +2422,14 @@ def import_csv_confirm():
         'description': request.form.get('col_description') or None,
         'source': request.form['col_source'],
         'dest': request.form.get('col_dest') or None,
+        'date_format': request.form.get('date_format', '%Y-%m-%d'),  # ✅ format choisi
     }
     session['column_mapping'] = mapping
 
     csv_rows = session.get('csv_rows', [])
     type_col = mapping['type']
     date_col = mapping['date']
+    date_format = mapping['date_format']
 
     # Ajouter le type à chaque ligne + trier
     enriched_rows = []
@@ -2441,7 +2443,15 @@ def import_csv_confirm():
         d = row.get(date_col, '').strip()
         if not d:
             return datetime.max
-        for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%dT%H:%M', '%Y-%m-%d', '%d.%m.%y %H:%M'):
+        # ✅ Essayer d'abord le format choisi par l'utilisateur
+        try:
+            return datetime.strptime(d, date_format)
+        except ValueError:
+            pass
+        # Fallback sur les formats courants
+        for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%dT%H:%M', '%Y-%m-%d',
+                    '%d.%m.%y %H:%M', '%d.%m.%Y', '%d.%m.%y',
+                    '%d-%m-%Y', '%d-%m-%y', '%m-%d-%Y', '%m-%d-%y'):
             try:
                 return datetime.strptime(d, fmt)
             except ValueError:
@@ -2478,6 +2488,8 @@ def import_csv_final():
         flash("Données d'import manquantes. Veuillez recommencer.", "danger")
         return redirect(url_for('banking.import_csv_upload'))
 
+    date_format = mapping.get('date_format', '%Y-%m-%d')  # ✅ format choisi
+
     success_count = 0
     errors = []
 
@@ -2498,13 +2510,19 @@ def import_csv_final():
                 errors.append(f"Ligne {i+1}: montant invalide ({montant_str})")
                 continue
 
+            # ✅ Parsing date : format choisi d'abord, puis fallback
             date_tx = None
-            for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%dT%H:%M', '%Y-%m-%d', '%d.%m.%y %H:%M'):
-                try:
-                    date_tx = datetime.strptime(date_str, fmt)
-                    break
-                except ValueError:
-                    continue
+            try:
+                date_tx = datetime.strptime(date_str, date_format)
+            except ValueError:
+                for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%dT%H:%M', '%Y-%m-%d',
+                            '%d.%m.%y %H:%M', '%d.%m.%Y', '%d.%m.%y',
+                            '%d-%m-%Y', '%d-%m-%y', '%m-%d-%Y', '%m-%d-%y'):
+                    try:
+                        date_tx = datetime.strptime(date_str, fmt)
+                        break
+                    except ValueError:
+                        continue
 
             if date_tx is None:
                 errors.append(f"Ligne {i+1}: date invalide ({date_str})")
@@ -2590,7 +2608,6 @@ def import_csv_final():
         flash(f"❌ {err}", "danger")
 
     return redirect(url_for('banking.banking_dashboard'))
-
 @bp.route('/import/csv/distinct_confirm', methods=['POST'])
 @login_required
 def import_csv_distinct_confirm():
