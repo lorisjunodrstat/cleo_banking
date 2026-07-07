@@ -2937,7 +2937,7 @@ def import_csv_confirm_temp():
 
     comptes_possibles = csv_data['comptes_possibles']
     # ❌ PLUS DE db_csv_store.save() ICI
-    return render_template('banking/import_csv_confirm_temp.html, rows=rows_for_template, comptes_possibles=comptes_possibles)
+    return render_template('banking/import_csv_confirm_temp.html', rows=rows_for_template, comptes_possibles=comptes_possibles)
 
 
 @bp.route('/import/temp/csv/final', methods=['POST'])
