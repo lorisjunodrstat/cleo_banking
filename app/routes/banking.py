@@ -2609,6 +2609,7 @@ def import_csv_final():
         flash(f"❌ {err}", "danger")
 
     return redirect(url_for('banking.banking_dashboard'))
+
 @bp.route('/import/csv/distinct_confirm', methods=['POST'])
 @login_required
 def import_csv_distinct_confirm():
@@ -2619,6 +2620,7 @@ def import_csv_distinct_confirm():
         'description': request.form.get('col_description') or None,
         'source': request.form['col_source'],
         'dest': request.form.get('col_dest') or None,
+        'date_format': request.form.get('date_format', '%Y-%m-%d'),  # ✅ AJOUT
     }
     session['column_mapping'] = mapping
 
@@ -2627,9 +2629,7 @@ def import_csv_distinct_confirm():
         flash("Aucune donnée à traiter.", "danger")
         return redirect(url_for('banking.import_csv_upload'))
 
-    # Extraire TOUTES les valeurs uniques de source ET destination
     compte_names = set()
-
     source_col = mapping['source']
     for row in csv_rows:
         val = row.get(source_col, '').strip()
@@ -2659,7 +2659,6 @@ def import_csv_distinct_confirm():
         comptes_possibles=comptes_possibles
     )
 
-
 @bp.route('/import/csv/final_distinct', methods=['POST'])
 @login_required
 def import_csv_final_distinct():
@@ -2671,6 +2670,8 @@ def import_csv_final_distinct():
     if not mapping or not csv_rows:
         flash("Données d'import manquantes.", "danger")
         return redirect(url_for('banking.import_csv_upload'))
+
+    date_format = mapping.get('date_format', '%Y-%m-%d')  # ✅ AJOUT
 
     # Construire un mapping GLOBAL : nom → compte
     global_mapping = {}
@@ -2700,16 +2701,24 @@ def import_csv_final_distinct():
                 errors.append(f"Ligne {idx+1}: montant invalide ({montant_str})")
                 continue
 
+            # ✅ REMPLACER le bloc try/except imbriqué par :
+            date_tx = None
             try:
-                date_tx = datetime.strptime(date_str, '%Y-%m-%d')
+                date_tx = datetime.strptime(date_str, date_format)
             except ValueError:
-                try:
-                    date_tx = datetime.strptime(date_str, '%Y-%m-%dT%H:%M')
-                except ValueError:
-                    errors.append(f"Ligne {idx+1}: date invalide ({date_str})")
-                    continue
+                for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%dT%H:%M', '%Y-%m-%d',
+                            '%d.%m.%y %H:%M', '%d.%m.%Y', '%d.%m.%y',
+                            '%d-%m-%Y', '%d-%m-%y', '%m-%d-%Y', '%m-%d-%y'):
+                    try:
+                        date_tx = datetime.strptime(date_str, fmt)
+                        break
+                    except ValueError:
+                        continue
 
-            # Récupérer les comptes via le mapping global
+            if date_tx is None:
+                errors.append(f"Ligne {idx+1}: date invalide ({date_str})")
+                continue
+
             source_val = row.get(mapping['source'], '').strip()
             source_key = global_mapping.get(source_val)
 
@@ -2730,7 +2739,6 @@ def import_csv_final_distinct():
                 errors.append(f"Ligne {idx+1}: type inconnu '{tx_type}'")
                 continue
 
-            # --- Logique métier ---
             source_info = comptes_possibles[source_key]
             source_id = source_info['id']
             source_type = source_info['type']
@@ -2763,7 +2771,6 @@ def import_csv_final_distinct():
         except Exception as e:
             errors.append(f"Ligne {idx+1}: erreur inattendue ({str(e)})")
 
-    # Nettoyer la session
     for key in ['csv_headers', 'csv_rows', 'comptes_possibles', 'column_mapping',
                 'distinct_compte_names', 'csv_rows_raw']:
         session.pop(key, None)
@@ -2773,7 +2780,6 @@ def import_csv_final_distinct():
         flash(f"❌ {err}", "danger")
 
     return redirect(url_for('banking.banking_dashboard'))
-
 ### Méthodes avec fichiers temp 
 
 
