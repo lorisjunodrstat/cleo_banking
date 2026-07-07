@@ -2344,7 +2344,6 @@ def manage_transaction(transaction_id):
     return render_template('banking/transaction_modal.html', transaction=transaction, compte=compte)
 
 # ---- APIs ----
-
 @bp.route('/import/csv', methods=['GET', 'POST'])
 @login_required
 def import_csv_upload():
@@ -2365,26 +2364,22 @@ def import_csv_upload():
         return redirect(url_for('banking.import_csv_upload'))
     import csv as csv_mod
     # Détecter le délimiteur
-    sample = '\n'.join(raw_lines[:5])  # Prendre un échantillon
+    sample = '\n'.join(raw_lines[:5])
     try:
         delimiter = csv_mod.Sniffer().sniff(sample, delimiters=";,|\t").delimiter
     except:
-        delimiter = ';'  # Fallback pour les exports bancaires suisses
+        delimiter = ';'
 
     reader_raw = csv_mod.reader(raw_lines, delimiter=delimiter)
     headers_raw = next(reader_raw)
     headers = [h.strip().strip('"') for h in headers_raw]
     rows = []
-    logging.error('changement')
     for row_raw in reader_raw:
         row_dict = {}
         for i, h in enumerate(headers):
             value = row_raw[i].strip().strip('"') if i < len(row_raw) else ''
             row_dict[h] = value
         rows.append(row_dict)
-    rows = rows
-
-
 
     # Sauvegarder dans la session
     session['csv_headers'] = headers
@@ -2392,21 +2387,14 @@ def import_csv_upload():
 
     # Récupérer les comptes de l'utilisateur
     user_id = current_user.id
-    comptes = g.models.compte_model.get_all_accounts()
-    sous_comptes = g.models.sous_compte_model.get_all_sous_comptes_by_user_id(user_id)
+    comptes = g.models.compte_model.get_all_accounts(user_id)
 
     comptes_possibles = []
     for c in comptes:
         comptes_possibles.append({
             'id': c['id'],
-            'nom': c['nom_compte'],
-            'type': 'compte_principal'
-        })
-    for sc in sous_comptes:
-        comptes_possibles.append({
-            'id': sc['id'],
-            'nom': sc['nom_sous_compte'],
-            'type': 'sous_compte'
+            'nom': c.get('nom_compte') or c.get('nom_sous_compte'),
+            'type': c.get('type_compte', 'compte_principal')
         })
 
     session['comptes_possibles'] = comptes_possibles
@@ -2437,11 +2425,7 @@ def import_csv_confirm():
     }
     session['column_mapping'] = mapping
 
-    # === 🔁 TRIER LES LIGNES DÈS MAINTENANT ===
     csv_rows = session.get('csv_rows', [])
-    print("=== CONTENU DE csv_rows ===")
-    for i, row in enumerate(csv_rows):
-        print(f"Ligne {i}: {row}")
     type_col = mapping['type']
     date_col = mapping['date']
 
@@ -2457,7 +2441,6 @@ def import_csv_confirm():
         d = row.get(date_col, '').strip()
         if not d:
             return datetime.max
-        # Formats supportés : ISO + format suisse (jj.mm.yy HH:MM)
         for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%dT%H:%M', '%Y-%m-%d', '%d.%m.%y %H:%M'):
             try:
                 return datetime.strptime(d, fmt)
@@ -2466,9 +2449,8 @@ def import_csv_confirm():
         return datetime.max
 
     enriched_rows_sorted = sorted(enriched_rows, key=parse_date_for_sort)
-    session['csv_rows_with_type'] = enriched_rows_sorted  # <-- on remplace par la version triée
+    session['csv_rows_with_type'] = enriched_rows_sorted
 
-    # Préparer les lignes avec options de sélection (dans le nouvel ordre)
     rows_for_template = []
     for i, row in enumerate(enriched_rows_sorted):
         source_val = row.get(mapping['source'], '').strip()
@@ -2550,7 +2532,7 @@ def import_csv_final():
                         compte_type=source_type,
                         date_transaction=date_tx
                     )
-                else:  # retrait
+                else:
                     ok, msg = g.models.transaction_financiere_model.create_retrait(
                         compte_id=source_id,
                         user_id=user_id,
@@ -2572,7 +2554,6 @@ def import_csv_final():
                 dest_id = dest_info['id']
                 dest_type = dest_info['type']
 
-                # Vérifier que les comptes sont différents
                 if source_id == dest_id and source_type == dest_type:
                     errors.append(f"Ligne {i+1}: source et destination identiques")
                     continue
@@ -2605,7 +2586,7 @@ def import_csv_final():
     session.pop('column_mapping', None)
 
     flash(f"✅ Import terminé : {success_count} transaction(s) créée(s).", "success")
-    for err in errors[:5]:  # Limiter les messages d'erreur affichés
+    for err in errors[:5]:
         flash(f"❌ {err}", "danger")
 
     return redirect(url_for('banking.banking_dashboard'))
@@ -2621,20 +2602,14 @@ def import_csv_distinct_confirm():
         'source': request.form['col_source'],
         'dest': request.form.get('col_dest') or None,
     }
-    print("=== MAPPING ===")
-    print("source =", mapping['source'])
-    print("dest =", mapping.get('dest'))
     session['column_mapping'] = mapping
 
     csv_rows = session.get('csv_rows', [])
-    print("=== CONTENU DE csv_rows ===")
-    for i, row in enumerate(csv_rows):
-        print(f"Ligne {i}: {row}")
     if not csv_rows:
         flash("Aucune donnée à traiter.", "danger")
         return redirect(url_for('banking.import_csv_upload'))
 
-    # 🔥 Extraire TOUTES les valeurs uniques de source ET destination
+    # Extraire TOUTES les valeurs uniques de source ET destination
     compte_names = set()
 
     source_col = mapping['source']
@@ -2679,7 +2654,7 @@ def import_csv_final_distinct():
         flash("Données d'import manquantes.", "danger")
         return redirect(url_for('banking.import_csv_upload'))
 
-    # 🔥 Construire un mapping GLOBAL : nom → compte
+    # Construire un mapping GLOBAL : nom → compte
     global_mapping = {}
     i = 0
     while f'compte_name_{i}' in request.form:
@@ -2716,7 +2691,7 @@ def import_csv_final_distinct():
                     errors.append(f"Ligne {idx+1}: date invalide ({date_str})")
                     continue
 
-            # 🔥 Récupérer les comptes via le mapping global UNIQUE
+            # Récupérer les comptes via le mapping global
             source_val = row.get(mapping['source'], '').strip()
             source_key = global_mapping.get(source_val)
 
@@ -2780,7 +2755,6 @@ def import_csv_final_distinct():
         flash(f"❌ {err}", "danger")
 
     return redirect(url_for('banking.banking_dashboard'))
-
 ### Méthodes avec fichiers temp 
 
 
