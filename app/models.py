@@ -2077,8 +2077,8 @@ class TransactionFinanciere:
                 transaction = cursor.fetchone()
                 if not transaction:
                     return False, "Transaction non trouvée"
-                if transaction['owner_user_id'] != user_id:
-                    return False, "Non autorisé à modifier cette transaction"
+                #if transaction['owner_user_id'] != user_id:
+                #    return False, "Non autorisé à modifier cette transaction"
                 type_tx = transaction['type_transaction']
                 est_transfert = type_tx in ['transfert_entrant', 'transfert_sortant']
 
@@ -3028,6 +3028,28 @@ class TransactionFinanciere:
 
         return dernier_solde
 
+    def _verifier_existence_compte(self, compte_type: str, compte_id: int) -> bool:
+        """Vérifie simplement si un compte existe (sans vérifier l'appartenance)."""
+        try:
+            with self.db.get_cursor() as cursor:
+                if compte_type == 'compte_principal':
+                    cursor.execute(
+                        "SELECT id FROM comptes_principaux WHERE id = %s AND actif = TRUE",
+                        (compte_id,)
+                    )
+                elif compte_type == 'sous_compte':
+                    cursor.execute(
+                        "SELECT id FROM sous_comptes WHERE id = %s AND actif = TRUE",
+                        (compte_id,)
+                    )
+                else:
+                    return False
+                return cursor.fetchone() is not None
+        except Exception as e:
+            logger.error(f"Erreur vérification existence compte: {e}")
+            return False
+
+
     def create_transfert_interne(self, source_type: str, source_id: int,
                                 dest_type: str, dest_id: int, user_id: int,
                                 montant: Decimal, description: str = "",
@@ -3067,29 +3089,16 @@ class TransactionFinanciere:
 
         try:
             with self.db.get_cursor(dictionary=True, commit=True) as cursor:
-                # Vérifier l'appartenance des comptes
+            # ✅ Vérifier l'existence des comptes (pas l'appartenance)
                 logger.info(f"🔍 Vérification existence compte source: type={source_type}, id={source_id}")
                 if not self._verifier_existence_compte_with_cursor(cursor, source_type, source_id):
                     logger.error(f"❌ Compte source INEXISTANT: type={source_type}, id={source_id}")
-                    # Debug: vérifier directement dans la base
-                    if source_type == 'compte_principal':
-                        cursor.execute("SELECT id, actif FROM comptes_principaux WHERE id = %s", (source_id,))
-                    else:
-                        cursor.execute("SELECT id, actif FROM sous_comptes WHERE id = %s", (source_id,))
-                    result = cursor.fetchone()
-                    logger.error(f"🔍 Résultat requête directe: {result}")
                     return False, "Compte source inexistant"
 
-            logger.info(f"🔍 Vérification existence compte destination: type={dest_type}, id={dest_id}")
-            if not self._verifier_existence_compte_with_cursor(cursor, dest_type, dest_id):
-                logger.error(f"❌ Compte destination INEXISTANT: type={dest_type}, id={dest_id}")
-                if dest_type == 'compte_principal':
-                    cursor.execute("SELECT id, actif FROM comptes_principaux WHERE id = %s", (dest_id,))
-                else:
-                    cursor.execute("SELECT id, actif FROM sous_comptes WHERE id = %s", (dest_id,))
-                result = cursor.fetchone()
-                logger.error(f"🔍 Résultat requête directe: {result}")
-                return False, "Compte destination inexistant"
+                logger.info(f"🔍 Vérification existence compte destination: type={dest_type}, id={dest_id}")
+                if not self._verifier_existence_compte_with_cursor(cursor, dest_type, dest_id):
+                    logger.error(f"❌ Compte destination INEXISTANT: type={dest_type}, id={dest_id}")
+                    return False, "Compte destination inexistant"
 
                 # Récupérer les soldes
                 solde_ok, _ = self._valider_solde_suffisant_with_cursor(cursor, source_type, source_id, montant)
