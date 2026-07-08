@@ -2862,7 +2862,7 @@ class TransactionFinanciere:
             query = """
             INSERT INTO transactions
             (compte_principal_id, sous_compte_id, type_transaction, montant, description,
-            utilisateur_id, date_transaction, solde_apres, reference_transfert,
+            utilisateur_id, date_transaction, solde_apres, reference,
             compte_destination_id, sous_compte_destination_id,
             compte_source_id, sous_compte_source_id)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
