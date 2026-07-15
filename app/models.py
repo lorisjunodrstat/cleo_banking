@@ -1802,19 +1802,30 @@ class TransactionFinanciere:
         logger.debug("Mise à jour des transactions suivantes")
 
         if compte_type == 'compte_principal':
-            condition = "compte_principal_id = %s"
+            condition = """compte_principal_id = %s OR
+            compte_source_id = %s OR
+            compte_destination_id = %s
+            """
+            params = (compte_id, compte_id, compte_id, date_transaction, date_transaction, transaction_id)
+
         else:
-            condition = "sous_compte_id = %s"
+            condition = """(
+            sous_compte_id = %s OR
+            sous_compte_source_id = %s OR
+            sous_compte_destination_id = %s
+            )"""
+            params = (compte_id, compte_id, compte_id, date_transaction, date_transaction, transaction_id)
 
         # Récupérer les transactions suivantes
         query = f"""
-        SELECT id, type_transaction, montant, date_transaction
+            SELECT id, type_transaction, montant, compte_source_id, compte_destination_id, sous_compte_destination_id,
+           compte_principal_id, sous_compte_id, date_transaction
         FROM transactions
         WHERE {condition} AND (date_transaction > %s OR (date_transaction = %s AND id > %s))
         ORDER BY date_transaction ASC, id ASC
         """
 
-        cursor.execute(query, (compte_id, date_transaction, transaction_id))
+        cursor.execute(query, params)
         subsequent_transactions = cursor.fetchall()
 
         solde_courant = solde_apres_insere
@@ -1822,13 +1833,36 @@ class TransactionFinanciere:
 
         for transaction in subsequent_transactions:
             montant = Decimal(str(transaction['montant']))
-            if transaction['type_transaction'] in ['depot', 'transfert_entrant', 'recredit_annulation']:
+            t_type = transaction['type_transaction']
+        
+            # 3. Déterminer dynamiquement si le mouvement est un crédit (+) ou un débit (-) pour ce compte
+            est_credit = False
+            
+            if t_type in ['depot', 'recredit_annulation']:
+                est_credit = True
+            elif t_type == 'retrait':
+                est_credit = False
+            # Gestion intelligente des transferts
+            elif t_type in ['transfert_entrant', 'transfert_sortant', 'transfert_externe', 
+                        'transfert_compte_vers_sous', 'transfert_sous_vers_compte']:
+                # Si notre compte est la destination du transfert -> c'est un crédit (+)
+                if compte_type == 'compte_principal' and transaction['compte_destination_id'] == compte_id:
+                    est_credit = True
+                elif compte_type == 'sous_compte' and transaction['sous_compte_destination_id'] == compte_id:
+                    est_credit = True
+                # Sinon, si c'est la source -> c'est un débit (-)
+                else:
+                    est_credit = False
+
+            # Application de l'opération
+            if est_credit:
                 solde_courant += montant
             else:
                 solde_courant -= montant
 
+            # 4. Mise à jour en base de données (on garde le Decimal !)
             update_query = "UPDATE transactions SET solde_apres = %s WHERE id = %s"
-            cursor.execute(update_query, (solde_courant, transaction['id'])) #cursor.execute(update_query, (float(solde_courant), transaction['id']))
+            cursor.execute(update_query, (solde_courant, transaction['id']))
             dernier_solde = solde_courant
 
         return dernier_solde
@@ -1869,7 +1903,7 @@ class TransactionFinanciere:
                     query = """
                     INSERT INTO transactions
                     (compte_principal_id, type_transaction, montant, description, 
-                    utilisateur_id, date_transaction, solde_apres, reference_transfert)
+                    utilisateur_id, date_transaction, solde_apres, reference)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """
                     cursor.execute(query, (compte_id, type_transaction, montant,#float(montant)
@@ -1878,7 +1912,7 @@ class TransactionFinanciere:
                 else:
                     query = """
                     INSERT INTO transactions
-                    (sous_compte_id, type_transaction, montant, description, utilisateur_id, date_transaction, solde_apres, reference_transfert)
+                    (sous_compte_id, type_transaction, montant, description, utilisateur_id, date_transaction, solde_apres, reference_)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """
                     cursor.execute(query, (compte_id, type_transaction, montant,#float(montant),
@@ -2118,13 +2152,13 @@ class TransactionFinanciere:
                     (nouvelle_date is not None and nouvelle_date != ancienne_date)
                 )
                 if est_transfert:
-                    reference_transfert = transaction.get('reference_transfert')
+                    reference_transfert = transaction.get('reference')
                     if not reference_transfert:
                         return False, "Transfert corrompu : référence manquante"
                     cursor.execute("""
                         SELECT id, type_transaction
                         FROM transactions
-                        WHERE reference_transfert = %s AND id != %s
+                        WHERE reference = %s AND id != %s
                     """, (reference_transfert, transaction_id))
                     autre_tx = cursor.fetchone()
                     if not autre_tx:
@@ -2204,7 +2238,7 @@ class TransactionFinanciere:
                 date_transaction = transaction['date_transaction']
                 # === CAS SPÉCIAL : TRANSFERT INTERNE (entrant/sortant) ===
                 if type_tx in ['transfert_entrant', 'transfert_sortant']:
-                    reference_transfert = transaction.get('reference_transfert')
+                    reference_transfert = transaction.get('reference')
                     if not reference_transfert:
                         logger.error(f"Transfert corrompu : référence manquante pour la transaction {transaction_id}")
                         return False, "Transfert corrompu : référence manquante"
@@ -2212,7 +2246,7 @@ class TransactionFinanciere:
                     cursor.execute("""
                         SELECT id, type_transaction, compte_principal_id, sous_compte_id, date_transaction
                         FROM transactions
-                        WHERE reference_transfert = %s
+                        WHERE reference = %s
                     """, (reference_transfert,))
                     transactions_liees = cursor.fetchall()
                     if len(transactions_liees) != 2:
@@ -2238,7 +2272,7 @@ class TransactionFinanciere:
                         return False, "Non autorisé à annuler ce transfert"
 
                     # Supprimer les deux transactions
-                    cursor.execute("DELETE FROM transactions WHERE reference_transfert = %s", (reference_transfert,))
+                    cursor.execute("DELETE FROM transactions WHERE reference = %s", (reference_transfert,))
 
                     # Recalculer les soldes pour chaque compte impliqué
                     for tx in transactions_liees:
@@ -4316,8 +4350,8 @@ class TransactionFinanciere:
             with self.db.get_cursor() as cursor:
                 # Vérifier que le compte appartient à l'utilisateur
                 cursor.execute(
-                    "SELECT id FROM comptes_principaux WHERE id = %s AND utilisateur_id = %s",
-                    (compte_id, user_id)
+                    "SELECT id FROM comptes_principaux WHERE id = %s",
+                    (compte_id, )
                 )
                 if not cursor.fetchone():
                     return []
@@ -4343,13 +4377,13 @@ class TransactionFinanciere:
                     ON t.sous_compte_id = sc.id
                 LEFT JOIN
                     ecritures_comptables e
-                    ON t.id = e.transaction_id
+                    ON t.id = e.id
                 WHERE
                     t.compte_principal_id = %s
                     AND t.id NOT IN (
-                        SELECT DISTINCT transaction_id
+                        SELECT DISTINCT id
                         FROM ecritures_comptables
-                        WHERE transaction_id IS NOT NULL
+                        WHERE id IS NOT NULL
                     )
                 """
                 params = [compte_id]
