@@ -4864,7 +4864,7 @@ def creer_ecriture_automatique(transaction_id):
             'id_contact': id_contact  # 🔥 Contact du formulaire OU lié au compte
         }
 
-        if g.models.ecriture_comptable_model.create(g.models.categorie_comptable_model, ecriture_data)::
+        if g.models.ecriture_comptable_model.create(g.models.categorie_comptable_model, ecriture_data):
             # Marquer la transaction comme comptabilisée
             g.models.ecriture_comptable_model.update_statut_comptable(
                 transaction_id, current_user.id, 'comptabilise'
