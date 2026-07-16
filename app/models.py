@@ -285,6 +285,7 @@ class DatabaseManager:
                     devise VARCHAR(3) DEFAULT 'CHF',
                     utilisateur_id INT NOT NULL,
                     actif TINYINT(1) DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
                 );
                 """
@@ -590,7 +591,7 @@ class DatabaseManager:
                     FOREIGN KEY (sous_compte_id) REFERENCES sous_comptes(id),
                     FOREIGN KEY (categorie_id) REFERENCES categories_comptables(id),
                     FOREIGN KEY (id_contact) REFERENCES contacts(id_contact),
-                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id)
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id),
                     FOREIGN KEY (transaction_id) REFERENCES transactions(id)
                 );
                 """
