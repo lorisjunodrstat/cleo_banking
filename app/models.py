@@ -518,7 +518,7 @@ class DatabaseManager:
                     nom VARCHAR(255) NOT NULL,
                     parent_id INT,
                     type_compte ENUM('Actif', 'Passif', 'Charge', 'Revenus', 'Groupe') NOT NULL,
-                    compte_systeme BOOLEAN DEFAULT FALSE,
+                    compte_systeme VARCHAR(50) DEFAULT NULL
                     compte_associe VARCHAR(10),
                     type_tva ENUM('taux_plein', 'taux_reduit', 'taux_zero', 'exonere') DEFAULT 'taux_plein',
                     actif BOOLEAN DEFAULT TRUE,
@@ -6374,7 +6374,7 @@ class CategorieComptable:
                 cursor.execute(query, values)
                 # Le commit est géré par le context manager dans la classe DatabaseManager
             return True
-        except Error as e:
+        except Exception as e:
             logger.error(f"Erreur lors de la création de la catégorie comptable: {e}")
             return False
 
@@ -6432,7 +6432,7 @@ class CategorieComptable:
                 cursor.execute(query, values)
                 # Le commit est géré par le context manager
             return True
-        except Error as e:
+        except Exception as e:
             logger.error(f"Erreur lors de la mise à jour de la catégorie comptable: {e}")
             return False
 
@@ -6614,6 +6614,19 @@ class CategorieComptable:
                 return result
         except Exception as e:
             logger.error(f'Erreur dans la recherche de catégorie complémentaire: {e}')
+            return None
+    def get_by_system_tag(self, tag: str, utilisateur_id: int) -> Optional[Dict]:
+        """Exemple : Récupère automatiquement le compte bancaire configuré par Bexio"""
+        try:
+            with self.db.get_cursor() as cursor:
+                query = """
+                SELECT * FROM categories_comptables 
+                WHERE compte_systeme = %s AND utilisateur_id = %s
+                """
+                cursor.execute(query, (tag, utilisateur_id))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur recherche par tag système {tag}: {e}")
             return None
 
 class EcritureComptable:
@@ -6867,7 +6880,7 @@ class EcritureComptable:
                 utilisateur_id, justificatif_url, statut, id_contact,
                 ecriture_principale_id, type_ecriture_comptable
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'complementaire')
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'complementaire')
             """
 
             values = (
