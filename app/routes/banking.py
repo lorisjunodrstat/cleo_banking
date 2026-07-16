@@ -3519,7 +3519,7 @@ def import_plan_comptable_csv():
             csv_input = csv_mod.reader(stream)
             # Sauter l'en-tête
             next(csv_input)
-            connection = g.models.g.db_manager.get_connection()
+            connection = g.db_manager.get_connection()
             cursor = connection.cursor()
             
             # Vider la table existante
@@ -5691,17 +5691,6 @@ def editer_plan(plan_id):
             flash("Erreur lors de la mise à jour.", "danger")
 
     return render_template('plans/editer_plan.html', plan=plan)
-@bp.route('/plans2/<int:plan_id>/editer', methods=['GET', 'POST'])
-@login_required
-def editer_plan2(plan_id):
-    plan = g.models.plan_comptable_model.get_plan_with_categories(plan_id, current_user.id)
-    if not plan:
-        abort(404)
-    if request.method == 'POST':
-        # Mise à jour + gestion des catégories via formulaires <select>
-        pass
-    categories_dispo = g.models.plan_comptable_model.categorie_comptable.get_all_categories(current_user.id)
-    return render_template('plans/form.html', plan=plan, categories_dispo=categories_dispo)
 
 @bp.route('/plans/<int:plan_id>/supprimer', methods=['POST'])
 @login_required
