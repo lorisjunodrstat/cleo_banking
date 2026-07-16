@@ -116,7 +116,7 @@
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <label for="plan_id" class="form-label">Plan comptable</label>
-                        <select class="form-select" id="plan_id" name="plan_id">
+                        <select class="form-select" id="plan_ids" name="plan_ids">
                             <option value="">Aucun plan comptable</option>
                             {% for plan in all_plan %}
                             <option value="{{ plan.id }}" {% if categorie and categorie.id_plan==plan.id %}selected{%
