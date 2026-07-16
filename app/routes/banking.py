@@ -10,6 +10,7 @@ from io import StringIO
 import os
 from werkzeug.utils import secure_filename
 import csv as csv_mod
+
 import secrets
 from io import BytesIO
 from flask import send_file
@@ -3510,8 +3511,15 @@ def import_plan_comptable_csv():
             
         file = request.files['csv_file']
         if file and file.filename.endswith('.csv'):
+            content = file.stream.read().decode("UTF8")
             # Lecture avec le bon délimiteur (;)
-            stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+            sniffer = csv_mod.Sniffer()
+            try:
+                dialect = sniffer.sniff(content, delimiters=[',', ';'])
+            except csv_mod.Error:
+                # Fallback : si le sniffer échoue, on suppose par défaut la virgule
+                dialect = csv_mod.excel
+            stream = io.StringIO(content)
             csv_input = csv_mod.reader(stream, delimiter=';')
             next(csv_input) # Sauter l'en-tête
             
