@@ -6666,7 +6666,7 @@ class CategorieComptable:
             logger.error(f"Erreur ajouter_categorie_complementaire: {e}")
             return False
 
-    def has_categorie_complementaire(self, categorie_id: int, utilisateur_id: int) -> bool:
+    def has_categorie_complementaire(self, categorie_id: int) -> bool:
         """Vérifie si une catégorie a une catégorie complémentaire configurée."""
         try:
             with self.db.get_cursor() as cursor:
@@ -6674,7 +6674,6 @@ class CategorieComptable:
                 SELECT COUNT(*) as count
                 FROM categories_comptables
                 WHERE id = %s
-                AND utilisateur_id = %s
                 AND categorie_complementaire_id IS NOT NULL
                 AND actif = TRUE
                 """
@@ -6821,7 +6820,7 @@ class EcritureComptable:
 
                 if categorie_comptable_model:
                     has_complementaire = categorie_comptable_model.has_categorie_complementaire(
-                        categorie_id, utilisateur_id
+                        categorie_id
                     )
                     if has_complementaire:
                         logger.info(f"La catégorie ID {categorie_id} a une catégorie complémentaire. Création d'écritures secondaires.")
