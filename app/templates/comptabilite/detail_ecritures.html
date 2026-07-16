@@ -29,6 +29,27 @@
         color: #6c757d;
         margin-right: 0.5rem;
     }
+
+    .total-tva-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 20px;
+        border: 1px solid #dee2e6;
+    }
+
+    .tva-info {
+        font-size: 0.9rem;
+    }
+
+    .taux-tva-badge {
+        font-size: 0.7rem;
+        background-color: #6c757d;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        margin-left: 5px;
+    }
 </style>
 {% endblock %}
 
@@ -41,11 +62,34 @@
         </a>
     </div>
 
+    <!-- 📊 Résumé TVA -->
+    <div class="total-tva-card">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="text-muted small">Total HT</div>
+                <div class="h5 mb-0">{{ "%.2f"|format(totaux_tva.total_htva) }} CHF</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">TVA</div>
+                <div class="h5 mb-0 text-primary">{{ "%.2f"|format(totaux_tva.total_tva) }} CHF</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">Total TTC</div>
+                <div class="h5 mb-0">{{ "%.2f"|format(totaux_tva.total_ttc) }} CHF</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">Taux TVA moyen</div>
+                <div class="h5 mb-0">{{ "%.2f"|format(totaux_tva.taux_moyen) }}%</div>
+                <small class="text-muted">{{ totaux_tva.nb_ecritures }} écriture(s)</small>
+            </div>
+        </div>
+    </div>
+
     <div class="card">
         <div class="card-header">
             <div class="d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Détail des écritures</h5>
-                <span class="badge bg-primary">Total: {{ "%.2f"|format(total) }} CHF</span>
+                <span class="badge bg-primary">Total HT: {{ "%.2f"|format(total) }} CHF</span>
             </div>
         </div>
         <div class="card-body">
@@ -58,7 +102,10 @@
                             <th>Catégorie</th>
                             <th>Référence</th>
                             <th>Contact</th>
-                            <th class="text-end">Montant (CHF)</th>
+                            <th class="text-end">Montant HT (CHF)</th>
+                            <th class="text-end">TVA (CHF)</th>
+                            <th class="text-end">TTC (CHF)</th>
+                            <th>Taux</th>
                             <th>Type</th>
                             <th>Statut</th>
                             <th>Actions</th>
@@ -87,7 +134,22 @@
                                 —
                                 {% endif %}
                             </td>
-                            <td class="text-end fw-bold">{{ "%.2f"|format(ecriture.montant) }}</td>
+                            <td class="text-end">{{ "%.2f"|format(ecriture.montant_htva or ecriture.montant) }}</td>
+                            <td class="text-end">
+                                {% if ecriture.tva_montant %}
+                                <span class="text-primary">{{ "%.2f"|format(ecriture.tva_montant) }}</span>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">{{ "%.2f"|format(ecriture.montant) }}</td>
+                            <td>
+                                {% if ecriture.tva_taux %}
+                                <span class="taux-tva-badge">{{ "%.1f"|format(ecriture.tva_taux) }}%</span>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
                             <td>
                                 <span
                                     class="badge {% if ecriture.type_ecriture == 'recette' %}bg-success{% else %}bg-danger{% endif %}">
@@ -153,8 +215,16 @@
                                 —
                                 {% endif %}
                             </td>
-                            <td class="text-end montant-secondaire">
-                                {{ "%.2f"|format(secondaire.montant) }}
+                            <td class="text-end montant-secondaire">{{ "%.2f"|format(secondaire.montant_htva or
+                                secondaire.montant) }}</td>
+                            <td class="text-end montant-secondaire">{{ "%.2f"|format(secondaire.tva_montant or 0) }}</td>
+                            <td class="text-end montant-secondaire">{{ "%.2f"|format(secondaire.montant) }}</td>
+                            <td>
+                                {% if secondaire.tva_taux %}
+                                <span class="taux-tva-badge">{{ "%.1f"|format(secondaire.tva_taux) }}%</span>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
                             </td>
                             <td>
                                 <span
@@ -187,30 +257,32 @@
 
                         <!-- Ligne de séparation visuelle -->
                         <tr>
-                            <td colspan="9" class="p-1 bg-light"></td>
+                            <td colspan="12" class="p-1 bg-light"></td>
                         </tr>
                         {% endif %}
                         {% else %}
                         <tr>
-                            <td colspan="9" class="text-center text-muted">Aucune écriture trouvée</td>
+                            <td colspan="12" class="text-center text-muted">Aucune écriture trouvée</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     <tfoot>
                         <tr class="fw-bold table-light">
                             <td colspan="5" class="text-end">Total {{ titre }}:</td>
-                            <td class="text-end">{{ "%.2f"|format(total) }} CHF</td>
-                            <td colspan="3"></td>
+                            <td class="text-end">{{ "%.2f"|format(totaux_tva.total_htva) }} CHF</td>
+                            <td class="text-end">{{ "%.2f"|format(totaux_tva.total_tva) }} CHF</td>
+                            <td class="text-end">{{ "%.2f"|format(totaux_tva.total_ttc) }} CHF</td>
+                            <td colspan="4"></td>
                         </tr>
                     </tfoot>
                 </table>
             </div>
 
-            <!-- Légende pour aider à la compréhension -->
+            <!-- Légende -->
             <div class="mt-4 p-3 bg-light rounded">
                 <h6 class="mb-2"><i class="fas fa-info-circle me-2"></i>Légende des écritures</h6>
                 <div class="row">
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <div class="d-flex align-items-center mb-1">
                             <div class="border-left-primary me-2"
                                 style="width: 20px; height: 20px; border-left: 4px solid #0d6efd;"></div>
@@ -222,7 +294,7 @@
                             <span>Écriture secondaire (générée automatiquement)</span>
                         </div>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <div class="mb-1">
                             <span class="badge bg-info me-1">+N secondaire(s)</span>
                             <span>Indique le nombre d'écritures secondaires liées</span>
@@ -231,6 +303,16 @@
                             <span class="badge bg-success me-1">recette</span>
                             <span class="badge bg-danger me-1">dépense</span>
                             <span>Type d'écriture comptable</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div>
+                            <span class="taux-tva-badge me-1">7.7%</span>
+                            <span>Taux de TVA appliqué</span>
+                        </div>
+                        <div class="mt-1">
+                            <span class="text-primary me-1">TVA</span>
+                            <span>Montant de TVA</span>
                         </div>
                     </div>
                 </div>

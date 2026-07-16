@@ -7732,13 +7732,18 @@ class EcritureComptable:
                     # Construire la requête avec une jointure LEFT pour les contacts
                     query = """
                         SELECT
-                            e.id,
+                             e.id,
                             e.date_ecriture,
                             e.description,
                             e.reference,
                             e.montant,
+                            e.montant_htva,
+                            e.tva_taux,
+                            e.tva_montant,
                             e.statut,
                             e.id_contact,
+                            e.type_ecriture_comptable,
+                            e.ecriture_principale_id,
                             c.nom as categorie_nom,
                             c.numero as categorie_numero,
                             ct.nom as contact_nom
@@ -7776,6 +7781,58 @@ class EcritureComptable:
                 logger.error(f"Erreur lors de la récupération des écritures par catégorie: {e}")
                 return [], 0, ""
 
+    def get_totaux_tva_par_categorie(self, user_id: int, categorie_id: int = None,
+                                  date_from: str = None, date_to: str = None) -> Dict:
+        """
+        Calcule les totaux TVA pour une catégorie ou une période donnée
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                query = """
+                    SELECT
+                        SUM(e.montant_htva) as total_htva,
+                        SUM(e.tva_montant) as total_tva,
+                        SUM(e.montant) as total_ttc,
+                        COUNT(e.id) as nb_ecritures,
+                        AVG(e.tva_taux) as taux_moyen
+                    FROM ecritures_comptables e
+                    WHERE e.utilisateur_id = %s
+                    AND e.statut = 'validée'
+                    AND e.type_ecriture_comptable = 'principale'
+                """
+                params = [user_id]
+
+                if categorie_id:
+                    query += " AND e.categorie_id = %s"
+                    params.append(categorie_id)
+
+                if date_from:
+                    query += " AND e.date_ecriture >= %s"
+                    params.append(date_from)
+
+                if date_to:
+                    query += " AND e.date_ecriture <= %s"
+                    params.append(date_to)
+
+                cursor.execute(query, tuple(params))
+                result = cursor.fetchone()
+
+                return {
+                    'total_htva': float(result['total_htva'] or 0),
+                    'total_tva': float(result['total_tva'] or 0),
+                    'total_ttc': float(result['total_ttc'] or 0),
+                    'nb_ecritures': result['nb_ecritures'] or 0,
+                    'taux_moyen': float(result['taux_moyen'] or 0)
+                }
+        except Exception as e:
+            logger.error(f"Erreur calcul totaux TVA: {e}")
+            return {
+                'total_htva': 0,
+                'total_tva': 0,
+                'total_ttc': 0,
+                'nb_ecritures': 0,
+                'taux_moyen': 0
+            }
     def _generate_titre_detail(self, cursor, type_categorie: str, categorie_id: str,
                             ecritures: List[Dict], annee: str) -> str:
         """Génère le titre pour la page de détail"""
