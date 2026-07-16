@@ -562,6 +562,7 @@ class DatabaseManager:
                 create_ecritures_table_query = """
                 CREATE TABLE IF NOT EXISTS ecritures_comptables (
                     id INT AUTO_INCREMENT PRIMARY KEY,
+                    transaction_id INT,
                     date_ecriture DATE NOT NULL,
                     compte_bancaire_id INT NOT NULL,
                     sous_compte_id INT,
@@ -586,6 +587,7 @@ class DatabaseManager:
                     FOREIGN KEY (categorie_id) REFERENCES categories_comptables(id),
                     FOREIGN KEY (id_contact) REFERENCES contacts(id_contact),
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id)
+                    FOREIGN KEY (transaction_id) REFERENCES transactions(id)
                 );
                 """
                 cursor.execute(create_ecritures_table_query)
@@ -4377,7 +4379,7 @@ class TransactionFinanciere:
                     ON t.sous_compte_id = sc.id
                 LEFT JOIN
                     ecritures_comptables e
-                    ON t.id = e.id
+                    ON t.id = e.transaction_id
                 WHERE
                     t.compte_principal_id = %s
                     AND t.id NOT IN (
