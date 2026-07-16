@@ -447,7 +447,6 @@ class DatabaseManager:
                     solde_apres DECIMAL(15,2),
                     statut_comptable ENUM('a_comptabiliser', 'comptabilise', 'ne_pas_comptabiliser') DEFAULT 'a_comptabiliser',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (compte_principal_id) REFERENCES comptes_principaux(id),
                     FOREIGN KEY (sous_compte_id) REFERENCES sous_comptes(id),
                     FOREIGN KEY (compte_source_id) REFERENCES comptes_principaux(id),
@@ -525,7 +524,7 @@ class DatabaseManager:
                     actif BOOLEAN DEFAULT TRUE,
                     categorie_complementaire_id INT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     FOREIGN KEY (categorie_complementaire_id) REFERENCES categories_comptables(id) ON DELETE SET NULL
                 );
                 """
@@ -6466,18 +6465,19 @@ class CategorieComptable:
             with self.db.get_cursor() as cursor:
                 if utilisateur_id:
                     query = """
-                    SELECT
+                    SELECT DISTINCT
                         c1.id, c1.numero, c1.nom, c1.parent_id, c1.type_compte,
                         c1.compte_systeme, c1.compte_associe, c1.type_tva, c1.actif,
                         c1.categorie_complementaire_id,
-                        c1.type_ecriture_complementaire,
                         c2.numero as parent_numero, c2.nom as parent_nom,
                         c3.numero as categorie_complementaire_numero,
                         c3.nom as categorie_complementaire_nom
                     FROM categories_comptables c1
+                    INNER JOIN plan_categorie pc ON c1.id = pc.categorie_id
+                    INNER JOIN plans_comptables p ON pc.plan_id = p.id
                     LEFT JOIN categories_comptables c2 ON c1.parent_id = c2.id
                     LEFT JOIN categories_comptables c3 ON c1.categorie_complementaire_id = c3.id
-                    WHERE c1.utilisateur_id = %s
+                    WHERE p.utilisateur_id = %s
                     ORDER BY c1.numero
                     """
                     cursor.execute(query, (utilisateur_id,))
@@ -6487,7 +6487,6 @@ class CategorieComptable:
                         c1.id, c1.numero, c1.nom, c1.parent_id, c1.type_compte,
                         c1.compte_systeme, c1.compte_associe, c1.type_tva, c1.actif,
                         c1.categorie_complementaire_id,
-                        c1.type_ecriture_complementaire,
                         c2.numero as parent_numero, c2.nom as parent_nom,
                         c3.numero as categorie_complementaire_numero,
                         c3.nom as categorie_complementaire_nom
