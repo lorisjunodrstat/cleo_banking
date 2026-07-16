@@ -6272,32 +6272,32 @@ class PlanComptable:
 
     def get_plan_with_categories(self, plan_id: int, utilisateur_id: int) -> Optional[Dict]:
     """Récupère un plan + ses catégories"""
-    try:
-        with self.db.get_cursor() as cursor:
-            # 1. Récupérer et vérifier que le plan appartient à l'utilisateur
-            cursor.execute("""
-                SELECT * FROM plans_comptables
-                WHERE id = %s AND utilisateur_id = %s
-            """, (plan_id, utilisateur_id))
-            plan = cursor.fetchone()
-            if not plan:
-                return None
+        try:
+            with self.db.get_cursor() as cursor:
+                # 1. Récupérer et vérifier que le plan appartient à l'utilisateur
+                cursor.execute("""
+                    SELECT * FROM plans_comptables
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (plan_id, utilisateur_id))
+                plan = cursor.fetchone()
+                if not plan:
+                    return None
 
-            # 2. Récupérer les catégories liées (sans le filtre utilisateur_id sur la table 'c')
-            cursor.execute("""
-                SELECT c.*
-                FROM plan_categorie pc
-                JOIN categories_comptables c ON pc.categorie_id = c.id
-                WHERE pc.plan_id = %s
-                ORDER BY c.numero
-            """, (plan_id,)) # 🔴 Un seul paramètre ici maintenant !
-            
-            plan['categories'] = cursor.fetchall()
-            return plan
-            
-    except Exception as e:
-        logger.error(f"Erreur plan + catégories: {e}")
-        return None
+                # 2. Récupérer les catégories liées (sans le filtre utilisateur_id sur la table 'c')
+                cursor.execute("""
+                    SELECT c.*
+                    FROM plan_categorie pc
+                    JOIN categories_comptables c ON pc.categorie_id = c.id
+                    WHERE pc.plan_id = %s
+                    ORDER BY c.numero
+                """, (plan_id,)) # 🔴 Un seul paramètre ici maintenant !
+                
+                plan['categories'] = cursor.fetchall()
+                return plan
+                
+        except Exception as e:
+            logger.error(f"Erreur plan + catégories: {e}")
+            return None
 
     def add_categorie_to_plan(self, plan_id: int, categorie_id: int, utilisateur_id: int) -> bool:
         """Ajoute une catégorie à un plan"""
