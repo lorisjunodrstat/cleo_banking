@@ -3519,33 +3519,28 @@ def import_plan_comptable_csv():
             csv_input = csv_mod.reader(stream)
             # Sauter l'en-tête
             next(csv_input)
-            connection = g.db_manager.get_connection()
-            cursor = connection.cursor()
-            
-            # Vider la table existante
-            cursor.execute("DELETE FROM categories_comptables")
-            
-            # Insérer les nouvelles données
-            for row in csv_input:
-                if len(row) >= 9:  # Mise à jour : 9 colonnes au minimum
-                    cursor.execute("""
-                        INSERT INTO categories_comptables 
-                        (numero, nom, parent_id, type_compte, compte_systeme, compte_associe, type_tva, categorie_complementaire_id, type_ecriture_complementaire, actif)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (
-                        row[0], row[1], 
-                        int(row[2]) if row[2] else None,  # parent_id (ancien groupe)
-                        row[3], 
-                        row[4] if row[4] else None, 
-                        row[5] if row[5] else None, 
-                        row[6] if row[6] else None,
-                        int(row[7]) if row[7] and row[7].strip() != '' else None,  # categorie_complementaire_id
-                        row[8] if row[8] and row[8].strip() != '' else None,       # type_ecriture_complementaire
-                        True
-                    ))
-            connection.commit()
-            cursor.close()
-            connection.close()
+            with g.db_manager.get_cursor() as cursor:
+                # Vider la table existante
+                cursor.execute("DELETE FROM categories_comptables")
+                
+                # Insérer les nouvelles données
+                for row in csv_input:
+                    if len(row) >= 9:
+                        cursor.execute("""
+                            INSERT INTO categories_comptables 
+                            (numero, nom, parent_id, type_compte, compte_systeme, compte_associe, type_tva, categorie_complementaire_id, type_ecriture_complementaire, actif)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (
+                            row[0], row[1], 
+                            int(row[2]) if row[2] else None,
+                            row[3], 
+                            row[4] if row[4] else None, 
+                            row[5] if row[5] else None, 
+                            row[6] if row[6] else None,
+                            int(row[7]) if row[7] and row[7].strip() != '' else None,
+                            row[8] if row[8] and row[8].strip() != '' else None,
+                            True
+                        ))
             flash('Plan comptable importé avec succès depuis le CSV', 'success')
         else:
             flash('Format de fichier non supporté. Veuillez uploader un fichier CSV.', 'danger')
