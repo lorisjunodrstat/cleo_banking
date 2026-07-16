@@ -1,336 +1,336 @@
+﻿1,Actifs,,Groupe,ASSETS,,,,,True
+10,Actifs circulants,1,Groupe,CURRENT_ASSETS,,,,,True
+100,Trésorerie,10,Groupe,ACCOUNTS_RECEIVABLE,,,,,True
+1000,Caisse Caisse CHF,100,Actif,,OUI,,,,True
+1001,Caisse Porte-monnaie CHF,100,Actif,,OUI,,,,True
+1020,Banque Postfinance CHF (PostFinance AG),100,Actif,,OUI,,,,True
+1021,Concardis,100,Actif,,,,,,True
+1026,Bons Cadeaux,100,Actif,,,,,,True
+1027,Eat.ch,100,Actifs,sales_tax,,,,,True
+1028,RealDeals,100,Actif,,,,,,True
+1029,Banque,100,Actif,BANK,,,,,True
+109,Compte de transfert,10,Groupe,,,,,,True
+1090,Compte de transfert,109,Actif,,,,,,True
+1091,Compte de passage salaires,109,Actif,,,,,,True
+1099,Compte d'attente pour des montants inexpliqués,109,Actif,,,,,,True
+110,Créances résultant de la vente de biens et de prestations de services (débiteurs),10,Groupe,,,,,,True
+1100,Créances résultant de la vente de biens et de prestations de services (débiteurs),110,Actif,DEBTOR,,,,,True
+1119,Corrections de la valeur des ventes de biens et de prestations de service (ducroire),110,Actif,,,,,,True
+114,Autres créances à court terme,10,Groupe,,,,,,True
+1170,Impôt préalable: TVA sur matériel marchandises prestations et énergie,114,Actif,TAX_PRE_MATERIAL,,,,,True
+1171,Impôt préalable: TVA sur investissements et autres charges cl. 1/5-8,114,Actif,TAX_PRE_INVESTMENT,,,,,True
+1172,Compensation impôt préalable selon méthode de décompte,114,Actif,TRANSITORY_TAX_ACCOUNT_PRE,,,,,True
+1173,Réduction de l'impôt préalable,114,Actif,TAX_PRE_TAX_CUTS,,,,,True
+1174,Correction de l'impôt préalable,114,Actif,TAX_PRE_TAX_CORRECTION,,,,,True
+1175,Décompte TVA,114,Actif,,,,,,True
+1183,Compte courant assurance-accidents,114,Actif,,,,,,True
+1184,Compte courant indemnités journalières,114,Actif,,,,,,True
+1188,Compte courant impôt à la source,114,Actif,,,,,,True
+1190,Avoirs WIR,114,Actif,,,,,,True
+1192,Acomptes versés,114,Actif,,,,,,True
+120,Stocks et prestations de services non facturées,10,Groupe,,,,,,True
+1200,Marchandises commerciales,120,Actif,,,,,,True
+1208,Acomptes pour marchandises commerciales,120,Actif,,,,,,True
+1280,Prestations non facturées,120,Actif,,,,,,True
+1287,Variations de stock des prestations non facturées,120,Actif,,,,,,True
+130,Actifs de régularisation,10,Groupe,,,,,,True
+1300,Charges payées d'avance (TA),130,Actif,,,,,,True
+1301,Produits à recevoir (TA),130,Actif,,,,,,True
+14,Actifs immobilisés,1,Groupe,,,,,,True
+150,Immobilisations corporelles meubles,14,Groupe,,,,,,True
+1500,Machines et appareils,150,Actif,,,,,,True
+1510,Mobilier et installations,150,Actif,,,,,,True
+1511,Installations/équipements d'ateliers,150,Actif,,,,,,True
+1513,Mobilier de bureau,150,Actif,,,,,,True
+1520,Machines de bureau,150,Actif,,,,,,True
+1521,Informatique,150,Actif,,,,,,True
+1530,Véhicules,150,Actif,,,,,,True
+1540,Instruments et outillage,150,Actif,,,,,,True
+1550,Installations de stockage,150,Actif,,,,,,True
+170,Immobilisations incorporelles,1,Actif,,,,,,True
+1770,Goodwill,170,Actif,,,,,,True
+2,Passifs,Groupe,LIABILITIES,,,,,,True
+20,Capitaux étrangers à court terme,2,Groupe,,,,,,True
+200,Dettes résultant de l'achat de biens et de prestations de services,20,Groupe,,,,,,True
+2000,Dettes résultant de l'achat de biens et de prestations de services (créanciers),200,Passif,CREDITOR,,,,,True
+2030,Acomptes reçus de tiers,200,Passif,CUSTOMER_CREDIT_BALANCE,,,,,True
+210,Dettes à court terme portant intérêt,20,Groupe,,,,,,True
+2100,Compte courant,210,Passif,,,,,,True
+2107,Emprunts,210,Passif,,,,,,True
+2111,Dettes envers les sociétés de virement (WIR),210,Passif,,,,,,True
+220,Autres dettes à court terme,20,Groupe,,,,,,True
+2200,TVA due (taxe sur les ventes),2200,Passif,TAX_SALES,,,,,True
+2201,Décompte TVA,2200,Passif,SETTLEMENT_ACCOUNT_VAT,,,,,True
+2202,Compensation TVA due selon méthode de décompte,2200,Passif,TRANSITORY_TAX_ACCOUNT_SALES,,,,,True
+2203,Impôt sur les acquisitions,2200,Passif,REGARDS_TAX,,,,,True
+2206,Impôt anticipé,2200,Passif,,,,,,True
+2270,Compte courant institution de prévoyance,2200,Passif,,,,,,True
+2271,Compte courant AVS AI APG AC,200,Passif,,,,,,True
+2272,Compte courant CAF/CA,2200,Passif,,,,,,True
+2273,Compte courant assurance-accidents,2200,Passif,,,,,,True
+2274,Compte courant indemnités journalières,2200,Passif,,,,,,True
+2279,Compte courant impôt à la source,2200,Passif,,,,,,True
+230,Passifs de régularisation et provisions à court terme,20,Groupe,,,,,,True
+2300,Charges à payer (TP),230,Passif,,,,,,True
+2301,Produits encaissés d'avance (TP),230,Passif,,,,,,True
+2391,Autres provisions à court terme,230,Passif,,,,,,True
+24,Capitaux étrangers à long terme,2,Groupe,,,,,,True
+240,Dettes à long terme portant intérêt,24,Groupe,,,,,,True
+2400,Emprunts,240,Passif,,,,,,True
+250,Autres dettes à long terme,24,Groupe,,,,,,True
+2500,Dettes envers des tiers,250,Passif,,,,,,True
+260,Provisions et postes analogues prévus par la loi,24,Groupe,,,,,,True
+2630,Provisions pour travaux de garantie,260,Passif,,,,,,True
+28,Capitaux propres (raison individuelle),2,Groupe,,,,,,True
+280,Capital propre au début de l'exercice,28,Groupe,,,,,,True
+2800,Capital propre au début de l'exercice,280,Passif,,,,,,True
+282,Apports en capital et retraits,28,Groupe,,,,,,True
+2820,Apports en capital et retraits,282,Passif,,,,,,True
+285,Privé,28,Groupe,,,,,,True
+2850,Retraits en espèces,285,Passif,,,,,,True
+2851,Prestations en nature,285,Passif,,,,,,True
+2852,Part privée pour charges d'exploitation,285,Passif,,,,,,True
+2853,Valeur locative de l'appartement privé,285,Passif,,,,,,True
+2854,Primes d'assurance privées,285,Passif,,,,,,True
+2855,Cotisations privées à titre de prévoyance,285,Passif,,,,,,True
+2856,Impôts privés,285,Passif,,,,,,True
+289,Bénéfices ou pertes de l'exercice,28,Groupe,,,,,,True
+290,Réserves et bénéfice reporté ou perte net,20,Groupe,,,,,,True
+2979,Bénéfice ou perte de l'exercice,2,Passif,,,,,,True
+3,Produits nets des ventes de biens et de prestations de services,Groupe,NET_REVENUES,,,,,,True
+3000,Vente Sushis à l'emporter et à la livraison,3,Revenus,sales_tax,,,,,True
+3001,Vente de Sushi tva 25,3,Revenus,sales_tax,,,,,True
+3002,Vente d'alcool,3,Revenus,sales_tax,,,,,True
+3003,Eat.ch,3,Revenus,sales_tax,,,,,True
+3004,Vente de Sushi realDeals,3,Revenus,sales_tax,,,,,True
+3010,Offre realDeals,3000,Groupe,,,,,,True
+3020,Vente Eat. Ch,3000,Groupe,,,,,,True
+3030,Vente d'alcool,3000,Groupe,,,,,,True
+32,Produits des ventes de marchandises,3,Groupe,,,,,,True
+320,Produits des ventes de marchandises,32,Groupe,,,,,,True
+3200,Ventes de marchandises au comptant,320,Revenus,,,,,,True
+3201,Ventes de marchandises à crédit,320,Revenus,DEFAULT_INCOME,,,,,True
+3207,Ventes de prestations annexes (port et emballage),320,Revenus,,,,,,True
+3208,Variation des créances/débiteurs,320,Revenus,,,,,,True
+3209,Réductions sur les ventes,320,Revenus,,,,,,True
+34,Produits des prestations,3,Groupe,,,,,,True
+340,Produits des prestations,34,Groupe,,,,,,True
+3400,Ventes de prestations au comptant,340,Revenus,,,,,,True
+3401,Ventes de prestations à crédit,340,Revenus,,,,,,True
+3407,Ventes de prestations annexes d'exploitation,340,Revenus,,,,,,True
+3408,Variation des créances/débiteurs,340,Revenus,,,,,,True
+3409,Réductions sur les ventes,340,Revenus,,,,,,True
+36,Autres produits résultant de ventes de biens et de prestations de services,3,Groupe,,,,,,True
+360,Produits annexes résultant de ventes de biens et de prestations de services,36,Groupe,,,,,,True
+3602,Ventes de déchets,360,Revenus,,,,,,True
+3607,Ventes de prestations annexes,360,Revenus,,,,,,True
+368,Autres produits,36,Groupe,,,,,,True
+3680,Vente du commerce,368,Revenus,,,,,,True
+3681,Produit de la Remise de commerce,368,Revenus,pre_tax_material,,,,,True
+3683,Produit de la Remise de commerce,368,Actif,pre_tax_material,,,,,True
+38,Déductions sur les ventes,3,Groupe,,,,,,True
+3800,Escomptes,38,Revenus,INCOME_REDUCTION,,,,,True
+3801,Rabais et réductions de prix,38,Revenus,,,,,,True
+3802,Remises,38,Revenus,,,,,,True
+3803,Provisions sur la vente,38,Revenus,,,,,,True
+3804,Frais d'encaissement,38,Revenus,,,,,,True
+3805,Pertes sur clients variation du ducroire,38,Revenus,,,,,,True
+3806,Différences de taux de change,38,Revenus,,,,,,True
+3809,TVA Taux de la dette fiscale nette,38,Revenus,,,,,,True
+4,Charges de matériel biens marchands prestations et énergie,Groupe,COSTS_MATERIAL,,,,,True,
+4005,Achats de matériel d'emballage,4,Charge,pre_tax_material,,,,,True
+42,Charges de marchandises destinées à la revente,4,Groupe,,,,,,True
+420,Charges de marchandises destinées à la revente,42,Groupe,,,,,,True
+4200,Achats de marchandises commerciales,420,Charge,DEFAULT_EXPENSE,,,,,True
+4201,Achat de marchandise - poisson,420,Charge,pre_tax_material,,,,,True
+4202,Achat de marchandise - boissons,420,Charge,pre_tax_material,,,,,True
+4203,Achat de marchandise - alcool,420,Charge,pre_tax_material,,,,,True
+4205,Achats de matériel d'emballage,420,Charge,,,,,,True
+427,Charges directes d'achat sur marchandises,42,Groupe,,,,,,True
+4270,Frets à l'achat,427,Charge,,,,,,True
+44,Charge pour prestations acquises,4,Groupe,,,,,,True
+440,Charge pour prestations acquises (secteur A),44,Groupe,,,,,,True
+4400,Charges pour prestations de services,440,Charge,,,,,,True
+4407,Charges directes d'achat,440,Charge,,,,,,True
+4409,Déductions obtenues sur achats,440,Charge,,,,,,True
+447,Charges directes d'achat pour prestations acquises,44,Groupe,,,,,,True
+4470,Charges directes d'achat sur prestations de tiers,447,Charge,,,,,,True
+46,Autres charges de matériel biens marchands et prestations,4,Groupe,,,,,,True
+4600,Autres charges d'exploitation,4,Charge,,,,,,True
+462,Autres achats de marchandises commerciales,46,Groupe,,,,,,True
+4620,Autres charges de marchandises,462,Charge,,,,,,True
+464,Autres charges de prestations,4,Groupe,,,,,,True
+4640,Autres charges de prestations de tiers,464,Charge,,,,,,True
+4641,Frais de la remise de commerce,368,Charge,pre_tax_material,,,,,True
+47,Charges directes d'achat,4,Groupe,,,,,,True
+4700,Frets à l'achat,47,Charge,,,,,,True
+48,Variation des stocks et perte de matériel/marchandises,4,Groupe,,,,,,True
+480,Variation de stocks matériel et marchandises,48,Groupe,,,,,,True
+4800,Variation de stocks marchandises,480,Charge,,,,,,True
+49,Déductions obtenues sur achats,4,Groupe,,,,,,True
+4900,Escomptes,49,Charge,EXPENSE_REDUCTION,,,,,True
+4901,Rabais et réductions de prix,49,Charge,,,,,,True
+4902,Remises,49,Charge,,,,,,True
+4903,Commissions d'achats,49,Charge,,,,,,True
+4906,Différences de taux de change,49,Charge,,,,,,True
+5,Charges de personnel,Groupe,PERSONNEL_EXPENSES,,,,,True,
+50,Charges de personnel,5,Groupe,,,,,,True
+500,Charges salariales,50,Groupe,,,,,,True
+5000,Salaires,500,Charge,,,,,,True
+5001,Indemnités,500,Charge,,,,,,True
+5002,Participations aux bénéfices,500,Charge,,,,,,True
+5003,Commissions,500,Charge,,,,,,True
+5005,Prestations des assurances sociales,500,Charge,,,,,,True
+5008,Autres charges de personnel,500,Charge,,,,,,True
+520,Charges salariales,5,Groupe,,,,,,True
+5200,Salaire de base,50,Charge,,,,,,True
+527,Charges sociales,5,Groupe,,,,,,True
+5270,AVS/AI/APG/AC,527,Charge,,,,,,True
+5272,Cotisation LPP,527,Charge,,,,,,True
+5273,Cotisation LAA,527,Charge,,,,,,True
+5274,Cotisation IJM,527,Charge,,,,,,True
+57,Charges sociales,5,Groupe,,,,,,True
+5710,Cotisation CAF,57,Charge,,,,,,True
+5711,Cotisation CA,57,Charge,,,,,,True
+5790,Impôt à la source,57,Charge,,,,,,True
+58,Autres charges de personnel,5,Groupe,,,,,,True
+580,Recrutement,58,Groupe,,,,,,True
+5800,Recherche de personnel,580,Charge,,,,,,True
+5801,Commissions pour recherche de personnel,580,Charge,,,,,,True
+581,Formation et perfectionnement continus,58,Groupe,,,,,,True
+5810,Formation continue,581,Charge,,,,,,True
+5811,Formation continue,581,Charge,,,,,,True
+582,Indemnités effectives,58,Groupe,,,,,,True
+5820,Frais de voyage,582,Charge,,,,,,True
+5821,Frais de repas,582,Charge,,,,,,True
+5822,Frais de logement,582,Charge,,,,,,True
+5832,Indemnités forfaitaires,582,Charge,,,,,,True
+588,Autres charges de personnel,58,Groupe,,,,,,True
+5880,Autres frais de personnel,588,Charge,,,,,,True
+589,Charges de personnel comme prélèvements à titre privé,58,Groupe,,,,,,True
+5890,Compensation part privée,589,Charge,,,,,,True
+5891,Déduction part privée,589,Charge,,,,,,True
+6,Autres charges d’exploitation amortissements ajustements résultat financier,Groupe,OPERATING_EXPENSES,,,,,True,
+60,Charges de locaux,6,Groupe,,,,,,True
+600,Loyers pour locaux de tiers,60,Groupe,,,,,,True
+6000,Loyer,600,Charge,,,,,,True
+601,Loyers pour locaux propres,60,Groupe,,,,,,True
+6010,Loyer pour place de parc,60,Charge,,,,,,True
+603,Coûts supplémentaires,60,Groupe,,,,,,True
+6030,Charges accessoires des usines,603,Charge,,,,,,True
+604,Nettoyage,60,Groupe,,,,,,True
+6040,Nettoyage des locaux,604,Charge,,,,,,True
+6042,Matériel de nettoyage,604,Charge,pre_tax_material,,,,,True
+605,Entretien des locaux commerciaux,60,Groupe,,,,,,True
+6050,Entretien des locaux,605,Charge,,,,,,True
+609,Charges pour locaux comme prélèvements à titre privé,60,Groupe,,,,,,True
+6090,Charges pour locaux comme prélèvements à titre privé,609,Charge,,,,,,True
+61,Entretien réparations remplacements (ERR),6,Groupe,,,,,,True
+6100,ERR machines et appareils du production,61,Charge,,,,,,True
+6101,ERR mobilier et installations,61,Charge,,,,,,True
+6102,Entretien réparation ou remplacement d'outils matériel,61,Charge,pre_tax_material,,,,,True
+6130,ERR mobilier de bureau,61,Charge,,,,,,True
+62,Charges de véhicules et de transport,6,Groupe,,,,,,True
+620,Charges de véhicules,62,Groupe,,,,,,True
+6200,Réparations service nettoyage,620,Charge,,,,,,True
+6210,Carburants,620,Charge,,,,,,True
+6220,Assurances,620,Charge,,,,,,True
+6230,Droits taxes autorisations,620,Charge,,,,,,True
+6260,Véhicules en leasing,620,Charge,,,,,,True
+6264,Location de véhicules,620,Charge,,,,,,True
+6270,Charges de véhicules comme prélèvements à titre privé,620,Charge,,,,,,True
+628,Charges de transport,62,Groupe,,,,,,True
+6280,Frets,628,Charge,,,,,,True
+63,Assurances-choses droits taxes autorisations,6,Groupe,,,,,,True
+630,Assurance-choses,63,Groupe,,,,,,True
+6300,Primes d'assurances pour dommages naturels bris de glace vol,630,Charge,,,,,,True
+6310,Primes d'assurance responsabilité civile et garantie,63,Charge,,,,,,True
+636,Droits taxes autorisations,63,Groupe,,,,,,True
+6360,Droits taxes autorisations,636,Charge,,,,,,True
+64,Charges d'énergie et évacuation des déchets,6,Groupe,,,,,,True
+6400,Electricité huile de chauffage eau,6400,Charge,,,,,,True
+646,Charges évacuation des déchets,64,Groupe,,,,,,True
+6460,Evacuation des déchets et déchets spéciaux,646,Charge,,,,,,True
+65,Charges d'administration et d'informatique,6,Groupe,,,,,,True
+650,Charges d'administration,65,Groupe,,,,,,True
+6500,Matériel de bureau,650,Charge,pre_tax_material,,,,,True
+6503,Littérature technique Journaux magazines,650,Charge,,,,,,True
+6510,Téléphone,650,Charge,,,,,,True
+6512,Internet,650,Charge,,,,,,True
+6513,Ports,650,Charge,,,,,,True
+6520,Cotisations,650,Charge,,,,,,True
+6530,Frais de tenue de la comptabilité,650,Charge,,,,,,True
+6551,Frais de recouvrement,650,Charge,,,,,,True
+6559,Autres charges d'administration,650,Charge,,,,,,True
+657,Charges d'informatique,65,Groupe,,,,,,True
+6570,Leasing et location d'équipements et de logiciels,657,Charge,,,,,,True
+66,Charges publicitaires,6,Groupe,,,,,,True
+6600,Annonces publicitaires,6000,Charge,,,,,,True
+661,Imprimés publicitaires matériel publicitaire articles publicitaires échantillons,6,Groupe,,,,,,True
+6610,Imprimés et matériel publicitaires,661,Charge,,,,,,True
+662,Vitrines décoration foires expositions,6,Groupe,,,,,,True
+6620,Vitrines décoration,662,Charge,,,,,,True
+6621,Foires expositions,662,Charge,,,,,,True
+664,Frais de voyage suivi de la clientèle,6,Groupe,,,,,,True
+6640,Frais de voyage suivi de la clientèle,664,Charge,,,,,,True
+666,Publicité sponsoring,6,Groupe,,,,,,True
+6660,Publicité sponsoring,666,Charge,,,,,,True
+667,Relations publiques,6,Groupe,,,,,,True
+6670,Manifestations en faveur de la clientèle,667,Charge,,,,,,True
+67,Autres charges d'exploitation,6,Groupe,,,,,,True
+670,Informations économiques poursuites,67,Groupe,,,,,,True
+6700,Informations économiques poursuites,670,Charge,,,,,,True
+68,Amortissements et ajustements de la valeur sur actifs immobilisés,6,Groupe,ASSET_DEPRECATION,,,,,True
+682,Amortissements et ajustements de la valeur sur actifs meubles,68,Groupe,,,,,,True
+6820,Amortissement et ajustement de valeur sur machines et appareils,682,Charge,,,,,,True
+6821,Amortissement et ajustement de valeur sur mobilier et installations,682,Charge,,,,,,True
+6823,Amortissement et ajustement de valeur sur véhicules,682,Charge,,,,,,True
+6824,Amortissement et ajustement de valeur sur outillage et équipements,682,Charge,,,,,,True
+689,Avantage/Inconvénient Taux de la dette fiscale nette,68,Groupe,,,,,,True
+6899,Avantage/Inconvénient Taux de la dette fiscale nette,689,Charge,,,,,,True
+69,Charges et produits financiers,6,Groupe,FINANCIAL_INCOME,,,,,True
+690,Charges financières,69,Groupe,,,,,,True
+6900,Charges financières pour crédit bancaire,690,Charge,,,,,,True
+6901,Charges financières pour emprunts,690,Charge,,,,,,True
+6940,Frais bancaires,690,Charge,,,,,,True
+6945,Différence d'arrondi clients/fournisseurs,690,Charge,TAX_ROUNDING_DIFFS,,,,,True
+6949,Pertes de cours,690,Charge,CURRENCY_EXPENSE,,,,,True
+695,Produits financiers,69,Groupe,,,,,,True
+6950,Produits financiers sur avoirs bancaires,695,Revenus,,,,,,True
+6990,Produits d'intérêts moratoires et d'escompte,695,Revenus,,,,,,True
+6999,Bénéfices de change,695,Revenus,CURRENCY_INCOME,,,,,True
+7,Résultat des activités annexes d'exploitation,Groupe,,,,,,,True
+70,Produits accessoires,7,Groupe,,,,,,True
+700,Produits accessoires A,70,Groupe,,,,,,True
+7000,Produits bruts,700,Revenus,,,,,,True
+8,Résultats exceptionnels et hors exploitation,Groupe,EXTRAORDINARY_INCOME,,,,,True,
+80,Résultats hors exploitation,8,Groupe,NON_COMPANY_INCOME,,,,,True
+800,Charges hors exploitation,80,Groupe,,,,,,True
+8000,Charges hors exploitation,800,Charge,,,,,,True
+810,Produits hors exploitation,80,Groupe,,,,,,True
+8100,Produits hors exploitation,810,Revenus,,,,,,True
+85,Charges et produits exceptionnels uniques ou hors période ,8,Groupe,OUT_OF_PERIOD_INCOME,,,,,True
+850,Charges et produits exceptionnels,85,Groupe,,,,,,True
+8500,Dotations exceptionnelles aux réserves,850,Revenus,,,,,,True
+860,Charges et produits uniques,85,Groupe,,,,,,True
+8600,Charges uniques,860,Charge,,,,,,True
+8610,Produits uniques,860,Revenus,,,,,,True
+870,Charges et produits hors période,85,Groupe,,,,,,True
+8709,Autres charges hors période,870,Charge,,,,,,True
+8719,Autres produits hors période,870,Revenus,,,,,,True
+89,Impôts directs,8,Groupe,,,,,,True
+8900,Impôts cantonaux et communaux,89,Charge,,,,,,True
+8901,Impôts fédéraux directs,89,Charge,,,,,,True
+9,Clôture,Groupe,ACCOUNTS_CLOSING,,,,,True,
+9000,Compte de résultat,9,Complet,PROFIT_AND_LOSS,,,,,True
+9045,Amortissements et corrections de la valeur des immobilisations,9,Charge,,,,,,True
+9050,Résultats d'exploitations avant amortissements et corrections de valeur,9,Charge,,,,,,True
+9060,Résultats d'exploitation avant impôts (EBT),9,Charge,,,,,,True
+9100,Bilan d'ouverture,9,Complet,OPENING_BALANCE_SHEET,,,,,True
+9101,Bilan de clôture,9,Complet,CLOSING_BALANCE_SHEET,,,,,True
+92,Affectation des bénéfices,9,Groupe,,,,,,True
+9200,Bénéfices ou pertes de l'exercice,92,Complet,ANNUAL_PROFIT,,,,,True
+99,Comptes auxiliaires Grands livres auxiliaires,9,Groupe,,,,,,True
+9900,Corrections,99,Complet,CORRECTION,,,,,True
+9901,Transfert de solde,9,Complet,BALANCE_TAKEOVER,,,,,True
 
-1;Actifs;;Groupe;ASSETS;;;;;True
-10;Actifs circulants;1;Groupe;CURRENT_ASSETS;;;;;True
-100;Trésorerie;10;Groupe;ACCOUNTS_RECEIVABLE;;;;;True
-1000;Caisse Caisse CHF;100;Actif;;OUI;;;;True
-1001;Caisse Porte-monnaie CHF;100;Actif;;OUI;;;;True
-1020;Banque Postfinance CHF (PostFinance AG);100;Actif;;OUI;;;;True
-1021;Concardis;100;Actif;;;;;;True
-1026;Bons Cadeaux;100;Actif;;;;;;True
-1027;Eat.ch;100;Actifs;sales_tax;;;;;True
-1028;RealDeals;100;Actif;;;;;;True
-1029;Banque;100;Actif;BANK;;;;;True
-109;Compte de transfert;10;Groupe;;;;;;True
-1090;Compte de transfert;109;Actif;;;;;;True
-1091;Compte de passage salaires;109;Actif;;;;;;True
-1099;Compte d'attente pour des montants inexpliqués;109;Actif;;;;;;True
-110;Créances résultant de la vente de biens et de prestations de services (débiteurs);10;Groupe;;;;;;True
-1100;Créances résultant de la vente de biens et de prestations de services (débiteurs);110;Actif;DEBTOR;;;;;True
-1119;Corrections de la valeur des ventes de biens et de prestations de service (ducroire);110;Actif;;;;;;True
-114;Autres créances à court terme;10;Groupe;;;;;;True
-1170;Impôt préalable: TVA sur matériel marchandises prestations et énergie;114;Actif;TAX_PRE_MATERIAL;;;;;True
-1171;Impôt préalable: TVA sur investissements et autres charges cl. 1/5-8;114;Actif;TAX_PRE_INVESTMENT;;;;;True
-1172;Compensation impôt préalable selon méthode de décompte;114;Actif;TRANSITORY_TAX_ACCOUNT_PRE;;;;;True
-1173;Réduction de l'impôt préalable;114;Actif;TAX_PRE_TAX_CUTS;;;;;True
-1174;Correction de l'impôt préalable;114;Actif;TAX_PRE_TAX_CORRECTION;;;;;True
-1175;Décompte TVA;114;Actif;;;;;;True
-1183;Compte courant assurance-accidents;114;Actif;;;;;;True
-1184;Compte courant indemnités journalières;114;Actif;;;;;;True
-1188;Compte courant impôt à la source;114;Actif;;;;;;True
-1190;Avoirs WIR;114;Actif;;;;;;True
-1192;Acomptes versés;114;Actif;;;;;;True
-120;Stocks et prestations de services non facturées;10;Groupe;;;;;;True
-1200;Marchandises commerciales;120;Actif;;;;;;True
-1208;Acomptes pour marchandises commerciales;120;Actif;;;;;;True
-1280;Prestations non facturées;120;Actif;;;;;;True
-1287;Variations de stock des prestations non facturées;120;Actif;;;;;;True
-130;Actifs de régularisation;10;Groupe;;;;;;True
-1300;Charges payées d'avance (TA);130;Actif;;;;;;True
-1301;Produits à recevoir (TA);130;Actif;;;;;;True
-14;Actifs immobilisés;1;Groupe;;;;;;True
-150;Immobilisations corporelles meubles;14;Groupe;;;;;;True
-1500;Machines et appareils;150;Actif;;;;;;True
-1510;Mobilier et installations;150;Actif;;;;;;True
-1511;Installations/équipements d'ateliers;150;Actif;;;;;;True
-1513;Mobilier de bureau;150;Actif;;;;;;True
-1520;Machines de bureau;150;Actif;;;;;;True
-1521;Informatique;150;Actif;;;;;;True
-1530;Véhicules;150;Actif;;;;;;True
-1540;Instruments et outillage;150;Actif;;;;;;True
-1550;Installations de stockage;150;Actif;;;;;;True
-170;Immobilisations incorporelles;1;Actif;;;;;;True
-1770;Goodwill;170;Actif;;;;;;True
-2;Passifs;Groupe;LIABILITIES;;;;;;True
-20;Capitaux étrangers à court terme;2;Groupe;;;;;;True
-200;Dettes résultant de l'achat de biens et de prestations de services;20;Groupe;;;;;;True
-2000;Dettes résultant de l'achat de biens et de prestations de services (créanciers);200;Passif;CREDITOR;;;;;True
-2030;Acomptes reçus de tiers;200;Passif;CUSTOMER_CREDIT_BALANCE;;;;;True
-210;Dettes à court terme portant intérêt;20;Groupe;;;;;;True
-2100;Compte courant;210;Passif;;;;;;True
-2107;Emprunts;210;Passif;;;;;;True
-2111;Dettes envers les sociétés de virement (WIR);210;Passif;;;;;;True
-220;Autres dettes à court terme;20;Groupe;;;;;;True
-2200;TVA due (taxe sur les ventes);2200;Passif;TAX_SALES;;;;;True
-2201;Décompte TVA;2200;Passif;SETTLEMENT_ACCOUNT_VAT;;;;;True
-2202;Compensation TVA due selon méthode de décompte;2200;Passif;TRANSITORY_TAX_ACCOUNT_SALES;;;;;True
-2203;Impôt sur les acquisitions;2200;Passif;REGARDS_TAX;;;;;True
-2206;Impôt anticipé;2200;Passif;;;;;;True
-2270;Compte courant institution de prévoyance;2200;Passif;;;;;;True
-2271;Compte courant AVS AI APG AC;200;Passif;;;;;;True
-2272;Compte courant CAF/CA;2200;Passif;;;;;;True
-2273;Compte courant assurance-accidents;2200;Passif;;;;;;True
-2274;Compte courant indemnités journalières;2200;Passif;;;;;;True
-2279;Compte courant impôt à la source;2200;Passif;;;;;;True
-230;Passifs de régularisation et provisions à court terme;20;Groupe;;;;;;True
-2300;Charges à payer (TP);230;Passif;;;;;;True
-2301;Produits encaissés d'avance (TP);230;Passif;;;;;;True
-2391;Autres provisions à court terme;230;Passif;;;;;;True
-24;Capitaux étrangers à long terme;2;Groupe;;;;;;True
-240;Dettes à long terme portant intérêt;24;Groupe;;;;;;True
-2400;Emprunts;240;Passif;;;;;;True
-250;Autres dettes à long terme;24;Groupe;;;;;;True
-2500;Dettes envers des tiers;250;Passif;;;;;;True
-260;Provisions et postes analogues prévus par la loi;24;Groupe;;;;;;True
-2630;Provisions pour travaux de garantie;260;Passif;;;;;;True
-28;Capitaux propres (raison individuelle);2;Groupe;;;;;;True
-280;Capital propre au début de l'exercice;28;Groupe;;;;;;True
-2800;Capital propre au début de l'exercice;280;Passif;;;;;;True
-282;Apports en capital et retraits;28;Groupe;;;;;;True
-2820;Apports en capital et retraits;282;Passif;;;;;;True
-285;Privé;28;Groupe;;;;;;True
-2850;Retraits en espèces;285;Passif;;;;;;True
-2851;Prestations en nature;285;Passif;;;;;;True
-2852;Part privée pour charges d'exploitation;285;Passif;;;;;;True
-2853;Valeur locative de l'appartement privé;285;Passif;;;;;;True
-2854;Primes d'assurance privées;285;Passif;;;;;;True
-2855;Cotisations privées à titre de prévoyance;285;Passif;;;;;;True
-2856;Impôts privés;285;Passif;;;;;;True
-289;Bénéfices ou pertes de l'exercice;28;Groupe;;;;;;True
-290;Réserves et bénéfice reporté ou perte net;20;Groupe;;;;;;True
-2979;Bénéfice ou perte de l'exercice;2;Passif;;;;;;True
-3;Produits nets des ventes de biens et de prestations de services;Groupe;NET_REVENUES;;;;;;True
-3000;Vente Sushis à l'emporter et à la livraison;3;Revenus;sales_tax;;;;;True
-3001;Vente de Sushi tva 25;3;Revenus;sales_tax;;;;;True
-3002;Vente d'alcool;3;Revenus;sales_tax;;;;;True
-3003;Eat.ch;3;Revenus;sales_tax;;;;;True
-3004;Vente de Sushi realDeals;3;Revenus;sales_tax;;;;;True
-3010;Offre realDeals;3000;Groupe;;;;;;True
-3020;Vente Eat. Ch;3000;Groupe;;;;;;True
-3030;Vente d'alcool;3000;Groupe;;;;;;True
-32;Produits des ventes de marchandises;3;Groupe;;;;;;True
-320;Produits des ventes de marchandises;32;Groupe;;;;;;True
-3200;Ventes de marchandises au comptant;320;Revenus;;;;;;True
-3201;Ventes de marchandises à crédit;320;Revenus;DEFAULT_INCOME;;;;;True
-3207;Ventes de prestations annexes (port et emballage);320;Revenus;;;;;;True
-3208;Variation des créances/débiteurs;320;Revenus;;;;;;True
-3209;Réductions sur les ventes;320;Revenus;;;;;;True
-34;Produits des prestations;3;Groupe;;;;;;True
-340;Produits des prestations;34;Groupe;;;;;;True
-3400;Ventes de prestations au comptant;340;Revenus;;;;;;True
-3401;Ventes de prestations à crédit;340;Revenus;;;;;;True
-3407;Ventes de prestations annexes d'exploitation;340;Revenus;;;;;;True
-3408;Variation des créances/débiteurs;340;Revenus;;;;;;True
-3409;Réductions sur les ventes;340;Revenus;;;;;;True
-36;Autres produits résultant de ventes de biens et de prestations de services;3;Groupe;;;;;;True
-360;Produits annexes résultant de ventes de biens et de prestations de services;36;Groupe;;;;;;True
-3602;Ventes de déchets;360;Revenus;;;;;;True
-3607;Ventes de prestations annexes;360;Revenus;;;;;;True
-368;Autres produits;36;Groupe;;;;;;True
-3680;Vente du commerce;368;Revenus;;;;;;True
-3681;Produit de la Remise de commerce;368;Revenus;pre_tax_material;;;;;True
-3683;Produit de la Remise de commerce;368;Actif;pre_tax_material;;;;;True
-38;Déductions sur les ventes;3;Groupe;;;;;;True
-3800;Escomptes;38;Revenus;INCOME_REDUCTION;;;;;True
-3801;Rabais et réductions de prix;38;Revenus;;;;;;True
-3802;Remises;38;Revenus;;;;;;True
-3803;Provisions sur la vente;38;Revenus;;;;;;True
-3804;Frais d'encaissement;38;Revenus;;;;;;True
-3805;Pertes sur clients variation du ducroire;38;Revenus;;;;;;True
-3806;Différences de taux de change;38;Revenus;;;;;;True
-3809;TVA Taux de la dette fiscale nette;38;Revenus;;;;;;True
-4;Charges de matériel biens marchands prestations et énergie;Groupe;COSTS_MATERIAL;;;;;True
-4005;Achats de matériel d'emballage;4;Charge;pre_tax_material;;;;;True
-42;Charges de marchandises destinées à la revente;4;Groupe;;;;;;True
-420;Charges de marchandises destinées à la revente;42;Groupe;;;;;;True
-4200;Achats de marchandises commerciales;420;Charge;DEFAULT_EXPENSE;;;;;True
-4201;Achat de marchandise - poisson;420;Charge;pre_tax_material;;;;;True
-4202;Achat de marchandise - boissons;420;Charge;pre_tax_material;;;;;True
-4203;Achat de marchandise - alcool;420;Charge;pre_tax_material;;;;;True
-4205;Achats de matériel d'emballage;420;Charge;;;;;;True
-427;Charges directes d'achat sur marchandises;42;Groupe;;;;;;True
-4270;Frets à l'achat;427;Charge;;;;;;True
-44;Charge pour prestations acquises;4;Groupe;;;;;;True
-440;Charge pour prestations acquises (secteur A);44;Groupe;;;;;;True
-4400;Charges pour prestations de services;440;Charge;;;;;;True
-4407;Charges directes d'achat;440;Charge;;;;;;True
-4409;Déductions obtenues sur achats;440;Charge;;;;;;True
-447;Charges directes d'achat pour prestations acquises;44;Groupe;;;;;;True
-4470;Charges directes d'achat sur prestations de tiers;447;Charge;;;;;;True
-46;Autres charges de matériel biens marchands et prestations;4;Groupe;;;;;;True
-4600;Autres charges d'exploitation;4;Charge;;;;;;True
-462;Autres achats de marchandises commerciales;46;Groupe;;;;;;True
-4620;Autres charges de marchandises;462;Charge;;;;;;True
-464;Autres charges de prestations;4;Groupe;;;;;;True
-4640;Autres charges de prestations de tiers;464;Charge;;;;;;True
-4641;Frais de la remise de commerce;368;Charge;pre_tax_material;;;;;True
-47;Charges directes d'achat;4;Groupe;;;;;;True
-4700;Frets à l'achat;47;Charge;;;;;;True
-48;Variation des stocks et perte de matériel/marchandises;4;Groupe;;;;;;True
-480;Variation de stocks matériel et marchandises;48;Groupe;;;;;;True
-4800;Variation de stocks marchandises;480;Charge;;;;;;True
-49;Déductions obtenues sur achats;4;Groupe;;;;;;True
-4900;Escomptes;49;Charge;EXPENSE_REDUCTION;;;;;True
-4901;Rabais et réductions de prix;49;Charge;;;;;;True
-4902;Remises;49;Charge;;;;;;True
-4903;Commissions d'achats;49;Charge;;;;;;True
-4906;Différences de taux de change;49;Charge;;;;;;True
-5;Charges de personnel;Groupe;PERSONNEL_EXPENSES;;;;;True
-50;Charges de personnel;5;Groupe;;;;;;True
-500;Charges salariales;50;Groupe;;;;;;True
-5000;Salaires;500;Charge;;;;;;True
-5001;Indemnités;500;Charge;;;;;;True
-5002;Participations aux bénéfices;500;Charge;;;;;;True
-5003;Commissions;500;Charge;;;;;;True
-5005;Prestations des assurances sociales;500;Charge;;;;;;True
-5008;Autres charges de personnel;500;Charge;;;;;;True
-520;Charges salariales;5;Groupe;;;;;;True
-5200;Salaire de base;50;Charge;;;;;;True
-527;Charges sociales;5;Groupe;;;;;;True
-5270;AVS/AI/APG/AC;527;Charge;;;;;;True
-5272;Cotisation LPP;527;Charge;;;;;;True
-5273;Cotisation LAA;527;Charge;;;;;;True
-5274;Cotisation IJM;527;Charge;;;;;;True
-57;Charges sociales;5;Groupe;;;;;;True
-5710;Cotisation CAF;57;Charge;;;;;;True
-5711;Cotisation CA;57;Charge;;;;;;True
-5790;Impôt à la source;57;Charge;;;;;;True
-58;Autres charges de personnel;5;Groupe;;;;;;True
-580;Recrutement;58;Groupe;;;;;;True
-5800;Recherche de personnel;580;Charge;;;;;;True
-5801;Commissions pour recherche de personnel;580;Charge;;;;;;True
-581;Formation et perfectionnement continus;58;Groupe;;;;;;True
-5810;Formation continue;581;Charge;;;;;;True
-5811;Formation continue;581;Charge;;;;;;True
-582;Indemnités effectives;58;Groupe;;;;;;True
-5820;Frais de voyage;582;Charge;;;;;;True
-5821;Frais de repas;582;Charge;;;;;;True
-5822;Frais de logement;582;Charge;;;;;;True
-5832;Indemnités forfaitaires;582;Charge;;;;;;True
-588;Autres charges de personnel;58;Groupe;;;;;;True
-5880;Autres frais de personnel;588;Charge;;;;;;True
-589;Charges de personnel comme prélèvements à titre privé;58;Groupe;;;;;;True
-5890;Compensation part privée;589;Charge;;;;;;True
-5891;Déduction part privée;589;Charge;;;;;;True
-6;Autres charges d’exploitation amortissements ajustements résultat financier;Groupe;OPERATING_EXPENSES;;;;;True
-60;Charges de locaux;6;Groupe;;;;;;True
-600;Loyers pour locaux de tiers;60;Groupe;;;;;;True
-6000;Loyer;600;Charge;;;;;;True
-601;Loyers pour locaux propres;60;Groupe;;;;;;True
-6010;Loyer pour place de parc;60;Charge;;;;;;True
-603;Coûts supplémentaires;60;Groupe;;;;;;True
-6030;Charges accessoires des usines;603;Charge;;;;;;True
-604;Nettoyage;60;Groupe;;;;;;True
-6040;Nettoyage des locaux;604;Charge;;;;;;True
-6042;Matériel de nettoyage;604;Charge;pre_tax_material;;;;;True
-605;Entretien des locaux commerciaux;60;Groupe;;;;;;True
-6050;Entretien des locaux;605;Charge;;;;;;True
-609;Charges pour locaux comme prélèvements à titre privé;60;Groupe;;;;;;True
-6090;Charges pour locaux comme prélèvements à titre privé;609;Charge;;;;;;True
-61;Entretien réparations remplacements (ERR);6;Groupe;;;;;;True
-6100;ERR machines et appareils du production;61;Charge;;;;;;True
-6101;ERR mobilier et installations;61;Charge;;;;;;True
-6102;Entretien réparation ou remplacement d'outils matériel;61;Charge;pre_tax_material;;;;;True
-6130;ERR mobilier de bureau;61;Charge;;;;;;True
-62;Charges de véhicules et de transport;6;Groupe;;;;;;True
-620;Charges de véhicules;62;Groupe;;;;;;True
-6200;Réparations service nettoyage;620;Charge;;;;;;True
-6210;Carburants;620;Charge;;;;;;True
-6220;Assurances;620;Charge;;;;;;True
-6230;Droits taxes autorisations;620;Charge;;;;;;True
-6260;Véhicules en leasing;620;Charge;;;;;;True
-6264;Location de véhicules;620;Charge;;;;;;True
-6270;Charges de véhicules comme prélèvements à titre privé;620;Charge;;;;;;True
-628;Charges de transport;62;Groupe;;;;;;True
-6280;Frets;628;Charge;;;;;;True
-63;Assurances-choses droits taxes autorisations;6;Groupe;;;;;;True
-630;Assurance-choses;63;Groupe;;;;;;True
-6300;Primes d'assurances pour dommages naturels bris de glace vol;630;Charge;;;;;;True
-6310;Primes d'assurance responsabilité civile et garantie;63;Charge;;;;;;True
-636;Droits taxes autorisations;63;Groupe;;;;;;True
-6360;Droits taxes autorisations;636;Charge;;;;;;True
-64;Charges d'énergie et évacuation des déchets;6;Groupe;;;;;;True
-6400;Electricité huile de chauffage eau;6400;Charge;;;;;;True
-646;Charges évacuation des déchets;64;Groupe;;;;;;True
-6460;Evacuation des déchets et déchets spéciaux;646;Charge;;;;;;True
-65;Charges d'administration et d'informatique;6;Groupe;;;;;;True
-650;Charges d'administration;65;Groupe;;;;;;True
-6500;Matériel de bureau;650;Charge;pre_tax_material;;;;;True
-6503;Littérature technique Journaux magazines;650;Charge;;;;;;True
-6510;Téléphone;650;Charge;;;;;;True
-6512;Internet;650;Charge;;;;;;True
-6513;Ports;650;Charge;;;;;;True
-6520;Cotisations;650;Charge;;;;;;True
-6530;Frais de tenue de la comptabilité;650;Charge;;;;;;True
-6551;Frais de recouvrement;650;Charge;;;;;;True
-6559;Autres charges d'administration;650;Charge;;;;;;True
-657;Charges d'informatique;65;Groupe;;;;;;True
-6570;Leasing et location d'équipements et de logiciels;657;Charge;;;;;;True
-66;Charges publicitaires;6;Groupe;;;;;;True
-6600;Annonces publicitaires;6000;Charge;;;;;;True
-661;Imprimés publicitaires matériel publicitaire articles publicitaires échantillons;6;Groupe;;;;;;True
-6610;Imprimés et matériel publicitaires;661;Charge;;;;;;True
-662;Vitrines décoration foires expositions;6;Groupe;;;;;;True
-6620;Vitrines décoration;662;Charge;;;;;;True
-6621;Foires expositions;662;Charge;;;;;;True
-664;Frais de voyage suivi de la clientèle;6;Groupe;;;;;;True
-6640;Frais de voyage suivi de la clientèle;664;Charge;;;;;;True
-666;Publicité sponsoring;6;Groupe;;;;;;True
-6660;Publicité sponsoring;666;Charge;;;;;;True
-667;Relations publiques;6;Groupe;;;;;;True
-6670;Manifestations en faveur de la clientèle;667;Charge;;;;;;True
-67;Autres charges d'exploitation;6;Groupe;;;;;;True
-670;Informations économiques poursuites;67;Groupe;;;;;;True
-6700;Informations économiques poursuites;670;Charge;;;;;;True
-68;Amortissements et ajustements de la valeur sur actifs immobilisés;6;Groupe;ASSET_DEPRECATION;;;;;True
-682;Amortissements et ajustements de la valeur sur actifs meubles;68;Groupe;;;;;;True
-6820;Amortissement et ajustement de valeur sur machines et appareils;682;Charge;;;;;;True
-6821;Amortissement et ajustement de valeur sur mobilier et installations;682;Charge;;;;;;True
-6823;Amortissement et ajustement de valeur sur véhicules;682;Charge;;;;;;True
-6824;Amortissement et ajustement de valeur sur outillage et équipements;682;Charge;;;;;;True
-689;Avantage/Inconvénient Taux de la dette fiscale nette;68;Groupe;;;;;;True
-6899;Avantage/Inconvénient Taux de la dette fiscale nette;689;Charge;;;;;;True
-69;Charges et produits financiers;6;Groupe;FINANCIAL_INCOME;;;;;True
-690;Charges financières;69;Groupe;;;;;;True
-6900;Charges financières pour crédit bancaire;690;Charge;;;;;;True
-6901;Charges financières pour emprunts;690;Charge;;;;;;True
-6940;Frais bancaires;690;Charge;;;;;;True
-6945;Différence d'arrondi clients/fournisseurs;690;Charge;TAX_ROUNDING_DIFFS;;;;;True
-6949;Pertes de cours;690;Charge;CURRENCY_EXPENSE;;;;;True
-695;Produits financiers;69;Groupe;;;;;;True
-6950;Produits financiers sur avoirs bancaires;695;Revenus;;;;;;True
-6990;Produits d'intérêts moratoires et d'escompte;695;Revenus;;;;;;True
-6999;Bénéfices de change;695;Revenus;CURRENCY_INCOME;;;;;True
-7;Résultat des activités annexes d'exploitation;Groupe;;;;;;;True
-70;Produits accessoires;7;Groupe;;;;;;True
-700;Produits accessoires A;70;Groupe;;;;;;True
-7000;Produits bruts;700;Revenus;;;;;;True
-8;Résultats exceptionnels et hors exploitation;Groupe;EXTRAORDINARY_INCOME;;;;;True
-80;Résultats hors exploitation;8;Groupe;NON_COMPANY_INCOME;;;;;True
-800;Charges hors exploitation;80;Groupe;;;;;;True
-8000;Charges hors exploitation;800;Charge;;;;;;True
-810;Produits hors exploitation;80;Groupe;;;;;;True
-8100;Produits hors exploitation;810;Revenus;;;;;;True
-85;Charges et produits exceptionnels uniques ou hors période ;8;Groupe;OUT_OF_PERIOD_INCOME;;;;;True
-850;Charges et produits exceptionnels;85;Groupe;;;;;;True
-8500;Dotations exceptionnelles aux réserves;850;Revenus;;;;;;True
-860;Charges et produits uniques;85;Groupe;;;;;;True
-8600;Charges uniques;860;Charge;;;;;;True
-8610;Produits uniques;860;Revenus;;;;;;True
-870;Charges et produits hors période;85;Groupe;;;;;;True
-8709;Autres charges hors période;870;Charge;;;;;;True
-8719;Autres produits hors période;870;Revenus;;;;;;True
-89;Impôts directs;8;Groupe;;;;;;True
-8900;Impôts cantonaux et communaux;89;Charge;;;;;;True
-8901;Impôts fédéraux directs;89;Charge;;;;;;True
-9;Clôture;Groupe;ACCOUNTS_CLOSING;;;;;True
-9000;Compte de résultat;9;Complet;PROFIT_AND_LOSS;;;;;True
-9045;Amortissements et corrections de la valeur des immobilisations;9;Charge;;;;;;True
-9050;Résultats d'exploitations avant amortissements et corrections de valeur;9;Charge;;;;;;True
-9060;Résultats d'exploitation avant impôts (EBT);9;Charge;;;;;;True
-9100;Bilan d'ouverture;9;Complet;OPENING_BALANCE_SHEET;;;;;True
-9101;Bilan de clôture;9;Complet;CLOSING_BALANCE_SHEET;;;;;True
-92;Affectation des bénéfices;9;Groupe;;;;;;True
-9200;Bénéfices ou pertes de l'exercice;92;Complet;ANNUAL_PROFIT;;;;;True
-99;Comptes auxiliaires Grands livres auxiliaires;9;Groupe;;;;;;True
-9900;Corrections;99;Complet;CORRECTION;;;;;True
-9901;Transfert de solde;9;Complet;BALANCE_TAKEOVER;;;;;True

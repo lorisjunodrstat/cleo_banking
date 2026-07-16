@@ -3503,52 +3503,54 @@ def edit_categorie(categorie_id):
 @bp.route('/comptabilite/categories/import-csv', methods=['POST'])
 @login_required
 def import_plan_comptable_csv():
-    """Importe le plan comptable depuis un fichier CSV"""
     try:
-        # Vérifier si un fichier a été uploadé
         if 'csv_file' not in request.files:
             flash('Aucun fichier sélectionné', 'danger')
-            return redirect(url_for('banking.liste_categories_comptables'))  
-        file = request.files['csv_file']
-        if file.filename == '':
-            flash('Aucun fichier sélectionné', 'danger')
             return redirect(url_for('banking.liste_categories_comptables'))
+            
+        file = request.files['csv_file']
         if file and file.filename.endswith('.csv'):
-            # Lire le fichier CSV
+            # Lecture avec le bon délimiteur (;)
             stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
             csv_input = csv_mod.reader(stream, delimiter=';')
-            # Sauter l'en-tête
-            next(csv_input)
+            next(csv_input) # Sauter l'en-tête
+            
             with g.db_manager.get_cursor() as cursor:
-                # Vider la table existante
+                # 1. Vider la table
                 cursor.execute("DELETE FROM categories_comptables")
                 
-                # Insérer les nouvelles données
+                # 2. Insérer les données
                 for row in csv_input:
                     if len(row) >= 9:
-                        valeur_type = row[3]
-                    if valeur_type not in ['Actif', 'Passif', 'Charge', 'Revenus']:
-                        # On force une valeur par défaut ou on saute la ligne si c'est un pur groupe
-                        valeur_type = 'Actif' # Ou toute autre valeur acceptée par votre ENUM
-                    
-                    cursor.execute("""
-                        INSERT INTO categories_comptables 
-                        (numero, nom, parent_id, type_compte, compte_systeme, compte_associe, type_tva, categorie_complementaire_id, type_ecriture_complementaire, actif)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (
-                        row[0], row[1], 
-                        int(row[2]) if row[2] else None,
-                        valeur_type,  # Utilisation de la valeur nettoyée
-                        row[4] if row[4] else None, 
-                        row[5] if row[5] else None, 
-                        row[6] if row[6] else None,
-                        int(row[7]) if row[7] and row[7].strip() != '' else None,
-                        row[8] if row[8] and row[8].strip() != '' else None,
-                        True
+                        # Nettoyage sécurisé de type_compte
+                        raw_type = row[3]
+                        # Liste des valeurs autorisées dans votre ENUM SQL
+                        allowed_types = ['Actif', 'Passif', 'Charge', 'Revenus']
+                        
+                        # Si ce n'est pas dans la liste, on force une valeur par défaut ou on traite le cas "Groupe"
+                        valeur_type = raw_type if raw_type in allowed_types else 'Actif'
+                        
+                        cursor.execute("""
+                            INSERT INTO categories_comptables 
+                            (numero, nom, parent_id, type_compte, compte_systeme, compte_associe, 
+                             type_tva, categorie_complementaire_id, type_ecriture_complementaire, actif)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (
+                            row[0], row[1], 
+                            int(row[2]) if row[2] else None,
+                            valeur_type,
+                            row[4] if row[4] else None, 
+                            row[5] if row[5] else None, 
+                            row[6] if row[6] else None,
+                            int(row[7]) if row[7] and row[7].strip() != '' else None,
+                            row[8] if row[8] and row[8].strip() != '' else None,
+                            True
                         ))
-            flash('Plan comptable importé avec succès depuis le CSV', 'success')
+            
+            flash('Plan comptable importé avec succès', 'success')
         else:
-            flash('Format de fichier non supporté. Veuillez uploader un fichier CSV.', 'danger')
+            flash('Format invalide', 'danger')
+            
     except Exception as e:
         flash(f'Erreur lors de l\'importation: {str(e)}', 'danger')
     return redirect(url_for('banking.liste_categories_comptables'))
