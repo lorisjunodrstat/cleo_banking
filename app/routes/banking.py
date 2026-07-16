@@ -4978,7 +4978,7 @@ def nouvelle_ecriture():
                 data['montant_htva'] = data['montant']
                 data['tva_montant'] = 0
                 
-            if g.models.ecriture_comptable_model.create(g.models.categorie_comptable_model, data)::
+            if g.models.ecriture_comptable_model.create(g.models.categorie_comptable_model, data):
                 flash('Écriture enregistrée avec succès', 'success')
                 ecriture_id = g.models.ecriture_comptable_model.last_insert_id
                 secondaires = g.models.ecriture_comptable_model.get_ecritures_complementaires(ecriture_id, current_user.id)
