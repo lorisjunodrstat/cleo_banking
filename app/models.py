@@ -6451,7 +6451,9 @@ class CategorieComptable:
                 query = """
                 UPDATE categories_comptables
                 SET numero = %s, nom = %s, parent_id = %s, type_compte = %s,
-                    compte_systeme = %s, compte_associe = %s, type_tva = %s, actif = %s
+                    compte_systeme = %s, compte_associe = %s, type_tva = %s, actif = %s,
+                    categorie_complementaire_id = %s,
+                    type_ecriture_complementaire = %s
                 WHERE id = %s
                 """
                 values = (
@@ -6463,7 +6465,9 @@ class CategorieComptable:
                     data.get('compte_associe'),
                     data.get('type_tva'),
                     data.get('actif', True),
-                    categorie_id
+                    data.get('categorie_complementaire_id'),
+                    data.get('type_ecriture_complementaire'),
+                    data.get('categorie_complementaire_id'),
                 )
                 cursor.execute(query, values)
                 # Le commit est géré par le context manager
