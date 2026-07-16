@@ -3487,35 +3487,54 @@ def edit_categorie(categorie_id):
     
     if request.method == 'POST':
         try:
+            # ✅ Construire data avec seulement les champs à modifier
             data = {
-                'numero': request.form['numero'],
                 'nom': request.form['nom'],
                 'type_compte': request.form['type_compte'],
                 'parent_id': request.form.get('groupe') or None,
                 'categorie_complementaire_id': request.form.get('categorie_complementaire') or None,
                 'type_ecriture_complementaire': request.form.get('type_ecriture_complementaire') or None,
-                'id_plan' : request.form.get('plan_ids')
+                'type_tva': request.form.get('type_tva') or None,
+                'compte_systeme': request.form.get('compte_systeme') or None,
+                'compte_associe': request.form.get('compte_associe') or None,
+                'actif': True
             }
+            
+            # ✅ NE PAS inclure le numéro si inchangé
+            nouveau_numero = request.form.get('numero')
+            if nouveau_numero and nouveau_numero != categorie['numero']:
+                data['numero'] = nouveau_numero
+            
             plan_id = request.form.get('plan_ids', type=int)
+            
+            # ✅ Mettre à jour la catégorie
             if g.models.categorie_comptable_model.update(categorie_id, data):
-                if plan_id : 
-                    with g.db_mananger.get_cursor() as cursor:
-                        cursor.execute("""
-                        INSERT IGNORE INTO plan_categorie (plan_id, categorie_id)
-                            VALUES (%s, %s)
-                        """, (plan_id, categorie_id))
+                # ✅ Mettre à jour la relation plan_categorie
+                if plan_id:
+                    # Supprimer l'ancienne relation
+                    with g.db_manager.get_cursor() as cursor:
+                        cursor.execute(
+                            "DELETE FROM plan_categorie WHERE categorie_id = %s",
+                            (categorie_id,)
+                        )
+                        cursor.execute(
+                            "INSERT IGNORE INTO plan_categorie (plan_id, categorie_id) VALUES (%s, %s)",
+                            (plan_id, categorie_id)
+                        )
                 flash('Catégorie mise à jour avec succès', 'success')
                 return redirect(url_for('banking.liste_categories_comptables'))
             else:
                 flash('Erreur lors de la mise à jour', 'danger')
+        except ValueError as e:
+            flash(f'Erreur: {str(e)}', 'danger')
         except Exception as e:
             flash(f'Erreur: {str(e)}', 'danger')
     
-    # Récupérer toutes les catégories (y compris avec les informations complémentaires)
+    # Récupérer toutes les catégories
     categories = g.models.categorie_comptable_model.get_all_categories()
     types_compte = ['Actif', 'Passif', 'Charge', 'Revenus', 'Groupe']
     types_tva = ['', 'taux_plein', 'taux_reduit', 'taux_zero', 'exonere']
-    types_ecriture = ['', 'depense', 'recette']  # Valeurs possibles pour le champ enum
+    types_ecriture = ['', 'depense', 'recette']
     
     return render_template('comptabilite/edit_categorie.html',
                         all_plan=all_plan, 

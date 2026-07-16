@@ -6448,30 +6448,78 @@ class CategorieComptable:
         """Met à jour une catégorie comptable"""
         try:
             with self.db.get_cursor() as cursor:
-                query = """
-                UPDATE categories_comptables
-                SET numero = %s, nom = %s, parent_id = %s, type_compte = %s,
-                    compte_systeme = %s, compte_associe = %s, type_tva = %s, actif = %s,
-                    categorie_complementaire_id = %s,
-                    type_ecriture_complementaire = %s
-                WHERE id = %s
+                # ✅ Construire la requête dynamiquement pour n'update que les champs fournis
+                fields = []
+                values = []
+                
+                # Champs obligatoires
+                if 'nom' in data:
+                    fields.append("nom = %s")
+                    values.append(data['nom'])
+                
+                if 'type_compte' in data:
+                    fields.append("type_compte = %s")
+                    values.append(data['type_compte'])
+                
+                # Champs optionnels
+                if 'parent_id' in data:
+                    fields.append("parent_id = %s")
+                    values.append(data['parent_id'])
+                
+                if 'compte_systeme' in data:
+                    fields.append("compte_systeme = %s")
+                    values.append(data['compte_systeme'])
+                
+                if 'compte_associe' in data:
+                    fields.append("compte_associe = %s")
+                    values.append(data['compte_associe'])
+                
+                if 'type_tva' in data:
+                    fields.append("type_tva = %s")
+                    values.append(data['type_tva'])
+                
+                if 'actif' in data:
+                    fields.append("actif = %s")
+                    values.append(data['actif'])
+                
+                if 'categorie_complementaire_id' in data:
+                    fields.append("categorie_complementaire_id = %s")
+                    values.append(data['categorie_complementaire_id'])
+                
+                if 'type_ecriture_complementaire' in data:
+                    fields.append("type_ecriture_complementaire = %s")
+                    values.append(data['type_ecriture_complementaire'])
+                
+                # ✅ NE PAS modifier le numéro s'il existe déjà
+                # Si vous voulez permettre la modification du numéro, faites une vérification d'unicité
+                if 'numero' in data and data['numero']:
+                    # Vérifier si le numéro existe déjà pour une autre catégorie
+                    cursor.execute(
+                        "SELECT id FROM categories_comptables WHERE numero = %s AND id != %s",
+                        (data['numero'], categorie_id)
+                    )
+                    if cursor.fetchone():
+                        raise ValueError(f"Le numéro {data['numero']} est déjà utilisé par une autre catégorie")
+                    fields.append("numero = %s")
+                    values.append(data['numero'])
+                
+                if not fields:
+                    return False
+                
+                # Ajouter l'ID pour la clause WHERE
+                values.append(categorie_id)
+                
+                query = f"""
+                    UPDATE categories_comptables
+                    SET {', '.join(fields)}
+                    WHERE id = %s
                 """
-                values = (
-                    data['numero'],
-                    data['nom'],
-                    data.get('parent_id'),
-                    data['type_compte'],
-                    data.get('compte_systeme'),
-                    data.get('compte_associe'),
-                    data.get('type_tva'),
-                    data.get('actif', True),
-                    data.get('categorie_complementaire_id'),
-                    data.get('type_ecriture_complementaire'),
-                    data.get('categorie_complementaire_id'),
-                )
+                
                 cursor.execute(query, values)
-                # Le commit est géré par le context manager
             return True
+        except ValueError as e:
+            logger.error(f"Erreur de validation: {e}")
+            return False
         except Exception as e:
             logger.error(f"Erreur lors de la mise à jour de la catégorie comptable: {e}")
             return False
