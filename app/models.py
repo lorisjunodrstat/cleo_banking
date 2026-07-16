@@ -6967,26 +6967,27 @@ class EcritureComptable:
                 utilisateur_id, justificatif_url, statut, id_contact,
                 ecriture_principale_id, type_ecriture_comptable
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'complementaire')
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
 
             values = (
                 data['date_ecriture'],
-                data['compte_bancaire_id'],  # Ou un compte spécifique pour les taxes
+                data['compte_bancaire_id'],
                 comp_cat['categorie_complementaire_id'],
-                abs(montant_secondaire),  # Valeur absolue, le sens dépend du type
+                abs(montant_secondaire),
                 abs(montant_secondaire),
                 data.get('devise', 'CHF'),
                 f"{data.get('description', '')} ({comp_cat['type_complement'].upper()})",
                 data.get('reference', ''),
                 type_ecriture_secondaire,
-                comp_cat.get('taux', 0),  # Pas de TVA sur la TVA
+                comp_cat.get('taux', 0),
                 0,
                 data['utilisateur_id'],
                 data.get('justificatif_url'),
                 data.get('statut', 'pending'),
                 data.get('id_contact'),
-                ecriture_principale_id
+                ecriture_principale_id,
+                'complementaire' 
             )
 
             cursor.execute(query, values)
