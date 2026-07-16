@@ -6677,7 +6677,7 @@ class CategorieComptable:
                 AND categorie_complementaire_id IS NOT NULL
                 AND actif = TRUE
                 """
-                cursor.execute(query, (categorie_id, utilisateur_id))
+                cursor.execute(query, (categorie_id))
                 result = cursor.fetchone()
                 has_complementaire = result['count'] > 0
                 logger.info(f"Catégorie ID {categorie_id} a une catégorie complémentaire: {has_complementaire}")
@@ -6692,10 +6692,10 @@ class CategorieComptable:
                 SELECT ct.id, ct.numero, ct.nom, ct.categorie_complementaire_id as id_complementaire, ct2.numero as numero_complementaire, ct2.nom as nom_complementaire
                 FROM categories_comptables ct
                 JOIN categories_comptables ct2 ON ct.categorie_complementaire_id = ct2.id
-                WHERE ct.id = %s AND ct.utilisateur_id = %s;
+                WHERE ct.id = %s;
 
                 """
-                cursor.execute(query, (categorie_id, utilisateur_id))
+                cursor.execute(query, (categorie_id))
                 result = cursor.fetchall()
                 logger.info(f'La categorie avec id {categorie_id} a : {result}')
                 return result
