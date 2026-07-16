@@ -444,6 +444,8 @@ class DatabaseManager:
                     utilisateur_id INT NOT NULL,
                     date_transaction DATETIME NOT NULL,
                     solde_apres DECIMAL(15,2),
+                    statut_comptable ENUM('a_comptabiliser', 'comptabilise', 'ne_pas_comptabiliser') DEFAULT 'a_comptabiliser',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (compte_principal_id) REFERENCES comptes_principaux(id),
                     FOREIGN KEY (sous_compte_id) REFERENCES sous_comptes(id),
@@ -520,8 +522,10 @@ class DatabaseManager:
                     compte_associe VARCHAR(10),
                     type_tva ENUM('taux_plein', 'taux_reduit', 'taux_zero', 'exonere') DEFAULT 'taux_plein',
                     actif BOOLEAN DEFAULT TRUE,
+                    categorie_complementaire_id INT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    FOREIGN KEY (categorie_complementaire_id) REFERENCES categories_comptables(id) ON DELETE SET NULL
                 );
                 """
                 cursor.execute(create_categories_table_query)
@@ -6266,31 +6270,33 @@ class PlanComptable:
             return []
 
     def get_plan_with_categories(self, plan_id: int, utilisateur_id: int) -> Optional[Dict]:
-        """Récupère un plan + ses catégories"""
-        try:
-            with self.db.get_cursor() as cursor:
-                # Récupérer le plan
-                cursor.execute("""
-                    SELECT * FROM plans_comptables
-                    WHERE id = %s AND utilisateur_id = %s
-                """, (plan_id, utilisateur_id))
-                plan = cursor.fetchone()
-                if not plan:
-                    return None
+    """Récupère un plan + ses catégories"""
+    try:
+        with self.db.get_cursor() as cursor:
+            # 1. Récupérer et vérifier que le plan appartient à l'utilisateur
+            cursor.execute("""
+                SELECT * FROM plans_comptables
+                WHERE id = %s AND utilisateur_id = %s
+            """, (plan_id, utilisateur_id))
+            plan = cursor.fetchone()
+            if not plan:
+                return None
 
-                # Récupérer les catégories liées
-                cursor.execute("""
-                    SELECT c.*
-                    FROM plan_categorie pc
-                    JOIN categories_comptables c ON pc.categorie_id = c.id
-                    WHERE pc.plan_id = %s AND c.utilisateur_id = %s
-                    ORDER BY c.numero
-                """, (plan_id, utilisateur_id))
-                plan['categories'] = cursor.fetchall()
-                return plan
-        except Exception as e:
-            logger.error(f"Erreur plan + catégories: {e}")
-            return None
+            # 2. Récupérer les catégories liées (sans le filtre utilisateur_id sur la table 'c')
+            cursor.execute("""
+                SELECT c.*
+                FROM plan_categorie pc
+                JOIN categories_comptables c ON pc.categorie_id = c.id
+                WHERE pc.plan_id = %s
+                ORDER BY c.numero
+            """, (plan_id,)) # 🔴 Un seul paramètre ici maintenant !
+            
+            plan['categories'] = cursor.fetchall()
+            return plan
+            
+    except Exception as e:
+        logger.error(f"Erreur plan + catégories: {e}")
+        return None
 
     def add_categorie_to_plan(self, plan_id: int, categorie_id: int, utilisateur_id: int) -> bool:
         """Ajoute une catégorie à un plan"""
