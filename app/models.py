@@ -6677,7 +6677,7 @@ class CategorieComptable:
                 AND categorie_complementaire_id IS NOT NULL
                 AND actif = TRUE
                 """
-                cursor.execute(query, (categorie_id))
+                cursor.execute(query, (categorie_id,))
                 result = cursor.fetchone()
                 has_complementaire = result['count'] > 0
                 logger.info(f"Catégorie ID {categorie_id} a une catégorie complémentaire: {has_complementaire}")
@@ -6695,7 +6695,7 @@ class CategorieComptable:
                 WHERE ct.id = %s;
 
                 """
-                cursor.execute(query, (categorie_id))
+                cursor.execute(query, (categorie_id,))
                 result = cursor.fetchall()
                 logger.info(f'La categorie avec id {categorie_id} a : {result}')
                 return result
@@ -6860,7 +6860,7 @@ class EcritureComptable:
             AND cc.categorie_complementaire_id IS NOT NULL
             """
 
-            cursor.execute(query, (categorie_id))
+            cursor.execute(query, (categorie_id,))
             result = cursor.fetchone()
 
             if not result:
