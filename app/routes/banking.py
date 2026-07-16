@@ -3440,7 +3440,7 @@ def liste_categories_comptables():
 @login_required
 def nouvelle_categorie():
     """Crée une nouvelle catégorie comptable"""
-    all_plan = g.models.plan_comptable_models.get_all_plans(current_user.id)
+    all_plan = g.models.plan_comptable_model.get_all_plans(current_user.id)
 
     #plan_comptable = PlanComptable(g.db_manager)
     if request.method == 'POST':
@@ -3479,7 +3479,7 @@ def nouvelle_categorie():
 def edit_categorie(categorie_id):
     """Modifie une catégorie comptable existante"""
     categorie = g.models.categorie_comptable_model.get_by_id(categorie_id)
-    all_plan = g.models.plan_comptable_models.get_all_plans(current_user.id)
+    all_plan = g.models.plan_comptable_model.get_all_plans(current_user.id)
 
     if not categorie:
         flash('Catégorie introuvable', 'danger')
@@ -3528,7 +3528,7 @@ def edit_categorie(categorie_id):
 @bp.route('/comptabilite/categories/import-csv', methods=['GET', 'POST'])
 @login_required
 def import_plan_comptable_csv():
-    all_plan = g.models.plan_comptable_models.get_all_plans(current_user.id)
+    all_plan = g.models.plan_comptable_model.get_all_plans(current_user.id)
     if request.method == 'GET':
         return render_template('comptabilite/import_categories_csv.html', all_plan=all_plan)
 
