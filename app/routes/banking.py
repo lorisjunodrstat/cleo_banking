@@ -3526,20 +3526,25 @@ def import_plan_comptable_csv():
                 # Insérer les nouvelles données
                 for row in csv_input:
                     if len(row) >= 9:
-                        cursor.execute("""
-                            INSERT INTO categories_comptables 
-                            (numero, nom, parent_id, type_compte, compte_systeme, compte_associe, type_tva, categorie_complementaire_id, type_ecriture_complementaire, actif)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        """, (
-                            row[0], row[1], 
-                            int(row[2]) if row[2] else None,
-                            row[3], 
-                            row[4] if row[4] else None, 
-                            row[5] if row[5] else None, 
-                            row[6] if row[6] else None,
-                            int(row[7]) if row[7] and row[7].strip() != '' else None,
-                            row[8] if row[8] and row[8].strip() != '' else None,
-                            True
+                        valeur_type = row[3]
+                    if valeur_type not in ['Actif', 'Passif', 'Charge', 'Revenus']:
+                        # On force une valeur par défaut ou on saute la ligne si c'est un pur groupe
+                        valeur_type = 'Actif' # Ou toute autre valeur acceptée par votre ENUM
+                    
+                    cursor.execute("""
+                        INSERT INTO categories_comptables 
+                        (numero, nom, parent_id, type_compte, compte_systeme, compte_associe, type_tva, categorie_complementaire_id, type_ecriture_complementaire, actif)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        row[0], row[1], 
+                        int(row[2]) if row[2] else None,
+                        valeur_type,  # Utilisation de la valeur nettoyée
+                        row[4] if row[4] else None, 
+                        row[5] if row[5] else None, 
+                        row[6] if row[6] else None,
+                        int(row[7]) if row[7] and row[7].strip() != '' else None,
+                        row[8] if row[8] and row[8].strip() != '' else None,
+                        True
                         ))
             flash('Plan comptable importé avec succès depuis le CSV', 'success')
         else:
