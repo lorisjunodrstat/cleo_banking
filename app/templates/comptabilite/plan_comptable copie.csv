@@ -1,4 +1,54 @@
 ﻿1,Actifs,,Groupe,ASSETS,,,,,True
+10,Actifs circulants,1,Groupe,CURRENT_ASSETS,,,,,True
+100,Trésorerie,10,Groupe,ACCOUNTS_RECEIVABLE,,,,,True
+1000,Caisse Caisse CHF,100,Actif,,OUI,,,,True
+1001,Caisse Porte-monnaie CHF,100,Actif,,OUI,,,,True
+1020,Banque Postfinance CHF (PostFinance AG),100,Actif,,OUI,,,,True
+1021,Concardis,100,Actif,,,,,,True
+1026,Bons Cadeaux,100,Actif,,,,,,True
+1027,Eat.ch,100,Actifs,sales_tax,,,,,True
+1028,RealDeals,100,Actif,,,,,,True
+1029,Banque,100,Actif,BANK,,,,,True
+109,Compte de transfert,10,Groupe,,,,,,True
+1090,Compte de transfert,109,Actif,,,,,,True
+1091,Compte de passage salaires,109,Actif,,,,,,True
+1099,Compte d'attente pour des montants inexpliqués,109,Actif,,,,,,True
+110,Créances résultant de la vente de biens et de prestations de services (débiteurs),10,Groupe,,,,,,True
+1100,Créances résultant de la vente de biens et de prestations de services (débiteurs),110,Actif,DEBTOR,,,,,True
+1119,Corrections de la valeur des ventes de biens et de prestations de service (ducroire),110,Actif,,,,,,True
+114,Autres créances à court terme,10,Groupe,,,,,,True
+1170,Impôt préalable: TVA sur matériel marchandises prestations et énergie,114,Actif,TAX_PRE_MATERIAL,,,,,True
+1171,Impôt préalable: TVA sur investissements et autres charges cl. 1/5-8,114,Actif,TAX_PRE_INVESTMENT,,,,,True
+1172,Compensation impôt préalable selon méthode de décompte,114,Actif,TRANSITORY_TAX_ACCOUNT_PRE,,,,,True
+1173,Réduction de l'impôt préalable,114,Actif,TAX_PRE_TAX_CUTS,,,,,True
+1174,Correction de l'impôt préalable,114,Actif,TAX_PRE_TAX_CORRECTION,,,,,True
+1175,Décompte TVA,114,Actif,,,,,,True
+1183,Compte courant assurance-accidents,114,Actif,,,,,,True
+1184,Compte courant indemnités journalières,114,Actif,,,,,,True
+1188,Compte courant impôt à la source,114,Actif,,,,,,True
+1190,Avoirs WIR,114,Actif,,,,,,True
+1192,Acomptes versés,114,Actif,,,,,,True
+120,Stocks et prestations de services non facturées,10,Groupe,,,,,,True
+1200,Marchandises commerciales,120,Actif,,,,,,True
+1208,Acomptes pour marchandises commerciales,120,Actif,,,,,,True
+1280,Prestations non facturées,120,Actif,,,,,,True
+1287,Variations de stock des prestations non facturées,120,Actif,,,,,,True
+130,Actifs de régularisation,10,Groupe,,,,,,True
+1300,Charges payées d'avance (TA),130,Actif,,,,,,True
+1301,Produits à recevoir (TA),130,Actif,,,,,,True
+14,Actifs immobilisés,1,Groupe,,,,,,True
+150,Immobilisations corporelles meubles,14,Groupe,,,,,,True
+1500,Machines et appareils,150,Actif,,,,,,True
+1510,Mobilier et installations,150,Actif,,,,,,True
+1511,Installations/équipements d'ateliers,150,Actif,,,,,,True
+1513,Mobilier de bureau,150,Actif,,,,,,True
+1520,Machines de bureau,150,Actif,,,,,,True
+1521,Informatique,150,Actif,,,,,,True
+1530,Véhicules,150,Actif,,,,,,True
+1540,Instruments et outillage,150,Actif,,,,,,True
+1550,Installations de stockage,150,Actif,,,,,,True
+170,Immobilisations incorporelles,1,Actif,,,,,,True
+1770,Goodwill,170,Actif,,,,,,True
 2,Passifs,,Groupe,LIABILITIES,,,,,True
 20,Capitaux étrangers à court terme,2,Groupe,,,,,,True
 200,Dettes résultant de l'achat de biens et de prestations de services,20,Groupe,,,,,,True

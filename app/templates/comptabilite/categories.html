@@ -64,14 +64,25 @@
                         {% endfor %}
                     </tbody>
                 </table>
-                <form method="post" action="{{ url_for('banking.import_plan_comptable_csv') }}" enctype="multipart/form-data" class="mb-3">
-                    <div class="input-group">
-                        <input type="file" class="form-control" name="csv_file" accept=".csv" required>
-                        <button type="submit" class="btn btn-primary-custom">
-                            <i class="bi bi-upload"></i> Importer CSV
-                        </button>
-                    </div>
-                </form>
+                <h3>Import de plans comptables de catégories</h3>
+                <div class="mb-3">
+                    <label for="plan_id" class="form-label">Plan comptable</label>
+                        <select id="plan_id" name="plan_id" class="form-select" required>
+                            <option value="">Sélectionner un plan...</option>
+                            {% for plan in all_plan %}
+                            <option value="{{ plan.id }}">{{ plan.nom }}</option>
+                            {% endfor %}
+                        </select>
+                
+                    <form method="post" action="{{ url_for('banking.import_plan_comptable_csv') }}" enctype="multipart/form-data" class="mb-3">
+                        <div class="input-group">
+                            <input type="file" class="form-control" name="csv_file" accept=".csv" required>
+                            <button type="submit" class="btn btn-primary-custom">
+                                <i class="bi bi-upload"></i> Importer CSV
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
         <div class="card-footer text-muted">

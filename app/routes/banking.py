@@ -3440,6 +3440,8 @@ def liste_categories_comptables():
 @login_required
 def nouvelle_categorie():
     """Crée une nouvelle catégorie comptable"""
+    all_plan = g.models.plan_comptable_models.get_all_plans(current_user.id)
+
     #plan_comptable = PlanComptable(g.db_manager)
     if request.method == 'POST':
         try:
@@ -3449,8 +3451,18 @@ def nouvelle_categorie():
                 'type_compte': request.form['type'],
                 'parent_id': request.form.get('parent_id') or None
             }         
-            if g.models.categorie_comptable_model.create(data):
+            plan_id = request.form.get('plan_id', type=int)
+            categorie_id = g.models.categorie_comptable_model.create(data)
+            if categorie_id:
+                if plan_id:
+                    with g.db_manager.get_cursor() as cursor:
+                        cursor.execute("""
+                        INSERT IGNORE INTO plan_categorie (plan_id, categorie_id)
+                            VALUES (%s, %s)
+                        """, (plan_id, categorie_id))
+
                 flash('Catégorie créée avec succès', 'success')
+
                 return redirect(url_for('banking.liste_categories_comptables'))
             else:
                 flash('Erreur lors de la création', 'danger')
@@ -3459,13 +3471,16 @@ def nouvelle_categorie():
     categories = g.models.categorie_comptable_model.get_all_categories()
     return render_template('comptabilite/edit_categorie.html', 
                         categories=categories,
-                        categorie=None)
+                        categorie=None,
+                        all_plan=all_plan)
 
 @bp.route('/comptabilite/categories/<int:categorie_id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_categorie(categorie_id):
     """Modifie une catégorie comptable existante"""
     categorie = g.models.categorie_comptable_model.get_by_id(categorie_id)
+    all_plan = g.models.plan_comptable_models.get_all_plans(current_user.id)
+
     if not categorie:
         flash('Catégorie introuvable', 'danger')
         return redirect(url_for('banking.liste_categories_comptables'))
@@ -3478,9 +3493,17 @@ def edit_categorie(categorie_id):
                 'type_compte': request.form['type_compte'],
                 'parent_id': request.form.get('groupe') or None,
                 'categorie_complementaire_id': request.form.get('categorie_complementaire') or None,
-                'type_ecriture_complementaire': request.form.get('type_ecriture_complementaire') or None
+                'type_ecriture_complementaire': request.form.get('type_ecriture_complementaire') or None,
+                'id_plan' : request.form.get()
             }
+            plan_id = request.form.get('plan_ids', type=int)
             if g.models.categorie_comptable_model.update(categorie_id, data):
+                if plan_id : 
+                    with g.db_mananger.get_cursor() as cursor:
+                        cursor.execute("""
+                        INSERT IGNORE INTO plan_categorie (plan_id, categorie_id)
+                            VALUES (%s, %s)
+                        """, (plan_id, categorie_id))
                 flash('Catégorie mise à jour avec succès', 'success')
                 return redirect(url_for('banking.liste_categories_comptables'))
             else:
@@ -3490,25 +3513,33 @@ def edit_categorie(categorie_id):
     
     # Récupérer toutes les catégories (y compris avec les informations complémentaires)
     categories = g.models.categorie_comptable_model.get_all_categories()
-    types_compte = ['Actif', 'Passif', 'Charge', 'Revenus']
+    types_compte = ['Actif', 'Passif', 'Charge', 'Revenus', 'Groupe']
     types_tva = ['', 'taux_plein', 'taux_reduit', 'taux_zero', 'exonere']
     types_ecriture = ['', 'depense', 'recette']  # Valeurs possibles pour le champ enum
     
-    return render_template('comptabilite/edit_categorie.html', 
+    return render_template('comptabilite/edit_categorie.html',
+                        all_plan=all_plan, 
                         categories=categories,
                         categorie=categorie,
                         types_compte=types_compte,
                         types_tva=types_tva,
                         types_ecriture=types_ecriture)
 
-@bp.route('/comptabilite/categories/import-csv', methods=['POST'])
+@bp.route('/comptabilite/categories/import-csv', methods=['GET', 'POST'])
 @login_required
 def import_plan_comptable_csv():
+    all_plan = g.models.plan_comptable_models.get_all_plans(current_user.id)
+    if request.method == 'GET':
+        return render_template('comptabilite/import_categories_csv.html', all_plan=all_plan)
+
     try:
         if 'csv_file' not in request.files:
             flash('Aucun fichier sélectionné', 'danger')
             return redirect(url_for('banking.liste_categories_comptables'))
-            
+        plan_id = request.form.get('plan_id', type=int)
+        if not plan_id:
+            flash('Veuillez sélectionner un plan comptable', 'danger')
+            return redirect(url_for('banking.import_plan_comptable_csv'))
         file = request.files['csv_file']
         if file and file.filename.endswith('.csv'):
             # 1. Lecture unique du fichier
@@ -3545,7 +3576,7 @@ def import_plan_comptable_csv():
             
             with g.db_manager.get_cursor() as cursor:
                 # Vider la table
-                cursor.execute("DELETE FROM categories_comptables")
+                #cursor.execute("DELETE FROM categories_comptables")
                 
                 # Insertion
                 for row in csv_input:
@@ -3571,6 +3602,11 @@ def import_plan_comptable_csv():
                             row[8] if row[8] and row[8].strip() else None,
                             True
                         ))
+                        categorie_id = cursor.lastrowid
+                        cursor.execute("""
+                            INSERT IGNORE INTO plan_categorie (plan_id, categorie_id)
+                            VALUES (%s, %s)
+                        """, (plan_id, categorie_id))
                         nb_insertions += 1
             
             flash(f'Plan comptable importé avec succès: {nb_insertions} lignes.', 'success')
@@ -3582,6 +3618,8 @@ def import_plan_comptable_csv():
         flash(f'Erreur lors de l\'importation: {str(e)}', 'danger')
         
     return redirect(url_for('banking.liste_categories_comptables'))
+
+
 @bp.route('/comptabilite/categories/<int:categorie_id>/delete', methods=['POST'])
 @login_required
 def delete_categorie(categorie_id):
@@ -4050,6 +4088,7 @@ def test_upload():
     result = g.models.ecriture_comptable_model.test_dossier_upload()
     
     return f"Test terminé - Vérifiez les logs pour les résultats détaillés: {result}"
+
 @bp.route('/comptabilite/ecritures/download_fichier/<int:ecriture_id>')
 @login_required
 def download_fichier_ecriture(ecriture_id):
@@ -4107,6 +4146,7 @@ def view_fichier_ecriture(ecriture_id):
         logging.error(f"❌ Traceback complète: {traceback.format_exc()}")
         flash('Erreur lors de l\'affichage du fichier', 'error')
         return redirect(request.referrer or url_for('banking.liste_ecritures'))
+
 @bp.route('/comptabilite/ecritures/supprimer_fichier/<int:ecriture_id>', methods=['POST'])
 @login_required
 def supprimer_fichier_ecriture(ecriture_id):
@@ -4366,6 +4406,7 @@ def associer_categorie_transaction():
         flash(message, "error")
     
     return redirect(request.referrer)
+
 @bp.route('/categorie/associer-transaction-multiple', methods=['POST'])
 @login_required
 def associer_categorie_transaction_multiple():
@@ -4430,7 +4471,10 @@ def associer_categorie_transaction_multiple():
         flash(f"Catégorie appliquée partiellement ({len(transactions_a_categoriser) - erreurs} / {len(transactions_a_categoriser)}).", "warning")
 
     return redirect(request.referrer)
+
+
 # API endpoints pour AJAX
+
 @bp.route('/api/categories', methods=['GET'])
 @login_required
 def api_get_categories():
@@ -4820,7 +4864,7 @@ def creer_ecriture_automatique(transaction_id):
             'id_contact': id_contact  # 🔥 Contact du formulaire OU lié au compte
         }
 
-        if g.models.ecriture_comptable_model.create(ecriture_data):
+        if g.models.ecriture_comptable_model.create(g.models.categorie_comptable_model, ecriture_data)::
             # Marquer la transaction comme comptabilisée
             g.models.ecriture_comptable_model.update_statut_comptable(
                 transaction_id, current_user.id, 'comptabilise'
@@ -4856,6 +4900,7 @@ def creer_ecriture_automatique(transaction_id):
                            # OU simplement redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
                            # mais cela peut conserver des anciens paramètres GET si le referrer est la page filtrée.
                            # La méthode ci-dessus avec request.form est plus fiable pour conserver les filtres actuels.
+
 @bp.app_template_filter('datetimeformat')
 def datetimeformat(value, format='%d.%m.%Y'):
     """Filtre pour formater les dates dans les templates"""
@@ -4933,7 +4978,7 @@ def nouvelle_ecriture():
                 data['montant_htva'] = data['montant']
                 data['tva_montant'] = 0
                 
-            if g.models.ecriture_comptable_model.create(data):
+            if g.models.ecriture_comptable_model.create(g.models.categorie_comptable_model, data)::
                 flash('Écriture enregistrée avec succès', 'success')
                 ecriture_id = g.models.ecriture_comptable_model.last_insert_id
                 secondaires = g.models.ecriture_comptable_model.get_ecritures_complementaires(ecriture_id, current_user.id)

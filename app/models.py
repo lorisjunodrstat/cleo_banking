@@ -6304,10 +6304,10 @@ class PlanComptable:
         try:
             with self.db.get_cursor() as cursor:
                 # Vérifier que les deux existent et appartiennent à l'utilisateur
-                cursor.execute("SELECT id FROM plans_comptables WHERE id = %s AND utilisateur_id = %s", (plan_id, utilisateur_id))
+                cursor.execute("SELECT id FROM plans_comptables WHERE id = %s", (plan_id, ))
                 if not cursor.fetchone():
                     return False
-                cursor.execute("SELECT id FROM categories_comptables WHERE id = %s AND utilisateur_id = %s", (categorie_id, utilisateur_id))
+                cursor.execute("SELECT id FROM categories_comptables WHERE id = %s AND s", (categorie_id, ))
                 if not cursor.fetchone():
                     return False
 
@@ -6332,6 +6332,7 @@ class PlanComptable:
         except Exception as e:
             logger.error(f"Erreur retrait catégorie du plan: {e}")
             return False
+    
     def get_categories_for_plan(self, plan_id: int, utilisateur_id: int) -> List[Dict]:
         """Récupère uniquement les catégories d’un plan"""
         try:
@@ -6340,19 +6341,48 @@ class PlanComptable:
                     SELECT c.*
                     FROM plan_categorie pc
                     JOIN categories_comptables c ON pc.categorie_id = c.id
-                    WHERE pc.plan_id = %s AND c.utilisateur_id = %s
+                    JOIN plans_comptables p ON pc.plan_id = p.id
+                    WHERE pc.plan_id = %s AND p.utilisateur_id = %s
                     ORDER BY c.numero
                 """, (plan_id, utilisateur_id))
                 return cursor.fetchall()
         except Exception as e:
             logger.error(f"Erreur catégories du plan: {e}")
             return []
+    
+    def link_all_categories_to_plan(self, plan_id: int) -> bool:
+        """Lie toutes les catégories actives du référentiel à un plan"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT IGNORE INTO plan_categorie (plan_id, categorie_id)
+                    SELECT %s, id FROM categories_comptables WHERE actif = 1
+                """, (plan_id,))
+                return True
+        except Exception as e:
+            logger.error(f"Erreur liaison catégories au plan: {e}")
+            return False
+    def get_plan_for_categorie(self, categorie_id: int, utilisateur_id: int) -> Optional[Dict]:
+        """Récupère le plan actuellement lié à une catégorie pour cet utilisateur"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT p.id, p.nom
+                    FROM plan_categorie pc
+                    JOIN plans_comptables p ON pc.plan_id = p.id
+                    WHERE pc.categorie_id = %s AND p.utilisateur_id = %s
+                    LIMIT 1
+                """, (categorie_id, utilisateur_id))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur récupération plan de la catégorie: {e}")
+            return None
 
 
 class CategorieComptable:
     def __init__(self, db):
         self.db = db
-    def create(self, data: Dict) -> bool:
+    def create(self, data: Dict) -> Optional[int]:
         """Crée une nouvelle catégorie comptable"""
         try:
             with self.db.get_cursor() as cursor:
@@ -6373,7 +6403,7 @@ class CategorieComptable:
                 )
                 cursor.execute(query, values)
                 # Le commit est géré par le context manager dans la classe DatabaseManager
-            return True
+            return cursor.lastrowid
         except Exception as e:
             logger.error(f"Erreur lors de la création de la catégorie comptable: {e}")
             return False
