@@ -3516,7 +3516,7 @@ def import_plan_comptable_csv():
         if file and file.filename.endswith('.csv'):
             # Lire le fichier CSV
             stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
-            csv_input = csv_mod.reader(stream)
+            csv_input = csv_mod.reader(stream, delimiter=';')
             # Sauter l'en-tête
             next(csv_input)
             with g.db_manager.get_cursor() as cursor:
