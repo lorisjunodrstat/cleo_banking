@@ -3518,7 +3518,7 @@ def import_plan_comptable_csv():
             with g.db_manager.get_cursor() as cursor:
                 # 1. Vider la table
                 cursor.execute("DELETE FROM categories_comptables")
-                
+                nb_insertions = 0
                 # 2. Insérer les données
                 for row in csv_input:
                     if len(row) >= 9:
@@ -3546,8 +3546,10 @@ def import_plan_comptable_csv():
                             row[8] if row[8] and row[8].strip() != '' else None,
                             True
                         ))
+                        nb_insertions += 1
+                print(f"Nombre de lignes insérées dans le curseur : {nb_insertions}")
             
-            flash('Plan comptable importé avec succès', 'success')
+            flash(f'Plan comptable importé avec succès avec {nb_insertions} lignes', 'success')
         else:
             flash('Format invalide', 'danger')
             
