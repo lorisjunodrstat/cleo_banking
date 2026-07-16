@@ -3494,7 +3494,7 @@ def edit_categorie(categorie_id):
                 'parent_id': request.form.get('groupe') or None,
                 'categorie_complementaire_id': request.form.get('categorie_complementaire') or None,
                 'type_ecriture_complementaire': request.form.get('type_ecriture_complementaire') or None,
-                'id_plan' : request.form.get()
+                'id_plan' : request.form.get('plan_ids'))
             }
             plan_id = request.form.get('plan_ids', type=int)
             if g.models.categorie_comptable_model.update(categorie_id, data):
