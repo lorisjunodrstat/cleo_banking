@@ -6271,7 +6271,7 @@ class PlanComptable:
             return []
 
     def get_plan_with_categories(self, plan_id: int, utilisateur_id: int) -> Optional[Dict]:
-    """Récupère un plan + ses catégories"""
+        """Récupère un plan + ses catégories"""
         try:
             with self.db.get_cursor() as cursor:
                 # 1. Récupérer et vérifier que le plan appartient à l'utilisateur
