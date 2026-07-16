@@ -5667,7 +5667,7 @@ def creer_plan():
         data['utilisateur_id'] = current_user.id
         plan_id = g.models.plan_comptable_model.create_plan(data)
         if plan_id:
-            return redirect(url_for('editer_plan', plan_id=plan_id))
+            return redirect(url_for('banking.editer_plan', plan_id=plan_id))
     return render_template('plans/creer_plan.html', action='creer')
 
 @bp.route('/plans/<int:plan_id>/editer', methods=['GET', 'POST'])
@@ -5686,7 +5686,7 @@ def editer_plan(plan_id):
         )
         if updated:
             flash("Plan comptable mis à jour avec succès.", "success")
-            return redirect(url_for('plans.editer_plan', plan_id=plan_id))
+            return redirect(url_for('banking.editer_plan', plan_id=plan_id))
         else:
             flash("Erreur lors de la mise à jour.", "danger")
 
@@ -5707,7 +5707,7 @@ def editer_plan2(plan_id):
 @login_required
 def supprimer_plan(plan_id):
     # Implémente delete_plan (soft/hard)
-    return redirect(url_for('liste_plans'))
+    return redirect(url_for('banking.liste_plans'))
 
 
 ## routes pour les comptes de résultats
