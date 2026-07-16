@@ -44,11 +44,11 @@
                                 {% if categorie.parent_numero %}
                                 {{ categorie.parent_numero }} - {{ categorie.parent_nom }}
                                 {% else %}
-                                —
+                                 —
                                 {% endif %}
                             </td>
-                            <td> {{ categorie.categorie_complementaire_numero }}</td>
-                            <td> {{ categorie.categorie_complementaire_nom }}</td>
+                            <td>{{ categorie.comp_numero if categorie.comp_numero else '—' }}</td>
+                            <td>{{ categorie.comp_nom if categorie.comp_nom else '—' }}</td>  
                             <td>
                                 <a href="{{ url_for('banking.edit_categorie', categorie_id=categorie.id) }}" 
                                    class="btn btn-sm btn-outline-primary">
@@ -73,6 +73,25 @@
                     </div>
                 </form>
             </div>
+        </div>
+        <div class="card-footer text-muted">
+            <h1>Conditions sur le fichier csv</h1>
+            <ul>
+                <li>Le fichier doit être au format CSV.</li>
+                <li>Les colonnes doivent être dans l'ordre suivant: 
+                    <ul>
+                        <li>Numéro</li>
+                        <li>Nom</li>
+                        <li>parent_id</li>
+                        <li>type_compte</li>
+                        <li>compte_system</li>
+                        <li>compte_associe</li>
+                        <li>type_tva</li>
+                        <li>categorie_complementaire_id</li>
+                        <li>type_ecriture_complementaire</li>
+                    </ul>
+                </li>
+            </ul>
         </div>
     </div>
 </div>

@@ -6530,7 +6530,7 @@ class CategorieComptable:
         try:
             with self.db.get_cursor() as cursor:
                 query = """
-                SELECT
+                SELECT DISTINCT
                     c.id,
                     c.numero,
                     c.nom,
@@ -6538,17 +6538,15 @@ class CategorieComptable:
                     c.type_compte,
                     c.compte_systeme,
                     c.compte_associe,
-                    -- 🔥 CORRIGÉ : La colonne categorie_complementaire_id appartient à c (categories_comptables)
                     c.categorie_complementaire_id,
-                    c.type_ecriture_complementaire,
                     c.type_tva,
-                    -- On récupère aussi les infos de la catégorie complémentaire si elle existe
                     cc.numero as comp_numero,
                     cc.nom as comp_nom
                 FROM categories_comptables c
-                -- 🔥 CORRIGÉ : Jointure avec categories_comptables (cc) pour les infos de la catégorie complémentaire
+                INNER JOIN plan_categorie pc ON c.id = pc.categorie_id
+                INNER JOIN plans_comptables p ON pc.plan_id = p.id
                 LEFT JOIN categories_comptables cc ON c.categorie_complementaire_id = cc.id
-                WHERE c.utilisateur_id = %s AND c.actif = TRUE
+                WHERE p.utilisateur_id = %s AND c.actif = TRUE
                 ORDER BY c.numero
                 """
                 # Il y a 1 seul placeholder '%s' dans la requête corrigée.
@@ -6744,18 +6742,19 @@ class EcritureComptable:
             utilisateur_id = data['utilisateur_id']
 
             query = """
-            SELECT
+            SELECT DISTINCT
                 cc.categorie_complementaire_id,
-                cc.type_ecriture_complementaire,
-                cc.type_tva,  -- ❌ Cela peut être NULL
+                cc.type_tva,
                 cc.nom as categorie_nom,
                 cc.numero as categorie_numero,
                 cc_comp.nom as categorie_complementaire_nom,
                 cc_comp.numero as categorie_complementaire_numero
             FROM categories_comptables cc
+            INNER JOIN plan_categorie pc ON cc.id = pc.categorie_id
+            INNER JOIN plans_comptables p ON pc.plan_id = p.id
             LEFT JOIN categories_comptables cc_comp ON cc.categorie_complementaire_id = cc_comp.id
             WHERE cc.id = %s
-            AND cc.utilisateur_id = %s
+            AND p.utilisateur_id = %s
             AND cc.actif = TRUE
             AND cc.categorie_complementaire_id IS NOT NULL
             """
@@ -6768,29 +6767,26 @@ class EcritureComptable:
                 return
 
             categorie_complementaire_id = result['categorie_complementaire_id']
-            type_ecriture_complementaire = result['type_ecriture_complementaire']
             type_tva_config = result['type_tva']  # Peut être None
             categorie_nom = result['categorie_nom']
             categorie_numero = result['categorie_numero']
             categorie_complementaire_nom = result.get('categorie_complementaire_nom', 'N/A')
             categorie_complementaire_numero = result.get('categorie_complementaire_numero', 'N/A')
 
+            type_ecriture_complementaire = 'tva' 
+
             logger.info(
                 f"Catégorie '{categorie_numero} - {categorie_nom}' a une catégorie complémentaire "
                 f"'{categorie_complementaire_numero} - {categorie_complementaire_nom}' "
-                f"(ID: {categorie_complementaire_id}) avec type '{type_ecriture_complementaire}'."
+                f"(ID: {categorie_complementaire_id}) détectée."
             )
 
-            # 🔥 RÉCUPÉRER LE TAUX RÉEL à partir de la configuration ou de data
-            # Selon votre logique, le taux peut venir de type_tva OU de data['tva_taux']
             if type_ecriture_complementaire == 'tva':
                 montant_secondaire = data.get('tva_montant', 0.0)
-                taux_secondaire = data.get('tva_taux', 0.0)  # ✅ On garde le taux de la principale
+                taux_secondaire = data.get('tva_taux', 0.0)
             else:
-                # 🔥 RÉCUPÉRER LE TAUX RÉEL à partir de la configuration ou de data
                 taux_reel = type_tva_config if type_tva_config is not None else data.get('tva_taux', 0)
-                taux_secondaire = taux_reel  # ✅ On garde ce taux pour les autres types
-                # ✅ Maintenant on envoie le bon taux
+                taux_secondaire = taux_reel
                 montant_secondaire = self._calculate_secondary_amount(
                     data, type_ecriture_complementaire, taux_reel
                 )
@@ -6799,7 +6795,7 @@ class EcritureComptable:
                 comp_cat_simulated = {
                     'categorie_complementaire_id': categorie_complementaire_id,
                     'type_complement': type_ecriture_complementaire,
-                    'taux': taux_secondaire  # ✅ aussi ici
+                    'taux': taux_secondaire
                 }
                 self._create_secondary_ecriture(
                     cursor, ecriture_principale_id, data, comp_cat_simulated, montant_secondaire)
