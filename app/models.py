@@ -6860,7 +6860,7 @@ class EcritureComptable:
             AND cc.categorie_complementaire_id IS NOT NULL
             """
 
-            cursor.execute(query, (categorie_id,))
+            cursor.execute(query, (categorie_id,utilisateur_id))
             result = cursor.fetchone()
 
             if not result:
