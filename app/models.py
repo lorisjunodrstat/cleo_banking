@@ -514,11 +514,11 @@ class DatabaseManager:
                 create_categories_table_query = """
                 CREATE TABLE IF NOT EXISTS categories_comptables (
                     id INT AUTO_INCREMENT PRIMARY KEY,
-                    numero VARCHAR(10) NOT NULL UNIQUE,
+                    numero VARCHAR(10) NOT NULL,
                     nom VARCHAR(255) NOT NULL,
                     parent_id INT,
                     type_compte ENUM('Actif', 'Passif', 'Charge', 'Revenus', 'Groupe') NOT NULL,
-                    compte_systeme VARCHAR(50) DEFAULT NULL
+                    compte_systeme VARCHAR(50) DEFAULT NULL,
                     compte_associe VARCHAR(10),
                     type_tva ENUM('taux_plein', 'taux_reduit', 'taux_zero', 'exonere') DEFAULT 'taux_plein',
                     actif BOOLEAN DEFAULT TRUE,
@@ -526,6 +526,8 @@ class DatabaseManager:
                     type_ecriture_complementaire VARCHAR(255) NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_numero (numero),
+                    FOREIGN KEY (parent_id) REFERENCES categories_comptables(id),
                     FOREIGN KEY (categorie_complementaire_id) REFERENCES categories_comptables(id) ON DELETE SET NULL
                 );
                 """
@@ -586,13 +588,17 @@ class DatabaseManager:
                     statut ENUM('pending', 'validée', 'rejetée') DEFAULT 'pending',
                     date_validation TIMESTAMP NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
+                    ecriture_principale_id INT NULL,
+                    type_ecriture_comptable VARCHAR(20) DEFAULT 'principale' NOT NULL,
+                    
                     FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id),
                     FOREIGN KEY (sous_compte_id) REFERENCES sous_comptes(id),
                     FOREIGN KEY (categorie_id) REFERENCES categories_comptables(id),
                     FOREIGN KEY (id_contact) REFERENCES contacts(id_contact),
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id),
-                    FOREIGN KEY (transaction_id) REFERENCES transactions(id)
+                    FOREIGN KEY (transaction_id) REFERENCES transactions(id),
+                    FOREIGN KEY (ecriture_principale_id) REFERENCES ecritures_comptables(id)
+                );
                 );
                 """
                 cursor.execute(create_ecritures_table_query)
@@ -7582,8 +7588,8 @@ class EcritureComptable:
                     c.nom AS categorie_nom,
                     c.id AS categorie_id,
                     COUNT(e.id) AS nombre_ecritures,
-                    SUM(COALESCE(e.montant, 0)) AS montant,
-                    SUM(COALESCE(e.montant_htva, 0)) AS montant_htva
+                    SUM(COALESCE(e.montant_htva, 0)) AS montant,  # ✅ Utilise HTVA
+                    SUM(COALESCE(e.montant, 0)) AS montant_ttc
                 FROM ecritures_comptables e
                 JOIN categories_comptables c ON e.categorie_id = c.id
                 WHERE e.utilisateur_id = %s
@@ -7605,18 +7611,18 @@ class EcritureComptable:
             charges = self._fetch_ecritures_by_type(user_id, date_from, date_to, 'depense')
 
             total_produits = sum(p['montant'] for p in produits)
-            total_produits_htva = sum(p['montant_htva'] for p in produits)
+            total_produits_ttc = sum(p['montant_ttc'] for p in produits)
             total_charges = sum(c['montant'] for c in charges)
-            total_charges_htva = sum(c['montant_htva'] for c in charges)
+            total_charges_ttc = sum(c['montant_ttc'] for c in charges)
             resultat = total_produits - total_charges
 
             return {
                 'produits': produits,
                 'charges': charges,
                 'total_produits': total_produits,
-                'total_produits_htva': total_produits_htva,
+                'total_produits_ttc': total_produits_ttc,
                 'total_charges': total_charges,
-                'total_charges_htva': total_charges_htva,
+                'total_charges_ttc': total_charges_ttc,
                 'resultat': resultat,
                 'date_from': date_from,
                 'date_to': date_to
@@ -9566,6 +9572,7 @@ class CotisationContrat:
         except Exception as e:
             logger.error(f"Erreur vérification types cotisation user {user_id}: {e}")
             return False
+
 class IndemniteContrat:
     def __init__(self, db):
         self.db = db
@@ -9905,6 +9912,7 @@ class IndemniteContrat:
         except Exception as e:
             logger.error(f"Erreur vérification types indemnité user {user_id}: {e}")
             return False
+
 class Contrat:
     def __init__(self, db):
         self.db = db

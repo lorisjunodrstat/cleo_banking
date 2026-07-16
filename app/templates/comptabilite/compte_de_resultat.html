@@ -68,7 +68,8 @@
                             <tr>
                                 <th>Numéro</th>
                                 <th>Catégorie</th>
-                                <th class="text-end">Montant (CHF)</th>
+                                <th class="text-end">Montant HT (CHF)</th>
+                                <th class="text-end">TVA (CHF)</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -78,6 +79,7 @@
                                 <td>{{ produit.numero }}</td>
                                 <td>{{ produit.categorie_nom }}</td>
                                 <td class="text-end">{{ "%.2f"|format(produit.montant) }}</td>
+                                <td class="text-end">{{ "%.2f"|format(produit.montant_ttc - produit.montant) }}</td>
                                 <td class="text-end">
                                     <a href="{{ url_for('banking.detail_ecritures_categorie',
                                     type='produit',
