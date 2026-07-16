@@ -3511,31 +3511,48 @@ def import_plan_comptable_csv():
             
         file = request.files['csv_file']
         if file and file.filename.endswith('.csv'):
-            content = file.stream.read().decode("UTF8")
-            # Lecture avec le bon délimiteur (;)
+            # 1. Lecture unique du fichier
+            raw_data = file.stream.read()
+            # Tentative de décodage propre
+            try:
+                content = raw_data.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                content = raw_data.decode("latin-1")
+            
+            # --- DEBUG (Facultatif, pour voir ce qu'on lit) ---
+            print(f"DEBUG: Taille du contenu : {len(content)}")
+            
+            # 2. Détection du délimiteur
+            stream = io.StringIO(content)
             sniffer = csv_mod.Sniffer()
             try:
-                dialect = sniffer.sniff(content, delimiters=[',', ';'])
+                # On analyse les premiers caractères pour trouver le dialecte
+                dialect = sniffer.sniff(content[:2048], delimiters=[',', ';'])
             except csv_mod.Error:
-                # Fallback : si le sniffer échoue, on suppose par défaut la virgule
-                dialect = csv_mod.excel
-            stream = io.StringIO(content)
-            csv_input = csv_mod.reader(stream, delimiter=';')
-            next(csv_input) # Sauter l'en-tête
+                # Si le sniffer échoue, on force une valeur par défaut
+                class DefaultDialect(csv_mod.excel):
+                    delimiter = ','
+                dialect = DefaultDialect
+            
+            # 3. Traitement
+            stream.seek(0) # On rembobine au début du StringIO
+            csv_input = csv_mod.reader(stream, dialect=dialect)
+            
+            # Sauter l'en-tête
+            header = next(csv_input, None)
+            
+            nb_insertions = 0
             
             with g.db_manager.get_cursor() as cursor:
-                # 1. Vider la table
+                # Vider la table
                 cursor.execute("DELETE FROM categories_comptables")
-                nb_insertions = 0
-                # 2. Insérer les données
+                
+                # Insertion
                 for row in csv_input:
                     if len(row) >= 9:
-                        # Nettoyage sécurisé de type_compte
+                        # Nettoyage des données
                         raw_type = row[3]
-                        # Liste des valeurs autorisées dans votre ENUM SQL
-                        allowed_types = ['Actif', 'Passif', 'Charge', 'Revenus']
-                        
-                        # Si ce n'est pas dans la liste, on force une valeur par défaut ou on traite le cas "Groupe"
+                        allowed_types = ['Actif', 'Passif', 'Charge', 'Revenus', 'Groupe']
                         valeur_type = raw_type if raw_type in allowed_types else 'Actif'
                         
                         cursor.execute("""
@@ -3545,26 +3562,26 @@ def import_plan_comptable_csv():
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """, (
                             row[0], row[1], 
-                            int(row[2]) if row[2] else None,
+                            int(row[2]) if row[2] and row[2].strip() else None,
                             valeur_type,
                             row[4] if row[4] else None, 
                             row[5] if row[5] else None, 
                             row[6] if row[6] else None,
-                            int(row[7]) if row[7] and row[7].strip() != '' else None,
-                            row[8] if row[8] and row[8].strip() != '' else None,
+                            int(row[7]) if row[7] and row[7].strip() else None,
+                            row[8] if row[8] and row[8].strip() else None,
                             True
                         ))
                         nb_insertions += 1
-                print(f"Nombre de lignes insérées dans le curseur : {nb_insertions}")
             
-            flash(f'Plan comptable importé avec succès avec {nb_insertions} lignes', 'success')
+            flash(f'Plan comptable importé avec succès: {nb_insertions} lignes.', 'success')
         else:
-            flash('Format invalide', 'danger')
+            flash('Format invalide, veuillez uploader un fichier CSV.', 'danger')
             
     except Exception as e:
+        print(f"ERREUR IMPORT: {e}") # Vérifiez bien votre terminal ici
         flash(f'Erreur lors de l\'importation: {str(e)}', 'danger')
+        
     return redirect(url_for('banking.liste_categories_comptables'))
-
 @bp.route('/comptabilite/categories/<int:categorie_id>/delete', methods=['POST'])
 @login_required
 def delete_categorie(categorie_id):
