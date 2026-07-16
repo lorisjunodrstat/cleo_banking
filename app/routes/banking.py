@@ -5866,16 +5866,34 @@ def detail_ecritures_categorie(type, categorie_id):
         ecritures, total, titre = g.models.ecriture_comptable_model.get_ecritures_by_categorie_period(
             user_id=current_user.id,
             type_categorie=type,
-            categorie_id=categorie_id,
+            categorie_id=categorie_id if categorie_id != 'all' else None,
             date_from=date_from,
             date_to=date_to,
-            statut='validée'
         )
         
         # Récupérer les écritures secondaires pour chaque écriture principale
         ecritures_avec_secondaires = []
+        total_htva = 0
+        total_tva = 0
+        total_ttc = 0
+        total_taux_tva = 0
+        nb_avec_tva = 0
+        
         for ecriture in ecritures:
             ecriture_dict = dict(ecriture)
+            
+            # Calculer les totaux TVA
+            montant_htva = float(ecriture_dict.get('montant_htva', ecriture_dict.get('montant', 0)))
+            tva_montant = float(ecriture_dict.get('tva_montant', 0))
+            montant_ttc = float(ecriture_dict.get('montant', 0))
+            taux_tva = float(ecriture_dict.get('tva_taux', 0))
+            
+            total_htva += montant_htva
+            total_tva += tva_montant
+            total_ttc += montant_ttc
+            if taux_tva > 0:
+                total_taux_tva += taux_tva
+                nb_avec_tva += 1
             
             # Si c'est une écriture principale, récupérer ses écritures secondaires
             if ecriture_dict.get('type_ecriture_comptable') == 'principale' or not ecriture_dict.get('ecriture_principale_id'):
@@ -5883,6 +5901,17 @@ def detail_ecritures_categorie(type, categorie_id):
                     ecriture_dict['id'], 
                     current_user.id
                 )
+                # Ajouter les secondaires aux totaux
+                for sec in secondaires:
+                    sec_htva = float(sec.get('montant_htva', sec.get('montant', 0)))
+                    sec_tva = float(sec.get('tva_montant', 0))
+                    total_htva += sec_htva
+                    total_tva += sec_tva
+                    total_ttc += float(sec.get('montant', 0))
+                    if float(sec.get('tva_taux', 0)) > 0:
+                        total_taux_tva += float(sec.get('tva_taux', 0))
+                        nb_avec_tva += 1
+                
                 ecriture_dict['ecritures_secondaires'] = secondaires
                 ecriture_dict['has_secondaires'] = len(secondaires) > 0
             else:
@@ -5891,15 +5920,33 @@ def detail_ecritures_categorie(type, categorie_id):
             
             ecritures_avec_secondaires.append(ecriture_dict)
         
+        # Calculer le taux moyen
+        taux_moyen = total_taux_tva / nb_avec_tva if nb_avec_tva > 0 else 0
+        
+        totaux_tva = {
+            'total_htva': total_htva,
+            'total_tva': total_tva,
+            'total_ttc': total_ttc,
+            'taux_moyen': taux_moyen,
+            'nb_ecritures': len(ecritures)
+        }
+        
         logging.info(f"INFO: {len(ecritures_avec_secondaires)} écritures récupérées pour le détail")
         
+        # ✅ Assurez-vous que totaux_tva est bien passé
         return render_template('comptabilite/detail_ecritures.html',
                             ecritures=ecritures_avec_secondaires,
                             total=total,
                             titre=titre,
                             annee=annee,
                             type=type,
-                            categorie_id=categorie_id)
+                            categorie_id=categorie_id,
+                            totaux_tva=totaux_tva)  # <-- ICI
+  
+    except Exception as e:
+        logging.error(f"Erreur lors du chargement des détails: {e}")
+        flash(f"Erreur lors du chargement des détails: {str(e)}", "danger")
+        return redirect(url_for('banking.compte_de_resultat'))
     
     except Exception as e:
         logging.error(f"Erreur lors du chargement des détails: {e}")
