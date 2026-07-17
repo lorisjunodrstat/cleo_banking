@@ -7025,12 +7025,17 @@ class EcritureComptable:
             cursor.execute(query, values)
             ecriture_secondaire_id = cursor.lastrowid
             logger.info(f"Écriture secondaire insérée dans la base de données avec succès (ID: {ecriture_secondaire_id}).")
+            data_cascade = data.copy()
+            data_cascade['montant'] = abs(montant_secondaire)  # Utiliser le montant de l'écriture secondaire
+            data_cascade['categorie_id'] = comp_cat['categorie_complementaire_id']  # La catégorie de l'écriture secondaire
+
+            # Appliquer les règles en cascade sur cette écriture secondaire
             self._appliquer_regles_en_cascade(
                 cursor, 
                 ecriture_principale_id, 
-                data, 
-                comp_cat['categorie_complementaire_id'],  # La catégorie de l'écriture secondaire
-                0  # Niveau de départ
+                data_cascade,  # ← data modifié avec le bon montant
+                comp_cat['categorie_complementaire_id'],
+                0
             )
 
         except Exception as e:
