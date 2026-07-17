@@ -6158,10 +6158,13 @@ def gestion_regles():
         flash("Erreur lors du chargement des règles", "error")
         return redirect(url_for('banking.banking_dashboard'))
 
-@bp.route('/regle/nouvelle', methods=['GET', 'POST'])
+@bp.route('/comptabilite/regles/nouvelle', methods=['GET', 'POST'])
 @login_required
 def creer_regle():
     """Créer une nouvelle règle d'écriture"""
+    # Récupérer les catégories comptables (pas les catégories de transactions)
+    categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
+    
     if request.method == 'POST':
         try:
             categorie_source_id = request.form.get('categorie_source_id')
@@ -6176,23 +6179,19 @@ def creer_regle():
             # Validation
             if not categorie_source_id or not categorie_destination_id:
                 flash("Veuillez sélectionner les catégories source et destination", "error")
-                return render_template('regles/form.html')
+                return render_template('comptabilite/regles/form.html', categories=categories)
             
             if categorie_source_id == categorie_destination_id:
                 flash("La catégorie source et destination ne peuvent pas être identiques", "error")
-                return render_template('regles/form.html')
+                return render_template('comptabilite/regles/form.html', categories=categories)
             
-            # Vérifier que les catégories existent
-            categorie_source = g.models.categorie_transaction_model.get_categorie_par_id(
-                int(categorie_source_id), current_user.id
-            )
-            categorie_destination = g.models.categorie_transaction_model.get_categorie_par_id(
-                int(categorie_destination_id), current_user.id
-            )
+            # Vérifier que les catégories existent (avec categorie_comptable_model)
+            categorie_source = g.models.categorie_comptable_model.get_by_id(int(categorie_source_id))
+            categorie_destination = g.models.categorie_comptable_model.get_by_id(int(categorie_destination_id))
             
             if not categorie_source or not categorie_destination:
                 flash("Une ou plusieurs catégories sont invalides", "error")
-                return render_template('regles/form.html')
+                return render_template('comptabilite/regles/form.html', categories=categories)
             
             # Préparer les données
             data = {
@@ -6220,11 +6219,10 @@ def creer_regle():
             logging.error(f"Erreur création règle: {e}")
             flash("Erreur lors de la création de la règle", "error")
     
-    # GET - Afficher le formulaire
-    categories = g.models.categorie_transaction_model.get_categories_utilisateur(current_user.id)
-    return render_template('regles/form.html', categories=categories)
+    # GET - Afficher le formulaire avec les catégories comptables
+    return render_template('comptabilite/regles/form.html', categories=categories)
 
-@bp.route('/regle/<int:regle_id>/modifier', methods=['GET', 'POST'])
+@bp.route('/comptabilite/regles/<int:regle_id>/modifier', methods=['GET', 'POST'])
 @login_required
 def modifier_regle(regle_id):
     """Modifier une règle existante"""
@@ -6234,14 +6232,8 @@ def modifier_regle(regle_id):
         flash("Règle non trouvée", "error")
         return redirect(url_for('banking.gestion_regles'))
     
-    # Vérifier que l'utilisateur a accès à cette règle
-    # (on vérifie via les catégories associées)
-    categorie_source = g.models.categorie_transaction_model.get_categorie_par_id(
-        regle['categorie_source_id'], current_user.id
-    )
-    if not categorie_source:
-        flash("Vous n'avez pas accès à cette règle", "error")
-        return redirect(url_for('banking.gestion_regles'))
+    # Récupérer les catégories comptables
+    categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
     
     if request.method == 'POST':
         try:
@@ -6257,11 +6249,19 @@ def modifier_regle(regle_id):
             # Validation
             if not categorie_source_id or not categorie_destination_id:
                 flash("Veuillez sélectionner les catégories source et destination", "error")
-                return render_template('regles/form.html', regle=regle)
+                return render_template('comptabilite/regles/form.html', regle=regle, categories=categories)
             
             if categorie_source_id == categorie_destination_id:
                 flash("La catégorie source et destination ne peuvent pas être identiques", "error")
-                return render_template('regles/form.html', regle=regle)
+                return render_template('comptabilite/regles/form.html', regle=regle, categories=categories)
+            
+            # Vérifier que les catégories existent
+            categorie_source = g.models.categorie_comptable_model.get_by_id(int(categorie_source_id))
+            categorie_destination = g.models.categorie_comptable_model.get_by_id(int(categorie_destination_id))
+            
+            if not categorie_source or not categorie_destination:
+                flash("Une ou plusieurs catégories sont invalides", "error")
+                return render_template('comptabilite/regles/form.html', regle=regle, categories=categories)
             
             data = {
                 'categorie_source_id': int(categorie_source_id),
@@ -6288,12 +6288,7 @@ def modifier_regle(regle_id):
             flash("Erreur lors de la modification de la règle", "error")
     
     # GET - Afficher le formulaire
-    categories = g.models.categorie_transaction_model.get_categories_utilisateur(current_user.id)
-    return render_template(
-        'regles/form.html',
-        regle=regle,
-        categories=categories
-    )
+    return render_template('comptabilite/regles/form.html', regle=regle, categories=categories)
 
 @bp.route('/regle/<int:regle_id>/supprimer', methods=['POST'])
 @login_required
