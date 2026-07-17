@@ -25,7 +25,7 @@
                             {% for cat in categories %}
                             <option value="{{ cat.id }}" 
                                     {% if regle and regle.categorie_source_id == cat.id %}selected{% endif %}>
-                                {{ cat.nom }}
+                                {{ cat.numero }} - {{ cat.nom }}
                                 {% if cat.type_categorie %}({{ cat.type_categorie }}){% endif %}
                             </option>
                             {% endfor %}
@@ -40,7 +40,7 @@
                             {% for cat in categories %}
                             <option value="{{ cat.id }}" 
                                     {% if regle and regle.categorie_destination_id == cat.id %}selected{% endif %}>
-                                {{ cat.nom }}
+                                {{ cat.numero }} - {{ cat.nom }}
                                 {% if cat.type_categorie %}({{ cat.type_categorie }}){% endif %}
                             </option>
                             {% endfor %}
@@ -72,7 +72,7 @@
                             <option value="oppose" {% if regle and regle.sens == 'oppose' %}selected{% endif %}>
                                 Opposé (inverse le type)
                             </option>
-                            <option value="identique" {% if regle and regle.sens == 'identique' %}selected{% endif %}>
+                            <option value="meme" {% if regle and regle.sens == 'meme' %}selected{% endif %}>
                                 Identique (garde le même type)
                             </option>
                         </select>
