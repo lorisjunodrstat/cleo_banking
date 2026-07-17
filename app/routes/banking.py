@@ -5,7 +5,7 @@ from flask_login import login_required, current_user
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timedelta, date, time
 from calendar import monthrange
-from app.models import DatabaseManager, Banque, ComptePrincipal, SousCompte, TransactionFinanciere, StatistiquesBancaires, PlanComptable, EcritureComptable, HeureTravail, Salaire, SyntheseHebdomadaire, SyntheseMensuelle, Contrat, Contacts, ContactCompte, ComptePrincipalRapport, CategorieComptable, Employe, Equipe, Planning, Competence, PlanningRegles
+from app.models import DatabaseManager, Banque, ComptePrincipal, SousCompte, TransactionFinanciere, StatistiquesBancaires, PlanComptable, EcritureComptable, HeureTravail, Salaire, SyntheseHebdomadaire, SyntheseMensuelle, Contrat, Contacts, ContactCompte, ComptePrincipalRapport, CategorieComptable, Employe, Equipe, Planning, Competence, PlanningRegles, RegleEcriture
 from io import StringIO
 import os
 from werkzeug.utils import secure_filename
@@ -3359,8 +3359,9 @@ def banking_supprimer_sous_compte(sous_compte_id):
     else:
         flash('Impossible de supprimer un sous-compte avec un solde positif', 'error')    
     return redirect(url_for('banking.banking_compte_detail', compte_id=compte_id))
+####################################################################
 ##### Partie comptabilité
-
+####################################################################
 
 @bp.route('/comptabilite/dashboard')
 @login_required
@@ -4312,7 +4313,7 @@ def modifier_categorie(categorie_id):
                 
                 if success:
                     flash(message, "success")
-                    return redirect(url_for('categories.gestion_categories'))
+                    return redirect(url_for('banking.gestion_categories'))
                 else:
                     flash(message, "error")
             else:
@@ -6121,7 +6122,302 @@ def api_compte_resultat():
         date_to=date_to
     )
     return jsonify(resultat)
+###### Regle Ecriture
 
+
+@bp.route('/regles')
+@login_required
+def gestion_regles():
+    """Page principale de gestion des règles d'écriture"""
+    try:
+        # Récupérer toutes les règles pour l'utilisateur
+        regles = g.models.regle_ecriture.get_all()
+        
+        # Récupérer les catégories pour les filtres
+        categories = g.models.categorie_transaction_model.get_categories_utilisateur(current_user.id)
+        
+        # Filtres optionnels
+        type_regle = request.args.get('type')
+        statut = request.args.get('statut')
+        
+        if type_regle:
+            regles = [r for r in regles if r.get('type_regle') == type_regle]
+        if statut:
+            actif = statut == 'actif'
+            regles = [r for r in regles if r.get('actif') == actif]
+        
+        return render_template(
+            'categories/regles/liste.html',
+            regles=regles,
+            categories=categories,
+            type_filtre=type_regle,
+            statut_filtre=statut
+        )
+    except Exception as e:
+        logging.error(f"Erreur chargement règles: {e}")
+        flash("Erreur lors du chargement des règles", "error")
+        return redirect(url_for('banking.banking_dashboard'))
+
+@bp.route('/regle/nouvelle', methods=['GET', 'POST'])
+@login_required
+def creer_regle():
+    """Créer une nouvelle règle d'écriture"""
+    if request.method == 'POST':
+        try:
+            categorie_source_id = request.form.get('categorie_source_id')
+            categorie_destination_id = request.form.get('categorie_destination_id')
+            type_regle = request.form.get('type_regle', 'PERSONNALISE')
+            sens = request.form.get('sens', 'oppose')
+            mode_calcul = request.form.get('mode_calcul', 'montant_transaction')
+            valeur = request.form.get('valeur')
+            ordre = request.form.get('ordre', 1)
+            actif = request.form.get('actif') == 'on'
+            
+            # Validation
+            if not categorie_source_id or not categorie_destination_id:
+                flash("Veuillez sélectionner les catégories source et destination", "error")
+                return render_template('categories/regles/form.html')
+            
+            if categorie_source_id == categorie_destination_id:
+                flash("La catégorie source et destination ne peuvent pas être identiques", "error")
+                return render_template('categories/regles/form.html')
+            
+            # Vérifier que les catégories existent
+            categorie_source = g.models.categorie_transaction_model.get_categorie_par_id(
+                int(categorie_source_id), current_user.id
+            )
+            categorie_destination = g.models.categorie_transaction_model.get_categorie_par_id(
+                int(categorie_destination_id), current_user.id
+            )
+            
+            if not categorie_source or not categorie_destination:
+                flash("Une ou plusieurs catégories sont invalides", "error")
+                return render_template('categories/regles/form.html')
+            
+            # Préparer les données
+            data = {
+                'categorie_source_id': int(categorie_source_id),
+                'categorie_destination_id': int(categorie_destination_id),
+                'type_regle': type_regle,
+                'sens': sens,
+                'mode_calcul': mode_calcul,
+                'valeur': float(valeur) if valeur else None,
+                'ordre': int(ordre),
+                'actif': actif
+            }
+            
+            regle_id = g.models.regle_ecriture.create(data)
+            if regle_id:
+                flash("Règle créée avec succès", "success")
+                return redirect(url_for('banking.gestion_regles'))
+            else:
+                flash("Erreur lors de la création de la règle", "error")
+                
+        except ValueError as e:
+            logging.error(f"Erreur de validation: {e}")
+            flash(f"Erreur de validation: {str(e)}", "error")
+        except Exception as e:
+            logging.error(f"Erreur création règle: {e}")
+            flash("Erreur lors de la création de la règle", "error")
+    
+    # GET - Afficher le formulaire
+    categories = g.models.categorie_transaction_model.get_categories_utilisateur(current_user.id)
+    return render_template('categories/regles/form.html', categories=categories)
+
+@bp.route('/regle/<int:regle_id>/modifier', methods=['GET', 'POST'])
+@login_required
+def modifier_regle(regle_id):
+    """Modifier une règle existante"""
+    # Récupérer la règle
+    regle = g.models.regle_ecriture.get_by_id(regle_id)
+    if not regle:
+        flash("Règle non trouvée", "error")
+        return redirect(url_for('banking.gestion_regles'))
+    
+    # Vérifier que l'utilisateur a accès à cette règle
+    # (on vérifie via les catégories associées)
+    categorie_source = g.models.categorie_transaction_model.get_categorie_par_id(
+        regle['categorie_source_id'], current_user.id
+    )
+    if not categorie_source:
+        flash("Vous n'avez pas accès à cette règle", "error")
+        return redirect(url_for('banking.gestion_regles'))
+    
+    if request.method == 'POST':
+        try:
+            categorie_source_id = request.form.get('categorie_source_id')
+            categorie_destination_id = request.form.get('categorie_destination_id')
+            type_regle = request.form.get('type_regle', 'PERSONNALISE')
+            sens = request.form.get('sens', 'oppose')
+            mode_calcul = request.form.get('mode_calcul', 'montant_transaction')
+            valeur = request.form.get('valeur')
+            ordre = request.form.get('ordre', 1)
+            actif = request.form.get('actif') == 'on'
+            
+            # Validation
+            if not categorie_source_id or not categorie_destination_id:
+                flash("Veuillez sélectionner les catégories source et destination", "error")
+                return render_template('categories/regles/form.html', regle=regle)
+            
+            if categorie_source_id == categorie_destination_id:
+                flash("La catégorie source et destination ne peuvent pas être identiques", "error")
+                return render_template('categories/regles/form.html', regle=regle)
+            
+            data = {
+                'categorie_source_id': int(categorie_source_id),
+                'categorie_destination_id': int(categorie_destination_id),
+                'type_regle': type_regle,
+                'sens': sens,
+                'mode_calcul': mode_calcul,
+                'valeur': float(valeur) if valeur else None,
+                'ordre': int(ordre),
+                'actif': actif
+            }
+            
+            if g.models.regle_ecriture.update(regle_id, data):
+                flash("Règle mise à jour avec succès", "success")
+                return redirect(url_for('banking.gestion_regles'))
+            else:
+                flash("Erreur lors de la mise à jour de la règle", "error")
+                
+        except ValueError as e:
+            logging.error(f"Erreur de validation: {e}")
+            flash(f"Erreur de validation: {str(e)}", "error")
+        except Exception as e:
+            logging.error(f"Erreur modification règle: {e}")
+            flash("Erreur lors de la modification de la règle", "error")
+    
+    # GET - Afficher le formulaire
+    categories = g.models.categorie_transaction_model.get_categories_utilisateur(current_user.id)
+    return render_template(
+        'categories/regles/form.html',
+        regle=regle,
+        categories=categories
+    )
+
+@bp.route('/regle/<int:regle_id>/supprimer', methods=['POST'])
+@login_required
+def supprimer_regle(regle_id):
+    """Supprimer (soft delete) une règle"""
+    try:
+        # Vérifier que l'utilisateur a accès à cette règle
+        regle = g.models.regle_ecriture.get_by_id(regle_id)
+        if not regle:
+            flash("Règle non trouvée", "error")
+            return redirect(url_for('banking.gestion_regles'))
+        
+        categorie_source = g.models.categorie_transaction_model.get_categorie_par_id(
+            regle['categorie_source_id'], current_user.id
+        )
+        if not categorie_source:
+            flash("Vous n'avez pas accès à cette règle", "error")
+            return redirect(url_for('banking.gestion_regles'))
+        
+        if g.models.regle_ecriture.delete(regle_id):
+            flash("Règle supprimée avec succès", "success")
+        else:
+            flash("Erreur lors de la suppression de la règle", "error")
+            
+    except Exception as e:
+        logging.error(f"Erreur suppression règle: {e}")
+        flash("Erreur lors de la suppression de la règle", "error")
+    
+    return redirect(url_for('banking.gestion_regles'))
+
+@bp.route('/regle/<int:regle_id>/activer', methods=['POST'])
+@login_required
+def activer_regle(regle_id):
+    """Activer ou désactiver une règle"""
+    try:
+        regle = g.models.regle_ecriture.get_by_id(regle_id)
+        if not regle:
+            flash("Règle non trouvée", "error")
+            return redirect(url_for('banking.gestion_regles'))
+        
+        categorie_source = g.models.categorie_transaction_model.get_categorie_par_id(
+            regle['categorie_source_id'], current_user.id
+        )
+        if not categorie_source:
+            flash("Vous n'avez pas accès à cette règle", "error")
+            return redirect(url_for('banking.gestion_regles'))
+        
+        # Inverser le statut
+        nouveau_statut = not regle['actif']
+        if g.models.regle_ecriture.update(regle_id, {'actif': nouveau_statut}):
+            flash(f"Règle {'activée' if nouveau_statut else 'désactivée'} avec succès", "success")
+        else:
+            flash("Erreur lors du changement de statut", "error")
+            
+    except Exception as e:
+        logging.error(f"Erreur activation règle: {e}")
+        flash("Erreur lors du changement de statut", "error")
+    
+    return redirect(url_for('banking.gestion_regles'))
+
+@bp.route('/categorie/<int:categorie_id>/regles')
+@login_required
+def regles_par_categorie(categorie_id):
+    """Affiche les règles associées à une catégorie"""
+    try:
+        categorie = g.models.categorie_transaction_model.get_categorie_par_id(categorie_id, current_user.id)
+        if not categorie:
+            flash("Catégorie non trouvée", "error")
+            return redirect(url_for('banking.gestion_categories'))
+        
+        regles = g.models.regle_ecriture.get_by_categorie(categorie_id)
+        
+        return render_template(
+            'categories/regles/par_categorie.html',
+            categorie=categorie,
+            regles=regles
+        )
+        
+    except Exception as e:
+        logging.error(f"Erreur chargement règles par catégorie: {e}")
+        flash("Erreur lors du chargement des règles", "error")
+        return redirect(url_for('banking.gestion_categories'))
+
+@bp.route('/regle/<int:regle_id>/dupliquer', methods=['POST'])
+@login_required
+def dupliquer_regle(regle_id):
+    """Dupliquer une règle existante"""
+    try:
+        regle = g.models.regle_ecriture.get_by_id(regle_id)
+        if not regle:
+            flash("Règle non trouvée", "error")
+            return redirect(url_for('banking.gestion_regles'))
+        
+        # Vérifier l'accès
+        categorie_source = g.models.categorie_transaction_model.get_categorie_par_id(
+            regle['categorie_source_id'], current_user.id
+        )
+        if not categorie_source:
+            flash("Vous n'avez pas accès à cette règle", "error")
+            return redirect(url_for('banking.gestion_regles'))
+        
+        # Créer une copie
+        data = {
+            'categorie_source_id': regle['categorie_source_id'],
+            'categorie_destination_id': regle['categorie_destination_id'],
+            'type_regle': regle['type_regle'],
+            'sens': regle['sens'],
+            'mode_calcul': regle['mode_calcul'],
+            'valeur': regle['valeur'],
+            'ordre': regle.get('ordre', 1) + 1,  # Augmenter l'ordre
+            'actif': False  # Dupliquer en inactif par défaut
+        }
+        
+        new_id = g.models.regle_ecriture.create(data)
+        if new_id:
+            flash("Règle dupliquée avec succès", "success")
+        else:
+            flash("Erreur lors de la duplication de la règle", "error")
+            
+    except Exception as e:
+        logging.error(f"Erreur duplication règle: {e}")
+        flash("Erreur lors de la duplication", "error")
+    
+    return redirect(url_for('banking.gestion_regles'))
 
 ### Partie heures et salaires 
 
