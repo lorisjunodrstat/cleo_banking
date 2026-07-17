@@ -621,33 +621,19 @@ class DatabaseManager:
                         'meme',
                         'oppose'
                     ) NOT NULL DEFAULT 'oppose',
-
                     mode_calcul ENUM(
                         'montant_fixe',
                         'pourcentage',
                         'montant_transaction'
                     ) NOT NULL DEFAULT 'montant_transaction',
-
                     valeur DECIMAL(15,2) DEFAULT NULL,
                     ordre INT DEFAULT 1,
-
                     actif BOOLEAN DEFAULT TRUE,
-
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        ON UPDATE CURRENT_TIMESTAMP,
-                    UNIQUE KEY uq_regle (
-                        categorie_source_id,
-                        categorie_destination_id,
-                        type_regle
-                    )
-
-                    FOREIGN KEY (categorie_source_id)
-                        REFERENCES categories_comptables(id)
-                        ON DELETE CASCADE,
-                    FOREIGN KEY (categorie_destination_id)
-                        REFERENCES categories_comptables(id)
-                        ON DELETE CASCADE
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_regle (categorie_source_id, categorie_destination_id, type_regle),
+                    FOREIGN KEY (categorie_source_id) REFERENCES categories_comptables(id) ON DELETE CASCADE,
+                    FOREIGN KEY (categorie_destination_id) REFERENCES categories_comptables(id) ON DELETE CASCADE
                 );
                 """
                 cursor.execute(create_regles_ecritures_table_query)
@@ -8835,14 +8821,144 @@ class RegleEcriture:
             logger.error(f"Erreur création règle : {e}")
             return None
 
-    def update(self, id, data):
-        pass
-    def delete(self, id):
-        pass
-    def get_by_categorie(self, categorie_id):
-        pass
-    def get_all(self, ):
-        pass
+    def update(self, regle_id: int, data: Dict) -> bool:
+
+        try:
+
+            with self.db.get_cursor() as cursor:
+
+                query = """
+                UPDATE regles_ecritures
+
+                SET
+                    categorie_source_id=%s,
+                    categorie_destination_id=%s,
+                    type_regle=%s,
+                    sens=%s,
+                    mode_calcul=%s,
+                    valeur=%s,
+                    ordre=%s,
+                    actif=%s
+
+                WHERE id=%s
+                """
+
+                values = (
+
+                    data["categorie_source_id"],
+                    data["categorie_destination_id"],
+                    data["type_regle"],
+                    data["sens"],
+                    data["mode_calcul"],
+                    data["valeur"],
+                    data["ordre"],
+                    data["actif"],
+                    regle_id
+
+                )
+
+                cursor.execute(query, values)
+
+                return cursor.rowcount > 0
+
+        except Exception as e:
+
+            logger.error(f"Erreur update : {e}")
+            return False
+    def delete(self, regle_id: int) -> bool:
+
+        try:
+
+            with self.db.get_cursor() as cursor:
+
+                cursor.execute("""
+
+                    UPDATE regles_ecritures
+                    SET actif=FALSE
+                    WHERE id=%s
+
+                """, (regle_id,))
+
+                return cursor.rowcount > 0
+
+        except Exception as e:
+
+            logger.error(f"Erreur delete : {e}")
+            return False
+    def get_by_id(self, regle_id: int) -> Optional[Dict]:
+
+        try:
+
+            with self.db.get_cursor() as cursor:
+
+                cursor.execute("""
+                    SELECT *
+                    FROM regles_ecritures
+                    WHERE id=%s
+                """, (regle_id,))
+
+                return cursor.fetchone()
+
+        except Exception as e:
+            logger.error(f"Erreur get_by_id : {e}")
+            return None
+    def get_by_categorie(self, categorie_id: int) -> List[Dict]:
+
+        try:
+
+            with self.db.get_cursor() as cursor:
+
+                cursor.execute("""
+
+                    SELECT *
+                    FROM regles_ecritures
+                    WHERE categorie_source_id=%s
+                    AND actif=TRUE
+                    ORDER BY ordre
+
+                """, (categorie_id,))
+
+                return cursor.fetchall()
+
+        except Exception as e:
+
+            logger.error(f"Erreur get_by_categorie : {e}")
+            return []
+    def get_all(self, )-> List[Dict]:
+        try:
+
+            with self.db.get_cursor() as cursor:
+
+                cursor.execute("""
+
+                SELECT
+                    r.*,
+
+                    cs.numero AS source_numero,
+                    cs.nom AS source_nom,
+
+                    cd.numero AS destination_numero,
+                    cd.nom AS destination_nom
+
+                FROM regles_ecritures r
+
+                INNER JOIN categories_comptables cs
+                    ON r.categorie_source_id = cs.id
+
+                INNER JOIN categories_comptables cd
+                    ON r.categorie_destination_id = cd.id
+
+                ORDER BY
+                    cs.numero,
+                    r.ordre
+
+                """)
+
+                return cursor.fetchall()
+
+        except Exception as e:
+            logger.error(f"Erreur get_all : {e}")
+            return []
 
 
 class ContactPlan:
@@ -14061,6 +14177,9 @@ class ModelManager:
     @property
     def contact_plan_model(self):
         return self._get_model('contact_plan', ContactPlan)
+    @property
+    def regle_ecriture_model(self):
+        return self._get_model('regle_ecriture', RegleEcriture)
     @property
     def contact_model(self):
         return self._get_model('contact', Contacts)
