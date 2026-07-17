@@ -599,7 +599,6 @@ class DatabaseManager:
                     FOREIGN KEY (transaction_id) REFERENCES transactions(id),
                     FOREIGN KEY (ecriture_principale_id) REFERENCES ecritures_comptables(id)
                 );
-                );
                 """
                 cursor.execute(create_ecritures_table_query)
 
