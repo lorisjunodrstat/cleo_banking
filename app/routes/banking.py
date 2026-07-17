@@ -6131,7 +6131,7 @@ def gestion_regles():
     """Page principale de gestion des règles d'écriture"""
     try:
         # Récupérer toutes les règles pour l'utilisateur
-        regles = g.models.regle_ecriture.get_all()
+        regles = g.models.regle_ecriture_model.get_all()
         
         # Récupérer les catégories pour les filtres
         categories = g.models.categorie_transaction_model.get_categories_utilisateur(current_user.id)
@@ -6206,7 +6206,7 @@ def creer_regle():
                 'actif': actif
             }
             
-            regle_id = g.models.regle_ecriture.create(data)
+            regle_id = g.models.regle_ecriture_model.create(data)
             if regle_id:
                 flash("Règle créée avec succès", "success")
                 return redirect(url_for('banking.gestion_regles'))
@@ -6229,7 +6229,7 @@ def creer_regle():
 def modifier_regle(regle_id):
     """Modifier une règle existante"""
     # Récupérer la règle
-    regle = g.models.regle_ecriture.get_by_id(regle_id)
+    regle = g.models.regle_ecriture_model.get_by_id(regle_id)
     if not regle:
         flash("Règle non trouvée", "error")
         return redirect(url_for('banking.gestion_regles'))
@@ -6274,7 +6274,7 @@ def modifier_regle(regle_id):
                 'actif': actif
             }
             
-            if g.models.regle_ecriture.update(regle_id, data):
+            if g.models.regle_ecriture_model.update(regle_id, data):
                 flash("Règle mise à jour avec succès", "success")
                 return redirect(url_for('banking.gestion_regles'))
             else:
@@ -6301,7 +6301,7 @@ def supprimer_regle(regle_id):
     """Supprimer (soft delete) une règle"""
     try:
         # Vérifier que l'utilisateur a accès à cette règle
-        regle = g.models.regle_ecriture.get_by_id(regle_id)
+        regle = g.models.regle_ecriture_model.get_by_id(regle_id)
         if not regle:
             flash("Règle non trouvée", "error")
             return redirect(url_for('banking.gestion_regles'))
@@ -6313,7 +6313,7 @@ def supprimer_regle(regle_id):
             flash("Vous n'avez pas accès à cette règle", "error")
             return redirect(url_for('banking.gestion_regles'))
         
-        if g.models.regle_ecriture.delete(regle_id):
+        if g.models.regle_ecriture_model.delete(regle_id):
             flash("Règle supprimée avec succès", "success")
         else:
             flash("Erreur lors de la suppression de la règle", "error")
@@ -6329,7 +6329,7 @@ def supprimer_regle(regle_id):
 def activer_regle(regle_id):
     """Activer ou désactiver une règle"""
     try:
-        regle = g.models.regle_ecriture.get_by_id(regle_id)
+        regle = g.models.regle_ecriture_model.get_by_id(regle_id)
         if not regle:
             flash("Règle non trouvée", "error")
             return redirect(url_for('banking.gestion_regles'))
@@ -6343,7 +6343,7 @@ def activer_regle(regle_id):
         
         # Inverser le statut
         nouveau_statut = not regle['actif']
-        if g.models.regle_ecriture.update(regle_id, {'actif': nouveau_statut}):
+        if g.models.regle_ecriture_model.update(regle_id, {'actif': nouveau_statut}):
             flash(f"Règle {'activée' if nouveau_statut else 'désactivée'} avec succès", "success")
         else:
             flash("Erreur lors du changement de statut", "error")
@@ -6364,7 +6364,7 @@ def regles_par_categorie(categorie_id):
             flash("Catégorie non trouvée", "error")
             return redirect(url_for('banking.gestion_categories'))
         
-        regles = g.models.regle_ecriture.get_by_categorie(categorie_id)
+        regles = g.models.regle_ecriture_model.get_by_categorie(categorie_id)
         
         return render_template(
             'categories/regles/par_categorie.html',
@@ -6382,7 +6382,7 @@ def regles_par_categorie(categorie_id):
 def dupliquer_regle(regle_id):
     """Dupliquer une règle existante"""
     try:
-        regle = g.models.regle_ecriture.get_by_id(regle_id)
+        regle = g.models.regle_ecriture_model.get_by_id(regle_id)
         if not regle:
             flash("Règle non trouvée", "error")
             return redirect(url_for('banking.gestion_regles'))
@@ -6407,7 +6407,7 @@ def dupliquer_regle(regle_id):
             'actif': False  # Dupliquer en inactif par défaut
         }
         
-        new_id = g.models.regle_ecriture.create(data)
+        new_id = g.models.regle_ecriture_model.create(data)
         if new_id:
             flash("Règle dupliquée avec succès", "success")
         else:
