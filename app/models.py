@@ -7023,13 +7023,118 @@ class EcritureComptable:
             )
 
             cursor.execute(query, values)
-            logger.info(f"Écriture secondaire insérée dans la base de données avec succès.")
+            ecriture_secondaire_id = cursor.lastrowid
+            logger.info(f"Écriture secondaire insérée dans la base de données avec succès (ID: {ecriture_secondaire_id}).")
+            self._appliquer_regles_en_cascade(
+                cursor, 
+                ecriture_principale_id, 
+                data, 
+                comp_cat['categorie_complementaire_id'],  # La catégorie de l'écriture secondaire
+                0  # Niveau de départ
+            )
 
         except Exception as e:
             logger.error(f"Erreur lors de la création de l'écriture secondaire: {e}")
             raise
 
+    def get_regles_for_categorie(self, categorie_id: int) -> List[Dict]:
+        """Récupère toutes les règles actives pour une catégorie donnée"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT * FROM regles_ecritures
+                    WHERE categorie_source_id = %s
+                    AND actif = TRUE
+                    ORDER BY ordre
+                """, (categorie_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération règles pour catégorie {categorie_id}: {e}")
+            return []
 
+    def _appliquer_regles_en_cascade(self, cursor, ecriture_principale_id: int, data: Dict, categorie_id: int, niveau: int = 0):
+        """
+        Applique les règles en cascade pour une catégorie donnée.
+        niveau permet d'éviter les boucles infinies (max 10 niveaux).
+        """
+        if niveau > 10:
+            logger.warning(f"⚠️ Niveau de cascade maximum atteint (10) pour l'écriture {ecriture_principale_id}")
+            return
+        
+        # Récupérer les règles pour cette catégorie
+        regles = self.get_regles_for_categorie(categorie_id)
+        
+        if not regles:
+            return
+        
+        logger.info(f"📋 {len(regles)} règle(s) trouvée(s) pour la catégorie ID {categorie_id} (niveau {niveau})")
+        
+        for regle in regles:
+            # Calculer le montant selon la règle
+            montant_source = Decimal(str(data.get('montant', 0)))
+            
+            if regle['mode_calcul'] == 'montant_transaction':
+                montant_secondaire = montant_source
+            elif regle['mode_calcul'] == 'pourcentage':
+                taux = Decimal(str(regle.get('valeur', 0)))
+                montant_secondaire = montant_source * (taux / Decimal('100'))
+            elif regle['mode_calcul'] == 'montant_fixe':
+                montant_secondaire = Decimal(str(regle.get('valeur', 0)))
+            else:
+                continue
+            
+            if abs(montant_secondaire) <= 0.01:
+                logger.info(f"ℹ️ Montant secondaire négligeable ({montant_secondaire:.2f} CHF) pour la règle {regle['id']}")
+                continue
+            
+            # Déterminer le type d'écriture
+            type_ecriture = data.get('type_ecriture')
+            if regle.get('sens') == 'oppose':
+                type_ecriture = 'recette' if type_ecriture == 'depense' else 'depense'
+            
+            # Créer l'écriture secondaire
+            query = """
+            INSERT INTO ecritures_comptables(
+                date_ecriture, compte_bancaire_id, categorie_id, montant, montant_htva, devise,
+                description, reference, type_ecriture, tva_taux, tva_montant,
+                utilisateur_id, justificatif_url, statut, id_contact,
+                ecriture_principale_id, type_ecriture_comptable
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            values = (
+                data.get('date_ecriture'),
+                data.get('compte_bancaire_id'),
+                regle['categorie_destination_id'],
+                abs(montant_secondaire),
+                abs(montant_secondaire),
+                data.get('devise', 'CHF'),
+                f"{data.get('description', '')} (règle {regle['id']})",
+                data.get('reference', ''),
+                type_ecriture,
+                regle.get('valeur', 0),
+                0,
+                data.get('utilisateur_id'),
+                data.get('justificatif_url'),
+                data.get('statut', 'pending'),
+                data.get('id_contact'),
+                ecriture_principale_id,
+                'complementaire'
+            )
+            
+            cursor.execute(query, values)
+            ecriture_secondaire_id = cursor.lastrowid
+            logger.info(f"✅ Écriture secondaire créée (ID: {ecriture_secondaire_id}) pour la règle {regle['id']}")
+            
+            # 🔥 CASCADE : Cette écriture secondaire peut déclencher d'autres règles
+            self._appliquer_regles_en_cascade(
+                cursor, 
+                ecriture_principale_id, 
+                data, 
+                regle['categorie_destination_id'],  # La catégorie de destination devient la source
+                niveau + 1
+            )
     def get_ecriture_avec_secondaires(self, ecriture_id: int, user_id: int) -> Dict:
         """Récupère une écriture principale avec toutes ses écritures secondaires"""
         try:
