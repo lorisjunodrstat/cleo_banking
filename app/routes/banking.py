@@ -6147,7 +6147,7 @@ def gestion_regles():
             regles = [r for r in regles if r.get('actif') == actif]
         
         return render_template(
-            'categories/regles/liste.html',
+            'regles/liste.html',
             regles=regles,
             categories=categories,
             type_filtre=type_regle,
@@ -6176,11 +6176,11 @@ def creer_regle():
             # Validation
             if not categorie_source_id or not categorie_destination_id:
                 flash("Veuillez sélectionner les catégories source et destination", "error")
-                return render_template('categories/regles/form.html')
+                return render_template('regles/form.html')
             
             if categorie_source_id == categorie_destination_id:
                 flash("La catégorie source et destination ne peuvent pas être identiques", "error")
-                return render_template('categories/regles/form.html')
+                return render_template('regles/form.html')
             
             # Vérifier que les catégories existent
             categorie_source = g.models.categorie_transaction_model.get_categorie_par_id(
@@ -6192,7 +6192,7 @@ def creer_regle():
             
             if not categorie_source or not categorie_destination:
                 flash("Une ou plusieurs catégories sont invalides", "error")
-                return render_template('categories/regles/form.html')
+                return render_template('regles/form.html')
             
             # Préparer les données
             data = {
@@ -6222,7 +6222,7 @@ def creer_regle():
     
     # GET - Afficher le formulaire
     categories = g.models.categorie_transaction_model.get_categories_utilisateur(current_user.id)
-    return render_template('categories/regles/form.html', categories=categories)
+    return render_template('regles/form.html', categories=categories)
 
 @bp.route('/regle/<int:regle_id>/modifier', methods=['GET', 'POST'])
 @login_required
@@ -6257,11 +6257,11 @@ def modifier_regle(regle_id):
             # Validation
             if not categorie_source_id or not categorie_destination_id:
                 flash("Veuillez sélectionner les catégories source et destination", "error")
-                return render_template('categories/regles/form.html', regle=regle)
+                return render_template('regles/form.html', regle=regle)
             
             if categorie_source_id == categorie_destination_id:
                 flash("La catégorie source et destination ne peuvent pas être identiques", "error")
-                return render_template('categories/regles/form.html', regle=regle)
+                return render_template('regles/form.html', regle=regle)
             
             data = {
                 'categorie_source_id': int(categorie_source_id),
@@ -6290,7 +6290,7 @@ def modifier_regle(regle_id):
     # GET - Afficher le formulaire
     categories = g.models.categorie_transaction_model.get_categories_utilisateur(current_user.id)
     return render_template(
-        'categories/regles/form.html',
+        'regles/form.html',
         regle=regle,
         categories=categories
     )
@@ -6367,7 +6367,7 @@ def regles_par_categorie(categorie_id):
         regles = g.models.regle_ecriture_model.get_by_categorie(categorie_id)
         
         return render_template(
-            'categories/regles/par_categorie.html',
+            'regles/par_categorie.html',
             categorie=categorie,
             regles=regles
         )
