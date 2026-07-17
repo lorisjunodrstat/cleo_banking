@@ -9098,7 +9098,7 @@ class TauxTva:
                 INSERT INTO taux_tva (annee, pays, nom, taux, actif)
                 VALUES (%s, %s, %s, %s, %s)
                 """
-                values = (data['annee'], data['nom'], data['taux'], data.get('actif', True))
+                values = (data['annee'], data['pays'], data['nom'], data['taux'], data.get('actif', True))
                 cursor.execute(query, values)
                 return cursor.lastrowid
         except Exception as e:
