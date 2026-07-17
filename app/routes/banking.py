@@ -6179,11 +6179,11 @@ def creer_regle():
             # Validation
             if not categorie_source_id or not categorie_destination_id:
                 flash("Veuillez sélectionner les catégories source et destination", "error")
-                return render_template('comptabilite/regles/form.html', categories=categories)
+                return render_template('regles/form.html', categories=categories)
             
             if categorie_source_id == categorie_destination_id:
                 flash("La catégorie source et destination ne peuvent pas être identiques", "error")
-                return render_template('comptabilite/regles/form.html', categories=categories)
+                return render_template('regles/form.html', categories=categories)
             
             # Vérifier que les catégories existent (avec categorie_comptable_model)
             categorie_source = g.models.categorie_comptable_model.get_by_id(int(categorie_source_id))
@@ -6191,7 +6191,7 @@ def creer_regle():
             
             if not categorie_source or not categorie_destination:
                 flash("Une ou plusieurs catégories sont invalides", "error")
-                return render_template('comptabilite/regles/form.html', categories=categories)
+                return render_template('regles/form.html', categories=categories)
             
             # Préparer les données
             data = {
@@ -6220,7 +6220,7 @@ def creer_regle():
             flash("Erreur lors de la création de la règle", "error")
     
     # GET - Afficher le formulaire avec les catégories comptables
-    return render_template('comptabilite/regles/form.html', categories=categories)
+    return render_template('regles/form.html', categories=categories)
 
 @bp.route('/comptabilite/regles/<int:regle_id>/modifier', methods=['GET', 'POST'])
 @login_required
@@ -6249,11 +6249,11 @@ def modifier_regle(regle_id):
             # Validation
             if not categorie_source_id or not categorie_destination_id:
                 flash("Veuillez sélectionner les catégories source et destination", "error")
-                return render_template('comptabilite/regles/form.html', regle=regle, categories=categories)
+                return render_template('regles/form.html', regle=regle, categories=categories)
             
             if categorie_source_id == categorie_destination_id:
                 flash("La catégorie source et destination ne peuvent pas être identiques", "error")
-                return render_template('comptabilite/regles/form.html', regle=regle, categories=categories)
+                return render_template('regles/form.html', regle=regle, categories=categories)
             
             # Vérifier que les catégories existent
             categorie_source = g.models.categorie_comptable_model.get_by_id(int(categorie_source_id))
@@ -6261,7 +6261,7 @@ def modifier_regle(regle_id):
             
             if not categorie_source or not categorie_destination:
                 flash("Une ou plusieurs catégories sont invalides", "error")
-                return render_template('comptabilite/regles/form.html', regle=regle, categories=categories)
+                return render_template('regles/form.html', regle=regle, categories=categories)
             
             data = {
                 'categorie_source_id': int(categorie_source_id),
@@ -6288,7 +6288,7 @@ def modifier_regle(regle_id):
             flash("Erreur lors de la modification de la règle", "error")
     
     # GET - Afficher le formulaire
-    return render_template('comptabilite/regles/form.html', regle=regle, categories=categories)
+    return render_template('regles/form.html', regle=regle, categories=categories)
 
 @bp.route('/regle/<int:regle_id>/supprimer', methods=['POST'])
 @login_required
