@@ -533,6 +533,21 @@ class DatabaseManager:
                 """
                 cursor.execute(create_categories_table_query)
 
+                # Table categories_comptables
+                create_taux_tva_table_query = """
+                CREATE TABLE IF NOT EXISTS taux_tva (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    pays VARCHAR(100) NOT NULL,
+                    annee INT NOT NULL,
+                    nom VARCHAR(100) NOT NULL COMMENT 'Ex: Taux normal, Taux réduit, Taux spécial',
+                    taux DECIMAL(5,2) NOT NULL COMMENT 'Ex: 8.10, 2.60, 3.80',
+                    actif BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY unique_taux_annee (annee, nom)
+                );
+                """
+                cursor.execute(create_taux_tva_table_query)
+
                 # Table contacts
                 create_contacts_table_query = """
                 CREATE TABLE IF NOT EXISTS contacts (
@@ -9072,6 +9087,113 @@ class RegleEcriture:
             return []
 
 
+class TauxTva:
+    def __init__(self, db):
+        self.db = db
+
+    def create(self, data: Dict) -> Optional[int]:
+        try:
+            with self.db.get_cursor() as cursor:
+                query = """
+                INSERT INTO taux_tva (annee, nom, taux, actif)
+                VALUES (%s, %s, %s, %s)
+                """
+                values = (data['annee'], data['nom'], data['taux'], data.get('actif', True))
+                cursor.execute(query, values)
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur création taux TVA: {e}")
+            return None
+
+    def update(self, taux_id: int, data: Dict) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                query = """
+                UPDATE taux_tva SET annee = %s, nom = %s, taux = %s, actif = %s
+                WHERE id = %s
+                """
+                values = (data['annee'], data['nom'], data['taux'], data.get('actif', True), taux_id)
+                cursor.execute(query, values)
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur update taux TVA: {e}")
+            return False
+
+    def delete(self, taux_id: int) -> bool:
+        """Soft delete"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("UPDATE taux_tva SET actif = FALSE WHERE id = %s", (taux_id,))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur delete taux TVA: {e}")
+            return False
+
+    def get_all(self) -> List[Dict]:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("SELECT * FROM taux_tva WHERE actif = TRUE ORDER BY annee DESC, taux DESC")
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur get_all taux TVA: {e}")
+            return []
+
+    def get_by_id(self, taux_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("SELECT * FROM taux_tva WHERE id = %s", (taux_id,))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur get_by_id taux TVA: {e}")
+            return None
+
+    def get_taux_by_date(self, date_str: str) -> List[Dict]:
+        """
+        Récupère les taux de TVA actifs pour l'année correspondant à la date fournie.
+        Format attendu pour date_str : 'YYYY-MM-DD'
+        """
+        try:
+            annee = int(date_str[:4]) # Extrait '2024' de '2024-05-15'
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, annee, nom, taux 
+                    FROM taux_tva 
+                    WHERE annee = %s AND actif = TRUE 
+                    ORDER BY taux DESC
+                """, (annee,))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur get_taux_by_date: {e}")
+            return []
+
+    def get_taux_for_select(self, annee: int = None) -> List[Dict]:
+        """
+        Récupère les taux pour un select HTML, avec un label clair incluant l'année.
+        Ex: "Taux normal 2024 (8.1%)"
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                if annee:
+                    cursor.execute("""
+                        SELECT id, annee, nom, taux, 
+                               CONCAT(nom, ' ', annee, ' (', taux, '%)') as label
+                        FROM taux_tva 
+                        WHERE annee = %s AND actif = TRUE 
+                        ORDER BY taux DESC
+                    """, (annee,))
+                else:
+                    cursor.execute("""
+                        SELECT id, annee, nom, taux, 
+                               CONCAT(nom, ' ', annee, ' (', taux, '%)') as label
+                        FROM taux_tva 
+                        WHERE actif = TRUE 
+                        ORDER BY annee DESC, taux DESC
+                    """)
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur get_taux_for_select: {e}")
+            return []
+    
 class ContactPlan:
     def __init__(self, db):
         self.db = db
@@ -14291,6 +14413,9 @@ class ModelManager:
     @property
     def regle_ecriture_model(self):
         return self._get_model('regle_ecriture', RegleEcriture)
+    @property
+    def taux_tva_model(self):
+        return self._get_model('taux_tva', TauxTva)
     @property
     def contact_model(self):
         return self._get_model('contact', Contacts)

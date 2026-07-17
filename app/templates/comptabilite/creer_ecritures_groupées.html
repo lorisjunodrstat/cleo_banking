@@ -108,7 +108,14 @@
 
                     <div class="col-md-2">
                         <label class="form-label">TVA %</label>
-                        <input type="number" step="0.1" class="form-control" name="tva_taux[]" value="7.7">
+                        <select class="form-select" name="tva_taux[]">
+                            <option value="0">0%</option>
+                            {% for taux in taux_disponibles %}
+                                <option value="{{ taux.taux }}">
+                                    {{ taux.taux }}% ({{ taux.annee }})
+                                </option>
+                            {% endfor %}
+                        </select>
                     </div>
                     <div class="col-md-2">
                         <label class="form-label">Montant HTVA (calculé)</label>

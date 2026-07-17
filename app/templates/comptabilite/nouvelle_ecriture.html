@@ -69,10 +69,23 @@
                             <span class="input-group-text">CHF</span>
                         </div>
                     </div>
-                    <div class="col-md-6">
-                        <label for="tva_taux" class="form-label">TVA (%)</label>
-                        <input type="number" step="0.1" class="form-control" id="tva_taux" name="tva_taux"
-                            value="{% if ecriture and ecriture.tva_taux is not none %}{{ '%.1f'|format(ecriture.tva_taux) }}{% else %}7.7{% endif %}">
+                </div>
+                <div class="col-md-6">
+                        <label for="tva_taux" class="form-label">Taux de TVA applicable</label>
+                        <select class="form-select" id="tva_taux" name="tva_taux" required>
+                            <option value="0">0% (Hors TVA / Exonéré)</option>
+                            {% for taux in taux_disponibles %}
+                                <option value="{{ taux.taux }}" 
+                                    {% if form_data and form_data.tva_taux == taux.taux|string %}selected{% endif %}
+                                    {% if not form_data and ecriture and ecriture.tva_taux|string == taux.taux|string %}selected{% endif %}
+                                >
+                                    {{ taux.label }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text text-muted">
+                            <small>⚠️ Veillez à sélectionner le taux correspondant à l'<strong>année de la date</strong> saisie ci-dessus.</small>
+                        </div>
                     </div>
                 </div>
 

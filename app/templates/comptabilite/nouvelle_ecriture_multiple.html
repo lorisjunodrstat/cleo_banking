@@ -68,8 +68,14 @@
                                         name="montant[]" required>
                                 </td>
                                 <td>
-                                    <input type="number" step="0.1" class="form-control form-control-sm"
-                                        name="tva_taux[]" value="7.7">
+                                    <select class="form-select form-select-sm" name="tva_taux[]">
+                                        <option value="0">0%</option>
+                                        {% for taux in taux_disponibles %}
+                                            <option value="{{ taux.taux }}">
+                                                {{ taux.taux }}% ({{ taux.annee }})
+                                            </option>
+                                        {% endfor %}
+                                    </select>
                                 </td>
                                 <td>
                                     <input type="text" class="form-control form-control-sm" name="description[]">
@@ -128,21 +134,24 @@
         const lastRow = tbody.lastElementChild;
         const newRow = lastRow.cloneNode(true);
 
-        // Réinitialiser les valeurs
+        // Réinitialiser les valeurs de la nouvelle ligne
         newRow.querySelectorAll('input, select').forEach(field => {
             if (field.type !== 'hidden') {
                 if (field.tagName === 'SELECT') {
-                    field.selectedIndex = 0;
-                } else {
-                    field.value = field.name.includes('tva_taux') ? '7.7' : '';
-                    if (field.type === 'date') {
-                        field.value = '{{ current_date }}';
+                    // Si c'est le select de TVA, on le remet à 0, sinon au premier choix
+                    if (field.name.includes('tva_taux')) {
+                        field.value = '0';
+                    } else {
+                        field.selectedIndex = 0;
                     }
+                } else {
+                    // Pour les inputs texte ou date
+                    field.value = field.type === 'date' ? '{{ current_date }}' : '';
                 }
             }
         });
 
-        // S'assurer que le bouton de suppression est visible
+        // S'assurer que le bouton de suppression est visible sur les nouvelles lignes
         const removeBtn = newRow.querySelector('.btn-outline-danger');
         if (removeBtn) {
             removeBtn.style.display = 'block';
