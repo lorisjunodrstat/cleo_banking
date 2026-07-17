@@ -4774,7 +4774,7 @@ def nouvelle_ecriture_from_selected():
                                date_from=date_from,
                                date_to=date_to,
                                statut_comptable=statut_comptable,
-                               taux_disponibles=taux_disponibles)
+                               taux_disponibles=taux_disponibles))
     
     # GET - Afficher le formulaire
     # Récupérer les transactions sélectionnées depuis la session
