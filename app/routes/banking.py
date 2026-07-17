@@ -6236,6 +6236,7 @@ def creer_taux_tva():
     data = {
         'annee': int(request.form.get('annee')),
         'nom': request.form.get('nom'),
+        'pays': request.form.get('pays'),
         'taux': float(request.form.get('taux').replace(',', '.')),
         'actif': True
     }

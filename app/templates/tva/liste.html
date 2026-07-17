@@ -21,6 +21,10 @@
                     <label class="form-label">Taux (%)</label>
                     <input type="text" name="taux" class="form-control" placeholder="8.10" step="0.01" required>
                 </div>
+                <div class="col-md-4">
+                    <label class="form-label">Pays</label>
+                    <input type="text" name="pays" class="form-control" placeholder="Ex: Suisse" required>
+                </div>
                 <div class="col-md-3 d-flex align-items-end">
                     <button type="submit" class="btn btn-primary w-100">Ajouter</button>
                 </div</form>
@@ -32,6 +36,7 @@
         <thead>
             <tr>
                 <th>Année</th>
+                <th>Pays</th>
                 <th>Nom</th>
                 <th>Taux (%)</th>
                 <th>Statut</th>
@@ -45,6 +50,8 @@
                     <td class="col-md-2">
                         <input type="number" name="annee" class="form-control form-control-sm" value="{{ t.annee }}" required>
                     </td>
+                    <td class="col-md-3">
+                        <input type="text" name="pays" class="form-control form-control-sm" value="{{ t.pays }}" required>
                     <td class="col-md-4">
                         <input type="text" name="nom" class="form-control form-control-sm" value="{{ t.nom }}" required>
                     </td>
