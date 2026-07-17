@@ -603,7 +603,54 @@ class DatabaseManager:
                 """
                 cursor.execute(create_ecritures_table_query)
 
-                
+                # Table regles_ecritures
+                create_regles_ecritures_table_query = """
+                CREATE TABLE IF NOT EXISTS regles_ecritures (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    categorie_source_id INT NOT NULL,
+                    categorie_destination_id INT NOT NULL,
+                    type_regle ENUM(
+                        'TVA',
+                        'CONTREPARTIE',
+                        'TRANSFERT',
+                        'COMMISSION',
+                        'AMORTISSEMENT',
+                        'PERSONNALISE'
+                    ) NOT NULL DEFAULT 'PERSONNALISE',
+                    sens ENUM(
+                        'meme',
+                        'oppose'
+                    ) NOT NULL DEFAULT 'oppose',
+
+                    mode_calcul ENUM(
+                        'montant_fixe',
+                        'pourcentage',
+                        'montant_transaction'
+                    ) NOT NULL DEFAULT 'montant_transaction',
+
+                    valeur DECIMAL(15,2) DEFAULT NULL,
+                    ordre INT DEFAULT 1,
+
+                    actif BOOLEAN DEFAULT TRUE,
+
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_regle (
+                        categorie_source_id,
+                        categorie_destination_id,
+                        type_regle
+                    )
+
+                    FOREIGN KEY (categorie_source_id)
+                        REFERENCES categories_comptables(id)
+                        ON DELETE CASCADE,
+                    FOREIGN KEY (categorie_destination_id)
+                        REFERENCES categories_comptables(id)
+                        ON DELETE CASCADE
+                );
+                """
+                cursor.execute(create_regles_ecritures_table_query)
     
                 
                 # Table plan_category
@@ -8362,42 +8409,95 @@ class EcritureComptable:
 
     def link_ecriture_to_transaction(self, ecriture_id: int, transaction_id: int, user_id: int) -> bool:
         """
-        Lie (ou relie à nouveau) une écriture à une transaction.
+        Lie une écriture et toutes ses écritures secondaires à une transaction.
         Remplace tout lien existant.
         """
         try:
             with self.db.get_cursor() as cursor:
                 # 1. Vérifier que l'écriture existe et appartient à l'utilisateur
                 cursor.execute(
-                    "SELECT id FROM ecritures_comptables WHERE id = %s AND utilisateur_id = %s",
+                    "SELECT id, type_ecriture_comptable FROM ecritures_comptables WHERE id = %s AND utilisateur_id = %s",
                     (ecriture_id, user_id)
                 )
-                if not cursor.fetchone():
+                ecriture = cursor.fetchone()
+                if not ecriture:
+                    logger.error(f"Écriture {ecriture_id} non trouvée ou non autorisée")
                     return False
 
                 # 2. Vérifier que la transaction existe et appartient à l'utilisateur
                 cursor.execute("""
-                    SELECT t.id
+                    SELECT t.id, t.montant
                     FROM transactions t
                     LEFT JOIN comptes_principaux cp ON t.compte_principal_id = cp.id
-                    WHERE t.id = %s AND (
-                        cp.utilisateur_id = %s
-                        OR t.utilisateur_id = %s
-                    )
+                    WHERE t.id = %s AND (cp.utilisateur_id = %s OR t.utilisateur_id = %s)
                 """, (transaction_id, user_id, user_id))
-                if not cursor.fetchone():
+                transaction = cursor.fetchone()
+                if not transaction:
+                    logger.error(f"Transaction {transaction_id} non trouvée ou non autorisée")
                     return False
 
-                # 3. Mettre à jour le lien
-                cursor.execute(
-                    "UPDATE ecritures_comptables SET transaction_id = %s WHERE id = %s",
-                    (transaction_id, ecriture_id)
-                )
-                return cursor.rowcount > 0
+                # 3. Récupérer toutes les écritures à lier
+                ecritures_a_lier = [ecriture_id]
+                
+                if ecriture['type_ecriture_comptable'] == 'principale':
+                    # Récupérer les écritures secondaires
+                    cursor.execute("""
+                        SELECT id FROM ecritures_comptables
+                        WHERE ecriture_principale_id = %s AND utilisateur_id = %s
+                        AND type_ecriture_comptable = 'complementaire'
+                    """, (ecriture_id, user_id))
+                    secondaires = cursor.fetchall()
+                    for sec in secondaires:
+                        ecritures_a_lier.append(sec['id'])
+                    logger.info(f"Écriture principale {ecriture_id} a {len(secondaires)} écriture(s) secondaire(s) à lier")
+
+                # 4. Vérifier que le total ne dépasse pas le montant de la transaction
+                # Calculer le total actuel des écritures déjà liées à cette transaction
+                cursor.execute("""
+                    SELECT SUM(montant) as total
+                    FROM ecritures_comptables
+                    WHERE transaction_id = %s AND utilisateur_id = %s
+                """, (transaction_id, user_id))
+                result = cursor.fetchone()
+                total_actuel = Decimal(str(result['total'])) if result and result['total'] else Decimal('0')
+                
+                # Calculer le total des écritures à lier (en excluant celles déjà liées)
+                placeholders = ','.join(['%s'] * len(ecritures_a_lier))
+                cursor.execute(f"""
+                    SELECT SUM(montant) as total
+                    FROM ecritures_comptables
+                    WHERE id IN ({placeholders})
+                    AND (transaction_id IS NULL OR transaction_id != %s)
+                """, ecritures_a_lier + [transaction_id])
+                result = cursor.fetchone()
+                total_a_ajouter = Decimal(str(result['total'])) if result and result['total'] else Decimal('0')
+                
+                nouveau_total = total_actuel + total_a_ajouter
+                montant_transaction = Decimal(str(transaction['montant']))
+                
+                if nouveau_total > montant_transaction:
+                    logger.warning(
+                        f"Total des écritures ({nouveau_total:.2f}) dépasse le montant de la transaction ({montant_transaction:.2f})"
+                    )
+                    return False
+
+                # 5. Lier toutes les écritures
+                count = 0
+                for e_id in ecritures_a_lier:
+                    cursor.execute(
+                        "UPDATE ecritures_comptables SET transaction_id = %s WHERE id = %s AND utilisateur_id = %s",
+                        (transaction_id, e_id, user_id)
+                    )
+                    if cursor.rowcount > 0:
+                        count += 1
+                        logger.info(f"Écriture {e_id} liée à la transaction {transaction_id}")
+
+                logger.info(f"{count} écriture(s) liée(s) à la transaction {transaction_id}")
+                return count > 0
+
         except Exception as e:
             logger.error(f"Erreur lors du lien écriture {ecriture_id} → transaction {transaction_id}: {e}")
             return False
-
     def unlink_all_ecritures_from_transaction(self, transaction_id: int, user_id: int) -> int:
         """
         Supprime tous les liens entre une transaction et les écritures de l'utilisateur.
@@ -8700,7 +8800,50 @@ class EcritureComptable:
         fichier_info = self.get_fichier(ecriture_id, user_id)
         return fichier_info['chemin_complet'] if fichier_info else None
 
-    
+class RegleEcriture:
+    def __init__(self, db):
+        self.db = db
+    def create(self, data):
+        try:
+            with self.db.get_cursor() as cursor:
+                query = """
+                INSERT INTO regles_ecritures(
+                    categorie_source_id,
+                    categorie_destination_id,
+                    type_regle,
+                    sens,
+                    mode_calcul,
+                    valeur,
+                    ordre,
+                    actif
+                )
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s)
+                """
+                values = (
+                    data["categorie_source_id"],
+                    data["categorie_destination_id"],
+                    data.get("type_regle", "PERSONNALISE"),
+                    data.get("sens", "oppose"),
+                    data.get("mode_calcul", "montant_transaction"),
+                    data.get("valeur"),
+                    data.get("ordre", 1),
+                    data.get("actif", True)
+                )
+                cursor.execute(query, values)
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur création règle : {e}")
+            return None
+
+    def update(self, id, data):
+        pass
+    def delete(self, id):
+        pass
+    def get_by_categorie(self, categorie_id):
+        pass
+    def get_all(self, ):
+        pass
+
 
 class ContactPlan:
     def __init__(self, db):
@@ -8865,6 +9008,127 @@ class Contacts:
             logger.error(f"Erreur lors de la recherche de contacts: {e}")
             return []
 
+    def lier_contact_compte(self, contact_id: int, compte_id: int, utilisateur_id: int) -> bool:
+        """
+        Lie un contact à un compte.
+        Vérifie d'abord que le contact et le compte appartiennent bien à l'utilisateur.
+        """
+        try:
+            # Vérifier que le contact appartient à l'utilisateur
+            contact = self.get_by_id(contact_id, utilisateur_id)
+            if not contact:
+                logger.error(f"Contact {contact_id} non trouvé ou n'appartient pas à l'utilisateur {utilisateur_id}")
+                return False
+                
+            with self.db.get_cursor() as cursor:
+                # Vérifier que le compte existe et appartient à l'utilisateur
+                cursor.execute("SELECT id_compte FROM comptes WHERE id_compte = %s AND utilisateur_id = %s", 
+                            (compte_id, utilisateur_id))
+                compte = cursor.fetchone()
+                if not compte:
+                    logger.error(f"Compte {compte_id} non trouvé ou n'appartient pas à l'utilisateur {utilisateur_id}")
+                    return False
+                
+                # Insérer la liaison
+                query = """
+                INSERT IGNORE INTO contacts_comptes (id_contact, id_compte)
+                VALUES (%s, %s)
+                """
+                cursor.execute(query, (contact_id, compte_id))
+                return True
+        except Error as e:
+            logger.error(f"Erreur lors de la liaison contact-compte: {e}")
+            return False
+
+    def delier_contact_compte(self, contact_id: int, compte_id: int, utilisateur_id: int) -> bool:
+        """
+        Supprime la liaison entre un contact et un compte.
+        """
+        try:
+            # Vérifier que le contact appartient à l'utilisateur
+            contact = self.get_by_id(contact_id, utilisateur_id)
+            if not contact:
+                return False
+                
+            with self.db.get_cursor() as cursor:
+                query = "DELETE FROM contacts_comptes WHERE id_contact = %s AND id_compte = %s"
+                cursor.execute(query, (contact_id, compte_id))
+                return cursor.rowcount > 0
+        except Error as e:
+            logger.error(f"Erreur lors de la suppression de la liaison contact-compte: {e}")
+            return False
+
+    def get_comptes_lies(self, contact_id: int, utilisateur_id: int) -> List[Dict]:
+        """
+        Récupère tous les comptes liés à un contact.
+        """
+        try:
+            # Vérifier que le contact appartient à l'utilisateur
+            contact = self.get_by_id(contact_id, utilisateur_id)
+            if not contact:
+                return []
+                
+            with self.db.get_cursor() as cursor:
+                query = """
+                SELECT c.*, cc.date_liaison 
+                FROM comptes c
+                INNER JOIN contacts_comptes cc ON c.id_compte = cc.id_compte
+                WHERE cc.id_contact = %s AND c.utilisateur_id = %s
+                ORDER BY c.nom_compte
+                """
+                cursor.execute(query, (contact_id, utilisateur_id))
+                return cursor.fetchall()
+        except Error as e:
+            logger.error(f"Erreur lors de la récupération des comptes liés: {e}")
+            return []
+
+    def get_contacts_lies(self, compte_id: int, utilisateur_id: int) -> List[Dict]:
+        """
+        Récupère tous les contacts liés à un compte.
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                query = """
+                SELECT ct.*, cc.date_liaison 
+                FROM contacts ct
+                INNER JOIN contacts_comptes cc ON ct.id_contact = cc.id_contact
+                WHERE cc.id_compte = %s AND ct.utilisateur_id = %s
+                ORDER BY ct.nom
+                """
+                cursor.execute(query, (compte_id, utilisateur_id))
+                return cursor.fetchall()
+        except Error as e:
+            logger.error(f"Erreur lors de la récupération des contacts liés: {e}")
+            return []
+
+    def get_comptes_disponibles(self, contact_id: int, utilisateur_id: int) -> List[Dict]:
+        """
+        Récupère tous les comptes disponibles (non encore liés) pour un contact donné.
+        """
+        try:
+            # Vérifier que le contact appartient à l'utilisateur
+            contact = self.get_by_id(contact_id, utilisateur_id)
+            if not contact:
+                return []
+                
+            with self.db.get_cursor() as cursor:
+                query = """
+                SELECT c.* 
+                FROM comptes c
+                WHERE c.utilisateur_id = %s 
+                AND c.id_compte NOT IN (
+                    SELECT cc.id_compte 
+                    FROM contacts_comptes cc 
+                    WHERE cc.id_contact = %s
+                )
+                ORDER BY c.nom_compte
+                """
+                cursor.execute(query, (utilisateur_id, contact_id))
+                return cursor.fetchall()
+        except Error as e:
+            logger.error(f"Erreur lors de la récupération des comptes disponibles: {e}")
+            return []
+        
 class ContactCompte:
     def __init__(self, db):
         self.db = db

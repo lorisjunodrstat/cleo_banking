@@ -314,14 +314,12 @@
                                     <i class="fas fa-address-book me-2"></i>Liste des contacts
                                 </a></li>
 
-
                             <!-- Section Plan Comptable -->
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
                             <li>
-                                <h6 class="dropdown-header"><i class="fas fa-project-diagram me-2"></i>Gestion des plans
-                                comptables</h6>
+                                <h6 class="dropdown-header"><i class="fas fa-project-diagram me-2"></i>Gestion des plans comptables</h6>
                             </li>
                             <li>
                                 <a class="dropdown-item" href="{{ url_for('banking.liste_plans') }}">Liste des Plans</a>
@@ -345,6 +343,19 @@
                                 </a>
                             </li>
                             
+                            <!-- Section Règles d'écriture -->
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li>
+                                <h6 class="dropdown-header"><i class="fas fa-arrow-left-right me-2"></i>Règles d'écriture</h6>
+                            </li>
+                            <li><a class="dropdown-item" href="{{ url_for('categories.gestion_regles') }}">
+                                    <i class="fas fa-list me-2"></i>Liste des règles
+                                </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('categories.creer_regle') }}">
+                                    <i class="fas fa-plus-square me-2"></i>Nouvelle règle
+                                </a></li>
 
                             <!-- Section Rapports -->
                             <li>

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+
 {% block content %}
 <div class="container">
     <div class="page-title">
@@ -112,8 +113,6 @@
                             {% endfor %}
                         </select>
                     </div>
-                </div>
-                <div class="row mb-3">
                     <div class="col-md-6">
                         <label for="plan_id" class="form-label">Plan comptable</label>
                         <select class="form-select" id="plan_ids" name="plan_ids">
@@ -127,12 +126,197 @@
                         </select>
                     </div>
                 </div>
+
+                <hr class="my-4">
+
+                <!-- SECTION RÈGLES D'ÉCRITURE -->
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <h5><i class="bi bi-arrow-left-right"></i> Règles d'écriture associées</h5>
+                        <p class="text-muted small">Ces règles génèrent automatiquement des écritures complémentaires 
+                        lorsque cette catégorie est utilisée.</p>
+                    </div>
+                </div>
+
+                <!-- Règles existantes -->
+                {% if regles %}
+                <div class="table-responsive mb-3">
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Destination</th>
+                                <th>Type</th>
+                                <th>Calcul</th>
+                                <th>Valeur</th>
+                                <th>Ordre</th>
+                                <th>Statut</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for regle in regles %}
+                            <tr>
+                                <td>
+                                    <span class="badge bg-success">{{ regle.destination_numero or '' }}</span>
+                                    {{ regle.destination_nom or '' }}
+                                </td>
+                                <td>
+                                    {% if regle.type_regle == 'PERSONNALISE' %}
+                                        <span class="badge bg-secondary">Personnalisée</span>
+                                    {% elif regle.type_regle == 'TVA' %}
+                                        <span class="badge bg-warning text-dark">TVA</span>
+                                    {% elif regle.type_regle == 'TAXE' %}
+                                        <span class="badge bg-info">Taxe</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ regle.type_regle }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if regle.mode_calcul == 'montant_transaction' %}
+                                        Montant
+                                    {% elif regle.mode_calcul == 'pourcentage' %}
+                                        %
+                                    {% elif regle.mode_calcul == 'montant_fixe' %}
+                                        Fixe
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if regle.valeur %}
+                                        {{ regle.valeur }}
+                                        {% if regle.mode_calcul == 'pourcentage' %}%{% endif %}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>{{ regle.ordre or 1 }}</td>
+                                <td>
+                                    {% if regle.actif %}
+                                        <span class="badge bg-success">Actif</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Inactif</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{{ url_for('modifier_regle_ecriture', regle_id=regle.id) }}" 
+                                           class="btn btn-outline-primary" title="Modifier">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <form method="POST" 
+                                              action="{{ url_for('supprimer_regle_ecriture', regle_id=regle.id) }}" 
+                                              style="display: inline;"
+                                              onsubmit="return confirm('Supprimer cette règle ?');">
+                                            <button type="submit" class="btn btn-outline-danger" title="Supprimer">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> Aucune règle associée à cette catégorie.
+                </div>
+                {% endif %}
+
+                <!-- Ajouter une nouvelle règle -->
+                <div class="card bg-light">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-plus-circle"></i> Ajouter une règle</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="nouvelle_regle_destination" class="form-label">Catégorie destination</label>
+                                <select class="form-select" id="nouvelle_regle_destination" 
+                                        name="nouvelle_regle_destination">
+                                    <option value="">Sélectionner...</option>
+                                    {% for cat in categories %}
+                                        {% if cat.id != categorie.id %}
+                                        <option value="{{ cat.id }}" 
+                                                {% if nouvelle_regle and nouvelle_regle.destination == cat.id %}selected{% endif %}>
+                                            {{ cat.numero }} - {{ cat.nom }}
+                                        </option>
+                                        {% endif %}
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="nouvelle_regle_type" class="form-label">Type</label>
+                                <select class="form-select" id="nouvelle_regle_type" name="nouvelle_regle_type">
+                                    <option value="PERSONNALISE" {% if nouvelle_regle and nouvelle_regle.type == 'PERSONNALISE' %}selected{% endif %}>
+                                        Personnalisée
+                                    </option>
+                                    <option value="TVA" {% if nouvelle_regle and nouvelle_regle.type == 'TVA' %}selected{% endif %}>
+                                        TVA
+                                    </option>
+                                    <option value="TAXE" {% if nouvelle_regle and nouvelle_regle.type == 'TAXE' %}selected{% endif %}>
+                                        Taxe
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="nouvelle_regle_calcul" class="form-label">Calcul</label>
+                                <select class="form-select" id="nouvelle_regle_calcul" name="nouvelle_regle_calcul">
+                                    <option value="montant_transaction" {% if nouvelle_regle and nouvelle_regle.calcul == 'montant_transaction' %}selected{% endif %}>
+                                        Montant
+                                    </option>
+                                    <option value="pourcentage" {% if nouvelle_regle and nouvelle_regle.calcul == 'pourcentage' %}selected{% endif %}>
+                                        %
+                                    </option>
+                                    <option value="montant_fixe" {% if nouvelle_regle and nouvelle_regle.calcul == 'montant_fixe' %}selected{% endif %}>
+                                        Fixe
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="nouvelle_regle_valeur" class="form-label">Valeur</label>
+                                <input type="number" step="0.01" class="form-control" 
+                                       id="nouvelle_regle_valeur" name="nouvelle_regle_valeur"
+                                       value="{{ nouvelle_regle.valeur if nouvelle_regle else '' }}"
+                                       placeholder="Si % ou fixe">
+                            </div>
+                            <div class="col-md-1 d-flex align-items-end">
+                                <button type="submit" name="action" value="ajouter_regle" 
+                                        class="btn btn-primary w-100" title="Ajouter la règle">
+                                    <i class="bi bi-plus-circle"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="nouvelle_regle_actif" 
+                                           name="nouvelle_regle_actif" checked>
+                                    <label class="form-check-label" for="nouvelle_regle_actif">
+                                        Règle active
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="nouvelle_regle_oppose" 
+                                           name="nouvelle_regle_oppose" checked>
+                                    <label class="form-check-label" for="nouvelle_regle_oppose">
+                                        Sens opposé (débit/crédit inversé)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="my-4">
+
                 <div class="row mb-3">
                     <div class="col-md-12">
                         <small class="text-muted">* Champs obligatoires</small>
                     </div>
                 </div>
-                
 
                 <div class="actions">
                     <div class="row g-2">
@@ -150,7 +334,7 @@
                             </a>
                         </div>
                         <div class="col-12 col-md-4">
-                            <button type="submit" class="btn btn-primary-custom w-100">
+                            <button type="submit" name="action" value="save" class="btn btn-primary-custom w-100">
                                 <i class="bi bi-save me-2"></i> Enregistrer
                             </button>
                         </div>
@@ -162,7 +346,7 @@
                             </a>
                         </div>
                         <div class="col-12 col-md-6">
-                            <button type="submit" class="btn btn-primary w-100">
+                            <button type="submit" name="action" value="save" class="btn btn-primary w-100">
                                 <i class="bi bi-save me-2"></i> Enregistrer
                             </button>
                         </div>

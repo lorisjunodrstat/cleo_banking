@@ -5673,32 +5673,30 @@ def hard_delete_ecriture(ecriture_id):
 @login_required
 def link_transaction_to_ecritures():
     transaction_id = request.form.get('transaction_id', type=int)
-    ecriture_id = request.form.getlist('ecriture_id')  # Liste d'IDs
+    ecriture_id = request.form.get('ecriture_id', type=int)
+
+    if not transaction_id or not ecriture_id:
+        flash("Paramètres manquants", "danger")
+        return redirect(request.referrer or url_for('banking.banking_dashboard'))
 
     # Vérifier la transaction
-    
-    if not transaction or transaction['owner_user_id'] != current_user.id:
-        flash("Transaction non trouvée ou non autorisée", "danger")
-        return redirect(url_for('banking.banking_dashboard'))
-    ecriture = g.models.ecriture_comptable_model.get_by_id(ecriture_id)
-    if not ecriture or ecriture['utilisateur_id'] != current_user.id:
-        flash("Écriture non autorisée", "danger")
-        return redirect(url_for('banking.liste_ecritures'))
     transaction = g.models.transaction_financiere_model.get_transaction_by_id(transaction_id)
-    if not transaction or transaction['owner_user_id'] != current_user.id:
-        flash("Transaction non trouvée ou non autorisée", "danger")
-        return redirect(url_for('banking.banking_dashboard'))
-    
-    total_actuel = g.models.ecriture_comptable_model.get_total_ecritures_for_transaction(transaction_id, current_user.id)
-    nouveau_total = total_actuel + Decimal(str(ecriture['montant']))
-    montant_transaction = Decimal(str(transaction['montant']))
-    if nouveau_total > montant_transaction:
-        flash(f"⚠️ Impossible : le total des écritures ({nouveau_total:.2f} CHF) dépasserait le montant de la transaction ({montant_transaction} CHF).", "warning")
+    if not transaction:
+        flash("Transaction non trouvée", "danger")
         return redirect(request.referrer or url_for('banking.banking_dashboard'))
-    if g.models.ecriture_comptable_model.link_ecriture_to_transaction(ecriture_id, transaction_id, current_user.id):
-        flash("Écriture reliée à la transaction.", "success")
+    
+    if transaction.get('owner_user_id') != current_user.id:
+        flash("Transaction non autorisée", "danger")
+        return redirect(request.referrer or url_for('banking.banking_dashboard'))
+
+    # Lier l'écriture (principale + secondaires) à la transaction
+    if g.models.ecriture_comptable_model.link_ecriture_to_transaction(
+        ecriture_id, transaction_id, current_user.id
+    ):
+        flash("✅ Écriture(s) liée(s) avec succès", "success")
     else:
-        flash("Erreur lors du lien.", "danger")
+        flash("❌ Erreur lors du lien des écritures", "danger")
+
     return redirect(request.referrer or url_for('banking.banking_dashboard'))
 
     
