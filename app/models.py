@@ -9095,8 +9095,8 @@ class TauxTva:
         try:
             with self.db.get_cursor() as cursor:
                 query = """
-                INSERT INTO taux_tva (annee, nom, taux, actif)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO taux_tva (annee, pays, nom, taux, actif)
+                VALUES (%s, %s, %s, %s, %s)
                 """
                 values = (data['annee'], data['nom'], data['taux'], data.get('actif', True))
                 cursor.execute(query, values)
@@ -9109,10 +9109,10 @@ class TauxTva:
         try:
             with self.db.get_cursor() as cursor:
                 query = """
-                UPDATE taux_tva SET annee = %s, nom = %s, taux = %s, actif = %s
+                UPDATE taux_tva SET annee = %s, nom = %s, taux = %s, actif = %s, pays = %s
                 WHERE id = %s
                 """
-                values = (data['annee'], data['nom'], data['taux'], data.get('actif', True), taux_id)
+                values = (data['annee'], data['nom'], data['taux'], data.get('actif', True), data['pays'], taux_id)
                 cursor.execute(query, values)
                 return cursor.rowcount > 0
         except Exception as e:
@@ -9156,7 +9156,7 @@ class TauxTva:
             annee = int(date_str[:4]) # Extrait '2024' de '2024-05-15'
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
-                    SELECT id, annee, nom, taux 
+                    SELECT id, annee, nom, pays, taux 
                     FROM taux_tva 
                     WHERE annee = %s AND actif = TRUE 
                     ORDER BY taux DESC
@@ -9175,16 +9175,16 @@ class TauxTva:
             with self.db.get_cursor() as cursor:
                 if annee:
                     cursor.execute("""
-                        SELECT id, annee, nom, taux, 
-                               CONCAT(nom, ' ', annee, ' (', taux, '%)') as label
+                        SELECT id, annee, nom, pays, taux, 
+                               CONCAT(nom, ' ', annee,' ', pays, ' (', taux, '%)') as label
                         FROM taux_tva 
                         WHERE annee = %s AND actif = TRUE 
                         ORDER BY taux DESC
                     """, (annee,))
                 else:
                     cursor.execute("""
-                        SELECT id, annee, nom, taux, 
-                               CONCAT(nom, ' ', annee, ' (', taux, '%)') as label
+                        SELECT id, annee, nom, pays, taux, 
+                               CONCAT(nom, ' ', annee,' ', pays, ' (', taux, '%)') as label
                         FROM taux_tva 
                         WHERE actif = TRUE 
                         ORDER BY annee DESC, taux DESC
