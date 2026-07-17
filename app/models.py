@@ -6592,7 +6592,8 @@ class CategorieComptable:
                         c1.categorie_complementaire_id,
                         c2.numero as parent_numero, c2.nom as parent_nom,
                         c3.numero as categorie_complementaire_numero,
-                        c3.nom as categorie_complementaire_nom
+                        c3.nom as categorie_complementaire_nom,
+                        c3.type_ecriture_complementaire as categorie_complementaire_type
                     FROM categories_comptables c1
                     INNER JOIN plan_categorie pc ON c1.id = pc.categorie_id
                     INNER JOIN plans_comptables p ON pc.plan_id = p.id
@@ -6610,7 +6611,8 @@ class CategorieComptable:
                         c1.categorie_complementaire_id,
                         c2.numero as parent_numero, c2.nom as parent_nom,
                         c3.numero as categorie_complementaire_numero,
-                        c3.nom as categorie_complementaire_nom
+                        c3.nom as categorie_complementaire_nom,
+                        c3.type_ecriture_complementaire as categorie_complementaire_type
                     FROM categories_comptables c1
                     LEFT JOIN categories_comptables c2 ON c1.parent_id = c2.id
                     LEFT JOIN categories_comptables c3 ON c1.categorie_complementaire_id = c3.id

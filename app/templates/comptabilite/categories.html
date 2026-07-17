@@ -21,6 +21,7 @@
                             <th>Parent</th>
                             <th>Numero Categorie Complémentaire</th>
                             <th>Nom Categorie Complémentaire</th>
+                            <th>Type Categorie Complémentaire</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -49,6 +50,7 @@
                             </td>
                             <td>{{ categorie.categorie_complementaire_numero if categorie.categorie_complementaire_numero else '—' }}</td>
                             <td>{{ categorie.categorie_complementaire_nom if categorie.categorie_complementaire_nom else '—' }}</td>  
+                            <td>{{ categorie.categorie_complementaire_type if categorie.categorie_complementaire_type else '—' }}</td>
                             <td>
                                 <a href="{{ url_for('banking.edit_categorie', categorie_id=categorie.id) }}" 
                                    class="btn btn-sm btn-outline-primary">
