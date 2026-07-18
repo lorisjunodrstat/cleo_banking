@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>État des Créances et Dettes</h2>
+        <form method="GET" action="{{ url_for('banking.etat_creances_dettes') }}" class="d-flex gap-2">
+            <label for="date_reference" class="form-label visually-hidden">Date de référence</label>
+            <input type="date" name="date_reference" id="date_reference" class="form-control" value="{{ date_reference }}" required>
+            <button type="submit" class="btn btn-primary">Appliquer</button>
+            <a href="{{ url_for('banking.etat_creances_dettes') }}" class="btn btn-secondary">Réinitialiser</a>
+        </form>
+    </div>
+
+    <div class="row mb-4">
+        <!-- Créances Clients -->
+        <div class="col-md-6">
+            <div class="card h-100 border-primary">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Créances Clients</h5>
+                    <span class="badge bg-light text-primary">{{ rapport.creances.nb_contacts }} contact(s)</span>
+                </div>
+                <div class="card-body">
+                    <h3 class="text-primary text-center mb-3">{{ "%.2f"|format(rapport.creances.total) }} CHF</h3>
+                    <table class="table table-sm table-bordered text-center">
+                        <thead class="table-light">
+                            <tr>
+                                <th>0-30 jours</th>
+                                <th>31-60 jours</th>
+                                <th>61-90 jours</th>
+                                <th>+90 jours</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>{{ "%.2f"|format(rapport.creances.par_tranche['0-30 jours']) }}</td>
+                                <td>{{ "%.2f"|format(rapport.creances.par_tranche['31-60 jours']) }}</td>
+                                <td>{{ "%.2f"|format(rapport.creances.par_tranche['61-90 jours']) }}</td>
+                                <td class="text-danger fw-bold">{{ "%.2f"|format(rapport.creances.par_tranche['+90 jours']) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <h6 class="mt-4">Détail des créances</h6>
+                    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                        <table class="table table-sm table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Contact</th>
+                                    <th>Date</th>
+                                    <th class="text-end">Montant</th>
+                                    <th class="text-center">Retard</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for c in rapport.creances.detail %}
+                                <tr>
+                                    <td>{{ c.contact_nom }}</td>
+                                    <td>{{ c.date_ecriture }}</td>
+                                    <td class="text-end">{{ "%.2f"|format(c.montant) }}</td>
+                                    <td class="text-center">
+                                        <span class="badge {% if c.jours_retard > 90 %}bg-danger{% elif c.jours_retard > 60 %}bg-warning text-dark{% else %}bg-success{% endif %}">
+                                            {{ c.jours_retard }}j
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="4" class="text-center text-muted">Aucune créance</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dettes Fournisseurs -->
+        <div class="col-md-6">
+            <div class="card h-100 border-danger">
+                <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Dettes Fournisseurs</h5>
+                    <span class="badge bg-light text-danger">{{ rapport.dettes.nb_contacts }} contact(s)</span>
+                </div>
+                <div class="card-body">
+                    <h3 class="text-danger text-center mb-3">{{ "%.2f"|format(rapport.dettes.total) }} CHF</h3>
+                    <table class="table table-sm table-bordered text-center">
+                        <thead class="table-light">
+                            <tr>
+                                <th>0-30 jours</th>
+                                <th>31-60 jours</th>
+                                <th>61-90 jours</th>
+                                <th>+90 jours</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>{{ "%.2f"|format(rapport.dettes.par_tranche['0-30 jours']) }}</td>
+                                <td>{{ "%.2f"|format(rapport.dettes.par_tranche['31-60 jours']) }}</td>
+                                <td>{{ "%.2f"|format(rapport.dettes.par_tranche['61-90 jours']) }}</td>
+                                <td class="text-danger fw-bold">{{ "%.2f"|format(rapport.dettes.par_tranche['+90 jours']) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h6 class="mt-4">Détail des dettes</h6>
+                    <div class="table-responsive" style="max

@@ -6221,6 +6221,258 @@ def api_compte_resultat():
     )
     return jsonify(resultat)
 
+
+##########################################
+###### RAPPORTS COMPTABLES FONDAMENTAUX
+##########################################
+
+@bp.route('/comptabilite/bilan')
+@login_required
+def bilan_comptable():
+    """Affiche le bilan détaillé à une date donnée"""
+    try:
+        # Par défaut, on prend la date d'aujourd'hui ou la fin de l'année en cours
+        date_bilan = request.args.get('date_bilan', datetime.now().strftime('%Y-%m-%d'))
+        
+        rapport_data = g.models.rapport_model.generate_bilan_detaille(
+            user_id=current_user.id,
+            date_bilan=date_bilan
+        )
+        
+        if 'erreur' in rapport_data:
+            flash(f"Erreur lors de la génération du bilan : {rapport_data['erreur']}", "danger")
+            return redirect(url_for('banking.banking_dashboard'))
+            
+        return render_template(
+            'comptabilite/bilan.html',
+            rapport=rapport_data,
+            date_bilan=date_bilan
+        )
+    except Exception as e:
+        logging.error(f"Erreur route bilan: {e}")
+        flash("Une erreur inattendue est survenue lors de la génération du bilan.", "danger")
+        return redirect(url_for('banking.banking_dashboard'))
+
+
+@bp.route('/comptabilite/declaration-tva')
+@login_required
+def declaration_tva():
+    """Affiche la déclaration de TVA trimestrielle"""
+    try:
+        now = datetime.now()
+        annee = int(request.args.get('annee', now.year))
+        # Calcul du trimestre actuel par défaut (1 à 4)
+        trimestre_defaut = (now.month - 1) // 3 + 1
+        trimestre = int(request.args.get('trimestre', trimestre_defaut))
+        
+        # Validation basique du trimestre
+        if trimestre not in [1, 2, 3, 4]:
+            trimestre = 1
+
+        rapport_data = g.models.rapport_model.generate_declaration_tva_trimestrielle(
+            user_id=current_user.id,
+            annee=annee,
+            trimestre=trimestre
+        )
+        
+        if 'erreur' in rapport_data:
+            flash(f"Erreur lors de la génération de la déclaration TVA : {rapport_data['erreur']}", "danger")
+            return redirect(url_for('banking.banking_dashboard'))
+            
+        return render_template(
+            'comptabilite/declaration_tva.html',
+            rapport=rapport_data,
+            annee_selectionnee=annee,
+            trimestre_selectionne=trimestre,
+            annees_disponibles=g.models.ecriture_comptable_model.get_annees_disponibles(current_user.id)
+        )
+    except Exception as e:
+        logging.error(f"Erreur route déclaration TVA: {e}")
+        flash("Une erreur inattendue est survenue lors de la génération de la déclaration TVA.", "danger")
+        return redirect(url_for('banking.banking_dashboard'))
+
+
+@bp.route('/comptabilite/grand-livre')
+@login_required
+def grand_livre():
+    """Affiche le grand livre avec solde progressif par compte"""
+    try:
+        now = datetime.now()
+        annee = int(request.args.get('annee', now.year))
+        date_from = request.args.get('date_from', f"{annee}-01-01")
+        date_to = request.args.get('date_to', f"{annee}-12-31")
+        categorie_id = request.args.get('categorie_id', type=int) # Optionnel : filtrer par un seul compte
+        
+        rapport_data = g.models.rapport_model.generate_grand_livre(
+            user_id=current_user.id,
+            date_from=date_from,
+            date_to=date_to,
+            categorie_id=categorie_id,
+            statut='validée'
+        )
+        
+        if 'erreur' in rapport_data:
+            flash(f"Erreur lors de la génération du grand livre : {rapport_data['erreur']}", "danger")
+            return redirect(url_for('banking.banking_dashboard'))
+            
+        categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
+            
+        return render_template(
+            'comptabilite/grand_livre.html',
+            rapport=rapport_data,
+            date_from=date_from,
+            date_to=date_to,
+            categorie_selectionnee=categorie_id,
+            categories=categories
+        )
+    except Exception as e:
+        logging.error(f"Erreur route grand livre: {e}")
+        flash("Une erreur inattendue est survenue lors de la génération du grand livre.", "danger")
+        return redirect(url_for('banking.banking_dashboard'))
+
+
+@bp.route('/comptabilite/balance-generale')
+@login_required
+def balance_generale():
+    """Affiche la balance générale (totaux débit/crédit et soldes de tous les comptes)"""
+    try:
+        now = datetime.now()
+        annee = int(request.args.get('annee', now.year))
+        date_bilan = request.args.get('date_bilan', f"{annee}-12-31")
+        
+        rapport_data = g.models.rapport_model.generate_balance_generale(
+            user_id=current_user.id,
+            date_bilan=date_bilan
+        )
+        
+        if 'erreur' in rapport_data:
+            flash(f"Erreur lors de la génération de la balance : {rapport_data['erreur']}", "danger")
+            return redirect(url_for('banking.banking_dashboard'))
+            
+        return render_template(
+            'comptabilite/balance_generale.html',
+            rapport=rapport_data,
+            date_bilan=date_bilan,
+            annee_selectionnee=annee
+        )
+    except Exception as e:
+        logging.error(f"Erreur route balance générale: {e}")
+        flash("Une erreur inattendue est survenue lors de la génération de la balance.", "danger")
+        return redirect(url_for('banking.banking_dashboard'))
+
+
+@bp.route('/comptabilite/journal-general')
+@login_required
+def journal_general():
+    """Affiche le journal général (liste chronologique des écritures)"""
+    try:
+        now = datetime.now()
+        annee = int(request.args.get('annee', now.year))
+        date_from = request.args.get('date_from', f"{annee}-01-01")
+        date_to = request.args.get('date_to', f"{annee}-12-31")
+        
+        rapport_data = g.models.rapport_model.generate_journal_general(
+            user_id=current_user.id,
+            date_from=date_from,
+            date_to=date_to,
+            statut='validée'
+        )
+        
+        if 'erreur' in rapport_data:
+            flash(f"Erreur lors de la génération du journal : {rapport_data['erreur']}", "danger")
+            return redirect(url_for('banking.banking_dashboard'))
+            
+        return render_template(
+            'comptabilite/journal_general.html',
+            rapport=rapport_data,
+            date_from=date_from,
+            date_to=date_to,
+            annee_selectionnee=annee
+        )
+    except Exception as e:
+        logging.error(f"Erreur route journal général: {e}")
+        flash("Une erreur inattendue est survenue lors de la génération du journal.", "danger")
+        return redirect(url_for('banking.banking_dashboard'))
+
+
+@bp.route('/comptabilite/creances-dettes')
+@login_required
+def etat_creances_dettes():
+    """Affiche l'état des créances clients et dettes fournisseurs avec ancienneté"""
+    try:
+        date_reference = request.args.get('date_reference', datetime.now().strftime('%Y-%m-%d'))
+        
+        rapport_data = g.models.rapport_model.generate_etat_creances_dettes(
+            user_id=current_user.id,
+            date_reference=date_reference
+        )
+        
+        if 'erreur' in rapport_data:
+            flash(f"Erreur lors de la génération de l'état des créances/dettes : {rapport_data['erreur']}", "danger")
+            return redirect(url_for('banking.banking_dashboard'))
+            
+        return render_template(
+            'comptabilite/creances_dettes.html',
+            rapport=rapport_data,
+            date_reference=date_reference
+        )
+    except Exception as e:
+        logging.error(f"Erreur route créances/dettes: {e}")
+        flash("Une erreur inattendue est survenue.", "danger")
+        return redirect(url_for('banking.banking_dashboard'))
+
+
+##########################################
+###### EXPORTS DES RAPPORTS (Optionnel mais recommandé)
+##########################################
+
+@bp.route('/comptabilite/export/<string:type_rapport>')
+@login_required
+def export_rapport(type_rapport):
+    """Point d'entrée unifié pour l'export des rapports (ex: en CSV ou préparation pour PDF)"""
+    try:
+        # Récupération dynamique des paramètres selon le type de rapport
+        if type_rapport == 'bilan':
+            date_bilan = request.args.get('date_bilan', datetime.now().strftime('%Y-%m-%d'))
+            data = g.models.rapport_model.generate_bilan_detaille(current_user.id, date_bilan)
+            filename = f"bilan_{date_bilan}"
+            
+        elif type_rapport == 'tva':
+            annee = int(request.args.get('annee', datetime.now().year))
+            trimestre = int(request.args.get('trimestre', 1))
+            data = g.models.rapport_model.generate_declaration_tva_trimestrielle(current_user.id, annee, trimestre)
+            filename = f"declaration_tva_t{trimestre}_{annee}"
+            
+        elif type_rapport == 'balance':
+            date_bilan = request.args.get('date_bilan', datetime.now().strftime('%Y-%m-%d'))
+            data = g.models.rapport_model.generate_balance_generale(current_user.id, date_bilan)
+            filename = f"balance_generale_{date_bilan}"
+            
+        else:
+            flash("Type de rapport non supporté pour l'export", "warning")
+            return redirect(request.referrer or url_for('banking.banking_dashboard'))
+
+        if 'erreur' in data:
+            flash(f"Impossible d'exporter : {data['erreur']}", "danger")
+            return redirect(request.referrer or url_for('banking.banking_dashboard'))
+
+        # Ici, vous pouvez appeler votre fonction de génération CSV/Excel/PDF
+        # Exemple simplifié pour CSV :
+        # csv_data = generate_csv_from_dict(data)
+        # response = make_response(csv_data)
+        # response.headers["Content-Disposition"] = f"attachment; filename={filename}.csv"
+        # response.headers["Content-type"] = "text/csv"
+        # return response
+        
+        # En attendant l'implémentation de l'export, on renvoie vers le rapport avec un message
+        flash(f"Préparation de l'export pour {type_rapport}... (Fonction d'export à implémenter)", "info")
+        return redirect(request.referrer or url_for('banking.banking_dashboard'))
+
+    except Exception as e:
+        logging.error(f"Erreur export rapport {type_rapport}: {e}")
+        flash("Erreur lors de la préparation de l'export.", "danger")
+        return redirect(request.referrer or url_for('banking.banking_dashboard'))
+        
 ##########################################
 ###### Taux TVA
 ##########################################
@@ -6249,6 +6501,7 @@ def modifier_taux_tva(taux_id: int):
     data = {
         'annee': int(request.form.get('annee')),
         'nom': request.form.get('nom'),
+        'pays': request.form.get('pays'),
         'taux': float(request.form.get('taux').replace(',', '.')),
         'actif': request.form.get('actif') == 'on'
     }

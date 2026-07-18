@@ -380,6 +380,22 @@
                             <li><a class="dropdown-item" href="{{ url_for('banking.statistiques_comptables') }}">
                                     <i class="fas fa-chart-pie me-2"></i>Statistiques
                                 </a></li>
+                            <!-- Section Rapports comptables -->
+                            <li>
+                                <hr class="dropdown-divider">
+                                <li><h6 class="dropdown-header">Rapports et États Financiers</h6></li>
+                                <li><a class="dropdown-item" href="{{ url_for('banking.compte_de_resultat') }}">Compte de résultat</a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('banking.bilan_comptable') }}">Bilan comptable</a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('banking.balance_generale') }}">Balance générale</a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('banking.grand_livre') }}">Grand livre</a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('banking.journal_general') }}">Journal général</a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('banking.declaration_tva') }}">Déclaration TVA</a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('banking.etat_creances_dettes') }}">État des créances et dettes</a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('banking.statistiques_comptables') }}">Statistiques</a></li>
+                            
+                            
+                            </li>
+
 
                             <!-- Section Export -->
                             <li>

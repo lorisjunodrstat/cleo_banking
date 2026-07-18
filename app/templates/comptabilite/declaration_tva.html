@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Déclaration TVA Trimestrielle</h2>
+        <form method="GET" action="{{ url_for('banking.declaration_tva') }}" class="d-flex gap-2">
+            <select name="annee" class="form-select" style="width: auto;">
+                {% for annee in annees_disponibles %}
+                    <option value="{{ annee }}" {% if annee == annee_selectionnee %}selected{% endif %}>{{ annee }}</option>
+                {% endfor %}
+            </select>
+            <select name="trimestre" class="form-select" style="width: auto;">
+                {% for t in [1, 2, 3, 4] %}
+                    <option value="{{ t }}" {% if t == trimestre_selectionne %}selected{% endif %}>T{{ t }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-primary">Appliquer</button>
+            <a href="{{ url_for('banking.declaration_tva') }}" class="btn btn-secondary">Réinitialiser</a>
+        </form>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Période : {{ rapport.periode.date_debut }} au {{ rapport.periode.date_fin }}</h5>
+        </div>
+        <div class="card-body">
+            <div class="row text-center mb-3">
+                <div class="col-md-4">
+                    <h6 class="text-muted">Chiffre d'affaires HT</h6>
+                    <h4>{{ "%.2f"|format(rapport.chiffre_affaires_ht) }} CHF</h4>
+                </div>
+                <div class="col-md-4">
+                    <h6 class="text-danger">TVA Collectée</h6>
+                    <h4>{{ "%.2f"|format(rapport.tva_collectee.total) }} CHF</h4>
+                </div>
+                <div class="col-md-4">
+                    <h6 class="text-success">TVA Déductible</h6>
+                    <h4>{{ "%.2f"|format(rapport.tva_deductible.total) }} CHF</h4>
+                </div>
+            </div>
+            <hr>
+            <div class="row text-center">
+                <div class="col-12">
+                    <h5>Solde TVA</h5>
+                    {% if rapport.solde.nature == 'dette_tva' %}
+                        <h3 class="text-danger">{{ rapport.solde.message }}</h3>
+                    {% elif rapport.solde.nature == 'credit_tva' %}
+                        <h3 class="text-success">{{ rapport.solde.message }}</h3>
+                    {% else %}
+                        <h3 class="text-muted">{{ rapport.solde.message }}</h3>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-danger text-white">Détail TVA Collectée</div>
+                <table class="table table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Taux</th>
+                            <th class="text-end">Base HT</th>
+                            <th class="text-end">Montant TVA</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ligne in rapport.tva_collectee.detail_par_taux %}
+                        <tr>
+                            <td>{{ ligne.tva_taux }}%</td>
+                            <td class="text-end">{{ "%.2f"|format(ligne.base_ht) }}</td>
+                            <td class="text-end">{{ "%.2f"|format(ligne.tva_collectee) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-center text-muted">Aucune donnée</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-success text-white">Détail TVA Déductible</div>
+                <table class="table table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Taux</th>
+                            <th class="text-end">Base HT</th>
+                            <th class="text-end">Montant TVA</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ligne in rapport.tva_deductible.detail_par_taux %}
+                        <tr>
+                            <td>{{ ligne.tva_taux }}%</td>
+                            <td class="text-end">{{ "%.2f"|format(ligne.base_ht) }}</td>
+                            <td class="text-end">{{ "%.2f"|format(ligne.tva_deductible) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-center text-muted">Aucune donnée</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
