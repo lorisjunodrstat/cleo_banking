@@ -4586,6 +4586,7 @@ def transactions_sans_ecritures():
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
     statut_comptable = request.args.get('statut_comptable', 'a_comptabiliser')
+    compte_dest = request.args.get('compte_dest', type=int)
     
     # Statuts comptables disponibles
     statuts_comptables = [
@@ -4607,6 +4608,9 @@ def transactions_sans_ecritures():
             date_to=date_to,
             statut_comptable=statut_comptable
         )
+        if compte_dest:
+            transactions = [tx for tx in transactions if tx.get('compte_destination_id') == compte_dest]
+
     
     # Pour chaque transaction, récupérer le contact lié au compte
     transactions_avec_contacts = []
@@ -4662,7 +4666,8 @@ def transactions_sans_ecritures():
         total_a_comptabiliser=total_a_comptabiliser,
         total_a_comptabiliser_len=total_a_comptabiliser_len, 
         contacts=contacts,
-        taux_disponibles=taux_disponibles
+        taux_disponibles=taux_disponibles,
+        compte_dest_selectionne=compte_dest
     )
 
 @bp.route('/comptabilite/ecritures/nouvelle/from_selected', methods=['GET', 'POST'])

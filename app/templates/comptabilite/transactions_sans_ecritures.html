@@ -159,7 +159,7 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Transactions sans écritures</h5>
-                <span class="badge bg-primary">{{ transactions|length }} transaction(s)</span>
+                <span class="badge bg-primary">{{ transactions|length }} transaction(s) pour un total de {{ transactions|sum(attribute='montant')|round(2) }} CHF</span>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
@@ -193,7 +193,7 @@
                                         {{ transaction.type_transaction|replace('_', ' ')|title }}
                                     </span>
                                 </td>
-                                <td>{{ transaction.compte_destination_nom or '-' }}</td>
+                                <td>{{ transaction.compte_destination_nom or '-' }} ({{ transaction.compte_destination_id }})</td>
                                 <td>{{ transaction.description or '-' }}</td>
                                 <td class="text-end fw-bold">{{ "%.2f"|format(transaction.montant) }} CHF</td>
                                 <td>

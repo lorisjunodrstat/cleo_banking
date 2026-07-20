@@ -4410,8 +4410,8 @@ class TransactionFinanciere:
             with self.db.get_cursor() as cursor:
                 # Vérifier que le compte appartient à l'utilisateur
                 cursor.execute(
-                    "SELECT id FROM comptes_principaux WHERE id = %s",
-                    (compte_id, )
+                    "SELECT id FROM comptes_principaux WHERE id = %s AND utilisateur_id = %s",
+                    (compte_id, user_id)
                 )
                 if not cursor.fetchone():
                     return []
@@ -4440,12 +4440,11 @@ class TransactionFinanciere:
                     ON t.id = e.transaction_id
                 WHERE
                     t.compte_principal_id = %s
-                    AND t.id NOT IN (
-                        SELECT DISTINCT id
-                        FROM ecritures_comptables
-                        WHERE id IS NOT NULL
-                    )
                 """
+                #-AND t.id NOT IN (
+                #    --    SELECT DISTINCT id
+                #    --    FROM ecritures_comptables
+                #        WHERE id IS NOT NULL
                 params = [compte_id]
 
                 # Filtres optionnels
@@ -8604,6 +8603,7 @@ class EcritureComptable:
         except Exception as e:
             logger.error(f"Erreur lors du lien écriture {ecriture_id} → transaction {transaction_id}: {e}")
             return False
+    
     def unlink_all_ecritures_from_transaction(self, transaction_id: int, user_id: int) -> int:
         """
         Supprime tous les liens entre une transaction et les écritures de l'utilisateur.
