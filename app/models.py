@@ -9681,6 +9681,778 @@ class Rapport:
             'nombre_ecritures': sum(item['nb_ecritures'] or 0 for item in ecritures)
         }
 
+    # ============================================
+    # 1. COMPTE DE RÉSULTAT (Complet et détaillé)
+    # ============================================
+    def generate_compte_resultat_detaille(self, user_id: int, date_from: str, date_to: str,
+                                          statut: str = 'validée') -> Dict:
+        """
+        Génère un compte de résultat détaillé avec :
+        - Produits d'exploitation / financiers / exceptionnels
+        - Charges d'exploitation / financières / exceptionnelles
+        - Résultat net
+        - Marges et ratios clés
+        """
+        try:
+            ecriture_model = EcritureComptable(self.db)
+            
+            # Récupération des écritures par type de compte
+            with self.db.get_cursor() as cursor:
+                # Produits classés par nature
+                cursor.execute("""
+                    SELECT 
+                        c.type_compte,
+                        c.numero,
+                        c.nom AS categorie_nom,
+                        SUM(CASE WHEN e.type_ecriture = 'recette' THEN e.montant_htva ELSE 0 END) AS total_ht,
+                        SUM(CASE WHEN e.type_ecriture = 'recette' THEN e.tva_montant ELSE 0 END) AS total_tva,
+                        SUM(CASE WHEN e.type_ecriture = 'recette' THEN e.montant ELSE 0 END) AS total_ttc,
+                        COUNT(e.id) AS nb_ecritures
+                    FROM ecritures_comptables e
+                    JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.utilisateur_id = %s
+                      AND e.date_ecriture BETWEEN %s AND %s
+                      AND e.statut = %s
+                      AND c.type_compte IN ('Revenus', 'Produits', 'Actif')
+                    GROUP BY c.type_compte, c.numero, c.nom
+                    ORDER BY c.numero
+                """, (user_id, date_from, date_to, statut))
+                produits = cursor.fetchall()
+                
+                # Charges classées par nature
+                cursor.execute("""
+                    SELECT 
+                        c.type_compte,
+                        c.numero,
+                        c.nom AS categorie_nom,
+                        SUM(CASE WHEN e.type_ecriture = 'depense' THEN e.montant_htva ELSE 0 END) AS total_ht,
+                        SUM(CASE WHEN e.type_ecriture = 'depense' THEN e.tva_montant ELSE 0 END) AS total_tva,
+                        SUM(CASE WHEN e.type_ecriture = 'depense' THEN e.montant ELSE 0 END) AS total_ttc,
+                        COUNT(e.id) AS nb_ecritures
+                    FROM ecritures_comptables e
+                    JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.utilisateur_id = %s
+                      AND e.date_ecriture BETWEEN %s AND %s
+                      AND e.statut = %s
+                      AND c.type_compte IN ('Charge', 'Passif')
+                    GROUP BY c.type_compte, c.numero, c.nom
+                    ORDER BY c.numero
+                """, (user_id, date_from, date_to, statut))
+                charges = cursor.fetchall()
+
+            # Calcul des totaux
+            total_produits_ht = sum(float(p['total_ht'] or 0) for p in produits)
+            total_produits_ttc = sum(float(p['total_ttc'] or 0) for p in produits)
+            total_charges_ht = sum(float(c['total_ht'] or 0) for c in charges)
+            total_charges_ttc = sum(float(c['total_ttc'] or 0) for c in charges)
+            
+            resultat_brut = total_produits_ht - total_charges_ht
+            
+            # Ratios clés
+            marge_brute_pct = (resultat_brut / total_produits_ht * 100) if total_produits_ht > 0 else 0
+            ratio_charges = (total_charges_ht / total_produits_ht * 100) if total_produits_ht > 0 else 0
+
+            return {
+                'type_document': 'compte_resultat',
+                'titre': f"Compte de résultat du {date_from} au {date_to}",
+                'periode': {'date_debut': date_from, 'date_fin': date_to},
+                'statut': statut,
+                'produits': {
+                    'lignes': produits,
+                    'total_ht': total_produits_ht,
+                    'total_tva': sum(float(p['total_tva'] or 0) for p in produits),
+                    'total_ttc': total_produits_ttc
+                },
+                'charges': {
+                    'lignes': charges,
+                    'total_ht': total_charges_ht,
+                    'total_tva': sum(float(c['total_tva'] or 0) for c in charges),
+                    'total_ttc': total_charges_ttc
+                },
+                'resultat': {
+                    'brut_ht': resultat_brut,
+                    'net_ttc': total_produits_ttc - total_charges_ttc,
+                    'marge_brute_pct': round(marge_brute_pct, 2),
+                    'ratio_charges_pct': round(ratio_charges, 2)
+                },
+                'date_generation': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Erreur génération compte de résultat détaillé: {e}")
+            return {'erreur': str(e)}
+
+    # ============================================
+    # 2. BILAN (Complet avec vérification d'équilibre)
+    # ============================================
+    def generate_bilan_detaille(self, user_id: int, date_bilan: str) -> Dict:
+        """
+        Génère un bilan complet avec :
+        - Actif immobilisé / circulant
+        - Passif immobilisé / circulant
+        - Capitaux propres
+        - Résultat de l'exercice
+        - Vérification de l'équilibre Actif = Passif
+        """
+        try:
+            ecriture_model = EcritureComptable(self.db)
+            bilan_base = ecriture_model.get_bilan(user_id, date_bilan)
+            
+            if not bilan_base or 'erreur' in bilan_base:
+                return {'erreur': 'Impossible de générer le bilan'}
+            
+            # Calcul du résultat de l'exercice (Produits - Charges depuis le 01/01)
+            annee = date_bilan[:4]
+            date_debut_exercice = f"{annee}-01-01"
+            
+            with self.db.get_cursor() as cursor:
+                # Résultat de l'exercice
+                cursor.execute("""
+                    SELECT
+                        SUM(CASE WHEN e.type_ecriture = 'recette' 
+                              AND c.type_compte IN ('Revenus', 'Produits') 
+                              THEN e.montant_htva ELSE 0 END) AS total_produits,
+                        SUM(CASE WHEN e.type_ecriture = 'depense' 
+                              AND c.type_compte IN ('Charge', 'Passif') 
+                              THEN e.montant_htva ELSE 0 END) AS total_charges
+                    FROM ecritures_comptables e
+                    JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.utilisateur_id = %s
+                      AND e.date_ecriture BETWEEN %s AND %s
+                      AND e.statut = 'validée'
+                      AND e.type_ecriture_comptable = 'principale'
+                """, (user_id, date_debut_exercice, date_bilan))
+                resultat_exercice_data = cursor.fetchone()
+                
+                resultat_exercice = (float(resultat_exercice_data['total_produits'] or 0) 
+                                    - float(resultat_exercice_data['total_charges'] or 0))
+
+            # Réorganisation du bilan
+            total_capitaux_avec_resultat = bilan_base['total_capitaux'] + resultat_exercice
+            total_passif_complet = bilan_base['total_passif'] + total_capitaux_avec_resultat
+            equilibre = abs(bilan_base['total_actif'] - total_passif_complet) < 0.01
+
+            return {
+                'type_document': 'bilan',
+                'titre': f"Bilan au {date_bilan}",
+                'date_bilan': date_bilan,
+                'actif': {
+                    'lignes': bilan_base['actif'],
+                    'total': bilan_base['total_actif']
+                },
+                'passif': {
+                    'lignes': bilan_base['passif'],
+                    'total': bilan_base['total_passif']
+                },
+                'capitaux_propres': {
+                    'lignes': bilan_base['capitaux'],
+                    'total_hors_resultat': bilan_base['total_capitaux'],
+                    'resultat_exercice': resultat_exercice,
+                    'total_avec_resultat': total_capitaux_avec_resultat
+                },
+                'synthese': {
+                    'total_actif': bilan_base['total_actif'],
+                    'total_passif_capitaux': total_passif_complet,
+                    'ecart': bilan_base['total_actif'] - total_passif_complet,
+                    'est_equilibre': equilibre
+                },
+                'date_generation': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Erreur génération bilan détaillé: {e}")
+            return {'erreur': str(e)}
+
+    # ============================================
+    # 3. DÉCLARATION TVA TRIMESTRIELLE
+    # ============================================
+    def generate_declaration_tva_trimestrielle(self, user_id: int, annee: int, 
+                                                trimestre: int) -> Dict:
+        """
+        Génère une déclaration TVA trimestrielle complète :
+        - TVA collectée (sur ventes) par taux
+        - TVA déductible (sur achats) par taux
+        - Solde à payer ou crédit de TVA
+        - Chiffre d'affaires HT
+        - Détail par catégorie de TVA
+        """
+        try:
+            # Déterminer les dates du trimestre
+            mois_debut = (trimestre - 1) * 3 + 1
+            mois_fin = trimestre * 3
+            date_debut = date(annee, mois_debut, 1)
+            if mois_fin == 12:
+                date_fin = date(annee, 12, 31)
+            else:
+                date_fin = date(annee, mois_fin + 1, 1) - timedelta(days=1)
+
+            with self.db.get_cursor() as cursor:
+                # 🔵 TVA COLLECTÉE (sur les recettes) - détail par taux
+                cursor.execute("""
+                    SELECT 
+                        e.tva_taux,
+                        COUNT(DISTINCT e.id) AS nb_operations,
+                        SUM(e.montant_htva) AS base_ht,
+                        SUM(e.tva_montant) AS tva_collectee,
+                        SUM(e.montant) AS total_ttc
+                    FROM ecritures_comptables e
+                    JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.utilisateur_id = %s
+                      AND e.date_ecriture BETWEEN %s AND %s
+                      AND e.statut = 'validée'
+                      AND e.type_ecriture = 'recette'
+                      AND e.type_ecriture_comptable = 'principale'
+                      AND c.type_compte IN ('Revenus', 'Produits')
+                    GROUP BY e.tva_taux
+                    ORDER BY e.tva_taux DESC
+                """, (user_id, str(date_debut), str(date_fin)))
+                tva_collectee_detail = cursor.fetchall()
+
+                # 🔴 TVA DÉDUCTIBLE (sur les dépenses) - détail par taux
+                cursor.execute("""
+                    SELECT 
+                        e.tva_taux,
+                        COUNT(DISTINCT e.id) AS nb_operations,
+                        SUM(e.montant_htva) AS base_ht,
+                        SUM(e.tva_montant) AS tva_deductible,
+                        SUM(e.montant) AS total_ttc
+                    FROM ecritures_comptables e
+                    JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.utilisateur_id = %s
+                      AND e.date_ecriture BETWEEN %s AND %s
+                      AND e.statut = 'validée'
+                      AND e.type_ecriture = 'depense'
+                      AND e.type_ecriture_comptable = 'principale'
+                      AND c.type_compte IN ('Charge', 'Passif')
+                    GROUP BY e.tva_taux
+                    ORDER BY e.tva_taux DESC
+                """, (user_id, str(date_debut), str(date_fin)))
+                tva_deductible_detail = cursor.fetchall()
+
+                # Chiffre d'affaires total HT
+                cursor.execute("""
+                    SELECT COALESCE(SUM(e.montant_htva), 0) AS ca_ht
+                    FROM ecritures_comptables e
+                    JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.utilisateur_id = %s
+                      AND e.date_ecriture BETWEEN %s AND %s
+                      AND e.statut = 'validée'
+                      AND e.type_ecriture = 'recette'
+                      AND e.type_ecriture_comptable = 'principale'
+                      AND c.type_compte IN ('Revenus', 'Produits')
+                """, (user_id, str(date_debut), str(date_fin)))
+                ca_ht = float(cursor.fetchone()['ca_ht'] or 0)
+
+            # Calculs des totaux
+            total_tva_collectee = sum(float(t['tva_collectee'] or 0) for t in tva_collectee_detail)
+            total_tva_deductible = sum(float(t['tva_deductible'] or 0) for t in tva_deductible_detail)
+            solde_tva = total_tva_collectee - total_tva_deductible
+            
+            # Déterminer si c'est un crédit ou une dette
+            if solde_tva > 0:
+                nature_solde = 'dette_tva'  # À payer à l'AFC
+                message_solde = f"Montant dû à l'administration: {solde_tva:.2f} CHF"
+            elif solde_tva < 0:
+                nature_solde = 'credit_tva'  # Crédit de TVA
+                message_solde = f"Crédit de TVA: {abs(solde_tva):.2f} CHF"
+            else:
+                nature_solde = 'nul'
+                message_solde = "Solde TVA nul"
+
+            return {
+                'type_document': 'declaration_tva',
+                'titre': f"Déclaration TVA - T{trimestre} {annee}",
+                'periode': {
+                    'trimestre': trimestre,
+                    'annee': annee,
+                    'date_debut': str(date_debut),
+                    'date_fin': str(date_fin)
+                },
+                'chiffre_affaires_ht': ca_ht,
+                'tva_collectee': {
+                    'detail_par_taux': tva_collectee_detail,
+                    'total': total_tva_collectee
+                },
+                'tva_deductible': {
+                    'detail_par_taux': tva_deductible_detail,
+                    'total': total_tva_deductible
+                },
+                'solde': {
+                    'montant': round(solde_tva, 2),
+                    'nature': nature_solde,
+                    'message': message_solde
+                },
+                'date_generation': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Erreur génération déclaration TVA: {e}")
+            return {'erreur': str(e)}
+
+    # ============================================
+    # 4. GRAND LIVRE (Détail par compte)
+    # ============================================
+    def generate_grand_livre(self, user_id: int, date_from: str, date_to: str,
+                              categorie_id: int = None, statut: str = 'validée') -> Dict:
+        """
+        Génère le grand livre : détail de toutes les écritures par compte,
+        avec solde progressif (comme un vrai grand livre comptable).
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                # Récupérer toutes les écritures groupées par compte
+                query = """
+                    SELECT 
+                        c.id AS categorie_id,
+                        c.numero AS compte_numero,
+                        c.nom AS compte_nom,
+                        c.type_compte,
+                        e.id AS ecriture_id,
+                        e.date_ecriture,
+                        e.description,
+                        e.reference,
+                        e.type_ecriture,
+                        e.montant,
+                        e.montant_htva,
+                        e.tva_montant,
+                        e.statut,
+                        ct.nom AS contact_nom
+                    FROM ecritures_comptables e
+                    JOIN categories_comptables c ON e.categorie_id = c.id
+                    LEFT JOIN contacts ct ON e.id_contact = ct.id_contact
+                    WHERE e.utilisateur_id = %s
+                      AND e.date_ecriture BETWEEN %s AND %s
+                      AND e.statut = %s
+                """
+                params = [user_id, date_from, date_to, statut]
+                
+                if categorie_id:
+                    query += " AND c.id = %s"
+                    params.append(categorie_id)
+                
+                query += " ORDER BY c.numero, e.date_ecriture, e.id"
+                
+                cursor.execute(query, params)
+                ecritures = cursor.fetchall()
+
+            # Organiser par compte avec solde progressif
+            comptes = {}
+            for ecriture in ecritures:
+                compte_key = ecriture['categorie_id']
+                if compte_key not in comptes:
+                    comptes[compte_key] = {
+                        'numero': ecriture['compte_numero'],
+                        'nom': ecriture['compte_nom'],
+                        'type_compte': ecriture['type_compte'],
+                        'ecritures': [],
+                        'total_debit': 0.0,
+                        'total_credit': 0.0,
+                        'solde': 0.0
+                    }
+                
+                # Calcul du mouvement (débit/crédit selon le type de compte)
+                montant = float(ecriture['montant'] or 0)
+                if ecriture['type_compte'] in ('Actif', 'Charge'):
+                    # Débit = augmentation, Crédit = diminution
+                    if ecriture['type_ecriture'] == 'depense':
+                        comptes[compte_key]['total_debit'] += montant
+                        comptes[compte_key]['solde'] += montant
+                    else:
+                        comptes[compte_key]['total_credit'] += montant
+                        comptes[compte_key]['solde'] -= montant
+                else:
+                    # Passif/Produits : Crédit = augmentation
+                    if ecriture['type_ecriture'] == 'recette':
+                        comptes[compte_key]['total_credit'] += montant
+                        comptes[compte_key]['solde'] += montant
+                    else:
+                        comptes[compte_key]['total_debit'] += montant
+                        comptes[compte_key]['solde'] -= montant
+                
+                comptes[compte_key]['ecritures'].append({
+                    'id': ecriture['ecriture_id'],
+                    'date': str(ecriture['date_ecriture']),
+                    'description': ecriture['description'],
+                    'reference': ecriture['reference'],
+                    'contact': ecriture['contact_nom'],
+                    'debit': montant if ecriture['type_ecriture'] == 'depense' else 0,
+                    'credit': montant if ecriture['type_ecriture'] == 'recette' else 0,
+                    'solde_progressif': comptes[compte_key]['solde']
+                })
+
+            return {
+                'type_document': 'grand_livre',
+                'titre': f"Grand livre du {date_from} au {date_to}",
+                'periode': {'date_debut': date_from, 'date_fin': date_to},
+                'comptes': list(comptes.values()),
+                'nb_comptes': len(comptes),
+                'nb_ecritures': sum(len(c['ecritures']) for c in comptes.values()),
+                'date_generation': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Erreur génération grand livre: {e}")
+            return {'erreur': str(e)}
+
+    # ============================================
+    # 5. BALANCE GÉNÉRALE (Soldes de tous les comptes)
+    # ============================================
+    def generate_balance_generale(self, user_id: int, date_bilan: str) -> Dict:
+        """
+        Génère la balance générale : tableau récapitulatif de tous les comptes
+        avec leurs mouvements (débit/crédit) et soldes à une date donnée.
+        Permet de vérifier l'équilibre comptable.
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT 
+                        c.id AS categorie_id,
+                        c.numero,
+                        c.nom,
+                        c.type_compte,
+                        COALESCE(SUM(CASE WHEN e.type_ecriture = 'depense' THEN e.montant ELSE 0 END), 0) AS total_debit,
+                        COALESCE(SUM(CASE WHEN e.type_ecriture = 'recette' THEN e.montant ELSE 0 END), 0) AS total_credit
+                    FROM categories_comptables c
+                    LEFT JOIN ecritures_comptables e 
+                        ON c.id = e.categorie_id 
+                        AND e.utilisateur_id = %s
+                        AND e.date_ecriture <= %s
+                        AND e.statut = 'validée'
+                        AND e.type_ecriture_comptable = 'principale'
+                    WHERE c.utilisateur_id = %s
+                      AND c.actif = TRUE
+                    GROUP BY c.id, c.numero, c.nom, c.type_compte
+                    HAVING total_debit > 0 OR total_credit > 0
+                    ORDER BY c.numero
+                """, (user_id, date_bilan, user_id))
+                lignes = cursor.fetchall()
+
+            # Calcul des soldes et totaux
+            total_debit = 0.0
+            total_credit = 0.0
+            balance = []
+            
+            for ligne in lignes:
+                debit = float(ligne['total_debit'] or 0)
+                credit = float(ligne['total_credit'] or 0)
+                
+                # Calcul du solde selon la nature du compte
+                if ligne['type_compte'] in ('Actif', 'Charge'):
+                    solde = debit - credit
+                    sens = 'débit' if solde >= 0 else 'crédit'
+                else:
+                    solde = credit - debit
+                    sens = 'crédit' if solde >= 0 else 'débit'
+                
+                balance.append({
+                    'numero': ligne['numero'],
+                    'nom': ligne['nom'],
+                    'type_compte': ligne['type_compte'],
+                    'total_debit': debit,
+                    'total_credit': credit,
+                    'solde': abs(solde),
+                    'sens': sens
+                })
+                
+                total_debit += debit
+                total_credit += credit
+
+            equilibre = abs(total_debit - total_credit) < 0.01
+
+            return {
+                'type_document': 'balance_generale',
+                'titre': f"Balance générale au {date_bilan}",
+                'date_bilan': date_bilan,
+                'lignes': balance,
+                'totaux': {
+                    'total_debit': total_debit,
+                    'total_credit': total_credit,
+                    'ecart': total_debit - total_credit,
+                    'est_equilibre': equilibre
+                },
+                'nb_comptes': len(balance),
+                'date_generation': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Erreur génération balance générale: {e}")
+            return {'erreur': str(e)}
+
+    # ============================================
+    # 6. JOURNAL GÉNÉRAL (Chronologique)
+    # ============================================
+    def generate_journal_general(self, user_id: int, date_from: str, date_to: str,
+                                  statut: str = 'validée') -> Dict:
+        """
+        Génère le journal général : liste chronologique de toutes les écritures
+        avec numéro de pièce, date, libellé, comptes débités/crédités.
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT 
+                        e.id,
+                        e.date_ecriture,
+                        e.reference,
+                        e.description,
+                        e.type_ecriture,
+                        e.montant,
+                        e.montant_htva,
+                        e.tva_montant,
+                        e.statut,
+                        c.numero AS compte_numero,
+                        c.nom AS compte_nom,
+                        c.type_compte,
+                        ct.nom AS contact_nom,
+                        cp.nom_compte AS compte_bancaire_nom
+                    FROM ecritures_comptables e
+                    JOIN categories_comptables c ON e.categorie_id = c.id
+                    LEFT JOIN contacts ct ON e.id_contact = ct.id_contact
+                    LEFT JOIN comptes_principaux cp ON e.compte_bancaire_id = cp.id
+                    WHERE e.utilisateur_id = %s
+                      AND e.date_ecriture BETWEEN %s AND %s
+                      AND e.statut = %s
+                    ORDER BY e.date_ecriture, e.id
+                """, (user_id, date_from, date_to, statut))
+                ecritures = cursor.fetchall()
+
+            # Calcul des totaux
+            total_debit = sum(float(e['montant'] or 0) for e in ecritures if e['type_ecriture'] == 'depense')
+            total_credit = sum(float(e['montant'] or 0) for e in ecritures if e['type_ecriture'] == 'recette')
+
+            return {
+                'type_document': 'journal',
+                'titre': f"Journal général du {date_from} au {date_to}",
+                'periode': {'date_debut': date_from, 'date_fin': date_to},
+                'ecritures': ecritures,
+                'totaux': {
+                    'total_debit': total_debit,
+                    'total_credit': total_credit,
+                    'nb_ecritures': len(ecritures)
+                },
+                'date_generation': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Erreur génération journal: {e}")
+            return {'erreur': str(e)}
+
+    # ============================================
+    # 7. ÉTAT DES CRÉANCES ET DETTES (Aging)
+    # ============================================
+    def generate_etat_creances_dettes(self, user_id: int, date_reference: str) -> Dict:
+        """
+        Génère l'état des créances clients et dettes fournisseurs
+        avec analyse par ancienneté (aging balance).
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                # Créances clients (factures non payées)
+                cursor.execute("""
+                    SELECT 
+                        ct.id_contact,
+                        ct.nom AS contact_nom,
+                        ct.email,
+                        e.id AS ecriture_id,
+                        e.date_ecriture,
+                        e.montant,
+                        e.description,
+                        e.reference,
+                        DATEDIFF(%s, e.date_ecriture) AS jours_retard,
+                        CASE 
+                            WHEN DATEDIFF(%s, e.date_ecriture) <= 30 THEN '0-30 jours'
+                            WHEN DATEDIFF(%s, e.date_ecriture) <= 60 THEN '31-60 jours'
+                            WHEN DATEDIFF(%s, e.date_ecriture) <= 90 THEN '61-90 jours'
+                            ELSE '+90 jours'
+                        END AS tranche_anciennete
+                    FROM ecritures_comptables e
+                    JOIN contacts ct ON e.id_contact = ct.id_contact
+                    JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.utilisateur_id = %s
+                      AND e.type_ecriture = 'recette'
+                      AND e.statut = 'validée'
+                      AND c.type_compte IN ('Revenus', 'Produits')
+                      AND e.date_ecriture <= %s
+                    ORDER BY e.date_ecriture
+                """, (date_reference, date_reference, date_reference, date_reference,
+                      user_id, date_reference))
+                creances = cursor.fetchall()
+
+                # Dettes fournisseurs
+                cursor.execute("""
+                    SELECT 
+                        ct.id_contact,
+                        ct.nom AS contact_nom,
+                        ct.email,
+                        e.id AS ecriture_id,
+                        e.date_ecriture,
+                        e.montant,
+                        e.description,
+                        e.reference,
+                        DATEDIFF(%s, e.date_ecriture) AS jours_retard,
+                        CASE 
+                            WHEN DATEDIFF(%s, e.date_ecriture) <= 30 THEN '0-30 jours'
+                            WHEN DATEDIFF(%s, e.date_ecriture) <= 60 THEN '31-60 jours'
+                            WHEN DATEDIFF(%s, e.date_ecriture) <= 90 THEN '61-90 jours'
+                            ELSE '+90 jours'
+                        END AS tranche_anciennete
+                    FROM ecritures_comptables e
+                    JOIN contacts ct ON e.id_contact = ct.id_contact
+                    JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.utilisateur_id = %s
+                      AND e.type_ecriture = 'depense'
+                      AND e.statut = 'validée'
+                      AND c.type_compte IN ('Charge', 'Passif')
+                      AND e.date_ecriture <= %s
+                    ORDER BY e.date_ecriture
+                """, (date_reference, date_reference, date_reference, date_reference,
+                      user_id, date_reference))
+                dettes = cursor.fetchall()
+
+            # Totaux par tranche
+            def calculer_totaux_par_tranche(items):
+                tranches = {'0-30 jours': 0.0, '31-60 jours': 0.0, 
+                           '61-90 jours': 0.0, '+90 jours': 0.0}
+                for item in items:
+                    tranche = item['tranche_anciennete']
+                    tranches[tranche] += float(item['montant'] or 0)
+                return tranches
+
+            return {
+                'type_document': 'creances_dettes',
+                'titre': f"État des créances et dettes au {date_reference}",
+                'date_reference': date_reference,
+                'creances': {
+                    'detail': creances,
+                    'total': sum(float(c['montant'] or 0) for c in creances),
+                    'par_tranche': calculer_totaux_par_tranche(creances),
+                    'nb_contacts': len(set(c['id_contact'] for c in creances))
+                },
+                'dettes': {
+                    'detail': dettes,
+                    'total': sum(float(d['montant'] or 0) for d in dettes),
+                    'par_tranche': calculer_totaux_par_tranche(dettes),
+                    'nb_contacts': len(set(d['id_contact'] for d in dettes))
+                },
+                'date_generation': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Erreur génération état créances/dettes: {e}")
+            return {'erreur': str(e)}
+
+    # ============================================
+    # 8. RAPPORT DE RAPPROCHEMENT BANCAIRE
+    # ============================================
+    def generate_rapprochement_bancaire(self, user_id: int, compte_id: int,
+                                         date_from: str, date_to: str) -> Dict:
+        """
+        Génère un rapport de rapprochement entre le solde comptable
+        et le solde bancaire réel pour un compte donné.
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                # Solde comptable du compte bancaire
+                cursor.execute("""
+                    SELECT 
+                        COALESCE(SUM(CASE WHEN e.type_ecriture = 'recette' THEN e.montant ELSE 0 END), 0) 
+                        - COALESCE(SUM(CASE WHEN e.type_ecriture = 'depense' THEN e.montant ELSE 0 END), 0) AS solde_comptable,
+                        COUNT(*) AS nb_operations
+                    FROM ecritures_comptables e
+                    WHERE e.utilisateur_id = %s
+                      AND e.compte_bancaire_id = %s
+                      AND e.date_ecriture <= %s
+                      AND e.statut = 'validée'
+                """, (user_id, compte_id, date_to))
+                solde_comptable_data = cursor.fetchone()
+
+                # Opérations non rapprochées
+                cursor.execute("""
+                    SELECT 
+                        e.id,
+                        e.date_ecriture,
+                        e.description,
+                        e.montant,
+                        e.type_ecriture,
+                        e.transaction_id
+                    FROM ecritures_comptables e
+                    WHERE e.utilisateur_id = %s
+                      AND e.compte_bancaire_id = %s
+                      AND e.date_ecriture BETWEEN %s AND %s
+                      AND e.statut = 'validée'
+                    ORDER BY e.date_ecriture
+                """, (user_id, compte_id, date_from, date_to))
+                operations = cursor.fetchall()
+
+            operations_non_rapprochees = [op for op in operations if not op['transaction_id']]
+            operations_rapprochees = [op for op in operations if op['transaction_id']]
+
+            total_non_rapproche = sum(float(op['montant'] or 0) for op in operations_non_rapprochees)
+
+            return {
+                'type_document': 'rapprochement_bancaire',
+                'titre': f"Rapprochement bancaire - Compte {compte_id}",
+                'compte_id': compte_id,
+                'periode': {'date_debut': date_from, 'date_fin': date_to},
+                'solde_comptable': float(solde_comptable_data['solde_comptable'] or 0),
+                'nb_operations_comptables': solde_comptable_data['nb_operations'],
+                'operations': {
+                    'rapprochees': operations_rapprochees,
+                    'non_rapprochees': operations_non_rapprochees,
+                    'total_rapproche': sum(float(op['montant'] or 0) for op in operations_rapprochees),
+                    'total_non_rapproche': total_non_rapproche
+                },
+                'date_generation': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Erreur génération rapprochement bancaire: {e}")
+            return {'erreur': str(e)}
+
+    # ============================================
+    # 9. MÉTHODE UNIFIÉE : GÉNÉRATION DE DOCUMENT
+    # ============================================
+    def generer_document(self, user_id: int, type_document: str, **kwargs) -> Dict:
+        """
+        Méthode unifiée pour générer n'importe quel document comptable.
+        
+        Args:
+            type_document: 'compte_resultat', 'bilan', 'declaration_tva', 
+                          'grand_livre', 'balance', 'journal', 'creances_dettes',
+                          'rapprochement_bancaire'
+            **kwargs: paramètres spécifiques au document
+        """
+        try:
+            if type_document == 'compte_resultat':
+                return self.generate_compte_resultat_detaille(
+                    user_id, kwargs['date_from'], kwargs['date_to'],
+                    kwargs.get('statut', 'validée')
+                )
+            elif type_document == 'bilan':
+                return self.generate_bilan_detaille(user_id, kwargs['date_bilan'])
+            elif type_document == 'declaration_tva':
+                return self.generate_declaration_tva_trimestrielle(
+                    user_id, kwargs['annee'], kwargs['trimestre']
+                )
+            elif type_document == 'grand_livre':
+                return self.generate_grand_livre(
+                    user_id, kwargs['date_from'], kwargs['date_to'],
+                    kwargs.get('categorie_id'), kwargs.get('statut', 'validée')
+                )
+            elif type_document == 'balance':
+                return self.generate_balance_generale(user_id, kwargs['date_bilan'])
+            elif type_document == 'journal':
+                return self.generate_journal_general(
+                    user_id, kwargs['date_from'], kwargs['date_to'],
+                    kwargs.get('statut', 'validée')
+                )
+            elif type_document == 'creances_dettes':
+                return self.generate_etat_creances_dettes(user_id, kwargs['date_reference'])
+            elif type_document == 'rapprochement_bancaire':
+                return self.generate_rapprochement_bancaire(
+                    user_id, kwargs['compte_id'], kwargs['date_from'], kwargs['date_to']
+                )
+            else:
+                return {'erreur': f"Type de document inconnu: {type_document}"}
+        except KeyError as e:
+            return {'erreur': f"Paramètre manquant: {e}"}
+        except Exception as e:
+            logger.error(f"Erreur génération document {type_document}: {e}")
+            return {'erreur': str(e)}
+
 class BaremeCotisation:
     def __init__(self, db):
         self.db = db

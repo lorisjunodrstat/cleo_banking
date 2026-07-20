@@ -4831,7 +4831,7 @@ def update_statut_comptable(transaction_id):
         flash('Statut invalide', 'error')
         return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
     
-    success, message = g.models.ecriture_comptable_model.update_statut_comptable(
+    success, message = g.models.transaction_financiere_model.update_statut_comptable(
         transaction_id, current_user.id, nouveau_statut
     )
     
@@ -6472,7 +6472,7 @@ def export_rapport(type_rapport):
         logging.error(f"Erreur export rapport {type_rapport}: {e}")
         flash("Erreur lors de la préparation de l'export.", "danger")
         return redirect(request.referrer or url_for('banking.banking_dashboard'))
-        
+    
 ##########################################
 ###### Taux TVA
 ##########################################
