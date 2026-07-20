@@ -1103,7 +1103,7 @@ def banking_compte_evolution_echanges(compte_id):
 
             # Gestion des couleurs
             couleurs_a_utiliser = None
-            if not cumuler and donnees_struct['series']: # Si non cumulé et qu'il y a des séries
+            if not cumuler and donnees_struct.get('series'): # Si non cumulé et qu'il y a des séries
                 couleurs_a_utiliser = []
                 # On suppose que les clés de 'series' sont les noms des comptes dans l'ordre
                 # où ils ont été sélectionnés (ce n'est pas garanti par un dictionnaire, mais c'est souvent le cas en Python 3.7+)

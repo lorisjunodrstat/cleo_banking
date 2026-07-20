@@ -5276,7 +5276,7 @@ class TransactionFinanciere:
         """
         Génère un graphique en lignes SVG avec axes Y améliorés.
         """
-        if not donnees_structurees or not donnees_structurees['series']:
+        if not donnees_structurees or not donnees_structurees.et('series') or not donnees_structurees.get('dates'):
             return "<svg width='800' height='400'><text x='10' y='20'>Aucune donnée disponible.</text></svg>"
 
         dates = donnees_structurees['dates']
@@ -5340,8 +5340,8 @@ class TransactionFinanciere:
         for i, dt in enumerate(dates):
             if i % max(1, len(dates)//10) == 0:
                 x = marge_gauche + (i / (len(dates) - 1 if len(dates) > 1 else 1)) * largeur_graph
-                svg += f'<text x="{x}" y="{marge_haut + hauteur_graph + 20}" text-anchor="middle" font-size="10">{dt.strftime("%d.%m")}</text>\n'
-
+                dt_str = dt.strftime("%d.%m") if hasattr(dt, 'strftime') else str(dt)[:5]
+                svg += f'<text x="{x}" y="{marge_haut + hauteur_graph + 20}" text-anchor="middle" font-size="10">{dt_str}</text>\n'
         # === LÉGENDE ===
         if n_series > 1 or list(series.keys())[0] != 'Tous les comptes':
             for idx, nom_serie in enumerate(series.keys()):
@@ -5359,7 +5359,7 @@ class TransactionFinanciere:
         """
         Génère un graphique en barres SVG avec axes Y améliorés.
         """
-        if not donnees_structurees or not donnees_structurees['series']:
+        if not donnees_structurees or not donnees_structurees.get('series') or not donnees_structurees.get('dates'):
             return "<svg width='800' height='400'><text x='10' y='20'>Aucune donnée disponible.</text></svg>"
 
         dates = donnees_structurees['dates']
@@ -5426,8 +5426,8 @@ class TransactionFinanciere:
         for i, dt in enumerate(dates):
             if i % max(1, n_dates//10) == 0:
                 x = marge_gauche + (i / (n_dates - 1 if n_dates > 1 else 1)) * largeur_graph
-                svg += f'<text x="{x}" y="{marge_haut + hauteur_graph + 20}" text-anchor="middle" font-size="10">{dt.strftime("%d.%m")}</text>\n'
-
+                dt_str = dt.strftime("%d.%m") if hasattr(dt, 'strftime') else str(dt)[:5]
+                svg += f'<text x="{x}" y="{marge_haut + hauteur_graph + 20}" text-anchor="middle" font-size="10">{dt_str}</text>\n'
         # === LÉGENDE ===
         if n_series > 1 or list(series.keys())[0] != 'Tous les comptes':
             for idx, nom_serie in enumerate(series.keys()):
