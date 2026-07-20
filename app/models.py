@@ -5485,7 +5485,7 @@ class TransactionFinanciere:
         except Exception as e:
             logger.error(f"Erreur dans _get_solde_avant_periode (compte {compte_id}, date {debut_periode}): {e}")
             return Decimal('0')
-    def update_statut_comptable(self, ecriture_id: int, user_id: int, statut_comptable: str) -> Tuple[bool, str]:
+    def update_statut_comptable(self, transaction_id: int, user_id: int, statut_comptable: str) -> Tuple[bool, str]:
         """Met à jour le statut comptable d'une transaction"""
         try:
             with self.db.get_cursor() as cursor:
