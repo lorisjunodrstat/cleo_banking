@@ -4597,7 +4597,6 @@ def transactions_sans_ecritures():
     
     # Récupérer les comptes de l'utilisateur
     comptes = g.models.compte_model.get_by_user_id(current_user.id)
-    comptes_destinataires = 
     # Récupérer les transactions sans écritures
     transactions = []
     if compte_id:
@@ -4680,8 +4679,11 @@ def transactions_sans_ecritures():
         contacts=contacts,
         taux_disponibles=taux_disponibles,
         compte_dest_selectionne=compte_dest,
-        comptes_destinataires_dict=comptes_destinataires_dict
+        comptes_destinataires=comptes_destinataires
     )
+
+
+
 
 @bp.route('/comptabilite/ecritures/nouvelle/from_selected', methods=['GET', 'POST'])
 @login_required

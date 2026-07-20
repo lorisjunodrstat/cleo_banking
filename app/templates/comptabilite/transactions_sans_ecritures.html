@@ -101,9 +101,9 @@
                     <label for="compte_dest" class="form-label">Compte destinataire</label>
                     <select id="compte_dest" name="compte_dest" class="form-select">
                         <option value="">Tous</option>
-                        {% for dest_id, nom in comptes_destinataires_dict.items() %}
-                        <option value="{{ dest_id }}" {% if dest_id==compte_dest_selectionne %}selected{% endif %}>
-                            {{ nom }} ({{ dest_id }})
+                        {% for cpt in comptes_destinataires %}
+                        <option value="{{ cpt.id }}" {% if cpt.id==compte_dest_selectionne %}selected{% endif %}>
+                            {{ cpt.nom_compte }} ({{ cpt.id }})
                         </option>
                         {% endfor %}
                     </select>
