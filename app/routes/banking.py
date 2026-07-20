@@ -4597,7 +4597,7 @@ def transactions_sans_ecritures():
     
     # Récupérer les comptes de l'utilisateur
     comptes = g.models.compte_model.get_by_user_id(current_user.id)
-    
+    comptes_destinataires = 
     # Récupérer les transactions sans écritures
     transactions = []
     if compte_id:
@@ -4608,9 +4608,21 @@ def transactions_sans_ecritures():
             date_to=date_to,
             statut_comptable=statut_comptable
         )
+        comptes_destinataires_dict = {}
+        for tx in transactions:
+            dest_id = tx.get('compte_destination_id')
+            if dest_id and dest_id not in comptes_destinataires_dict:
+                comptes_destinataires_dict[dest_id] = tx.get('compte_destination_nom')
+
+        comptes_destinataires = [
+            {'id': dest_id, 'nom_compte': nom}
+            for dest_id, nom in comptes_destinataires_dict.items()
+        ]
+
         if compte_dest:
             transactions = [tx for tx in transactions if tx.get('compte_destination_id') == compte_dest]
-
+    else:
+        comptes_destinataires = []
     
     # Pour chaque transaction, récupérer le contact lié au compte
     transactions_avec_contacts = []
@@ -4667,7 +4679,8 @@ def transactions_sans_ecritures():
         total_a_comptabiliser_len=total_a_comptabiliser_len, 
         contacts=contacts,
         taux_disponibles=taux_disponibles,
-        compte_dest_selectionne=compte_dest
+        compte_dest_selectionne=compte_dest,
+        comptes_destinataires_dict=comptes_destinataires_dict
     )
 
 @bp.route('/comptabilite/ecritures/nouvelle/from_selected', methods=['GET', 'POST'])
