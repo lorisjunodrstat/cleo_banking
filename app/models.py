@@ -5485,6 +5485,24 @@ class TransactionFinanciere:
         except Exception as e:
             logger.error(f"Erreur dans _get_solde_avant_periode (compte {compte_id}, date {debut_periode}): {e}")
             return Decimal('0')
+    def update_statut_comptable(self, ecriture_id: int, user_id: int, statut_comptable: str) -> Tuple[bool, str]:
+        """Met à jour le statut comptable d'une transaction"""
+        try:
+            with self.db.get_cursor() as cursor:
+                query = """
+                UPDATE transactions_financieres t
+                LEFT JOIN comptes_principaux cp ON t.compte_principal_id = cp.id
+                SET t.statut_comptable = %s
+                WHERE t.id = %s
+                AND (cp.utilisateur_id = %s OR t.utilisateur_id = %s)
+                """
+                cursor.execute(query, (statut_comptable, transaction_id, user_id, user_id))
+                if cursor.rowcount == 0:
+                    return False, "Transaction non trouvée ou non autorisée"
+            return True, "Statut comptable mis à jour avec succès"
+        except Exception as e:
+            logger.error(f"Erreur mise à jour statut comptable: {e}")
+            return False, f"Erreur: {str(e)}"
 
 class CategorieTransaction:
     """Classe pour gérer les catégories de transactions"""
@@ -7186,31 +7204,7 @@ class EcritureComptable:
             logger.error(f"Erreur get_ecriture_avec_secondaires: {e}")
             return None
 
-    def update_statut_comptable(self, ecriture_id: int, user_id: int, statut_comptable: str) -> Tuple[bool, str]:
-        """Met à jour le statut comptable d'une transaction"""
-        try:
-            with self.db.get_cursor() as cursor:
-                ecritures_secondaires = self.get_ecritures_complementaires(ecriture_id, user_id)
-                # Vérifier que l'utilisateur peut accéder à cette transaction
-                if ecritures_secondaires:
-                    query = """
-                    UPDATE ecritures_comptables
-                    SET statut = %s
-                    WHERE (id = %s OR ecriture_principale_id = %s)
-                    AND utilisateur_id = %s
-                    """
-                    cursor.execute(query, (statut_comptable, ecriture_id, ecriture_id, user_id))
-                else:
-                    query = """
-                    UPDATE ecritures_comptables
-                    SET statut = %s
-                    WHERE id = %s AND utilisateur_id = %s
-                    """
-                    cursor.execute(query, (statut_comptable, ecriture_id, user_id))
-            return True, "Statut comptable mis à jour avec succès"
-        except Exception as e:
-            logger.error(f"Erreur mise à jour statut comptable: {e}")
-            return False, f"Erreur: {str(e)}"
+    
 
     def get_solde_tva_par_periode(self, user_id: int, date_debut: str, date_fin: str) -> Dict:
         """Calcule le solde TVA pour une période donnée"""
