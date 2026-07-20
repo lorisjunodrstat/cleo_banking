@@ -97,6 +97,17 @@
                         {% endfor %}
                     </select>
                 </div>
+                <div class="col-md-2">
+                    <label for="compte_dest" class="form-label">Compte destinataire</label>
+                    <select id="compte_dest" name="compte_dest" class="form-select">
+                        <option value="">Tous</option>
+                        {% for compte in comptes %}
+                        <option value="{{ compte.id }}" {% if compte.id==compte_dest_selectionne %}selected{% endif %}>
+                            {{ compte.nom_compte }} ({{ compte.id }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
                 <div class="col-md-3 d-flex align-items-end">
                     <button type="submit" class="btn btn-primary">Filtrer</button>
                     <a href="{{ url_for('banking.transactions_sans_ecritures') }}"
