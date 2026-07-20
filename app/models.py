@@ -5490,7 +5490,7 @@ class TransactionFinanciere:
         try:
             with self.db.get_cursor() as cursor:
                 query = """
-                UPDATE transactions_financieres t
+                UPDATE transactions t
                 LEFT JOIN comptes_principaux cp ON t.compte_principal_id = cp.id
                 SET t.statut_comptable = %s
                 WHERE t.id = %s
