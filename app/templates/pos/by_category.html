@@ -1,0 +1,22 @@
+{% extends "pos.html" %}
+{% block title %}Ventes par catégorie{% endblock %}
+{% block page_header %}<h2 class="mb-4">Ventes par catégorie</h2>{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form method="GET" class="row g-3 mb-4">
+            <div class="col-md-4"><input type="date" name="date_from" class="form-control" value="{{ date_from }}"></div>
+            <div class="col-md-4"><input type="date" name="date_to" class="form-control" value="{{ date_to }}"></div>
+            <div class="col-md-4"><button type="submit" class="btn btn-success w-100">Filtrer</button></div>
+        </form>
+        <table class="table table-hover">
+            <thead class="table-light"><tr><th>Catégorie</th><th class="text-center">Fois vendu</th><th class="text-center">Qté totale</th><th class="text-end">Revenu total</th></tr></thead>
+            <tbody>
+                {% for c in categories %}
+                <tr><td>{{ c.name }}</td><td class="text-center">{{ c.times_sold }}</td><td class="text-center">{{ c.total_qty }}</td><td class="text-end fw-bold">CHF {{ "%.2f"|format(c.total_revenue) }}</td></tr>
+                {% else %}<tr><td colspan="4" class="text-center text-muted py-4">Aucune donnée</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,139 @@
+{% extends "pos.html" %}
+{% block title %}Options de modificateurs{% endblock %}
+
+{% block page_header %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">
+        <i class="bi bi-list-check me-2"></i>Options de modificateurs
+        <span class="badge bg-primary ms-2">{{ total_options }}</span>
+    </h2>
+    <div>
+        <a href="{{ url_for('main.modifiers') }}" class="btn btn-outline-secondary me-2">
+            <i class="bi bi-arrow-left me-1"></i>Modificateurs
+        </a>
+        <a href="{{ url_for('main.create_modifier_option') }}" class="btn btn-success">
+            <i class="bi bi-plus-circle me-1"></i>Nouvelle option
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Stats rapides -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm border-start border-primary border-4">
+            <div class="card-body">
+                <div class="text-muted small">Total modificateurs</div>
+                <div class="fs-3 fw-bold">{{ total_modifiers }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm border-start border-success border-4">
+            <div class="card-body">
+                <div class="text-muted small">Total options</div>
+                <div class="fs-3 fw-bold">{{ total_options }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm border-start border-info border-4">
+            <div class="card-body">
+                <div class="text-muted small">Moy. options/modificateur</div>
+                <div class="fs-3 fw-bold">
+                    {% if total_modifiers > 0 %}
+                        {{ "%.1f"|format(total_options / total_modifiers) }}
+                    {% else %}
+                        0
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Liste groupée par modificateur -->
+{% for item in modifiers_data %}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-sliders me-2"></i>{{ item.modifier.nom_modificateur }}
+            <span class="badge bg-primary ms-2">{{ item.options_count }} option{{ 's' if item.options_count > 1 else '' }}</span>
+        </h5>
+        <a href="{{ url_for('main.create_modifier_option') }}" class="btn btn-sm btn-outline-success">
+            <i class="bi bi-plus-circle me-1"></i>Ajouter
+        </a>
+    </div>
+    <div class="card-body p-0">
+        {% if item.options %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 40%">Nom de l'option</th>
+                        <th>Article lié</th>
+                        <th>Prix</th>
+                        <th>Description</th>
+                        <th class="text-end" style="width: 150px">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for option in item.options %}
+                    <tr>
+                        <td><strong>{{ option.nom_option }}</strong></td>
+                        <td>
+                            {% if option.id_article %}
+                                {% set linked_article = articles_by_id.get(option.id_article) %}
+                                <span class="badge bg-info">{{ linked_article.nom_article if linked_article else 'Article #' ~ option.id_article }}</span>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if option.prix_supplement and option.prix_supplement > 0 %}
+                                <span class="badge bg-warning text-dark">+CHF {{ "%.2f"|format(option.prix_supplement) }}</span>
+                            {% else %}
+                                <span class="badge bg-success">Inclus</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted">{{ option.description or '-' }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('main.edit_modifier_option', option_id=option.id) }}" 
+                               class="btn btn-sm btn-outline-primary" title="Modifier">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <form method="POST" action="{{ url_for('main.delete_modifier_option', option_id=option.id) }}" 
+                                  style="display: inline;" 
+                                  onsubmit="return confirm('Supprimer cette option ?')">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Supprimer">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-4">
+            <i class="bi bi-inbox fs-3"></i>
+            <p class="mb-0 mt-2">Aucune option pour ce modificateur</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% else %}
+<div class="card shadow-sm">
+    <div class="card-body text-center py-5">
+        <i class="bi bi-inbox fs-1 text-muted"></i>
+        <h4 class="mt-3 text-muted">Aucun modificateur</h4>
+        <p class="text-muted">Commencez par créer un modificateur, puis ajoutez-lui des options.</p>
+        <a href="{{ url_for('main.create_modifier') }}" class="btn btn-success">
+            <i class="bi bi-plus-circle me-1"></i>Créer un modificateur
+        </a>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

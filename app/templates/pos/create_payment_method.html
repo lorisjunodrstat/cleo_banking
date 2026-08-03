@@ -1,0 +1,31 @@
+{% extends "pos.html" %}
+{% block title %}Nouveau mode de paiement{% endblock %}
+{% block page_header %}<h2 class="mb-4">Créer un mode de paiement</h2>{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Nom du mode de paiement</label>
+                        <input type="text" name="nom" class="form-control" placeholder="Ex: Carte, Twint, Virement..." required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description (optionnel)</label>
+                        <textarea name="description" class="form-control" rows="3"></textarea>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="est_actif" id="est_actif" checked>
+                        <label class="form-check-label" for="est_actif">
+                            Activer ce mode de paiement
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Enregistrer</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

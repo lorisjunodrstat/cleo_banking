@@ -1,0 +1,43 @@
+{% extends "pos.html" %}
+{% block title %}Modes de paiement{% endblock %}
+{% block page_header %}
+<h2 class="mb-4">
+    Modes de paiement
+    <a href="{{ url_for('main.create_payment_method') }}" class="btn btn-sm btn-success float-end">+ Nouveau</a>
+</h2>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-body">
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>Nom
+                    </th>
+                    <th>Description
+                    </th>
+                    <th>Statut
+                    </th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for mode in modes %}
+                <tr>
+                    <td><strong>{{ mode.nom }}</strong></td>
+                    <td>{{ mode.description or '-' }}</td>
+                    <td><span class="badge bg-{{ 'success' if mode.est_actif else 'secondary' }}">{{ 'Actif' if mode.est_actif else 'Inactif' }}</span></td>
+                    <td>
+                        <a href="{{ url_for('main.edit_payment_method', mode_id=mode.id) }}" class="btn btn-primary btn-sm">Modifier</a>
+                        <a href="{{ url_for('main.delete_payment_method', mode_id=mode.id) }}" class="btn btn-danger btn-sm" onclick="return confirm('Êtes-vous sûr de vouloir supprimer ce mode de paiement ?')">Supprimer</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3" class="text-center text-muted py-4">Aucun mode de paiement configuré</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

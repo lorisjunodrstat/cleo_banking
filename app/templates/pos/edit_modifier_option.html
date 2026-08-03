@@ -1,0 +1,71 @@
+{% extends "pos.html" %}
+{% block title %}Modifier l'option{% endblock %}
+
+{% block page_header %}<h2 class="mb-4">Modifier l'option de modificateur</h2>{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Nom de l'option *</label>
+                        <input type="text" name="nom_option" class="form-control" 
+                               value="{{ option.nom_option }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Modificateur parent *</label>
+                        <select name="id_modificateur" class="form-select" required>
+                            <option value="">-- Sélectionner un modificateur --</option>
+                            {% for mod in modifiers %}
+                                <option value="{{ mod.id }}" {% if mod.id == option.id_modificateur %}selected{% endif %}>
+                                    {{ mod.nom_modificateur }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Article lié (optionnel)</label>
+                            <select name="id_article" class="form-select">
+                                <option value="">Aucun article lié</option>
+                                {% for article in articles %}
+                                    <option value="{{ article.id }}" {% if article.id == option.id_article %}selected{% endif %}>
+                                        {{ article.nom_article }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Prix de supplément (CHF)</label>
+                            <div class="input-group">
+                                <span class="input-group-text">+CHF</span>
+                                <input type="number" step="0.01" name="prix_supplement" class="form-control" 
+                                       value="{{ option.prix_supplement or 0 }}">
+                            </div>
+                            <div class="form-text">Montant ajouté au prix du menu si cette option est choisie.</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Description (optionnel)</label>
+                        <textarea name="description" class="form-control" rows="3">{{ option.description or '' }}</textarea>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-check-circle me-2"></i>Mettre à jour
+                        </button>
+                        <a href="{{ url_for('main.modifier_options') }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-x-circle me-2"></i>Annuler
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

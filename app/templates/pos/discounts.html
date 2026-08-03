@@ -1,0 +1,83 @@
+{% extends "pos.html" %}
+{% block title %}Réductions{% endblock %}
+
+{% block page_header %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0"><i class="bi bi-tag me-2"></i>Réductions</h2>
+    <a href="{{ url_for('main.create_discount') }}" class="btn btn-success">
+        <i class="bi bi-plus-circle me-1"></i>Créer une réduction
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Nom</th>
+                        <th>Type</th>
+                        <th>Valeur</th>
+                        <th class="text-center">Accès restreint</th>
+                        <th class="text-center">Statut</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for discount in discounts %}
+                    <tr>
+                        <td><strong>{{ discount.nom }}</strong></td>
+                        <td>
+                            {% if discount.type_reduction == 'percentage' %}
+                                <span class="badge bg-info">Pourcentage</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Montant fixe</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if discount.type_reduction == 'percentage' %}
+                                {{ discount.valeur }}%
+                            {% else %}
+                                CHF {{ "%.2f"|format(discount.valeur) }}
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if discount.acces_restreint %}
+                                <i class="bi bi-lock text-warning"></i>
+                            {% else %}
+                                <i class="bi bi-unlock text-success"></i>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-{{ 'success' if discount.est_actif else 'secondary' }}">
+                                {{ 'Actif' if discount.est_actif else 'Inactif' }}
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            <a href="{{ url_for('main.edit_discount', discount_id=discount.id) }}" 
+                               class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <form method="POST" action="{{ url_for('main.delete_discount', discount_id=discount.id) }}" 
+                                  style="display: inline;" onsubmit="return confirm('Supprimer cette réduction ?')">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">
+                            Aucune réduction configurée
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

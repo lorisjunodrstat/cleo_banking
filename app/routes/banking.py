@@ -10494,3 +10494,597 @@ def synthese_mensuelle_employes():
         svg_data=svg_data
     )
 
+# ============================================================
+# MODULE POS (POINT DE VENTE)
+# À ajouter à la suite de vos routes existantes dans banking.py
+# ============================================================
+
+from decimal import Decimal
+from datetime import datetime, date
+
+# --- UTILITAIRES POS ---
+def safe_float(val, default=0.0):
+    try:
+        return float(str(val).replace(',', '.'))
+    except (ValueError, TypeError):
+        return default
+
+# --- DASHBOARD POS ---
+@bp.route('/pos')
+@login_required
+def pos_dashboard():
+    """Tableau de bord principal du module POS"""
+    user_id = current_user.id
+    
+    # 1. Récupérer les magasins de l'utilisateur
+    magasins = g.models.magasin_pos_model.get_by_user(user_id)
+    
+    # 2. Récupérer les reçus du jour
+    today = date.today().strftime('%Y-%m-%d')
+    receipts_today = g.models.receipt_pos_model.get_all(
+        user_id=user_id,
+        date_from=today,
+        date_to=today
+    )
+    
+    # 3. Calculer les statistiques du jour (un seul filtrage)
+    ventes_du_jour = [r for r in receipts_today if r.get('receipt_type') == 'Vente']
+    total_ventes_jour = sum(float(r.get('total_collecte', 0) or 0) for r in ventes_du_jour)
+    nb_ventes_jour = len(ventes_du_jour)
+    
+    # 4. Vérifier si une période de travail est ouverte
+    periode_ouverte = g.models.periode_travail_pos_model.get_ouverte(user_id)
+    
+    return render_template(
+        'pos/dashboard.html',
+        magasins=magasins,
+        total_ventes_jour=total_ventes_jour,
+        nb_ventes_jour=nb_ventes_jour,
+        periode_ouverte=periode_ouverte,
+        now=datetime.now()  # ← Important : utilisé par base.html pour le footer
+    )
+# --- MAGASINS ---
+@bp.route('/pos/stores')
+@login_required
+def pos_store_list():
+    stores = g.models.magasin_pos_model.get_by_user(current_user.id)
+    return render_template('pos/stores/list.html', stores=stores)
+
+@bp.route('/pos/stores/create', methods=['GET', 'POST'])
+@login_required
+def pos_create_store():
+    if request.method == 'POST':
+        store_id = g.models.magasin_pos_model.create(current_user.id, {
+            'nom_magasin': request.form.get('nom_magasin'),
+            'adresse': request.form.get('adresse', ''),
+            'ville': request.form.get('ville', ''),
+            'code_postal': request.form.get('code_postal', ''),
+            'canton': request.form.get('canton', ''),
+            'pays': request.form.get('pays', 'Suisse'),
+            'telephone': request.form.get('telephone', ''),
+            'email': request.form.get('email', ''),
+            'description': request.form.get('description', '')
+        })
+        if store_id:
+            flash('Magasin créé avec succès !', 'success')
+            return redirect(url_for('banking.pos_store_list')) # Adaptez 'banking.' si votre blueprint s'appelle autrement
+        flash('Erreur lors de la création du magasin.', 'error')
+    return render_template('pos/stores/create.html')
+
+@bp.route('/pos/stores/<int:store_id>/edit', methods=['GET', 'POST'])
+@login_required
+def pos_edit_store(store_id):
+    magasin = g.models.magasin_pos_model.get_by_id(store_id, current_user.id)
+    if not magasin:
+        flash('Magasin non trouvé.', 'error')
+        return redirect(url_for('banking.pos_store_list'))
+    
+    if request.method == 'POST':
+        success = g.models.magasin_pos_model.update(store_id, current_user.id, {
+            'nom_magasin': request.form.get('nom_magasin'),
+            'adresse': request.form.get('adresse', ''),
+            'ville': request.form.get('ville', ''),
+            'code_postal': request.form.get('code_postal', ''),
+            'canton': request.form.get('canton', ''),
+            'pays': request.form.get('pays', 'Suisse'),
+            'telephone': request.form.get('telephone', ''),
+            'email': request.form.get('email', ''),
+            'description': request.form.get('description', '')
+        })
+        if success:
+            flash('Magasin modifié avec succès !', 'success')
+            return redirect(url_for('banking.pos_store_list'))
+        flash('Erreur lors de la modification.', 'error')
+    return render_template('pos/stores/edit.html', magasin=magasin)
+
+@bp.route('/pos/stores/<int:store_id>/delete', methods=['POST'])
+@login_required
+def pos_delete_store(store_id):
+    success = g.models.magasin_pos_model.delete(store_id, current_user.id)
+    if success:
+        flash('Magasin supprimé avec succès.', 'success')
+    else:
+        flash('Impossible de supprimer ce magasin.', 'error')
+    return redirect(url_for('banking.pos_store_list'))
+
+# --- POINTS DE VENTE (PDV) ---
+@bp.route('/pos/pdv')
+@login_required
+def pos_pdv_list():
+    user_id = current_user.id
+    magasins = g.models.magasin_pos_model.get_by_user(user_id)
+    pos_list = []
+    for magasin in magasins:
+        pdvs = g.models.pdv_pos_model.get_by_magasin(magasin['id'], user_id)
+        for pdv in pdvs:
+            pdv['nom_magasin'] = magasin['nom_magasin']
+            pos_list.append(pdv)
+    return render_template('pos/pdv/list.html', pos_list=pos_list, magasins=magasins)
+
+@bp.route('/pos/pdv/create', methods=['GET', 'POST'])
+@login_required
+def pos_create_pdv():
+    magasins = g.models.magasin_pos_model.get_by_user(current_user.id)
+    if request.method == 'POST':
+        magasin_id = int(request.form.get('magasin_id'))
+        pdv_id = g.models.pdv_pos_model.create(current_user.id, magasin_id, {
+            'nom_pdv': request.form.get('nom_pdv'),
+            'description': request.form.get('description', '')
+        })
+        if pdv_id:
+            flash('Point de vente créé avec succès !', 'success')
+            return redirect(url_for('banking.pos_pdv_list'))
+        flash('Erreur lors de la création.', 'error')
+    return render_template('pos/pdv/create.html', magasins=magasins)
+
+@bp.route('/pos/pdv/<int:pos_id>/delete', methods=['POST'])
+@login_required
+def pos_delete_pdv(pos_id):
+    success = g.models.pdv_pos_model.delete(pos_id, current_user.id)
+    if success:
+        flash('Point de vente supprimé avec succès.', 'success')
+    else:
+        flash('Impossible de supprimer ce point de vente.', 'error')
+    return redirect(url_for('banking.pos_pdv_list'))
+
+# --- ARTICLES ---
+@bp.route('/pos/articles')
+@login_required
+def pos_articles_list():
+    page = request.args.get('page', 1, type=int)
+    search = request.args.get('search', '')
+    category_filter = request.args.get('category', '')
+    
+    articles = g.models.article_pos_model.get_all(
+        user_id=current_user.id,
+        categorie_id=int(category_filter) if category_filter else None
+    )
+    
+    if search:
+        articles = [a for a in articles if search.lower() in a.get('nom_article', '').lower()]
+    
+    categories = g.models.categorie_pos_model.get_all(current_user.id)
+    return render_template('pos/articles/list.html', items=articles, categories=categories, search=search, category_filter=category_filter)
+
+@bp.route('/pos/articles/create', methods=['GET', 'POST'])
+@login_required
+def pos_create_article():
+    categories = g.models.categorie_pos_model.get_all(current_user.id)
+    taxes = g.models.taxe_pos_model.get_all(current_user.id)
+    
+    if request.method == 'POST':
+        article_id = g.models.article_pos_model.create(current_user.id, {
+            'nom_article': request.form.get('nom_article'),
+            'id_categorie': int(request.form.get('id_categorie')),
+            'prix_unitaire': safe_float(request.form.get('prix_unitaire', 0)),
+            'cout_unitaire': safe_float(request.form.get('cout_unitaire', 0)),
+            'stock': int(request.form.get('stock', 0)),
+            'description': request.form.get('description', ''),
+            'code_barre': request.form.get('code_barre', '')
+        })
+        if article_id:
+            taxe_id = request.form.get('taxe_id')
+            if taxe_id:
+                g.models.taxe_pos_model.assigner_to_article(article_id, int(taxe_id), datetime.now().date())
+            flash('Article créé avec succès !', 'success')
+            return redirect(url_for('banking.pos_articles_list'))
+        flash('Erreur lors de la création.', 'error')
+    return render_template('pos/articles/create.html', categories=categories, taxes=taxes)
+
+@bp.route('/pos/articles/<int:article_id>/delete', methods=['POST'])
+@login_required
+def pos_delete_article(article_id):
+    success = g.models.article_pos_model.delete(article_id, current_user.id)
+    if success:
+        flash('Article supprimé avec succès.', 'success')
+    else:
+        flash('Impossible de supprimer cet article (utilisé dans des reçus).', 'error')
+    return redirect(url_for('banking.pos_articles_list'))
+
+# --- CAISSE (REGISTER) ---
+@bp.route('/pos/caisse')
+@login_required
+def pos_caisse():
+    user_id = current_user.id
+    periode_ouverte = g.models.periode_travail_pos_model.get_ouverte(user_id)
+    
+    if not periode_ouverte:
+        flash('Veuillez d\'abord ouvrir une période de travail.', 'warning')
+        return redirect(url_for('banking.pos_work_periods'))
+    
+    categories = g.models.categorie_pos_model.get_all(user_id)
+    articles = g.models.article_pos_model.get_all(user_id)
+    modes_paiement = g.models.mode_paiement_pos_model.get_all(user_id)
+    
+    return render_template('pos/caisse/index.html',
+                         periode=periode_ouverte,
+                         categories=categories,
+                         articles=articles,
+                         modes_paiement=modes_paiement)
+
+@bp.route('/pos/caisse/sale', methods=['POST'])
+@login_required
+def pos_create_sale():
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'message': 'Données invalides'}), 400
+    
+    compte_bancaire_id = data.get('compte_bancaire_id')
+    porte_monnaie_id = data.get('porte_monnaie_id')
+    
+    if not compte_bancaire_id:
+        return jsonify({'success': False, 'message': 'Compte bancaire non spécifié'}), 400
+    
+    success, msg, receipt_id = g.models.receipt_pos_model.creer_vente(
+        user_id=current_user.id,
+        data=data,
+        compte_bancaire_id=compte_bancaire_id,
+        porte_monnaie_id=porte_monnaie_id
+    )
+    
+    if success:
+        receipt = g.models.receipt_pos_model.get_by_id(receipt_id, current_user.id)
+        return jsonify({
+            'success': True,
+            'receipt_id': receipt_id,
+            'transaction_id': receipt.get('transaction_liee_id'),
+            'message': msg
+        })
+    return jsonify({'success': False, 'message': msg}), 400
+
+# --- REÇUS ---
+@bp.route('/pos/receipts')
+@login_required
+def pos_receipts_list():
+    receipts = g.models.receipt_pos_model.get_all(user_id=current_user.id, limit=100)
+    return render_template('pos/receipts/list.html', receipts=receipts)
+
+@bp.route('/pos/receipts/<int:receipt_id>')
+@login_required
+def pos_receipt_detail(receipt_id):
+    receipt = g.models.receipt_pos_model.get_by_id(receipt_id, current_user.id)
+    if not receipt:
+        flash('Reçu non trouvé.', 'error')
+        return redirect(url_for('banking.pos_receipts_list'))
+    return render_template('pos/receipts/detail.html', receipt=receipt)
+
+# --- PÉRIODES DE TRAVAIL ---
+@bp.route('/pos/work-periods')
+@login_required
+def pos_work_periods():
+    period = g.models.periode_travail_pos_model.get_ouverte(current_user.id)
+    return render_template('pos/work_periods/list.html', periods=[period] if period else [])
+
+@bp.route('/pos/work-periods/open', methods=['GET', 'POST'])
+@login_required
+def pos_open_work_period():
+    if request.method == 'POST':
+        pdv_id = request.form.get('pdv_id')
+        magasin = request.form.get('magasin', '')
+        montant_debut = safe_float(request.form.get('montant_debut', 0))
+        
+        period_id = g.models.periode_travail_pos_model.ouvrir_caisse(current_user.id, {
+            'magasin': magasin,
+            'pdv_id': pdv_id,
+            'montant_debut_prevu': montant_debut,
+            'montant_debut_reel': montant_debut
+        })
+        if period_id:
+            flash('Période de travail ouverte avec succès !', 'success')
+            return redirect(url_for('banking.pos_work_periods'))
+        flash('Une période est peut-être déjà ouverte.', 'error')
+    return render_template('pos/work_periods/open.html')
+
+@bp.route('/pos/work-periods/<int:period_id>/close', methods=['GET', 'POST'])
+@login_required
+def pos_close_work_period(period_id):
+    if request.method == 'POST':
+        montant_fin_reel = safe_float(request.form.get('montant_fin_reel', 0))
+        success, msg = g.models.periode_travail_pos_model.fermer_caisse(
+            period_id, current_user.id, {'montant_fin_reel': montant_fin_reel}
+        )
+        if success:
+            flash(msg, 'success')
+            return redirect(url_for('banking.pos_work_periods'))
+        flash(msg, 'error')
+    return render_template('pos/work_periods/close.html', period_id=period_id)
+
+# ============================================================
+# OPTIONS DE MODIFICATEURS ET LIAISON AUX ARTICLES
+# ============================================================
+
+@bp.route('/pos/modifier-options')
+@login_required
+def pos_modifier_options():
+    """Liste toutes les options de modificateurs, groupées par modificateur"""
+    modifiers = g.models.modificateur_pos_model.get_all(current_user.id)
+    
+    # Note : Assurez-vous d'avoir une méthode get_options_by_modifier dans votre modèle
+    # ou adaptez cette logique selon votre implémentation de OptionModificateurPOS
+    modifiers_data = []
+    for mod in modifiers:
+        # Exemple : options = g.models.option_modificateur_pos_model.get_by_modifier(mod['id'])
+        options = [] # À remplacer par l'appel réel à votre modèle
+        modifiers_data.append({
+            'modifier': mod,
+            'options': options,
+            'options_count': len(options)
+        })
+    
+    return render_template('pos/modifier_options.html',
+                         modifiers_data=modifiers_data,
+                         total_options=sum(m['options_count'] for m in modifiers_data),
+                         total_modifiers=len(modifiers))
+
+@bp.route('/pos/modifier-option/create', methods=['GET', 'POST'])
+@login_required
+def pos_create_modifier_option():
+    modifiers = g.models.modificateur_pos_model.get_all(current_user.id)
+    articles = g.models.article_pos_model.get_all(current_user.id)
+    
+    if request.method == 'POST':
+        prix_raw = request.form.get('prix_supplement', '0')
+        try:
+            prix_val = float(prix_raw.replace(',', '.')) if prix_raw else 0.0
+        except (ValueError, TypeError):
+            prix_val = 0.0
+            
+        # Adaptez l'appel au modèle correspondant (ex: g.models.option_modificateur_pos_model.create)
+        # option_id = g.models.option_modificateur_pos_model.create(current_user.id, { ... })
+        
+        flash('Option de modificateur créée avec succès !', 'success')
+        return redirect(url_for('banking.pos_modifier_options'))
+    
+    return render_template('pos/modifier_option_create.html', 
+                         modifiers=modifiers, 
+                         articles=articles)
+
+@bp.route('/pos/article/<int:article_id>/modifiers', methods=['GET', 'POST'])
+@login_required
+def pos_article_modifiers(article_id):
+    """Lier ou délier des modificateurs à un article spécifique"""
+    article = g.models.article_pos_model.get_by_id(article_id)
+    if not article or article.get('utilisateur_id') != current_user.id:
+        flash("Article non trouvé ou non autorisé.", "error")
+        return redirect(url_for('banking.pos_articles_list'))
+        
+    all_modifiers = g.models.modificateur_pos_model.get_all(current_user.id)
+    
+    # Récupérer les modificateurs déjà liés (à adapter selon votre modèle)
+    # linked_modifier_ids = [m['id'] for m in g.models.article_pos_model.get_linked_modifiers(article_id)]
+    linked_modifier_ids = [] 
+    
+    if request.method == 'POST':
+        selected_ids = request.form.getlist('modifier_ids')
+        selected_ids = [int(id) for id in selected_ids if id.isdigit()]
+        
+        # Logique de mise à jour des liaisons (ex: g.models.article_pos_model.set_modifiers(article_id, selected_ids))
+        
+        flash(f'Modificateurs mis à jour pour {article["nom_article"]} !', 'success')
+        return redirect(url_for('banking.pos_articles_list'))
+    
+    return render_template('pos/article_modifiers.html', 
+                         article=article, 
+                         all_modifiers=all_modifiers,
+                         linked_modifier_ids=linked_modifier_ids)
+
+                         # ============================================================
+# HISTORIQUE DES TAXES PAR ARTICLE
+# ============================================================
+
+@bp.route('/pos/article/<int:article_id>/taxes', methods=['GET', 'POST'])
+@login_required
+def pos_article_taxes_history(article_id):
+    article = g.models.article_pos_model.get_by_id(article_id)
+    if not article or article.get('utilisateur_id') != current_user.id:
+        flash("Article non trouvé.", "error")
+        return redirect(url_for('banking.pos_articles_list'))
+        
+    taxes_disponibles = g.models.taxe_pos_model.get_all(current_user.id, actif_only=False)
+    
+    # À adapter : récupérer l'historique via votre modèle TaxePOS
+    historique = [] 
+    
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if action == 'add':
+            taxe_id = int(request.form.get('taxe_id'))
+            date_debut_str = request.form.get('date_debut')
+            date_fin_str = request.form.get('date_fin')
+            
+            try:
+                date_debut = datetime.strptime(date_debut_str, '%Y-%m-%d').date()
+                date_fin = datetime.strptime(date_fin_str, '%Y-%m-%d').date() if date_fin_str else None
+            except ValueError:
+                flash('Format de date invalide.', 'error')
+                return redirect(url_for('banking.pos_article_taxes_history', article_id=article_id))
+            
+            success = g.models.taxe_pos_model.assigner_to_article(
+                article_id, taxe_id, date_debut, date_fin
+            )
+            
+            if success:
+                flash('Taxe ajoutée à l\'historique de l\'article.', 'success')
+            else:
+                flash('Erreur lors de l\'ajout de la taxe.', 'error')
+                
+        elif action == 'remove':
+            taxe_id = int(request.form.get('taxe_id'))
+            # À adapter : g.models.taxe_pos_model.remove_from_article(article_id, taxe_id)
+            flash('Taxe retirée de l\'historique.', 'success')
+        
+        return redirect(url_for('banking.pos_article_taxes_history', article_id=article_id))
+    
+    return render_template('pos/article_taxes_history.html', 
+                         article=article,
+                         taxes_disponibles=taxes_disponibles,
+                         historique=historique)
+
+                         # ============================================================
+# IMPORT DE DONNÉES POS
+# ============================================================
+
+@bp.route('/pos/import', methods=['GET', 'POST'])
+@login_required
+def pos_import_data():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            flash('Aucun fichier sélectionné', 'error')
+            return redirect(request.url)
+        
+        file = request.files['file']
+        file_type = request.form.get('file_type', 'items') # Par défaut: articles
+        
+        if file.filename == '':
+            flash('Aucun fichier sélectionné', 'error')
+            return redirect(request.url)
+        
+        if file and file.filename.endswith(('.csv', '.xlsx')):
+            try:
+                import pandas as pd
+                if file.filename.endswith('.csv'):
+                    df = pd.read_csv(file, encoding='utf-8')
+                else:
+                    df = pd.read_excel(file)
+                
+                count = 0
+                if file_type == 'items':
+                    count = pos_import_items(df)
+                elif file_type == 'categories':
+                    count = pos_import_categories(df)
+                elif file_type == 'modifiers':
+                    count = pos_import_modifiers(df)
+                
+                flash(f'{count} enregistrements importés avec succès!', 'success')
+                return redirect(url_for('banking.pos_articles_list'))
+                
+            except Exception as e:
+                flash(f'Erreur lors de l\'import: {str(e)}', 'error')
+                import traceback
+                traceback.print_exc()
+        else:
+            flash('Format de fichier non supporté. Utilisez CSV ou Excel.', 'error')
+    
+    return render_template('pos/import.html')
+
+def pos_import_items(df):
+    """Import des articles avec variantes et modificateurs via g.models"""
+    count = 0
+    df = df.dropna(how='all')
+    
+    for idx, row in df.iterrows():
+        if pd.isna(row.get('Name')) or str(row.get('Name')).strip() == '':
+            continue
+            
+        categorie_nom = str(row.get('Category', 'Divers')).strip()
+        
+        # 1. Créer ou récupérer la catégorie
+        categories = g.models.categorie_pos_model.get_all(current_user.id)
+        categorie = next((c for c in categories if c['nom_categorie'] == categorie_nom), None)
+        
+        if not categorie:
+            cat_id = g.models.categorie_pos_model.create(current_user.id, {
+                'nom_categorie': categorie_nom,
+                'description': 'Importée via CSV'
+            })
+            categorie = {'id': cat_id, 'nom_categorie': categorie_nom}
+            
+        # 2. Préparer les données de l'article
+        prix_val = str(row.get('Price', row.get('Prix', '0'))).replace(',', '.')
+        is_variable = prix_val.lower() == 'variable'
+        prix = 0.0 if is_variable else float(prix_val) if prix_val else 0.0
+        cout = float(str(row.get('Cost', '0')).replace(',', '.')) if pd.notna(row.get('Cost')) else 0.0
+        stock = int(float(str(row.get('Stock', '0')).replace(',', '.'))) if pd.notna(row.get('Stock')) else 0
+        
+        article_data = {
+            'nom_article': str(row.get('Name', '')).strip(),
+            'id_categorie': categorie['id'],
+            'prix_unitaire': prix,
+            'cout_unitaire': cout,
+            'stock': stock,
+            'stock_alerte': int(float(str(row.get('Low stock', '0')).replace(',', '.'))) if pd.notna(row.get('Low stock')) else 0,
+            'is_variable_price': is_variable,
+            'vendu_type': 'kg' if str(row.get('Sold by weight', 'N')).upper() == 'Y' else 'piece',
+            'description': str(row.get('Description', '')) if pd.notna(row.get('Description')) else '',
+            'code_barre': str(row.get('SKU', row.get('Barcode', ''))) if pd.notna(row.get('SKU')) else ''
+        }
+        
+        # 3. Créer l'article via le modèle
+        article_id = g.models.article_pos_model.create(current_user.id, article_data)
+        
+        if article_id:
+            count += 1
+            # TODO: Ajouter ici la logique pour créer les variantes et lier les modificateurs 
+            # en utilisant g.models.variante_pos_model.create() etc., si nécessaire.
+            
+    return count
+
+def pos_import_categories(df):
+    count = 0
+    for _, row in df.iterrows():
+        nom = str(row.get('Nom', row.get('Catégorie', ''))).strip()
+        if nom:
+            # Vérifier si elle existe déjà
+            existing = g.models.categorie_pos_model.get_all(current_user.id)
+            if not any(c['nom_categorie'] == nom for c in existing):
+                g.models.categorie_pos_model.create(current_user.id, {
+                    'nom_categorie': nom,
+                    'description': str(row.get('Description', ''))
+                })
+                count += 1
+    return count
+
+def pos_import_modifiers(df):
+    count = 0
+    for _, row in df.iterrows():
+        nom = str(row.get('Nom', row.get('Modificateur', ''))).strip()
+        if nom:
+            existing = g.models.modificateur_pos_model.get_all(current_user.id)
+            if not any(m['nom_modificateur'] == nom for m in existing):
+                g.models.modificateur_pos_model.create(current_user.id, {
+                    'nom_modificateur': nom,
+                    'prix_modificateur': float(str(row.get('Prix', '0')).replace(',', '.')) if pd.notna(row.get('Prix')) else 0.0,
+                    'description': str(row.get('Description', '')) if pd.notna(row.get('Description')) else ''
+                })
+                count += 1
+    return count
+
+
+@bp.route('/pos/commandes-en-cours')
+@login_required
+def pos_commandes_en_cours():
+    # À implémenter : logique pour récupérer les reçus avec statut 'En cours' ou 'Ouvert'
+    return render_template('pos/commandes_en_cours.html')
+
+@bp.route('/pos/affichage-client')
+@login_required
+def pos_affichage_client():
+    # À implémenter : vue épurée sans sidebar, destinée à un second écran
+    return render_template('pos/affichage_client.html')
+
+@bp.route('/pos/stats')
+@login_required
+def pos_stats():
+    # Redirige vers votre page de statistiques existante ou en crée une nouvelle
+    return redirect(url_for('banking.stats_by_article')) # Exemple

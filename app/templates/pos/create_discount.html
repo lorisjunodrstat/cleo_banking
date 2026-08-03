@@ -1,0 +1,82 @@
+{% extends "pos.html" %}
+{% block title %}Nouvelle réduction{% endblock %}
+
+{% block page_header %}<h2 class="mb-4">Créer une réduction</h2>{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Nom</label>
+                        <input type="text" name="nom" class="form-control" 
+                               placeholder="Ex: Réduction étudiant, Happy Hour..." required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Type</label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="type_reduction" 
+                                   id="type_percentage" value="percentage" checked>
+                            <label class="btn btn-outline-primary" for="type_percentage">
+                                Pourcentage (%)
+                            </label>
+                            
+                            <input type="radio" class="btn-check" name="type_reduction" 
+                                   id="type_fixed" value="fixed">
+                            <label class="btn btn-outline-primary" for="type_fixed">
+                                Montant fixe (CHF)
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Valeur</label>
+                        <div class="input-group">
+                            <input type="number" step="0.01" name="valeur" class="form-control" 
+                                   placeholder="Ex: 10 pour 10%" required>
+                            <span class="input-group-text" id="value_suffix">%</span>
+                        </div>
+                        <div class="form-text">
+                            Pour indiquer la valeur à la vente, laissez le champ vide
+                        </div>
+                    </div>
+                    
+                    <div class="form-check form-switch mb-4">
+                        <input class="form-check-input" type="checkbox" name="acces_restreint" id="acces_restreint">
+                        <label class="form-check-label" for="acces_restreint">
+                            <strong>Accès restreint</strong><br>
+                            <small class="text-muted">Seuls les employés ayant le droit d'accès approprié peuvent appliquer cette réduction</small>
+                        </label>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-check-circle me-2"></i>Enregistrer
+                        </button>
+                        <a href="{{ url_for('main.discounts_list') }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-x-circle me-2"></i>Annuler
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Changer le suffixe selon le type
+document.querySelectorAll('input[name="type_reduction"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        const suffix = document.getElementById('value_suffix');
+        if (this.value === 'percentage') {
+            suffix.textContent = '%';
+        } else {
+            suffix.textContent = 'CHF';
+        }
+    });
+});
+</script>
+{% endblock %}

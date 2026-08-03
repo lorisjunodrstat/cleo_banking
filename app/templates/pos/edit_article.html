@@ -1,0 +1,295 @@
+{% extends "pos.html" %}
+{% block title %}Modifier l'article{% endblock %}
+
+{% block page_header %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">
+        <a href="{{ url_for('main.items') }}" class="btn btn-sm btn-outline-secondary me-2">
+            <i class="bi bi-arrow-left"></i>
+        </a>
+        <i class="bi bi-pencil me-2"></i>Modifier l'article
+    </h2>
+</div>
+{% endblock %}
+
+{% block content %}
+<form method="POST">
+    <div class="row">
+        <!-- Colonne principale -->
+        <div class="col-md-8">
+            <!-- Informations de base -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-info-circle me-2"></i>Informations</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label">Nom</label>
+                            <input type="text" name="nom_article" class="form-control" 
+                                   value="{{ article.nom_article }}" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Catégorie</label>
+                            <select name="id_categorie" class="form-select" required>
+                                {% for cat in categories %}
+                                    <option value="{{ cat.id }}" {% if cat.id == article.id_categorie %}selected{% endif %}>
+                                        {{ cat.nom_categorie }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Sous-catégorie</label>
+                            <select name="id_sous_categorie" class="form-select">
+                                <option value="">Aucune</option>
+                                {% for sous_cat in sous_categories %}
+                                    <option value="{{ sous_cat.id }}" {% if sous_cat.id == article.id_sous_categorie %}selected{% endif %}>
+                                        {{ sous_cat.nom_sous_categorie }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Vendu par</label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="vendu_type" id="vendu_piece" value="piece" 
+                                       {% if article.vendu_type == 'piece' %}checked{% endif %}>
+                                <label class="btn btn-outline-primary" for="vendu_piece">Chaque</label>
+                                
+                                <input type="radio" class="btn-check" name="vendu_type" id="vendu_weight" value="kg" 
+                                       {% if article.vendu_type == 'kg' %}checked{% endif %}>
+                                <label class="btn btn-outline-primary" for="vendu_weight">Poids/Volume</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Description</label>
+                            <textarea name="description" class="form-control" rows="3">{{ article.description or '' }}</textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Prix et coût -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-tag me-2"></i>Prix et coût</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Prix</label>
+                            <div class="input-group">
+                                <span class="input-group-text">CHF</span>
+                                <input type="number" step="0.01" name="prix_unitaire" class="form-control" 
+                                       value="{{ article.prix_unitaire }}" 
+                                       {% if article.is_variable_price %}readonly{% endif %}>
+                            </div>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" name="is_variable_price" id="is_variable_price"
+                                       {% if article.is_variable_price %}checked{% endif %}>
+                                <label class="form-check-label" for="is_variable_price">
+                                    Prix variable (laisser vide à la vente)
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Coût</label>
+                            <div class="input-group">
+                                <span class="input-group-text">CHF</span>
+                                <input type="number" step="0.01" name="cout_unitaire" class="form-control" 
+                                       value="{{ article.cout_unitaire }}">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Inventaire -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-box-seam me-2"></i>Inventaire</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Stock actuel</label>
+                            <input type="number" name="stock" class="form-control" value="{{ article.stock }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Alerte stock bas</label>
+                            <input type="number" name="stock_alerte" class="form-control" value="{{ article.stock_alerte }}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Variantes -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>Variantes</h5>
+                    <button type="button" class="btn btn-sm btn-success" onclick="addVariante()">
+                        <i class="bi bi-plus-circle me-1"></i>Ajouter une variante
+                    </button>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Utilisez des variantes si un article a des tailles, des couleurs ou d'autres options différentes 
+                        (ex: "normal" / "étudiant" avec des prix différents).
+                    </p>
+                    
+                    <div id="variantes-container">
+                        {% for variante in variantes %}
+                        <div class="row g-2 mb-2 variante-row">
+                            <div class="col-md-3">
+                                <input type="text" name="variante_option" class="form-control form-control-sm" 
+                                       placeholder="Option (ex: Type)" value="{{ variante.option_name or '' }}">
+                            </div>
+                            <div class="col-md-4">
+                                <input type="text" name="variante_nom" class="form-control form-control-sm" 
+                                       placeholder="Nom (ex: normal)" value="{{ variante.nom }}" required>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">CHF</span>
+                                    <input type="number" step="0.01" name="variante_prix" class="form-control" 
+                                           value="{{ variante.prix }}">
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-check form-switch mt-1">
+                                    <input class="form-check-input" type="checkbox" name="delete_variante" value="{{ variante.id }}" id="del_var_{{ variante.id }}">
+                                    <label class="form-check-label text-danger" for="del_var_{{ variante.id }}">
+                                        <i class="bi bi-trash"></i>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div id="empty-variantes" class="text-center text-muted py-3" {% if variantes %}style="display:none"{% endif %}>
+                        Aucune variante. Cliquez sur "Ajouter une variante" pour commencer.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Colonne latérale -->
+        <div class="col-md-4">
+            <!-- Disponibilité -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="available" checked disabled>
+                        <label class="form-check-label" for="available">
+                            <strong>L'article est disponible pour la vente</strong>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Taxe -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-percent me-2"></i>Taxe</h5>
+                </div>
+                <div class="card-body">
+                    <select name="taxe_id" class="form-select">
+                        <option value="">Aucune taxe</option>
+                        {% for taxe in taxes %}
+                            <option value="{{ taxe.id }}" {% if article.taxe_actuelle and article.taxe_actuelle.id == taxe.id %}selected{% endif %}>
+                                {{ taxe.nom }} ({{ taxe.taux }}%)
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Modificateurs -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-sliders me-2"></i>Modificateurs</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="list-group list-group-flush">
+                        {% for modifier in all_modifiers %}
+                        <label class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>{{ modifier.nom_modificateur }}</span>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" name="modifier_ids" value="{{ modifier.id }}"
+                                       {% if modifier.id in linked_modifier_ids %}checked{% endif %}>
+                            </div>
+                        </label>
+                        {% else %}
+                        <div class="list-group-item text-muted text-center py-3">
+                            Aucun modificateur créé
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="d-grid gap-2">
+                <button type="submit" class="btn btn-success btn-lg">
+                    <i class="bi bi-check-circle me-2"></i>Enregistrer les modifications
+                </button>
+                <a href="{{ url_for('main.items') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-x-circle me-2"></i>Annuler
+                </a>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let varianteCount = {{ variantes|length }};
+
+function addVariante() {
+    varianteCount++;
+    const container = document.getElementById('variantes-container');
+    const emptyMsg = document.getElementById('empty-variantes');
+    
+    if (emptyMsg) emptyMsg.style.display = 'none';
+    
+    const row = document.createElement('div');
+    row.className = 'row g-2 mb-2 variante-row';
+    row.innerHTML = `
+        <div class="col-md-3">
+            <input type="text" name="variante_option" class="form-control form-control-sm" placeholder="Option (ex: Type)">
+        </div>
+        <div class="col-md-4">
+            <input type="text" name="variante_nom" class="form-control form-control-sm" placeholder="Nom (ex: normal)" required>
+        </div>
+        <div class="col-md-3">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text">CHF</span>
+                <input type="number" step="0.01" name="variante_prix" class="form-control" value="0">
+            </div>
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-sm btn-outline-danger w-100" onclick="this.closest('.variante-row').remove()">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>
+    `;
+    container.appendChild(row);
+}
+
+// Toggle prix variable
+document.getElementById('is_variable_price')?.addEventListener('change', function() {
+    const prixInput = document.querySelector('input[name="prix_unitaire"]');
+    if (this.checked) {
+        prixInput.value = '';
+        prixInput.readOnly = true;
+        prixInput.classList.add('bg-light');
+    } else {
+        prixInput.readOnly = false;
+        prixInput.classList.remove('bg-light');
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "pos.html" %}
+{% block title %}Modificateurs - Archive Loyverse{% endblock %}
+{% block page_header %}<h2 class="mb-4">Modificateurs</h2>{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form method="GET" class="mb-4">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <input type="text" name="search" class="form-control" placeholder="Rechercher un modificateur..." value="{{ search }}">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-success w-100">Rechercher</button>
+                </div>
+            </div>
+        </form>
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>Nom du modificateur</th>
+                    <th>Description</th>
+                    <th>Actions</th>                
+                </tr>
+            </thead>
+            <tbody>
+                {% for mod in modifiers %}
+                <tr>
+                    <td><strong>{{ mod.nom_modificateur }}</strong></td>
+                    <td class="text-muted">{{ mod.description or '-' }}</td>
+                    <td>
+                        <a href="{{ url_for('main.modifier_detail', modifier_id=mod.id) }}"  class="btn btn-sm btn-outline-primary" title="Voir les détails"><i class="bi bi-eye"></i></a>
+                        <a href="{{ url_for('main.edit_modifier', modifier_id=mod.id) }}" class="btn btn-primary btn-sm">Modifier</a>
+                        <a href="{{ url_for('main.delete_modifier', modifier_id=mod.id) }}" class="btn btn-danger btn-sm" onclick="return confirm('Êtes-vous sûr de vouloir supprimer ce modificateur ?')">Supprimer</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="2" class="text-center text-muted py-4">Aucun modificateur</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

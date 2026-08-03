@@ -1,0 +1,71 @@
+{% extends "pos.html" %}
+{% block title %}Nouvel article{% endblock %}
+{% block page_header %}<h2 class="mb-4">Créer un nouvel article</h2>{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Nom de l'article</label>
+                        <input type="text" name="nom_article" class="form-control" value="{{ article.nom if pos else '' }}" required>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Catégorie</label>
+                            <select name="id_categorie" class="form-select" value="{{ article.id_categorie if pos else '' }}" required>
+                                {% for cat in categories %}
+                                    <option value="{{ cat.id }}">{{ cat.nom_categorie }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Sous-catégorie (optionnel)</label>
+                            <select name="id_sous_categorie" class="form-select" value="{{ article.id_sous_categorie if pos else '' }}">
+                                <option value="">Aucune</option>
+                                {% for sous_cat in sous_categories %}
+                                    <option value="{{ sous_cat.id }}">{{ sous_cat.nom_sous_categorie }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Prix unitaire</label>
+                            <input type="number" step="0.01" name="prix_unitaire" class="form-control" value="{{ article.prix_unitaire if pos else '' }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Taxe applicable</label>
+                            <select name="taxe_id" class="form-select">
+                                <option value="">Aucune taxe (0%)</option>
+                                {% for taxe in taxes %}
+                                    <option value="{{ taxe.id }}" {% if taxe.est_actif %}selected{% endif %}>
+                                        {{ taxe.nom }} ({{ taxe.taux }}%)
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Coût unitaire</label>
+                            <input type="number" step="0.01" name="cout_unitaire" class="form-control" value="{{ article.cout_unitaire if pos else '' }}" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description (optionnel)</label>
+                        <textarea name="description" class="form-control" rows="3">{{ article.description if pos else '' }}</textarea>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="is_variable_price" id="is_variable_price">
+                        <label class="form-check-label" for="is_variable_price">
+                            Prix variable (ex: menu)
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Enregistrer l'article</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

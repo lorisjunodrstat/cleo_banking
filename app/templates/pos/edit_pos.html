@@ -1,0 +1,36 @@
+{% extends "pos.html" %}
+{% block title %}Modifier point de vente{% endblock %}
+{% block page_header %}<h2 class="mb-4">Modifier un point de vente</h2>{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                {% if pos %}
+                <form method="POST">
+                        <input type="hidden" name="pos_id" value="{{ pos.id }}">
+                    <div class="mb-3">
+                        <label class="form-label">Nom du PDV</label>
+                        <input type="text" name="nom_pdv" class="form-control" value="{{ pos.nom_pdv if pos else '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Magasin</label>
+                        <select name="magasin_id" class="form-select" required>
+                            {% for magasin in magasins %}
+                                <option value="{{ magasin.id }}" {% if pos and pos.magasin_id == magasin.id %}selected{% endif %}>
+                                    {{ magasin.nom_magasin }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Enregistrer le PDV</button>
+                </form>
+                {% else %}
+                <p>Point de vente non trouvé.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

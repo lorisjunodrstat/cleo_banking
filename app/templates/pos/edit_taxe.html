@@ -1,0 +1,34 @@
+{%- extends "pos.html" -%}
+{% block title %}Taxes{% endblock %}
+{% block page_header %}<h2 class="mb-4">Edit Taxes</h2>{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="card shadow-sm">
+        <div class="card-header bg-light">
+            <h5 class="card-title mb-4">Modifier la taxe : {{ taxe.nom }}</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST">
+                <div class="mb-3">
+                    <label for="nom" class="form-label">Nom de la taxe</label>
+                    <input type="text" class="form-control" id="nom" name="nom" value="{{ taxe.nom }}" required>
+                </div>
+                <div class="mb-3">
+                    <label for="taux" class="form-label">Taux (%)</label>
+                    <input type="number" step="0.01" class="form-control" id="taux" name="taux" value="{{ taxe.taux }}" required>
+                </div>
+                <div class="mb-3">
+                    <label for="date_debut" class="form-label">Date de début d'application</label>
+                    <input type="date" class="form-control" id="date_debut" name="date_debut" value="{{ taxe.date_debut.strftime('%Y-%m-%d') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label for="date_fin" class="form-label">Date de fin d'application (optionnelle)</label>
+                    <input type="date" class="form-control" id="date_fin" name="date_fin" value="{{ taxe.date_fin.strftime('%Y-%m-%d') if taxe.date_fin else '' }}">
+                    <div class="form-text">Laissez vide si la taxe est toujours en vigueur.</div>
+                </div>
+                <button type="submit" class="btn btn-primary">Enregistrer les modifications</button>
+            </form>
+        </div>
+    </div>    
+</div>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends "pos.html" %}
+{% block title %}Gestion des taxes{% endblock %}
+{% block page_header %}
+<h2 class="mb-4">
+    Gestion des taxes
+    <a href="{{ url_for('main.create_taxe') }}" class="btn btn-sm btn-success float-end">+ Nouvelle taxe</a>
+</h2>
+{% endblock %}
+
+{% block content %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle me-2"></i>
+    <strong>Important :</strong> Lorsqu'un reçu est créé, le taux de taxe en vigueur à ce moment-là est <u>figé</u> dans l'historique. 
+    Modifier ou désactiver une taxe ici n'affectera pas les anciens reçus, seulement les nouvelles ventes.
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>Nom de la taxe</th>
+                    <th class="text-end">Taux (%)</th>
+                    <th>Date de début</th>
+                    <th>Date de fin</th>
+                    <th class="text-center">Statut</th>
+                    <th class="text-center">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for taxe in taxes %}
+                <tr>
+                    <td><strong>{{ taxe.nom }}</strong></td>
+                    <td class="text-end fw-bold">{{ taxe.taux }}%</td>
+                    <td>{{ taxe.date_debut.strftime('%d/%m/%Y') }}</td>
+                    <td>{{ taxe.date_fin.strftime('%d/%m/%Y') if taxe.date_fin else 'En cours' }}</td>
+                    <td class="text-center">
+                        <span class="badge bg-{{ 'success' if taxe.est_actif else 'secondary' }}">
+                            {{ 'Active' if taxe.est_actif else 'Archivée' }}
+                        </span>
+                    </td>
+                    <td class="text-center">
+                        <a href="{{ url_for('main.edit_taxe', taxe_id=taxe.id) }}" class="btn btn-sm btn-outline-primary" title="Modifier la taxe">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <form method="POST" style="display: inline;">
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="taxe_id" value="{{ taxe.id }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger" 
+                                    onclick="return confirm('Êtes-vous sûr de vouloir supprimer cette taxe ? Cette action est irréversible.')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-center text-muted py-4">Aucune taxe configurée</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

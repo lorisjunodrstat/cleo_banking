@@ -1,0 +1,44 @@
+{% extends "pos.html" %}
+{% block title %}Liste des magasins{% endblock %}
+{% block page_header %}<h2 class="mb-4">Liste des magasins</h2>
+
+<h2 class="mb-4">
+    Magasins
+    <a href="{{ url_for('main.create_store') }}" class="btn btn-sm btn-success float-end">+ Nouveau</a>
+</h2>
+{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Nom du Magasin</th>
+                            <th>Adresse</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for st in stores %}
+                        <tr>
+                            <td>{{ st.nom_magasin }}</td>
+                            <td>{{ st.adresse }}</td>
+                            <td>
+                                <a href="{{ url_for('main.edit_store', store_id=st.id) }}" class="btn btn-sm btn-primary">Modifier</a>
+                                <form action="{{ url_for('main.delete_store', store_id=st.id) }}" method="POST" style="display:inline;">
+                                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Êtes-vous sûr de vouloir supprimer ce magasin ?');">Supprimer</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="2" class="text-center text-muted py-4">Aucun magasin trouvé</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

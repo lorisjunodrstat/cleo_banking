@@ -1,0 +1,469 @@
+{% extends "pos.html" %}
+{% block title %}Périodes de travail{% endblock %}
+
+{% block page_header %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">
+        <i class="bi bi-clock-history me-2"></i>Périodes de travail
+    </h2>
+    <a href="{{ url_for('main.open_work_period') }}" class="btn btn-success">
+        <i class="bi bi-plus-circle me-1"></i>Ouvrir une caisse
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Filtre par date -->
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label">Date</label>
+                <input type="date" name="date" class="form-control" value="{{ date_filter }}">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="bi bi-search me-1"></i>Filtrer
+                </button>
+            </div>
+            <div class="col-md-6 text-end">
+                <a href="{{ url_for('main.work_periods') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-calendar-today me-1"></i>Aujourd'hui
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Liste des périodes (comme dans la capture Loyverse) -->
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>PDV</th>
+                        <th>Horaires d'ouverture</th>
+                        <th>Heure de fermeture</th>
+                        <th class="text-end">Montant en espèces prévu</th>
+                        <th class="text-end">Montant en espèces réel</th>
+                        <th class="text-center">Différence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for period in periods %}
+                    <tr class="period-row" 
+                        data-period-id="{{ period.id }}" 
+                        style="cursor: pointer;">
+                        <td><strong>{{ period.pdv_id }}</strong></td>
+                        <td>{{ period.date_debut.strftime('%d %b. %Y à %H:%M') }}</td>
+                        <td>
+                            {% if period.date_fin %}
+                                {{ period.date_fin.strftime('%d %b. %Y à %H:%M') }}
+                            {% else %}
+                                <span class="text-warning"><i class="bi bi-hourglass-split me-1"></i>En cours...</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">CHF {{ "%.2f"|format(period.montant_fin_prevu or period.montant_debut_reel) }}</td>
+                        <td class="text-end">CHF {{ "%.2f"|format(period.montant_fin_reel or period.montant_debut_reel) }}</td>
+                        <td class="text-center">
+                            {% if period.difference %}
+                                {% set diff = period.difference %}
+                                <span class="{{ 'text-danger' if diff < 0 else 'text-success' }}">
+                                    CHF {{ "%.2f"|format(diff) }}
+                                    <i class="bi bi-{{ 'arrow-down-right' if diff < 0 else 'arrow-up-right' }} ms-1"></i>
+                                </span>
+                            {% else %}
+                                <span class="text-success">— <i class="bi bi-check-circle"></i></span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">
+                            Aucune période de travail pour cette date
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL RAPPORT D'ÉQUIPE -->
+<div class="modal fade" id="reportModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title">
+                    <i class="bi bi-file-earmark-text me-2"></i>RAPPORT D'ÉQUIPE
+                </h5>
+                <div>
+                    <span id="modalStatusBadge" class="badge me-2"></span>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <!-- Colonne principale -->
+                    <div class="col-md-8">
+                        <!-- Infos générales -->
+                        <div class="mb-4">
+                            <p class="mb-1"><strong>Numéro d'équipe:</strong> <span id="modalPeriodId"></span></p>
+                            <p class="mb-1"><strong>Magasin:</strong> <span id="modalMagasin"></span></p>
+                            <p class="mb-1"><strong>PDV:</strong> <span id="modalPdv"></span></p>
+                            <p class="mb-1"><strong>Ouverture du service:</strong> <span id="modalDateDebut"></span></p>
+                            <p class="mb-0"><strong>Le service est fermé:</strong> <span id="modalDateFin"></span></p>
+                        </div>
+
+                        <!-- Tiroir-caisse -->
+                        <h6 class="text-success border-bottom pb-2 mb-3">
+                            <i class="bi bi-cash-coin me-1"></i>Tiroir-caisse
+                        </h6>
+                        <table class="table table-sm mb-4">
+                            <tbody>
+                                <tr>
+                                    <td>Espèces de départ</td>
+                                    <td class="text-end" id="modalEspeceDepart"></td>
+                                </tr>
+                                <tr>
+                                    <td>Règlement en espèces</td>
+                                    <td class="text-end" id="modalEspeceVentes"></td>
+                                </tr>
+                                <tr>
+                                    <td>Remboursements en espèces</td>
+                                    <td class="text-end" id="modalEspeceRemboursements"></td>
+                                </tr>
+                                <tr>
+                                    <td>Montant paiement entrant</td>
+                                    <td class="text-end" id="modalDepots"></td>
+                                </tr>
+                                <tr>
+                                    <td>Montant paiement sortant</td>
+                                    <td class="text-end" id="modalRetraits"></td>
+                                </tr>
+                                <tr class="table-light">
+                                    <td><strong>Montant en espèces prévu</strong></td>
+                                    <td class="text-end"><strong id="modalMontantPrevu"></strong></td>
+                                </tr>
+                                <tr class="table-light">
+                                    <td><strong>Montant en espèces réel</strong></td>
+                                    <td class="text-end"><strong id="modalMontantReel"></strong></td>
+                                </tr>
+                                <tr class="fw-bold">
+                                    <td><strong>Différence</strong></td>
+                                    <td class="text-end"><strong id="modalDifference"></strong></td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- Récapitulatif des ventes -->
+                        <h6 class="text-success border-bottom pb-2 mb-3">
+                            <i class="bi bi-graph-up me-1"></i>Récapitulatif des ventes
+                        </h6>
+                        <table class="table table-sm mb-4">
+                            <tbody>
+                                <tr class="fw-bold">
+                                    <td><strong>Ventes brutes</strong></td>
+                                    <td class="text-end"><strong id="modalVentesBrutes"></strong></td>
+                                </tr>
+                                <tr>
+                                    <td>Remboursements</td>
+                                    <td class="text-end" id="modalRemboursements"></td>
+                                </tr>
+                                <tr>
+                                    <td>Réductions</td>
+                                    <td class="text-end" id="modalReductions"></td>
+                                </tr>
+                                <tr class="fw-bold">
+                                    <td><strong>Ventes nettes</strong></td>
+                                    <td class="text-end"><strong id="modalVentesNettes"></strong></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        
+                        <!-- Modes de paiement -->
+                        <div id="modalModesPaiement"></div>
+                        
+                        <table class="table table-sm">
+                            <tbody>
+                                <tr>
+                                    <td>Taxes</td>
+                                    <td class="text-end" id="modalTaxes"></td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- Entrée / Sortie d'espèces -->
+                        <h6 class="text-success border-bottom pb-2 mb-3">
+                            <i class="bi bi-arrow-left-right me-1"></i>Entrée / Sortie d'espèces
+                        </h6>
+                        <div id="modalMouvements">
+                            <p class="text-muted text-center">Aucun mouvement</p>
+                        </div>
+                    </div>
+
+                    <!-- Sidebar résumé (comme dans la capture) -->
+                    <div class="col-md-4">
+                        <div class="card bg-light border-0 sticky-top" style="top: 0;">
+                            <div class="card-body">
+                                <h6 class="text-center fw-bold mb-3">RAPPORT D'ÉQUIPE</h6>
+                                <hr>
+                                <p class="mb-1 small"><strong>Numéro d'équipe:</strong> <span id="sidebarPeriodId"></span></p>
+                                <p class="mb-1 small"><strong>Magasin:</strong> <span id="sidebarMagasin"></span></p>
+                                <p class="mb-1 small"><strong>PDV:</strong> <span id="sidebarPdv"></span></p>
+                                <p class="mb-1 small"><strong>Ouverture du service:</strong> <span id="sidebarDateDebut"></span></p>
+                                <p class="mb-3 small"><strong>Le service est fermé:</strong> <span id="sidebarDateFin"></span></p>
+                                
+                                <h6 class="text-success small">Tiroir-caisse</h6>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>Espèces de départ</span>
+                                    <span id="sidebarEspeceDepart"></span>
+                                </div>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>Règlement en espèces</span>
+                                    <span id="sidebarEspeceVentes"></span>
+                                </div>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>Remboursements en espèces</span>
+                                    <span id="sidebarEspeceRemboursements"></span>
+                                </div>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>Montant paiement entrant</span>
+                                    <span id="sidebarDepots"></span>
+                                </div>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>Montant paiement sortant</span>
+                                    <span id="sidebarRetraits"></span>
+                                </div>
+                                <div class="d-flex justify-content-between small mb-1 fw-bold">
+                                    <span>Montant en espèces prévu</span>
+                                    <span id="sidebarMontantPrevu"></span>
+                                </div>
+                                <div class="d-flex justify-content-between small mb-1 fw-bold">
+                                    <span>Montant en espèces réel</span>
+                                    <span id="sidebarMontantReel"></span>
+                                </div>
+                                <div class="d-flex justify-content-between small fw-bold border-top pt-2">
+                                    <span>Différence</span>
+                                    <span id="sidebarDifference"></span>
+                                </div>
+                                
+                                <h6 class="text-success small mt-4">Récapitulatif des ventes</h6>
+                                <div class="d-flex justify-content-between small mb-1 fw-bold">
+                                    <span>Ventes brutes</span>
+                                    <span id="sidebarVentesBrutes"></span>
+                                </div>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>Remboursements</span>
+                                    <span id="sidebarRemboursements"></span>
+                                </div>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>Réductions</span>
+                                    <span id="sidebarReductions"></span>
+                                </div>
+                                <div class="d-flex justify-content-between small mb-1 fw-bold">
+                                    <span>Ventes nettes</span>
+                                    <span id="sidebarVentesNettes"></span>
+                                </div>
+                                <div id="sidebarModesPaiement"></div>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>Taxes</span>
+                                    <span id="sidebarTaxes"></span>
+                                </div>
+                                
+                                <h6 class="text-success small mt-4">Entrée / Sortie d'espèces</h6>
+                                <div id="sidebarMouvements">
+                                    <p class="text-muted small text-center">Aucun mouvement</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div id="modalActions"></div>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Clic sur une ligne du tableau
+    document.querySelectorAll('.period-row').forEach(row => {
+        row.addEventListener('click', function() {
+            const periodId = this.dataset.periodId;
+            openReportModal(periodId);
+        });
+    });
+});
+
+function formatCHF(montant) {
+    return 'CHF ' + parseFloat(montant).toFixed(2).replace('.', ',');
+}
+
+function formatMontantSigned(montant) {
+    const val = parseFloat(montant);
+    if (val < 0) {
+        return '<span class="text-danger">-CHF ' + Math.abs(val).toFixed(2).replace('.', ',') + '</span>';
+    }
+    return 'CHF ' + val.toFixed(2).replace('.', ',');
+}
+
+function openReportModal(periodId) {
+    // Afficher un loader
+    document.getElementById('modalPeriodId').textContent = 'Chargement...';
+    
+    const modal = new bootstrap.Modal(document.getElementById('reportModal'));
+    modal.show();
+    
+    fetch(`/work-period/${periodId}/json`)
+        .then(response => response.json())
+        .then(data => {
+            // Infos générales
+            document.getElementById('modalPeriodId').textContent = data.id;
+            document.getElementById('modalMagasin').textContent = data.magasin;
+            document.getElementById('modalPdv').textContent = data.pdv;
+            document.getElementById('modalDateDebut').textContent = data.date_debut;
+            document.getElementById('modalDateFin').textContent = data.date_fin || 'En cours...';
+            
+            // Badge statut
+            const badge = document.getElementById('modalStatusBadge');
+            if (data.status === 'Fermé') {
+                badge.className = 'badge bg-success me-2';
+                badge.textContent = 'Fermé';
+            } else {
+                badge.className = 'badge bg-warning text-dark me-2';
+                badge.textContent = 'Ouvert';
+            }
+            
+            // Tiroir-caisse
+            document.getElementById('modalEspeceDepart').textContent = formatCHF(data.especes_de_depart);
+            document.getElementById('modalEspeceVentes').textContent = formatCHF(data.especes_ventes);
+            document.getElementById('modalEspeceRemboursements').textContent = formatCHF(data.especes_remboursements);
+            document.getElementById('modalDepots').textContent = formatCHF(data.total_depots);
+            document.getElementById('modalRetraits').textContent = formatCHF(data.total_retraits);
+            document.getElementById('modalMontantPrevu').textContent = formatCHF(data.montant_prevu);
+            document.getElementById('modalMontantReel').textContent = formatCHF(data.montant_fin_reel);
+            
+            const diffEl = document.getElementById('modalDifference');
+            const diffVal = parseFloat(data.difference);
+            if (diffVal < 0) {
+                diffEl.innerHTML = '<span class="text-danger">' + formatCHF(data.difference) + '</span>';
+            } else if (diffVal > 0) {
+                diffEl.innerHTML = '<span class="text-success">+' + formatCHF(data.difference) + '</span>';
+            } else {
+                diffEl.innerHTML = '<span class="text-success">CHF 0,00 <i class="bi bi-check-circle"></i></span>';
+            }
+            
+            // Récapitulatif des ventes
+            document.getElementById('modalVentesBrutes').textContent = formatCHF(data.ventes_brutes);
+            document.getElementById('modalRemboursements').textContent = formatCHF(data.remboursements);
+            document.getElementById('modalReductions').textContent = formatCHF(data.reductions);
+            document.getElementById('modalVentesNettes').textContent = formatCHF(data.ventes_nettes);
+            document.getElementById('modalTaxes').textContent = formatCHF(data.taxes_total);
+            
+            // Modes de paiement
+            let modesHTML = '<table class="table table-sm"><tbody>';
+            data.ventes_par_mode.forEach(mode => {
+                modesHTML += `<tr><td>${mode.nom}</td><td class="text-end">${formatCHF(mode.total)}</td></tr>`;
+            });
+            modesHTML += '</tbody></table>';
+            document.getElementById('modalModesPaiement').innerHTML = modesHTML;
+            
+            // Mouvements
+            if (data.mouvements.length > 0) {
+                let mouvHTML = '<table class="table table-sm"><tbody>';
+                data.mouvements.forEach(m => {
+                    const sign = m.montant < 0 ? '-' : '';
+                    const color = m.montant < 0 ? 'text-danger' : 'text-success';
+                    mouvHTML += `<tr>
+                        <td>${m.heure}</td>
+                        <td>${m.description}</td>
+                        <td class="text-end ${color}"><strong>${sign}CHF ${Math.abs(m.montant).toFixed(2).replace('.', ',')}</strong></td>
+                    </tr>`;
+                });
+                mouvHTML += '</tbody></table>';
+                document.getElementById('modalMouvements').innerHTML = mouvHTML;
+            } else {
+                document.getElementById('modalMouvements').innerHTML = '<p class="text-muted text-center">Aucun mouvement</p>';
+            }
+            
+            // Actions dans le footer
+            let actionsHTML = '';
+            if (data.status === 'Ouvert') {
+                actionsHTML += `<a href="/work-period/${data.id}/cash-movement" class="btn btn-outline-primary me-2">
+                    <i class="bi bi-cash-stack me-1"></i>Mouvement d'espèces
+                </a>`;
+                actionsHTML += `<a href="/work-period/${data.id}/close" class="btn btn-danger">
+                    <i class="bi bi-lock me-1"></i>Fermer la caisse
+                </a>`;
+            }
+            document.getElementById('modalActions').innerHTML = actionsHTML;
+            
+            // ===== SIDEBAR (résumé) =====
+            document.getElementById('sidebarPeriodId').textContent = data.id;
+            document.getElementById('sidebarMagasin').textContent = data.magasin;
+            document.getElementById('sidebarPdv').textContent = data.pdv;
+            document.getElementById('sidebarDateDebut').textContent = data.date_debut;
+            document.getElementById('sidebarDateFin').textContent = data.date_fin || 'En cours...';
+            
+            document.getElementById('sidebarEspeceDepart').textContent = formatCHF(data.especes_de_depart);
+            document.getElementById('sidebarEspeceVentes').textContent = formatCHF(data.especes_ventes);
+            document.getElementById('sidebarEspeceRemboursements').textContent = formatCHF(data.especes_remboursements);
+            document.getElementById('sidebarDepots').textContent = formatCHF(data.total_depots);
+            document.getElementById('sidebarRetraits').textContent = formatCHF(data.total_retraits);
+            document.getElementById('sidebarMontantPrevu').textContent = formatCHF(data.montant_prevu);
+            document.getElementById('sidebarMontantReel').textContent = formatCHF(data.montant_fin_reel);
+            
+            const sidebarDiff = document.getElementById('sidebarDifference');
+            if (diffVal < 0) {
+                sidebarDiff.innerHTML = '<span class="text-danger">' + formatCHF(data.difference) + '</span>';
+            } else if (diffVal > 0) {
+                sidebarDiff.innerHTML = '<span class="text-success">+' + formatCHF(data.difference) + '</span>';
+            } else {
+                sidebarDiff.innerHTML = '<span class="text-success">CHF 0,00</span>';
+            }
+            
+            document.getElementById('sidebarVentesBrutes').textContent = formatCHF(data.ventes_brutes);
+            document.getElementById('sidebarRemboursements').textContent = formatCHF(data.remboursements);
+            document.getElementById('sidebarReductions').textContent = formatCHF(data.reductions);
+            document.getElementById('sidebarVentesNettes').textContent = formatCHF(data.ventes_nettes);
+            document.getElementById('sidebarTaxes').textContent = formatCHF(data.taxes_total);
+            
+            let sidebarModesHTML = '';
+            data.ventes_par_mode.forEach(mode => {
+                sidebarModesHTML += `<div class="d-flex justify-content-between small mb-1">
+                    <span>${mode.nom}</span>
+                    <span>${formatCHF(mode.total)}</span>
+                </div>`;
+            });
+            document.getElementById('sidebarModesPaiement').innerHTML = sidebarModesHTML;
+            
+            if (data.mouvements.length > 0) {
+                let sidebarMouvHTML = '';
+                data.mouvements.forEach(m => {
+                    const sign = m.montant < 0 ? '-' : '';
+                    const color = m.montant < 0 ? 'text-danger' : 'text-success';
+                    sidebarMouvHTML += `<div class="d-flex justify-content-between small mb-1">
+                        <span>${m.heure} - ${m.description}</span>
+                        <span class="${color}"><strong>${sign}CHF ${Math.abs(m.montant).toFixed(2).replace('.', ',')}</strong></span>
+                    </div>`;
+                });
+                document.getElementById('sidebarMouvements').innerHTML = sidebarMouvHTML;
+            } else {
+                document.getElementById('sidebarMouvements').innerHTML = '<p class="text-muted small text-center">Aucun mouvement</p>';
+            }
+        })
+        .catch(error => {
+            console.error('Erreur:', error);
+            document.getElementById('modalPeriodId').textContent = 'Erreur de chargement';
+        });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "pos.html" %}
+{% block title %}Mon Profil{% endblock %}
+{% block page_header %}<h2 class="mb-4">Mon Profil</h2>{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Nom d'utilisateur</label>
+                        <input type="text" name="nom_utilisateur" class="form-control" value="{{ current_user.nom_utilisateur }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" name="email" class="form-control" value="{{ current_user.email }}" required>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label">Nouveau mot de passe (laisser vide pour ne pas changer)</label>
+                        <input type="password" name="new_password" class="form-control" placeholder="Minimum 6 caractères">
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Enregistrer les modifications</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

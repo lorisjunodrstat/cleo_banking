@@ -1,0 +1,30 @@
+{% extends 'pos.html' %}
+{% block title %}Modifier sous-catégorie{% endblock %}
+{% block page_header %}<h2 class="mb-4">Modifier Sous-catégorie</h2>{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <form method="POST">
+                        <div class="mb-3">
+                            <label class="form-label">Nom de la sous-catégorie</label>
+                            <input type="text" name="nom_sous_categorie" class="form-control" value="{{ sous_category.nom_sous_categorie }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Catégorie parente</label>
+                            <select name="id_categorie" class="form-select" required>
+                                {% for cat in categories %}
+                                    <option value="{{ cat.id }}" {% if cat.id == sous_category.id_categorie %}selected{% endif %}>{{ cat.nom_categorie }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>      
+                    <button type="submit" class="btn btn-success w-100">Enregistrer la sous-catégorie</button>  
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "pos.html" %}
+{% block title %}Liste des points de vente{% endblock %}
+{% block page_header %}<h2 class="mb-4">Liste des points de vente
+    <a href="{{ url_for('main.create_pos') }}" class="btn btn-sm btn-success float-end">+ Nouveau</a>
+</h2>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Nom du PDV</th>
+                            <th>Magasin</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pos in pos_list %}
+                        <tr>
+                            <td>{{ pos.nom_pdv }}</td>
+                            <td>{{ pos.magasin.nom_magasin if pos.magasin else '-' }}</td>
+                            <td>
+                                <a href="{{ url_for('main.edit_pos', pos_id=pos.id) }}" class="btn btn-sm btn-outline-primary">Modifier</a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="2" class="text-center text-muted py-4">Aucun point de vente trouvé</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

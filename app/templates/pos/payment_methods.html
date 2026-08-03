@@ -1,0 +1,58 @@
+{% extends "pos.html" %}
+{% block title %}Modes de paiement - Archive Loyverse{% endblock %}
+{% block page_header %}<h2 class="mb-4">Ventes par mode de paiement</h2>{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form method="GET" class="row g-3 mb-4">
+            <div class="col-md-3"><input type="date" name="date_from" class="form-control" value="{{ date_from }}" placeholder="Du"></div>
+            <div class="col-md-3"><input type="date" name="date_to" class="form-control" value="{{ date_to }}" placeholder="Au"></div>
+            <div class="col-md-3">
+                <select name="employee" class="form-select">
+                    <option value="">Tous les employés</option>
+                    {% for emp in employees %}<option value="{{ emp }}" {% if employee == emp %}selected{% endif %}>{{ emp }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3"><button type="submit" class="btn btn-success w-100">Filtrer</button></div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Mode de paiement</th>
+                        <th class="text-center">Transactions</th>
+                        <th class="text-end">Montant total</th>
+                        <th class="text-center">Remboursements</th>
+                        <th class="text-end">Montant remboursé</th>
+                        <th class="text-end">Montant net</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in payment_data %}
+                    <tr>
+                        <td><span class="badge bg-info text-dark">{{ p.method }}</span></td>
+                        <td class="text-center">{{ p.transactions }}</td>
+                        <td class="text-end">CHF {{ "%.2f"|format(p.amount) }}</td>
+                        <td class="text-center text-danger">{{ p.refund_transactions }}</td>
+                        <td class="text-end text-danger">CHF {{ "%.2f"|format(p.refund_amount) }}</td>
+                        <td class="text-end fw-bold text-success">CHF {{ "%.2f"|format(p.net) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light fw-bold">
+                    <tr>
+                        <td>TOTAL</td>
+                        <td class="text-center">{{ totals.transactions }}</td>
+                        <td class="text-end">CHF {{ "%.2f"|format(totals.amount) }}</td>
+                        <td class="text-center text-danger">{{ totals.refund_transactions }}</td>
+                        <td class="text-end text-danger">CHF {{ "%.2f"|format(totals.refund_amount) }}</td>
+                        <td class="text-end text-success">CHF {{ "%.2f"|format(totals.net) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

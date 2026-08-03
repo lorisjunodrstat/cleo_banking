@@ -1,0 +1,22 @@
+{% extends "pos.html" %}
+{% block title %}Ventes par employé{% endblock %}
+{% block page_header %}<h2 class="mb-4">Ventes par employé</h2>{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form method="GET" class="row g-3 mb-4">
+            <div class="col-md-4"><input type="date" name="date_from" class="form-control" value="{{ date_from }}"></div>
+            <div class="col-md-4"><input type="date" name="date_to" class="form-control" value="{{ date_to }}"></div>
+            <div class="col-md-4"><button type="submit" class="btn btn-success w-100">Filtrer</button></div>
+        </form>
+        <table class="table table-hover">
+            <thead class="table-light"><tr><th>Employé</th><th class="text-center">Reçus</th><th class="text-end">Ventes nettes</th><th class="text-end">Taxes</th><th class="text-end">Pourboires</th></tr></thead>
+            <tbody>
+                {% for e in employees %}
+                <tr><td>{{ e.name }}</td><td class="text-center">{{ e.receipt_count }}</td><td class="text-end">CHF {{ "%.2f"|format(e.total_sales) }}</td><td class="text-end">CHF {{ "%.2f"|format(e.total_taxes) }}</td><td class="text-end">CHF {{ "%.2f"|format(e.total_tips) }}</td></tr>
+                {% else %}<tr><td colspan="5" class="text-center text-muted py-4">Aucune donnée</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

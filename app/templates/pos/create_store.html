@@ -1,0 +1,57 @@
+{% extends "pos.html" %}
+{% block title %}Modifier magasin{% endblock %}
+{% block page_header %}<h2 class="mb-4">Modifier un magasin</h2>{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Nom du magasin</label>
+                        <input type="text" name="nom_magasin" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Adresse</label>
+                        <input type="text" name="adresse" class="form-control">
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Ville</label>
+                            <input type="text" name="ville" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Canton</label>
+                            <input type="text" name="canton" class="form-control">
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Code postal</label>
+                            <input type="text" name="code_postal" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Pays</label>
+                            <input type="text" name="pays" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Téléphone</label>
+                            <input type="text" name="telephone" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email</label>
+                            <input type="email" name="email" class="form-control">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Description</label>
+                            <textarea name="description" class="form-control" rows="3"></textarea>  
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Enregistrer le magasin</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

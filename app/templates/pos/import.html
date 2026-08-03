@@ -1,0 +1,47 @@
+{% extends "pos.html" %}
+{% block title %}Importer des données{% endblock %}
+{% block page_header %}<h2 class="mb-4">Importer des données</h2>{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="file_type" class="form-label fw-bold">Type de données à importer :</label>
+                        <select name="file_type" id="file_type" class="form-select">
+                            <option value="receipts">Reçus (avec paiements)</option>
+                            <option value="payments">Paiements supplémentaires</option>
+                            <option value="items">Articles</option>
+                            <option value="categories">Catégories</option>
+                            <option value="modifiers">Modificateurs</option>
+                        </select>
+                    </div>
+                    <div class="mb-4">
+                        <label for="file" class="form-label fw-bold">Fichier (CSV ou Excel) :</label>
+                        <input type="file" name="file" id="file" class="form-control" accept=".csv,.xlsx" required>
+                        <div class="form-text">Formats supportés : CSV (encodage UTF-8) et Excel (.xlsx)</div>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100"><i class="bi bi-upload me-2"></i>Lancer l'importation</button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card shadow-sm mt-4">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-info-circle me-2"></i>Structure attendue pour les reçus</h5>
+                <p class="text-muted small mb-2">Les colonnes de votre fichier doivent correspondre à ces noms :</p>
+                <ul class="small text-muted" style="columns: 2;">
+                    <li>Date</li><li>Numéro.du.reçu</li><li>Type.de.reçu</li>
+                    <li>Ventes.brutes</li><li>Réductions</li><li>Ventes.nettes</li>
+                    <li>Taxes</li><li>Pourboires</li><li>Total.collecté</li>
+                    <li>Mode.de.paiement</li><li>Dèscription</li>
+                    <li>Option.de.restauration</li><li>PDV</li><li>Magasin</li>
+                    <li>Nom.du.caissier</li><li>Nom.du.client</li><li>Contacts.du.client</li>
+                    <li>Statut</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "pos.html" %}
+{% block title %}Périodes de travail{% endblock %}
+{% block page_header %}<h2 class="mb-4">Périodes de travail</h2>{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-body">
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr><th>Début</th><th>Fin</th><th>Caissier</th><th>PDV</th><th class="text-end">Solde ouverture</th><th class="text-end">Solde fermeture</th><th>Statut</th></tr>
+            </thead>
+            <tbody>
+                {% for p in periods %}
+                <tr>
+                    <td>{{ p.date_debut.strftime('%d/%m/%Y %H:%M') if p.date_debut else '-' }}</td>
+                    <td>{{ p.date_fin.strftime('%d/%m/%Y %H:%M') if p.date_fin else '-' }}</td>
+                    <td>{{ p.utilisateur.nom_utilisateur if p.utilisateur else '-' }}</td>
+                    <td>{{ p.pdv_id }}</td>
+                    <td class="text-end">CHF {{ "%.2f"|format(p.montant_debut_reel) }}</td>
+                    <td class="text-end">CHF {{ "%.2f"|format(p.montant_fin_reel) }}</td>
+                    <td><span class="badge bg-{{ 'success' if p.status == 'Fermé' else 'warning' }}">{{ p.status }}</span></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="text-center text-muted py-4">Aucune période de travail</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

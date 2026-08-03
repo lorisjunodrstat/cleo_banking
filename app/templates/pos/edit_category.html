@@ -1,0 +1,23 @@
+{% extends 'pos.html' %}
+{% block title %}Modifier catégorie{% endblock %}
+{% block page_header %}<h2 class="mb-4">Modifier Catégorie</h2>{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <form method="POST">
+                        <div class="mb-3">
+                            <label class="form-label">Nom de la catégorie</label>
+                            <input type="text" name="nom_categorie" class="form-control" value="{{ category.nom_categorie }}" required>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">Enregistrer la catégorie</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

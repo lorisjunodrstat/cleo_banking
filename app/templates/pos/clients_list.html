@@ -1,0 +1,141 @@
+{% extends "pos.html" %}
+{% block title %}Clients{% endblock %}
+
+{% block page_header %}
+<h2 class="mb-4">
+    <i class="bi bi-people me-2"></i>Gestion des clients
+    <span class="badge bg-primary ms-2">{{ total_clients }}</span>
+</h2>
+{% endblock %}
+
+{% block content %}
+<!-- Stats globales -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm border-start border-primary border-4">
+            <div class="card-body">
+                <div class="text-muted small">Total clients</div>
+                <div class="fs-3 fw-bold">{{ total_clients }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm border-start border-success border-4">
+            <div class="card-body">
+                <div class="text-muted small">Clients actifs (< 90 jours)</div>
+                <div class="fs-3 fw-bold text-success">{{ clients_actifs }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm border-start border-warning border-4">
+            <div class="card-body">
+                <div class="text-muted small">CA total clients</div>
+                <div class="fs-3 fw-bold text-warning">CHF {{ "%.2f"|format(total_ca_clients) }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filtres -->
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-8">
+                <input type="text" name="search" class="form-control" 
+                       placeholder="Rechercher par nom, email, téléphone, code client..." 
+                       value="{{ search }}">
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-success w-100">
+                    <i class="bi bi-search me-1"></i>Rechercher
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Liste des clients -->
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Client</th>
+                        <th>Contact</th>
+                        <th class="text-center">Visites</th>
+                        <th class="text-end">Total dépensé</th>
+                        <th class="text-end">Panier moyen</th>
+                        <th>Première visite</th>
+                        <th>Dernière visite</th>
+                        <th class="text-center">Segment</th>
+                        <th class="text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for client in clients %}
+                    <tr class="{{ '' if client.est_actif else 'table-secondary' }}">
+                        <td>
+                            <strong>{{ client.nom_client }}</strong>
+                            {% if client.code_client %}
+                                <br><small class="text-muted">#{{ client.code_client }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if client.telephone %}
+                                <div><i class="bi bi-telephone"></i> {{ client.telephone }}</div>
+                            {% endif %}
+                            {% if client.email %}
+                                <div><i class="bi bi-envelope"></i> {{ client.email }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-info">{{ client.nombre_visites }}</span>
+                        </td>
+                        <td class="text-end fw-bold">CHF {{ "%.2f"|format(client.total_depense) }}</td>
+                        <td class="text-end">CHF {{ "%.2f"|format(client.panier_moyen) }}</td>
+                        <td>
+                            {% if client.premiere_visite %}
+                                {{ client.premiere_visite.strftime('%d/%m/%Y') }}
+                            {% else %}-{% endif %}
+                        </td>
+                        <td>
+                            {% if client.derniere_visite %}
+                                {{ client.derniere_visite.strftime('%d/%m/%Y') }}
+                                {% if client.jours_derniere_visite and client.jours_derniere_visite > 90 %}
+                                    <br><small class="text-danger">({{ client.jours_derniere_visite }}j)</small>
+                                {% endif %}
+                            {% else %}-{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% set segment_color = {
+                                'VIP': 'warning',
+                                'Fidèle': 'success',
+                                'Régulier': 'primary',
+                                'Occasionnel': 'info',
+                                'Nouveau': 'secondary',
+                                'Inactif': 'dark'
+                            } %}
+                            <span class="badge bg-{{ segment_color.get(client.segment_client, 'secondary') }}">
+                                {{ client.segment_client }}
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            <a href="{{ url_for('main.client_detail', client_id=client.id) }}" 
+                               class="btn btn-sm btn-outline-primary" title="Voir la fiche">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-4">Aucun client trouvé</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

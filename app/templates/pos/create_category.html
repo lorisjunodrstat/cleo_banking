@@ -1,0 +1,27 @@
+{% extends "pos.html" %}
+{% block title %}Nouvelle catégorie{% endblock %}
+{% block page_header %}<h2 class="mb-4">Créer une nouvelle catégorie</h2>{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <form method="POST">
+                        <div class="mb-3">
+                            <label class="form-label">Nom de la catégorie</label>
+                            <input type="text" name="nom_categorie" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Description (optionnel)</label>
+                            <textarea name="description" class="form-control" rows="3"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">Enregistrer la catégorie</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

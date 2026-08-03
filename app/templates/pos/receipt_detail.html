@@ -1,0 +1,83 @@
+<!-- app/templates/receipt_detail.html -->
+{% extends "pos.html" %}
+
+{% block title %}Reçu {{ receipt.receipt_number }}{% endblock %}
+
+{% block content %}
+<div class="receipt-detail">
+    <h1>Reçu {{ receipt.receipt_number }}</h1>
+    
+    <div class="receipt-info">
+        <div class="info-section">
+            <h2>Informations générales</h2>
+            <p><strong>Date:</strong> {{ receipt.date_formatted }}</p>
+            <p><strong>Type:</strong> {{ receipt.receipt_type }}</p>
+            <p><strong>Statut:</strong> {{ receipt.status }}</p>
+            <p><strong>PDV:</strong> {{ receipt.pos }}</p>
+            <p><strong>Magasin:</strong> {{ receipt.store }}</p>
+        </div>
+        
+        <div class="info-section">
+            <h2>Client</h2>
+            <p><strong>Nom:</strong> {{ receipt.client_name or '-' }}</p>
+            <p><strong>Contact:</strong> {{ receipt.client_contact or '-' }}</p>
+        </div>
+        
+        <div class="info-section">
+            <h2>Paiement</h2>
+            <p><strong>Mode:</strong> {{ receipt.payment_method }}</p>
+            <p><strong>Caissier:</strong> {{ receipt.cashier_name }}</p>
+            <p><strong>Option:</strong> {{ receipt.restaurant_option }}</p>
+        </div>
+    </div>
+    
+    <div class="financial-section">
+        <h2>Détails financiers</h2>
+        <table class="table">
+            <tr>
+                <td>Ventes brutes</td>
+                <td>CHF {{ "%.2f"|format(receipt.gross_sales) }}</td>
+            </tr>
+            <tr>
+                <td>Réductions</td>
+                <td>CHF {{ "%.2f"|format(receipt.discounts) }}</td>
+            </tr>
+            <tr>
+                <td>Ventes nettes</td>
+                <td>CHF {{ "%.2f"|format(receipt.net_sales) }}</td>
+            </tr>
+            <tr>
+                <td>Taxes</td>
+                <td>CHF {{ "%.2f"|format(receipt.taxes) }}</td>
+            </tr>
+            <tr>
+                <td>Pourboires</td>
+                <td>CHF {{ "%.2f"|format(receipt.tips) }}</td>
+            </tr>
+            <tr class="total">
+                <td><strong>Total collecté</strong></td>
+                <td><strong>CHF {{ "%.2f"|format(receipt.total_collected) }}</strong></td>
+            </tr>
+            <tr>
+                <td>Coût marchandises</td>
+                <td>CHF {{ "%.2f"|format(receipt.cost_of_goods) }}</td>
+            </tr>
+            <tr>
+                <td>Marge brute</td>
+                <td>CHF {{ "%.2f"|format(receipt.gross_margin) }}</td>
+            </tr>
+        </table>
+    </div>
+    
+    {% if receipt.description %}
+    <div class="description-section">
+        <h2>Description</h2>
+        <p>{{ receipt.description }}</p>
+    </div>
+    {% endif %}
+    
+    <div class="actions">
+        <a href="{{ url_for('main.index') }}" class="btn-secondary">Retour</a>
+    </div>
+</div>
+{% endblock %}

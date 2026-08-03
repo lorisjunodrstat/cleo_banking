@@ -1,0 +1,257 @@
+<!-- app/templates/index.html -->
+{% extends "pos.html" %}
+
+{% block title %}Reçus - Archive Loyverse{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class=row>
+        <div class="col-md-12"> 
+            <div class="card">
+                <div class="card-header">
+                    <h2>Archive des reçus</h2>
+                </div>
+                <div class="stats">
+                    <span>Total: {{ total_receipts }} reçus</span>
+                    <span>Chiffre d'affaires: CHF {{ "%.2f"|format(total_revenue) }}</span>
+                </div>
+                <div class="card-body"> 
+                    <form method="GET" class="filters">
+                        <div class="filter-group">
+                            <input type="text" name="search" placeholder="Rechercher..." value="{{ search }}">
+                        </div>
+                        
+                        <div class="filter-group">
+                            <select name="payment">
+                                <option value="">Tous les paiements</option>
+                                {% for method in payment_methods %}
+                                    <option value="{{ method[0] }}" {% if payment_filter == method[0] %}selected{% endif %}>
+                                        {{ method[0] }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="filter-group">
+                            <input type="date" name="date_from" value="{{ date_from }}">
+                            <input type="date" name="date_to" value="{{ date_to }}">
+                        </div>
+                        
+                        <button type="submit">Filtrer</button>
+                        <a href="{{ url_for('main.index') }}" class="btn-secondary">Réinitialiser</a>
+                    </form>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body">
+                    <a href="{{ url_for('main.export_receipts', search=search, payment=payment_filter, date_from=date_from, date_to=date_to) }}" class="btn btn-primary">Exporter les reçus filtrés</a>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>N° Reçu</th>
+                            <th>Client</th>
+                            <th>Paiement</th>
+                            <th>Total</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for receipt in receipts %}
+                        <tr>
+                            <td>{{ receipt.date_formatted }}</td>
+                            <td>{{ receipt.receipt_number }}</td>
+                            <td>{{ receipt.client_name or '-' }}</td>
+                            <td>{{ receipt.payment_method }}</td>
+                            <td>CHF {{ "%.2f"|format(receipt.total_collected) }}</td>
+                            <td>
+                                <a href="#" class="view-receipt" data-receipt-id="{{ receipt.id }}">Voir</a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6">Aucun reçu trouvé</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% if pagination.pages > 1 %}
+                <div class="pagination">
+                    {% if pagination.has_prev %}
+                        <a href="{{ url_for('main.index', page=pagination.prev_num, search=search, payment=payment_filter, date_from=date_from, date_to=date_to) }}">« Précédent</a>
+                    {% endif %}
+                    
+                    <span>Page {{ pagination.page }} sur {{ pagination.pages }}</span>
+                    
+                    {% if pagination.has_next %}
+                        <a href="{{ url_for('.main.index', page=pagination.next_num, search=search, payment=payment_filter, date_from=date_from, date_to=date_to) }}">Suivant »</a>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal pour afficher le reçu -->
+<div class="modal fade" id="receiptModal" tabindex="-1" aria-labelledby="receiptModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="receiptModalLabel">Détail du reçu</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="receiptModalBody">
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Chargement...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = new bootstrap.Modal(document.getElementById('receiptModal'));
+    const modalBody = document.getElementById('receiptModalBody');
+    
+    document.querySelectorAll('.view-receipt').forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            const receiptId = this.dataset.receiptId;
+            
+            // Afficher le spinner
+            modalBody.innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Chargement...</span>
+                    </div>
+                </div>
+            `;
+            
+            modal.show();
+            
+            // Charger les données du reçu via AJAX
+            fetch(`/receipt/${receiptId}/json`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        modalBody.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                        return;
+                    }
+                    
+                    // Construire le HTML du reçu
+                    let html = `
+                        <div class="receipt-detail">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <strong>N° Reçu:</strong> ${data.receipt_number}
+                                </div>
+                                <div class="col-md-6">
+                                    <strong>Date:</strong> ${data.date_formatted}
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <strong>Type:</strong> ${data.receipt_type}
+                                </div>
+                                <div class="col-md-6">
+                                    <strong>Statut:</strong> ${data.status}
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <strong>Client:</strong> ${data.client_name || '-'}
+                                </div>
+                                <div class="col-md-6">
+                                    <strong>Caissier:</strong> ${data.cashier_name || '-'}
+                                </div>
+                            </div>
+                            <hr>
+                            <h6>Articles</h6>
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Article</th>
+                                        <th>Qté</th>
+                                        <th>Prix unit.</th>
+                                        <th>Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+                    
+                    if (data.items && data.items.length > 0) {
+                        data.items.forEach(item => {
+                            html += `
+                                <tr>
+                                    <td>${item.nom_article}</td>
+                                    <td>${item.quantite}</td>
+                                    <td>CHF ${parseFloat(item.prix_unitaire).toFixed(2)}</td>
+                                    <td>CHF ${parseFloat(item.total_ligne).toFixed(2)}</td>
+                                </tr>
+                            `;
+                        });
+                    } else {
+                        html += `<tr><td colspan="4" class="text-center">Aucun article</td></tr>`;
+                    }
+                    
+                    html += `
+                                </tbody>
+                            </table>
+                            <hr>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <strong>Ventes brutes:</strong> CHF ${parseFloat(data.ventes_brutes).toFixed(2)}
+                                </div>
+                                <div class="col-md-6">
+                                    <strong>Réductions:</strong> CHF ${parseFloat(data.reduction).toFixed(2)}
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <strong>Ventes nettes:</strong> CHF ${parseFloat(data.ventes_nettes).toFixed(2)}
+                                </div>
+                                <div class="col-md-6">
+                                    <strong>Taxes:</strong> CHF ${parseFloat(data.taxes).toFixed(2)}
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <strong>Pourboires:</strong> CHF ${parseFloat(data.tips).toFixed(2)}
+                                </div>
+                                <div class="col-md-6">
+                                    <strong>Total collecté:</strong> <strong>CHF ${parseFloat(data.total_collecte).toFixed(2)}</strong>
+                                </div>
+                            </div>
+                            ${data.paiements && data.paiements.length > 0 ? `
+                            <hr>
+                            <h6>Paiements</h6>
+                            <ul class="list-unstyled">
+                                ${data.paiements.map(p => `<li>${p.mode_paiement}: CHF ${parseFloat(p.montant).toFixed(2)}</li>`).join('')}
+                            </ul>
+                            ` : ''}
+                            ${data.description ? `
+                            <hr>
+                            <p><strong>Description:</strong> ${data.description}</p>
+                            ` : ''}
+                        </div>
+                    `;
+                    
+                    modalBody.innerHTML = html;
+                })
+                .catch(error => {
+                    modalBody.innerHTML = `<div class="alert alert-danger">Erreur lors du chargement du reçu: ${error.message}</div>`;
+                });
+        });
+    });
+});
+</script>
+{% endblock %}

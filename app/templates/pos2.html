@@ -1,0 +1,115 @@
+{% extends "pos.html" %}
+
+{% block title %}Tableau de bord - Point de vente{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-store me-2 text-primary"></i>Point de Vente (POS)</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{{ url_for('banking.pos_caisse') }}" class="btn btn-success btn-lg shadow-sm">
+            <i class="fas fa-plus-circle me-2"></i>Nouvelle Vente
+        </a>
+        <a href="{{ url_for('banking.banking_dashboard') }}" class="btn btn-outline-secondary btn-lg ms-2">
+            <i class="fas fa-arrow-left me-2"></i>Retour au Banking
+        </a>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Carte 1: Caisse et Périodes -->
+    <div class="col-md-4">
+        <div class="card h-100 border-primary shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <i class="fas fa-cash-register me-2"></i>Caisse & Périodes
+            </div>
+            <div class="card-body">
+                <p class="card-text text-muted">Gérez l'ouverture et la fermeture de votre caisse, ainsi que les mouvements de fonds (dépôts/retraits).</p>
+                <ul class="list-unstyled mt-3">
+                    <li class="mb-2"><a href="{{ url_for('banking.pos_work_periods') }}" class="text-decoration-none"><i class="fas fa-clock me-2 text-primary"></i>Périodes de travail</a></li>
+                    <li><a href="{{ url_for('banking.pos_caisse') }}" class="text-decoration-none"><i class="fas fa-calculator me-2 text-primary"></i>Ouvrir la caisse</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Carte 2: Ventes -->
+    <div class="col-md-4">
+        <div class="card h-100 border-success shadow-sm">
+            <div class="card-header bg-success text-white">
+                <i class="fas fa-receipt me-2"></i>Ventes & Historique
+            </div>
+            <div class="card-body">
+                <p class="card-text text-muted">Consultez l'historique des transactions, les reçus émis, les remboursements et les statistiques.</p>
+                <div class="d-grid gap-2 mt-3">
+                    <a href="{{ url_for('banking.pos_receipts_list') }}" class="btn btn-outline-success">
+                        <i class="fas fa-list me-2"></i>Voir les reçus
+                    </a>
+                    <a href="{{ url_for('banking.stats_by_article') }}" class="btn btn-outline-success btn-sm">
+                        <i class="fas fa-chart-bar me-2"></i>Statistiques de vente
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Carte 3: Catalogue -->
+    <div class="col-md-4">
+        <div class="card h-100 border-info shadow-sm">
+            <div class="card-header bg-info text-white">
+                <i class="fas fa-boxes me-2"></i>Catalogue
+            </div>
+            <div class="card-body">
+                <p class="card-text text-muted">Gérez votre inventaire : articles, catégories, variantes et modificateurs d'options.</p>
+                <div class="d-grid gap-2 mt-3">
+                    <a href="{{ url_for('banking.pos_articles_list') }}" class="btn btn-outline-info btn-sm">Articles</a>
+                    <a href="{{ url_for('banking.pos_categories') }}" class="btn btn-outline-info btn-sm">Catégories</a>
+                    <a href="{{ url_for('banking.pos_modifiers') }}" class="btn btn-outline-info btn-sm">Modificateurs</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Carte 4: Configuration -->
+    <div class="col-md-6">
+        <div class="card h-100 border-warning shadow-sm">
+            <div class="card-header bg-warning text-dark">
+                <i class="fas fa-cogs me-2"></i>Configuration
+            </div>
+            <div class="card-body">
+                <p class="card-text text-muted">Paramétrez votre environnement de vente : structures, clients, taxes et paiements.</p>
+                <div class="row mt-3">
+                    <div class="col-6">
+                        <ul class="list-unstyled">
+                            <li class="mb-2"><a href="{{ url_for('banking.pos_store_list') }}" class="text-decoration-none"><i class="fas fa-store me-2 text-warning"></i>Magasins & PDV</a></li>
+                            <li class="mb-2"><a href="{{ url_for('banking.pos_clients_list') }}" class="text-decoration-none"><i class="fas fa-users me-2 text-warning"></i>Clients</a></li>
+                        </ul>
+                    </div>
+                    <div class="col-6">
+                        <ul class="list-unstyled">
+                            <li class="mb-2"><a href="{{ url_for('banking.pos_payment_methods_list') }}" class="text-decoration-none"><i class="fas fa-credit-card me-2 text-warning"></i>Modes de paiement</a></li>
+                            <li class="mb-2"><a href="{{ url_for('banking.pos_taxes_list') }}" class="text-decoration-none"><i class="fas fa-percent me-2 text-warning"></i>Taxes</a></li>
+                        </ul>
+                    </div
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Carte 5: Actions rapides / Import -->
+    <div class="col-md-6">
+        <div class="card h-100 border-secondary shadow-sm">
+            <div class="card-header bg-secondary text-white">
+                <i class="fas fa-tools me-2"></i>Outils & Import
+            </div>
+            <div class="card-body">
+                <p class="card-text text-muted">Actions de maintenance et importation de données en masse.</p>
+                <div class="d-grid gap-2 mt-3">
+                    <a href="{{ url_for('banking.pos_import_data') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-file-csv me-2"></i>Importer des articles (CSV/Excel)
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

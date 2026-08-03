@@ -5276,7 +5276,7 @@ class TransactionFinanciere:
         """
         Génère un graphique en lignes SVG avec axes Y améliorés.
         """
-        if not donnees_structurees or not donnees_structurees.et('series') or not donnees_structurees.get('dates'):
+        if not donnees_structurees or not donnees_structurees.get('series') or not donnees_structurees.get('dates'):
             return "<svg width='800' height='400'><text x='10' y='20'>Aucune donnée disponible.</text></svg>"
 
         dates = donnees_structurees['dates']
