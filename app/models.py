@@ -157,6 +157,7 @@ class DatabaseManager:
                 logger.error(f"Erreur lors de l'initialisation du pool de connexions : {err}")
                 self._connection_pool = None
         return self._connection_pool
+
     def close_connection(self):
         """
         Ferme le pool de connexions.
@@ -170,6 +171,7 @@ class DatabaseManager:
     def close(self):
         """Alias pour close_connection pour compatibilité"""
         self.close_connection()
+
     @contextmanager
     def get_cursor(self, dictionary=False, commit=True):
         """
@@ -381,9 +383,7 @@ class DatabaseManager:
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
                 );"""
-                cursor.execute(create_types_cotisation_table_query)
-
-                
+                cursor.execute(create_types_cotisation_table_query)            
                 
                 # Table comptes_principaux
                 create_comptes_table_query = """
@@ -492,6 +492,7 @@ class DatabaseManager:
                 );
                 """
                 cursor.execute(create_transactions_categories_table_query)
+
                 # Table transferts_externes
                 create_transferts_externes_table_query = """
                 CREATE TABLE IF NOT EXISTS transferts_externes (
@@ -570,12 +571,12 @@ class DatabaseManager:
                 # Table contact plan
                 create_contact_plans_table_query = """
                 CREATE TABLE IF NOT EXISTS contact_plans(
-                contact_id INT NOT NULL,
-                plan_id INT NOT NULL,
-                PRIMARY KEY (contact_id, plan_id),
-                FOREIGN KEY (contact_id) REFERENCES contacts(id_contact) ON DELETE CASCADE,
-                FOREIGN KEY (plan_id) REFERENCES plans_comptables(id) ON DELETE CASCADE
-                )
+                    contact_id INT NOT NULL,
+                    plan_id INT NOT NULL,
+                    PRIMARY KEY (contact_id, plan_id),
+                    FOREIGN KEY (contact_id) REFERENCES contacts(id_contact) ON DELETE CASCADE,
+                    FOREIGN KEY (plan_id) REFERENCES plans_comptables(id) ON DELETE CASCADE
+                    )
                 """
                 cursor.execute(create_contact_plans_table_query)
 
@@ -651,8 +652,7 @@ class DatabaseManager:
                 );
                 """
                 cursor.execute(create_regles_ecritures_table_query)
-    
-                
+                  
                 # Table plan_category
                 create_plan_categorie_table_query = """
                 CREATE TABLE IF NOT EXISTS plan_categorie (
@@ -664,7 +664,6 @@ class DatabaseManager:
                 );
                 """
                 cursor.execute(create_plan_categorie_table_query)
-
 
                 # Table contactCompte
                 create_contact_compte_table_query = """
@@ -733,9 +732,7 @@ class DatabaseManager:
                     FOREIGN KEY (id_contrat) REFERENCES contrats(id) ON DELETE CASCADE
                 );
                 """
-                cursor.execute(create_heures_travail_table_query)
-
-                
+                cursor.execute(create_heures_travail_table_query) 
 
                 # Table salaires
                 create_salaires_table_query = """
@@ -793,136 +790,127 @@ class DatabaseManager:
                     FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
                 );
                 """
-                cursor.execute(create_synthese_mensuelle_table_query)
-
-
-
-                
+                cursor.execute(create_synthese_mensuelle_table_query)                
 
                 # Tables types_indemnite 
                 create_types_indemnite_table_query = """
                 CREATE TABLE IF NOT EXISTS types_indemnite (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                user_id INT NOT NULL,
-                nom VARCHAR(100) NOT NULL,
-                description TEXT,
-                est_obligatoire BOOLEAN DEFAULT FALSE,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
-                );"""
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    user_id INT NOT NULL,
+                    nom VARCHAR(100) NOT NULL,
+                    description TEXT,
+                    est_obligatoire BOOLEAN DEFAULT FALSE,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                    );"""
                 cursor.execute(create_types_indemnite_table_query)
 
                 # cotisations_contrat
                 create_cotisations_contrat_table_query = """
                 CREATE TABLE IF NOT EXISTS cotisations_contrat (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                contrat_id INT NOT NULL,
-                type_cotisation_id INT NOT NULL,
-                taux DECIMAL(10,4) NOT NULL, -- peut être % ou montant fixe
-                base_calcul ENUM('brut', 'brut_tot') DEFAULT 'brut',
-                annee YEAR NOT NULL,
-                actif BOOLEAN DEFAULT TRUE,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE KEY unique_contrat_type_annee (contrat_id, type_cotisation_id, annee),
-                FOREIGN KEY (contrat_id) REFERENCES contrats(id) ON DELETE CASCADE,
-                FOREIGN KEY (type_cotisation_id) REFERENCES types_cotisation(id) ON DELETE CASCADE
-                );
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    contrat_id INT NOT NULL,
+                    type_cotisation_id INT NOT NULL,
+                    taux DECIMAL(10,4) NOT NULL, -- peut être % ou montant fixe
+                    base_calcul ENUM('brut', 'brut_tot') DEFAULT 'brut',
+                    annee YEAR NOT NULL,
+                    actif BOOLEAN DEFAULT TRUE,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY unique_contrat_type_annee (contrat_id, type_cotisation_id, annee),
+                    FOREIGN KEY (contrat_id) REFERENCES contrats(id) ON DELETE CASCADE,
+                    FOREIGN KEY (type_cotisation_id) REFERENCES types_cotisation(id) ON DELETE CASCADE
+                    );
                 """
                 cursor.execute(create_cotisations_contrat_table_query)
 
                  # indemnites_contrat
                 create_indemnites_contrat_table_query = """
                 CREATE TABLE IF NOT EXISTS indemnites_contrat (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                contrat_id INT NOT NULL,
-                type_indemnite_id INT NOT NULL,
-                taux DECIMAL(10,4) NOT NULL, -- interprété comme % du brut
-                base_calcul ENUM('brut', 'brut_tot') DEFAULT 'brut',
-                annee YEAR NOT NULL,
-                actif BOOLEAN DEFAULT TRUE,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE KEY unique_indemnite_contrat_annee (contrat_id, type_indemnite_id, annee),
-                FOREIGN KEY (contrat_id) REFERENCES contrats(id) ON DELETE CASCADE,
-                FOREIGN KEY (type_indemnite_id) REFERENCES types_indemnite(id) ON DELETE CASCADE
-                );
-                """
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    contrat_id INT NOT NULL,
+                    type_indemnite_id INT NOT NULL,
+                    taux DECIMAL(10,4) NOT NULL, -- interprété comme % du brut
+                    base_calcul ENUM('brut', 'brut_tot') DEFAULT 'brut',
+                    annee YEAR NOT NULL,
+                    actif BOOLEAN DEFAULT TRUE,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY unique_indemnite_contrat_annee (contrat_id, type_indemnite_id, annee),
+                    FOREIGN KEY (contrat_id) REFERENCES contrats(id) ON DELETE CASCADE,
+                    FOREIGN KEY (type_indemnite_id) REFERENCES types_indemnite(id) ON DELETE CASCADE
+                    );
+                    """
                 cursor.execute(create_indemnites_contrat_table_query)
                 # regles_cotisation
 
                 create_regles_cotisations_table_query = """
                 CREATE TABLE IF NOT EXISTS regles_cotisation (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                type_cotisation_id INT NOT NULL,
-                seuil_min DECIMAL(10,2) DEFAULT 0.00,   -- salaire mensuel brut minimum inclus
-                seuil_max DECIMAL(10,2) DEFAULT NULL,   -- NULL = sans limite
-                montant_fixe DECIMAL(10,2) DEFAULT 0.00,
-                taux DECIMAL(5,2) DEFAULT 0.00,         -- à utiliser si montant non fixe
-                type_valeur ENUM('taux','fixe') NOT NULL DEFAULT 'fixe',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (type_cotisation_id) REFERENCES types_cotisation(id) ON DELETE CASCADE
-                );"""
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    type_cotisation_id INT NOT NULL,
+                    seuil_min DECIMAL(10,2) DEFAULT 0.00,   -- salaire mensuel brut minimum inclus
+                    seuil_max DECIMAL(10,2) DEFAULT NULL,   -- NULL = sans limite
+                    montant_fixe DECIMAL(10,2) DEFAULT 0.00,
+                    taux DECIMAL(5,2) DEFAULT 0.00,         -- à utiliser si montant non fixe
+                    type_valeur ENUM('taux','fixe') NOT NULL DEFAULT 'fixe',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (type_cotisation_id) REFERENCES types_cotisation(id) ON DELETE CASCADE
+                    );"""
                 cursor.execute(create_regles_cotisations_table_query)
                  # baremes_indemnite
 
                 create_baremes_indemnite_table_query = """
                 CREATE TABLE IF NOT EXISTS baremes_indemnite (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                type_indemnite_id INT NOT NULL,
-                seuil_min DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-                seuil_max DECIMAL(10,2) DEFAULT NULL,
-                montant_fixe DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-                taux DECIMAL(5,2) NOT NULL DEFAULT 0.00,
-                type_valeur ENUM('taux','fixe') NOT NULL DEFAULT 'fixe',
-                ordre INT NOT NULL DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (type_indemnite_id) REFERENCES types_indemnite(id) ON DELETE CASCADE
-                 );"""
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    type_indemnite_id INT NOT NULL,
+                    seuil_min DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                    seuil_max DECIMAL(10,2) DEFAULT NULL,
+                    montant_fixe DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                    taux DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+                    type_valeur ENUM('taux','fixe') NOT NULL DEFAULT 'fixe',
+                    ordre INT NOT NULL DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (type_indemnite_id) REFERENCES types_indemnite(id) ON DELETE CASCADE
+                    );"""
                 cursor.execute(create_baremes_indemnite_table_query)
                 # baremes_cotisation
                 create_baremes_cotisation_table_query = """
                 CREATE TABLE IF NOT EXISTS baremes_cotisation (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                type_cotisation_id INT NOT NULL,
-                seuil_min DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-                seuil_max DECIMAL(10,2) DEFAULT NULL,
-                montant_fixe DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-                taux DECIMAL(5,2) NOT NULL DEFAULT 0.00,
-                type_valeur ENUM('taux','fixe') NOT NULL DEFAULT 'fixe',
-                ordre INT NOT NULL DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (type_cotisation_id) REFERENCES types_cotisation(id) ON DELETE CASCADE
-                 );"""
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    type_cotisation_id INT NOT NULL,
+                    seuil_min DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                    seuil_max DECIMAL(10,2) DEFAULT NULL,
+                    montant_fixe DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                    taux DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+                    type_valeur ENUM('taux','fixe') NOT NULL DEFAULT 'fixe',
+                    ordre INT NOT NULL DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (type_cotisation_id) REFERENCES types_cotisation(id) ON DELETE CASCADE
+                    );"""
                 cursor.execute(create_baremes_cotisation_table_query)
 
                 #plages_horaires
                 create_plages_horaires_table_query = """
                 CREATE TABLE IF NOT EXISTS plages_horaires (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                heure_travail_id INT NOT NULL,
-                ordre TINYINT NOT NULL,
-                debut TIME,
-                fin TIME,
-                FOREIGN KEY (heure_travail_id) REFERENCES heures_travail(id) ON DELETE CASCADE,
-                UNIQUE KEY unique_heure_travail_ordre (heure_travail_id, ordre)
-                );
-                """
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    heure_travail_id INT NOT NULL,
+                    ordre TINYINT NOT NULL,
+                    debut TIME,
+                    fin TIME,
+                    FOREIGN KEY (heure_travail_id) REFERENCES heures_travail(id) ON DELETE CASCADE,
+                    UNIQUE KEY unique_heure_travail_ordre (heure_travail_id, ordre)
+                    );
+                    """
                 cursor.execute(create_plages_horaires_table_query)
-
-
-                
-
-                
 
                 #Table equipes_employes
                 create_equipes_employes_table_query = """
                 CREATE TABLE IF NOT EXISTS equipes_employes (
-                equipe_id INT,
-                employe_id INT,
-                added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (equipe_id, employe_id),
-                FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE CASCADE,
-                FOREIGN KEY (employe_id) REFERENCES employes(id) ON DELETE CASCADE
-                );"""
+                    equipe_id INT,
+                    employe_id INT,
+                    added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (equipe_id, employe_id),
+                    FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE CASCADE,
+                    FOREIGN KEY (employe_id) REFERENCES employes(id) ON DELETE CASCADE
+                    );"""
                 cursor.execute(create_equipes_employes_table_query)
 
                
@@ -930,536 +918,536 @@ class DatabaseManager:
                 #Table competences
                 create_competences_table_query = """
                 CREATE TABLE IF NOT EXISTS competences (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
-                nom VARCHAR(100) NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
-                );
-                """
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    nom VARCHAR(100) NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
+                    );
+                    """
                 cursor.execute(create_competences_table_query)
 
                 #Table employes_competences
                 create_equipes_competences_table_query = """
                 CREATE TABLE IF NOT EXISTS employes_competences (
-                competence_id INT,
-                employe_id INT,
-                assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (competence_id, employe_id),
-                FOREIGN KEY (competence_id) REFERENCES competences(id) ON DELETE CASCADE,
-                FOREIGN KEY (employe_id) REFERENCES employes(id) ON DELETE CASCADE
-                );"""
+                    competence_id INT,
+                    employe_id INT,
+                    assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (competence_id, employe_id),
+                    FOREIGN KEY (competence_id) REFERENCES competences(id) ON DELETE CASCADE,
+                    FOREIGN KEY (employe_id) REFERENCES employes(id) ON DELETE CASCADE
+                    );"""
                 cursor.execute(create_equipes_competences_table_query)
 
                 # #Table equipes_competences_requises
                 create_equipes_competences_requises_table_query = """
                 CREATE TABLE IF NOT EXISTS equipes_competences_requises (
-                equipe_id INT,
-                competence_id INT,
-                quantite_min INT DEFAULT 1,
-                PRIMARY KEY (equipe_id, competence_id),
-                FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE CASCADE,
-                FOREIGN KEY (competence_id) REFERENCES competences(id) ON DELETE CASCADE
-                );
-                """
+                    equipe_id INT,
+                    competence_id INT,
+                    quantite_min INT DEFAULT 1,
+                    PRIMARY KEY (equipe_id, competence_id),
+                    FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE CASCADE,
+                    FOREIGN KEY (competence_id) REFERENCES competences(id) ON DELETE CASCADE
+                    );
+                    """
                 cursor.execute(create_equipes_competences_requises_table_query)
 
                 #Table palnning regles
                 create_planning_regles_table_query = """
                 CREATE TABLE IF NOT EXISTS planning_regles (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
-                nom VARCHAR(150) NOT NULL,
-                type_regle VARCHAR(50) NOT NULL,
-                params_json JSON NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
-                );"""
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    nom VARCHAR(150) NOT NULL,
+                    type_regle VARCHAR(50) NOT NULL,
+                    params_json JSON NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
+                    );"""
                 cursor.execute(create_planning_regles_table_query)
 
                 # Table entreprise
                 create_entreprise_table_query = """
                 CREATE TABLE IF NOT EXISTS entreprise (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL UNIQUE,
-                nom VARCHAR(255) NOT NULL,
-                rue VARCHAR(255),
-                code_postal VARCHAR(20),
-                commune VARCHAR(100),
-                email VARCHAR(255),
-                telephone VARCHAR(50),
-                logo_path VARCHAR(255),  -- ex: 'uploads/logos/user_123.png'
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
-                );"""
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL UNIQUE,
+                    nom VARCHAR(255) NOT NULL,
+                    rue VARCHAR(255),
+                    code_postal VARCHAR(20),
+                    commune VARCHAR(100),
+                    email VARCHAR(255),
+                    telephone VARCHAR(50),
+                    logo_path VARCHAR(255),  -- ex: 'uploads/logos/user_123.png'
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                    );"""
                 cursor.execute(create_entreprise_table_query)
-            # ============================================================
-            # TABLES POS (Point de Vente / Caisse)
-            # ============================================================
+                # ============================================================
+                # TABLES POS (Point de Vente / Caisse)
+                # ============================================================
 
-            # Table Magasins (entités commerciales liées à l'entreprise)
-            create_pos_magasins_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_magasins (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                utilisateur_id INT NOT NULL,
-                nom_magasin VARCHAR(100) NOT NULL,
-                adresse VARCHAR(200),
-                ville VARCHAR(200),
-                canton VARCHAR(100),
-                code_postal VARCHAR(20),
-                pays VARCHAR(100) DEFAULT 'Suisse',
-                telephone VARCHAR(20),
-                email VARCHAR(100),
-                description TEXT,
-                actif BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
-            );
-            """
-            cursor.execute(create_pos_magasins_table_query)
+                # Table Magasins (entités commerciales liées à l'entreprise)
+                create_pos_magasins_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_magasins (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
+                    nom_magasin VARCHAR(100) NOT NULL,
+                    adresse VARCHAR(200),
+                    ville VARCHAR(200),
+                    canton VARCHAR(100),
+                    code_postal VARCHAR(20),
+                    pays VARCHAR(100) DEFAULT 'Suisse',
+                    telephone VARCHAR(20),
+                    email VARCHAR(100),
+                    description TEXT,
+                    actif BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                );
+                """
+                cursor.execute(create_pos_magasins_table_query)
 
-            # Table Points de vente (caisses physiques dans un magasin)
-            create_pos_points_de_vente_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_points_de_vente (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                magasin_id INT NOT NULL,
-                nom_pdv VARCHAR(100) NOT NULL,
-                description TEXT,
-                actif BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE CASCADE
-            );
-            """
-            cursor.execute(create_pos_points_de_vente_table_query)
+                # Table Points de vente (caisses physiques dans un magasin)
+                create_pos_points_de_vente_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_points_de_vente (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    magasin_id INT NOT NULL,
+                    nom_pdv VARCHAR(100) NOT NULL,
+                    description TEXT,
+                    actif BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE CASCADE
+                );
+                """
+                cursor.execute(create_pos_points_de_vente_table_query)
 
-            # Table Porte-monnaie (appareil de caisse relié à un compte bancaire)
-            # 🔗 Lien vers le système financier : chaque porte-monnaie est relié à un compte principal
-            create_pos_porte_monnaie_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_porte_monnaie (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                utilisateur_id INT NOT NULL,
-                pdv_id INT NOT NULL,
-                nom_porte_monnaie VARCHAR(100) NOT NULL,
-                compte_bancaire_id INT NULL COMMENT 'Lien vers comptes_principaux.id',
-                solde_caisse DECIMAL(15,2) DEFAULT 0.00,
-                devise VARCHAR(3) DEFAULT 'CHF',
-                actif BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                FOREIGN KEY (pdv_id) REFERENCES pos_points_de_vente(id) ON DELETE CASCADE,
-                FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id) ON DELETE SET NULL
-            );
-            """
-            cursor.execute(create_pos_porte_monnaie_table_query)
+                # Table Porte-monnaie (appareil de caisse relié à un compte bancaire)
+                # 🔗 Lien vers le système financier : chaque porte-monnaie est relié à un compte principal
+                create_pos_porte_monnaie_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_porte_monnaie (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
+                    pdv_id INT NOT NULL,
+                    nom_porte_monnaie VARCHAR(100) NOT NULL,
+                    compte_bancaire_id INT NULL COMMENT 'Lien vers comptes_principaux.id',
+                    solde_caisse DECIMAL(15,2) DEFAULT 0.00,
+                    devise VARCHAR(3) DEFAULT 'CHF',
+                    actif BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (pdv_id) REFERENCES pos_points_de_vente(id) ON DELETE CASCADE,
+                    FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id) ON DELETE SET NULL
+                );
+                """
+                cursor.execute(create_pos_porte_monnaie_table_query)
 
-            # Table Catégories POS
-            create_pos_categories_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_categories (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                utilisateur_id INT NOT NULL,
-                nom_categorie VARCHAR(100) NOT NULL,
-                description TEXT,
-                couleur VARCHAR(7) DEFAULT '#3498db',
-                icone VARCHAR(50) DEFAULT 'tag',
-                ordre INT DEFAULT 0,
-                actif BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                UNIQUE KEY unique_categorie_user (utilisateur_id, nom_categorie)
-            );
-            """
-            cursor.execute(create_pos_categories_table_query)
+                # Table Catégories POS
+                create_pos_categories_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_categories (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
+                    nom_categorie VARCHAR(100) NOT NULL,
+                    description TEXT,
+                    couleur VARCHAR(7) DEFAULT '#3498db',
+                    icone VARCHAR(50) DEFAULT 'tag',
+                    ordre INT DEFAULT 0,
+                    actif BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    UNIQUE KEY unique_categorie_user (utilisateur_id, nom_categorie)
+                );
+                """
+                cursor.execute(create_pos_categories_table_query)
 
-            # Table Sous-catégories POS
-            create_pos_sous_categories_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_sous_categories (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                id_categorie INT NOT NULL,
-                nom_sous_categorie VARCHAR(100) NOT NULL,
-                description TEXT,
-                ordre INT DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (id_categorie) REFERENCES pos_categories(id) ON DELETE CASCADE
-            );
-            """
-            cursor.execute(create_pos_sous_categories_table_query)
+                # Table Sous-catégories POS
+                create_pos_sous_categories_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_sous_categories (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    id_categorie INT NOT NULL,
+                    nom_sous_categorie VARCHAR(100) NOT NULL,
+                    description TEXT,
+                    ordre INT DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (id_categorie) REFERENCES pos_categories(id) ON DELETE CASCADE
+                );
+                """
+                cursor.execute(create_pos_sous_categories_table_query)
 
-            # Table Taxes POS (TVA, etc.)
-            create_pos_taxes_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_taxes (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                utilisateur_id INT NOT NULL,
-                nom VARCHAR(100) NOT NULL,
-                taux DECIMAL(5,2) NOT NULL,
-                date_debut DATE NOT NULL,
-                date_fin DATE NULL,
-                est_actif BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                UNIQUE KEY unique_taxe_user (utilisateur_id, nom)
-            );
-            """
-            cursor.execute(create_pos_taxes_table_query)
+                # Table Taxes POS (TVA, etc.)
+                create_pos_taxes_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_taxes (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
+                    nom VARCHAR(100) NOT NULL,
+                    taux DECIMAL(5,2) NOT NULL,
+                    date_debut DATE NOT NULL,
+                    date_fin DATE NULL,
+                    est_actif BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    UNIQUE KEY unique_taxe_user (utilisateur_id, nom)
+                );
+                """
+                cursor.execute(create_pos_taxes_table_query)
 
-            # Table Modes de paiement (Espèces, Carte, Twint, etc.)
-            create_pos_modes_paiement_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_modes_paiement (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                utilisateur_id INT NOT NULL,
-                nom VARCHAR(50) NOT NULL,
-                description TEXT,
-                icone VARCHAR(50) DEFAULT 'credit-card',
-                couleur VARCHAR(7) DEFAULT '#28a745',
-                est_actif BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                UNIQUE KEY unique_mode_user (utilisateur_id, nom)
-            );
-            """
-            cursor.execute(create_pos_modes_paiement_table_query)
+                # Table Modes de paiement (Espèces, Carte, Twint, etc.)
+                create_pos_modes_paiement_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_modes_paiement (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
+                    nom VARCHAR(50) NOT NULL,
+                    description TEXT,
+                    icone VARCHAR(50) DEFAULT 'credit-card',
+                    couleur VARCHAR(7) DEFAULT '#28a745',
+                    est_actif BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    UNIQUE KEY unique_mode_user (utilisateur_id, nom)
+                );
+                """
+                cursor.execute(create_pos_modes_paiement_table_query)
 
-            # Table Options restaurant (Sur place, À emporter, Livré)
-            create_pos_restaurant_options_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_restaurant_options (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                utilisateur_id INT NOT NULL,
-                nom VARCHAR(50) NOT NULL,
-                description TEXT,
-                icone VARCHAR(50) DEFAULT 'utensils',
-                est_actif BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                UNIQUE KEY unique_option_user (utilisateur_id, nom)
-            );
-            """
-            cursor.execute(create_pos_restaurant_options_table_query)
+                # Table Options restaurant (Sur place, À emporter, Livré)
+                create_pos_restaurant_options_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_restaurant_options (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
+                    nom VARCHAR(50) NOT NULL,
+                    description TEXT,
+                    icone VARCHAR(50) DEFAULT 'utensils',
+                    est_actif BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    UNIQUE KEY unique_option_user (utilisateur_id, nom)
+                );
+                """
+                cursor.execute(create_pos_restaurant_options_table_query)
 
-            # Table Réductions / Remises
-            create_pos_discounts_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_discounts (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                utilisateur_id INT NOT NULL,
-                nom VARCHAR(100) NOT NULL,
-                type_reduction VARCHAR(20) NOT NULL,
-                valeur DECIMAL(10,2),
-                est_actif BOOLEAN DEFAULT TRUE,
-                acces_restreint BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
-            );
-            """
-            cursor.execute(create_pos_discounts_table_query)
+                # Table Réductions / Remises
+                create_pos_discounts_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_discounts (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
+                    nom VARCHAR(100) NOT NULL,
+                    type_reduction VARCHAR(20) NOT NULL,
+                    valeur DECIMAL(10,2),
+                    est_actif BOOLEAN DEFAULT TRUE,
+                    acces_restreint BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                );
+                """
+                cursor.execute(create_pos_discounts_table_query)
 
-            # Table Clients POS
-            create_pos_clients_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_clients (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                utilisateur_id INT NOT NULL,
-                nom_client VARCHAR(200) NOT NULL,
-                numero_client VARCHAR(50),
-                telephone VARCHAR(50),
-                ville VARCHAR(200),
-                code_postal VARCHAR(20),
-                canton VARCHAR(200),
-                pays VARCHAR(200) DEFAULT 'Suisse',
-                remarque VARCHAR(250),
-                code_client VARCHAR(200),
-                email VARCHAR(100),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                INDEX idx_nom_client (nom_client),
-                INDEX idx_utilisateur (utilisateur_id)
-            );
-            """
-            cursor.execute(create_pos_clients_table_query)
+                # Table Clients POS
+                create_pos_clients_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_clients (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
+                    nom_client VARCHAR(200) NOT NULL,
+                    numero_client VARCHAR(50),
+                    telephone VARCHAR(50),
+                    ville VARCHAR(200),
+                    code_postal VARCHAR(20),
+                    canton VARCHAR(200),
+                    pays VARCHAR(200) DEFAULT 'Suisse',
+                    remarque VARCHAR(250),
+                    code_client VARCHAR(200),
+                    email VARCHAR(100),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    INDEX idx_nom_client (nom_client),
+                    INDEX idx_utilisateur (utilisateur_id)
+                );
+                """
+                cursor.execute(create_pos_clients_table_query)
 
-            # Table Articles (produits vendus)
-            create_pos_articles_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_articles (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                utilisateur_id INT NOT NULL,
-                id_categorie INT NOT NULL,
-                id_sous_categorie INT NULL,
-                nom_article VARCHAR(200) NOT NULL,
-                description TEXT,
-                vendu_type VARCHAR(50) DEFAULT 'piece',
-                prix_unitaire DECIMAL(10,2) DEFAULT 0,
-                cout_unitaire DECIMAL(10,2) DEFAULT 0,
-                stock INT DEFAULT 0,
-                stock_alerte INT DEFAULT 0,
-                is_variable_price BOOLEAN DEFAULT FALSE,
-                variante VARCHAR(100),
-                code_barre VARCHAR(100),
-                icone VARCHAR(50) DEFAULT 'box',
-                couleur VARCHAR(7) DEFAULT '#6c757d',
-                actif BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                FOREIGN KEY (id_categorie) REFERENCES pos_categories(id),
-                FOREIGN KEY (id_sous_categorie) REFERENCES pos_sous_categories(id) ON DELETE SET NULL,
-                INDEX idx_nom_article (nom_article),
-                INDEX idx_utilisateur (utilisateur_id)
-            );
-            """
-            cursor.execute(create_pos_articles_table_query)
+                # Table Articles (produits vendus)
+                create_pos_articles_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_articles (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
+                    id_categorie INT NOT NULL,
+                    id_sous_categorie INT NULL,
+                    nom_article VARCHAR(200) NOT NULL,
+                    description TEXT,
+                    vendu_type VARCHAR(50) DEFAULT 'piece',
+                    prix_unitaire DECIMAL(10,2) DEFAULT 0,
+                    cout_unitaire DECIMAL(10,2) DEFAULT 0,
+                    stock INT DEFAULT 0,
+                    stock_alerte INT DEFAULT 0,
+                    is_variable_price BOOLEAN DEFAULT FALSE,
+                    variante VARCHAR(100),
+                    code_barre VARCHAR(100),
+                    icone VARCHAR(50) DEFAULT 'box',
+                    couleur VARCHAR(7) DEFAULT '#6c757d',
+                    actif BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (id_categorie) REFERENCES pos_categories(id),
+                    FOREIGN KEY (id_sous_categorie) REFERENCES pos_sous_categories(id) ON DELETE SET NULL,
+                    INDEX idx_nom_article (nom_article),
+                    INDEX idx_utilisateur (utilisateur_id)
+                );
+                """
+                cursor.execute(create_pos_articles_table_query)
 
-            # Table Variantes d'articles (tailles, couleurs, etc.)
-            create_pos_variantes_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_variantes (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                article_id INT NOT NULL,
-                nom VARCHAR(100) NOT NULL,
-                option_name VARCHAR(100),
-                prix DECIMAL(10,2) DEFAULT 0,
-                cout DECIMAL(10,2) DEFAULT 0,
-                stock INT DEFAULT 0,
-                code_barre VARCHAR(100),
-                is_active BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (article_id) REFERENCES pos_articles(id) ON DELETE CASCADE
-            );
-            """
-            cursor.execute(create_pos_variantes_table_query)
+                # Table Variantes d'articles (tailles, couleurs, etc.)
+                create_pos_variantes_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_variantes (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    article_id INT NOT NULL,
+                    nom VARCHAR(100) NOT NULL,
+                    option_name VARCHAR(100),
+                    prix DECIMAL(10,2) DEFAULT 0,
+                    cout DECIMAL(10,2) DEFAULT 0,
+                    stock INT DEFAULT 0,
+                    code_barre VARCHAR(100),
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (article_id) REFERENCES pos_articles(id) ON DELETE CASCADE
+                );
+                """
+                cursor.execute(create_pos_variantes_table_query)
 
-            # Table Modificateurs (options supplémentaires)
-            create_pos_modificateurs_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_modificateurs (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                utilisateur_id INT NOT NULL,
-                nom_modificateur VARCHAR(200) NOT NULL,
-                prix_modificateur DECIMAL(10,2) DEFAULT 0,
-                description TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                INDEX idx_nom_modificateur (nom_modificateur)
-            );
-            """
-            cursor.execute(create_pos_modificateurs_table_query)
+                # Table Modificateurs (options supplémentaires)
+                create_pos_modificateurs_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_modificateurs (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
+                    nom_modificateur VARCHAR(200) NOT NULL,
+                    prix_modificateur DECIMAL(10,2) DEFAULT 0,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    INDEX idx_nom_modificateur (nom_modificateur)
+                );
+                """
+                cursor.execute(create_pos_modificateurs_table_query)
 
-            # Table Options de modificateurs
-            create_pos_option_modificateurs_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_option_modificateurs (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                nom_option VARCHAR(200) NOT NULL,
-                id_article INT NULL,
-                id_modificateur INT NULL,
-                prix_supplement DECIMAL(10,2) DEFAULT 0,
-                description TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (id_article) REFERENCES pos_articles(id) ON DELETE CASCADE,
-                FOREIGN KEY (id_modificateur) REFERENCES pos_modificateurs(id) ON DELETE CASCADE
-            );
-            """
-            cursor.execute(create_pos_option_modificateurs_table_query)
+                # Table Options de modificateurs
+                create_pos_option_modificateurs_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_option_modificateurs (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    nom_option VARCHAR(200) NOT NULL,
+                    id_article INT NULL,
+                    id_modificateur INT NULL,
+                    prix_supplement DECIMAL(10,2) DEFAULT 0,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (id_article) REFERENCES pos_articles(id) ON DELETE CASCADE,
+                    FOREIGN KEY (id_modificateur) REFERENCES pos_modificateurs(id) ON DELETE CASCADE
+                );
+                """
+                cursor.execute(create_pos_option_modificateurs_table_query)
 
-            # ============================================================
-            # TABLES DE LIAISON POS (Many-to-Many)
-            # ============================================================
+                # ============================================================
+                # TABLES DE LIAISON POS (Many-to-Many)
+                # ============================================================
 
-            # Liaison Article ↔ Taxe (avec historique de dates)
-            create_pos_article_taxes_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_article_taxes (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                article_id INT NOT NULL,
-                taxe_id INT NOT NULL,
-                date_debut DATE NOT NULL,
-                date_fin DATE NULL,
-                est_actuelle BOOLEAN DEFAULT FALSE,
-                FOREIGN KEY (article_id) REFERENCES pos_articles(id) ON DELETE CASCADE,
-                FOREIGN KEY (taxe_id) REFERENCES pos_taxes(id) ON DELETE CASCADE,
-                INDEX idx_article (article_id),
-                INDEX idx_taxe (taxe_id)
-            );
-            """
-            cursor.execute(create_pos_article_taxes_table_query)
+                # Liaison Article ↔ Taxe (avec historique de dates)
+                create_pos_article_taxes_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_article_taxes (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    article_id INT NOT NULL,
+                    taxe_id INT NOT NULL,
+                    date_debut DATE NOT NULL,
+                    date_fin DATE NULL,
+                    est_actuelle BOOLEAN DEFAULT FALSE,
+                    FOREIGN KEY (article_id) REFERENCES pos_articles(id) ON DELETE CASCADE,
+                    FOREIGN KEY (taxe_id) REFERENCES pos_taxes(id) ON DELETE CASCADE,
+                    INDEX idx_article (article_id),
+                    INDEX idx_taxe (taxe_id)
+                );
+                """
+                cursor.execute(create_pos_article_taxes_table_query)
 
-            # Liaison Article ↔ Modificateur
-            create_pos_article_modificateurs_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_article_modificateurs (
-                article_id INT NOT NULL,
-                modificateur_id INT NOT NULL,
-                PRIMARY KEY (article_id, modificateur_id),
-                FOREIGN KEY (article_id) REFERENCES pos_articles(id) ON DELETE CASCADE,
-                FOREIGN KEY (modificateur_id) REFERENCES pos_modificateurs(id) ON DELETE CASCADE
-            );
-            """
-            cursor.execute(create_pos_article_modificateurs_table_query)
+                # Liaison Article ↔ Modificateur
+                create_pos_article_modificateurs_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_article_modificateurs (
+                    article_id INT NOT NULL,
+                    modificateur_id INT NOT NULL,
+                    PRIMARY KEY (article_id, modificateur_id),
+                    FOREIGN KEY (article_id) REFERENCES pos_articles(id) ON DELETE CASCADE,
+                    FOREIGN KEY (modificateur_id) REFERENCES pos_modificateurs(id) ON DELETE CASCADE
+                );
+                """
+                cursor.execute(create_pos_article_modificateurs_table_query)
 
-            # ============================================================
-            # TABLE RECEIPTS (Reçus / Tickets de caisse)
-            # 🔗 LIEN AVEC TRANSACTIONS FINANCIÈRES
-            # ============================================================
-            create_pos_receipts_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_receipts (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                utilisateur_id INT NOT NULL,
-                porte_monnaie_id INT NULL COMMENT 'Lien vers le porte-monnaie utilisé',
-                date DATETIME NOT NULL,
-                recu_numero VARCHAR(50) NOT NULL,
-                receipt_type VARCHAR(50) DEFAULT 'Vente',
-                ventes_brutes DECIMAL(10,2) DEFAULT 0,
-                reduction DECIMAL(10,2) DEFAULT 0,
-                ventes_nettes DECIMAL(10,2) DEFAULT 0,
-                taxes DECIMAL(10,2) DEFAULT 0,
-                tips DECIMAL(10,2) DEFAULT 0,
-                total_collecte DECIMAL(10,2) DEFAULT 0,
-                cout_marchandises DECIMAL(10,2) DEFAULT 0,
-                marge_brute DECIMAL(10,2) DEFAULT 0,
-                description TEXT,
-                restaurant_option_id INT NULL,
-                pdv VARCHAR(100),
-                magasin VARCHAR(100),
-                nom_du_caissier VARCHAR(100),
-                nom_du_client VARCHAR(200),
-                numero_client VARCHAR(50),
-                id_client INT NULL,
-                discount_id INT NULL,
-                discount_amount DECIMAL(10,2) DEFAULT 0,
-                status VARCHAR(50) DEFAULT 'Fermé',
-                cloture_at DATETIME NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                -- 🔗 LIENS VERS VOTRE SYSTÈME FINANCIER EXISTANT
-                transaction_id INT NULL COMMENT 'Lien vers la transaction financière créée',
-                compte_bancaire_id INT NULL COMMENT 'Compte bancaire où l''argent est encaissé',
-                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                FOREIGN KEY (porte_monnaie_id) REFERENCES pos_porte_monnaie(id) ON DELETE SET NULL,
-                FOREIGN KEY (restaurant_option_id) REFERENCES pos_restaurant_options(id) ON DELETE SET NULL,
-                FOREIGN KEY (id_client) REFERENCES pos_clients(id) ON DELETE SET NULL,
-                FOREIGN KEY (discount_id) REFERENCES pos_discounts(id) ON DELETE SET NULL,
-                FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
-                FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id) ON DELETE SET NULL,
-                INDEX idx_recu_numero (recu_numero),
-                INDEX idx_date (date),
-                INDEX idx_caissier (nom_du_caissier),
-                INDEX idx_utilisateur (utilisateur_id),
-                INDEX idx_transaction (transaction_id),
-                INDEX idx_client (id_client),
-                INDEX idx_porte_monnaie (porte_monnaie_id)
-            );
-            """
-            cursor.execute(create_pos_receipts_table_query)
+                # ============================================================
+                # TABLE RECEIPTS (Reçus / Tickets de caisse)
+                # 🔗 LIEN AVEC TRANSACTIONS FINANCIÈRES
+                # ============================================================
+                create_pos_receipts_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_receipts (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
+                    porte_monnaie_id INT NULL COMMENT 'Lien vers le porte-monnaie utilisé',
+                    date DATETIME NOT NULL,
+                    recu_numero VARCHAR(50) NOT NULL,
+                    receipt_type VARCHAR(50) DEFAULT 'Vente',
+                    ventes_brutes DECIMAL(10,2) DEFAULT 0,
+                    reduction DECIMAL(10,2) DEFAULT 0,
+                    ventes_nettes DECIMAL(10,2) DEFAULT 0,
+                    taxes DECIMAL(10,2) DEFAULT 0,
+                    tips DECIMAL(10,2) DEFAULT 0,
+                    total_collecte DECIMAL(10,2) DEFAULT 0,
+                    cout_marchandises DECIMAL(10,2) DEFAULT 0,
+                    marge_brute DECIMAL(10,2) DEFAULT 0,
+                    description TEXT,
+                    restaurant_option_id INT NULL,
+                    pdv VARCHAR(100),
+                    magasin VARCHAR(100),
+                    nom_du_caissier VARCHAR(100),
+                    nom_du_client VARCHAR(200),
+                    numero_client VARCHAR(50),
+                    id_client INT NULL,
+                    discount_id INT NULL,
+                    discount_amount DECIMAL(10,2) DEFAULT 0,
+                    status VARCHAR(50) DEFAULT 'Fermé',
+                    cloture_at DATETIME NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    -- 🔗 LIENS VERS VOTRE SYSTÈME FINANCIER EXISTANT
+                    transaction_id INT NULL COMMENT 'Lien vers la transaction financière créée',
+                    compte_bancaire_id INT NULL COMMENT 'Compte bancaire où l''argent est encaissé',
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (porte_monnaie_id) REFERENCES pos_porte_monnaie(id) ON DELETE SET NULL,
+                    FOREIGN KEY (restaurant_option_id) REFERENCES pos_restaurant_options(id) ON DELETE SET NULL,
+                    FOREIGN KEY (id_client) REFERENCES pos_clients(id) ON DELETE SET NULL,
+                    FOREIGN KEY (discount_id) REFERENCES pos_discounts(id) ON DELETE SET NULL,
+                    FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
+                    FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id) ON DELETE SET NULL,
+                    INDEX idx_recu_numero (recu_numero),
+                    INDEX idx_date (date),
+                    INDEX idx_caissier (nom_du_caissier),
+                    INDEX idx_utilisateur (utilisateur_id),
+                    INDEX idx_transaction (transaction_id),
+                    INDEX idx_client (id_client),
+                    INDEX idx_porte_monnaie (porte_monnaie_id)
+                );
+                """
+                cursor.execute(create_pos_receipts_table_query)
 
-            # Table Items du reçu (articles vendus dans un ticket)
-            create_pos_receipt_items_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_receipt_items (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                receipt_id INT NOT NULL,
-                article_id INT NOT NULL,
-                variante_id INT NULL,
-                quantite INT DEFAULT 1,
-                prix_unitaire DECIMAL(10,2) DEFAULT 0,
-                total_ligne DECIMAL(10,2) DEFAULT 0,
-                taux_taxe_applique DECIMAL(5,2) DEFAULT 0,
-                FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE,
-                FOREIGN KEY (article_id) REFERENCES pos_articles(id),
-                FOREIGN KEY (variante_id) REFERENCES pos_variantes(id) ON DELETE SET NULL,
-                INDEX idx_receipt (receipt_id)
-            );
-            """
-            cursor.execute(create_pos_receipt_items_table_query)
+                # Table Items du reçu (articles vendus dans un ticket)
+                create_pos_receipt_items_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_receipt_items (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    receipt_id INT NOT NULL,
+                    article_id INT NOT NULL,
+                    variante_id INT NULL,
+                    quantite INT DEFAULT 1,
+                    prix_unitaire DECIMAL(10,2) DEFAULT 0,
+                    total_ligne DECIMAL(10,2) DEFAULT 0,
+                    taux_taxe_applique DECIMAL(5,2) DEFAULT 0,
+                    FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE,
+                    FOREIGN KEY (article_id) REFERENCES pos_articles(id),
+                    FOREIGN KEY (variante_id) REFERENCES pos_variantes(id) ON DELETE SET NULL,
+                    INDEX idx_receipt (receipt_id)
+                );
+                """
+                cursor.execute(create_pos_receipt_items_table_query)
 
-            # Table Paiements d'un reçu
-            create_pos_payments_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_payments (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                receipt_id INT NOT NULL,
-                mode_paiement_id INT NOT NULL,
-                montant DECIMAL(10,2) DEFAULT 0,
-                est_remboursement BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE,
-                FOREIGN KEY (mode_paiement_id) REFERENCES pos_modes_paiement(id),
-                INDEX idx_receipt (receipt_id)
-            );
-            """
-            cursor.execute(create_pos_payments_table_query)
+                # Table Paiements d'un reçu
+                create_pos_payments_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_payments (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    receipt_id INT NOT NULL,
+                    mode_paiement_id INT NOT NULL,
+                    montant DECIMAL(10,2) DEFAULT 0,
+                    est_remboursement BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE,
+                    FOREIGN KEY (mode_paiement_id) REFERENCES pos_modes_paiement(id),
+                    INDEX idx_receipt (receipt_id)
+                );
+                """
+                cursor.execute(create_pos_payments_table_query)
 
-            # ============================================================
-            # TABLES PÉRIODES DE TRAVAIL (Ouverture/fermeture de caisse)
-            # ============================================================
+                # ============================================================
+                # TABLES PÉRIODES DE TRAVAIL (Ouverture/fermeture de caisse)
+                # ============================================================
 
-            create_pos_periodes_travail_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_periodes_travail (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                utilisateur_id INT NOT NULL,
-                porte_monnaie_id INT NULL,
-                magasin VARCHAR(100) NOT NULL,
-                pdv_id VARCHAR(100) NOT NULL,
-                date_debut DATETIME NOT NULL,
-                date_fin DATETIME NULL,
-                montant_debut_prevu DECIMAL(10,2) DEFAULT 0,
-                montant_debut_reel DECIMAL(10,2) DEFAULT 0,
-                montant_fin_prevu DECIMAL(10,2) DEFAULT 0,
-                montant_fin_reel DECIMAL(10,2) DEFAULT 0,
-                montant_retrait DECIMAL(10,2) DEFAULT 0,
-                montant_depot DECIMAL(10,2) DEFAULT 0,
-                difference DECIMAL(10,2) DEFAULT 0,
-                status VARCHAR(50) DEFAULT 'Ouvert',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                FOREIGN KEY (porte_monnaie_id) REFERENCES pos_porte_monnaie(id) ON DELETE SET NULL,
-                INDEX idx_utilisateur_date (utilisateur_id, date_debut)
-            );
-            """
-            cursor.execute(create_pos_periodes_travail_table_query)
+                create_pos_periodes_travail_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_periodes_travail (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
+                    porte_monnaie_id INT NULL,
+                    magasin VARCHAR(100) NOT NULL,
+                    pdv_id VARCHAR(100) NOT NULL,
+                    date_debut DATETIME NOT NULL,
+                    date_fin DATETIME NULL,
+                    montant_debut_prevu DECIMAL(10,2) DEFAULT 0,
+                    montant_debut_reel DECIMAL(10,2) DEFAULT 0,
+                    montant_fin_prevu DECIMAL(10,2) DEFAULT 0,
+                    montant_fin_reel DECIMAL(10,2) DEFAULT 0,
+                    montant_retrait DECIMAL(10,2) DEFAULT 0,
+                    montant_depot DECIMAL(10,2) DEFAULT 0,
+                    difference DECIMAL(10,2) DEFAULT 0,
+                    status VARCHAR(50) DEFAULT 'Ouvert',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (porte_monnaie_id) REFERENCES pos_porte_monnaie(id) ON DELETE SET NULL,
+                    INDEX idx_utilisateur_date (utilisateur_id, date_debut)
+                );
+                """
+                cursor.execute(create_pos_periodes_travail_table_query)
 
-            create_pos_retraits_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_retraits (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                periode_travail_id INT NOT NULL,
-                montant_retrait DECIMAL(10,2) DEFAULT 0,
-                date_retrait DATETIME NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (periode_travail_id) REFERENCES pos_periodes_travail(id) ON DELETE CASCADE
-            );
-            """
-            cursor.execute(create_pos_retraits_table_query)
+                create_pos_retraits_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_retraits (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    periode_travail_id INT NOT NULL,
+                    montant_retrait DECIMAL(10,2) DEFAULT 0,
+                    date_retrait DATETIME NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (periode_travail_id) REFERENCES pos_periodes_travail(id) ON DELETE CASCADE
+                );
+                """
+                cursor.execute(create_pos_retraits_table_query)
 
-            create_pos_depots_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_depots (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                periode_travail_id INT NOT NULL,
-                montant_depot DECIMAL(10,2) DEFAULT 0,
-                date_depot DATETIME NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (periode_travail_id) REFERENCES pos_periodes_travail(id) ON DELETE CASCADE
-            );
-            """
-            cursor.execute(create_pos_depots_table_query)
+                create_pos_depots_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_depots (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    periode_travail_id INT NOT NULL,
+                    montant_depot DECIMAL(10,2) DEFAULT 0,
+                    date_depot DATETIME NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (periode_travail_id) REFERENCES pos_periodes_travail(id) ON DELETE CASCADE
+                );
+                """
+                cursor.execute(create_pos_depots_table_query)
 
-            # ============================================================
-            # TABLES HISTORIQUE POS
-            # ============================================================
+                # ============================================================
+                # TABLES HISTORIQUE POS
+                # ============================================================
 
-            create_pos_historique_modifications_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_historique_modifications (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                receipt_id INT NOT NULL,
-                utilisateur_id INT NOT NULL,
-                champ_modifie VARCHAR(100) NOT NULL,
-                ancienne_valeur VARCHAR(200),
-                nouvelle_valeur VARCHAR(200),
-                date_modification TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE,
-                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
-            );
-            """
-            cursor.execute(create_pos_historique_modifications_table_query)
+                create_pos_historique_modifications_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_historique_modifications (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    receipt_id INT NOT NULL,
+                    utilisateur_id INT NOT NULL,
+                    champ_modifie VARCHAR(100) NOT NULL,
+                    ancienne_valeur VARCHAR(200),
+                    nouvelle_valeur VARCHAR(200),
+                    date_modification TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                );
+                """
+                cursor.execute(create_pos_historique_modifications_table_query)
 
-            create_pos_historique_suppressions_table_query = """
-            CREATE TABLE IF NOT EXISTS pos_historique_suppressions (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                receipt_id INT NOT NULL,
-                utilisateur_id INT NOT NULL,
-                recu_numero VARCHAR(50),
-                montant_original DECIMAL(10,2),
-                raison TEXT,
-                date_suppression TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
-            );
-            """
-            cursor.execute(create_pos_historique_suppressions_table_query)
+                create_pos_historique_suppressions_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_historique_suppressions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    receipt_id INT NOT NULL,
+                    utilisateur_id INT NOT NULL,
+                    recu_numero VARCHAR(50),
+                    montant_original DECIMAL(10,2),
+                    raison TEXT,
+                    date_suppression TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                );
+                """
+                cursor.execute(create_pos_historique_suppressions_table_query)
 
             logger.info("✅ Tables POS (Point de Vente) créées/vérifiées avec succès.")
 
@@ -16574,6 +16562,21 @@ class ReceiptPOS:
             logger.error(f"Erreur récupération receipts: {e}")
             return []
 
+    def get_receipt_open(self, user_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT r.*, c.nom_client AS client_nom, d.nom AS discount_nom
+                    FROM pos_receipts r
+                    LEFT JOIN pos_clients c ON r.id_client = c.id
+                    LEFT JOIN pos_discounts d ON r.discount_id = d.id
+                    WHERE r.utilisateur_id = %s AND r.status = 'open'
+                """, (user_id,))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur récupération receipt ouvert {user_id}: {e}")
+            return None
+
     def creer_vente(self, user_id: int, data: Dict, compte_bancaire_id: int) -> Tuple[bool, str, Optional[int]]:
         """
         ⭐ MÉTHODE PRINCIPALE : Crée une vente POS avec transaction financière.
@@ -16794,6 +16797,22 @@ class ReceiptPOS:
         except Exception as e:
             logger.error(f"Erreur annulation vente: {e}")
             return False, f"Erreur: {str(e)}"
+
+    def get_receipt_open(self, user_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT r.*, c.nom_client AS client_nom, d.nom AS discount_nom
+                    FROM pos_receipts r 
+                    LEFT JOIN pos_clients c ON r.id_client = c.id
+                    LEFT JOIN pos_discounts d ON r.discount_id = d.id
+                    WHERE r.utilisateur_id = %s AND r.status = 'open'
+                    """)
+                return cursor.fetchall()
+        except e as Exception
+            logger.error(f"Erreur dans la requete: {e}")
+            return {}
+                    
 
     def get_stats(self, user_id: int, date_from: str, date_to: str) -> Dict:
         """Statistiques de vente sur une période"""
