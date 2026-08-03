@@ -994,9 +994,476 @@ class DatabaseManager:
                 FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
                 );"""
                 cursor.execute(create_entreprise_table_query)
+            # ============================================================
+            # TABLES POS (Point de Vente / Caisse)
+            # ============================================================
 
+            # Table Magasins (entités commerciales liées à l'entreprise)
+            create_pos_magasins_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_magasins (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                utilisateur_id INT NOT NULL,
+                nom_magasin VARCHAR(100) NOT NULL,
+                adresse VARCHAR(200),
+                ville VARCHAR(200),
+                canton VARCHAR(100),
+                code_postal VARCHAR(20),
+                pays VARCHAR(100) DEFAULT 'Suisse',
+                telephone VARCHAR(20),
+                email VARCHAR(100),
+                description TEXT,
+                actif BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+            );
+            """
+            cursor.execute(create_pos_magasins_table_query)
 
-                cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
+            # Table Points de vente (caisses physiques dans un magasin)
+            create_pos_points_de_vente_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_points_de_vente (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                magasin_id INT NOT NULL,
+                nom_pdv VARCHAR(100) NOT NULL,
+                description TEXT,
+                actif BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE CASCADE
+            );
+            """
+            cursor.execute(create_pos_points_de_vente_table_query)
+
+            # Table Porte-monnaie (appareil de caisse relié à un compte bancaire)
+            # 🔗 Lien vers le système financier : chaque porte-monnaie est relié à un compte principal
+            create_pos_porte_monnaie_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_porte_monnaie (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                utilisateur_id INT NOT NULL,
+                pdv_id INT NOT NULL,
+                nom_porte_monnaie VARCHAR(100) NOT NULL,
+                compte_bancaire_id INT NULL COMMENT 'Lien vers comptes_principaux.id',
+                solde_caisse DECIMAL(15,2) DEFAULT 0.00,
+                devise VARCHAR(3) DEFAULT 'CHF',
+                actif BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                FOREIGN KEY (pdv_id) REFERENCES pos_points_de_vente(id) ON DELETE CASCADE,
+                FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id) ON DELETE SET NULL
+            );
+            """
+            cursor.execute(create_pos_porte_monnaie_table_query)
+
+            # Table Catégories POS
+            create_pos_categories_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_categories (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                utilisateur_id INT NOT NULL,
+                nom_categorie VARCHAR(100) NOT NULL,
+                description TEXT,
+                couleur VARCHAR(7) DEFAULT '#3498db',
+                icone VARCHAR(50) DEFAULT 'tag',
+                ordre INT DEFAULT 0,
+                actif BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                UNIQUE KEY unique_categorie_user (utilisateur_id, nom_categorie)
+            );
+            """
+            cursor.execute(create_pos_categories_table_query)
+
+            # Table Sous-catégories POS
+            create_pos_sous_categories_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_sous_categories (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                id_categorie INT NOT NULL,
+                nom_sous_categorie VARCHAR(100) NOT NULL,
+                description TEXT,
+                ordre INT DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (id_categorie) REFERENCES pos_categories(id) ON DELETE CASCADE
+            );
+            """
+            cursor.execute(create_pos_sous_categories_table_query)
+
+            # Table Taxes POS (TVA, etc.)
+            create_pos_taxes_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_taxes (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                utilisateur_id INT NOT NULL,
+                nom VARCHAR(100) NOT NULL,
+                taux DECIMAL(5,2) NOT NULL,
+                date_debut DATE NOT NULL,
+                date_fin DATE NULL,
+                est_actif BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                UNIQUE KEY unique_taxe_user (utilisateur_id, nom)
+            );
+            """
+            cursor.execute(create_pos_taxes_table_query)
+
+            # Table Modes de paiement (Espèces, Carte, Twint, etc.)
+            create_pos_modes_paiement_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_modes_paiement (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                utilisateur_id INT NOT NULL,
+                nom VARCHAR(50) NOT NULL,
+                description TEXT,
+                icone VARCHAR(50) DEFAULT 'credit-card',
+                couleur VARCHAR(7) DEFAULT '#28a745',
+                est_actif BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                UNIQUE KEY unique_mode_user (utilisateur_id, nom)
+            );
+            """
+            cursor.execute(create_pos_modes_paiement_table_query)
+
+            # Table Options restaurant (Sur place, À emporter, Livré)
+            create_pos_restaurant_options_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_restaurant_options (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                utilisateur_id INT NOT NULL,
+                nom VARCHAR(50) NOT NULL,
+                description TEXT,
+                icone VARCHAR(50) DEFAULT 'utensils',
+                est_actif BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                UNIQUE KEY unique_option_user (utilisateur_id, nom)
+            );
+            """
+            cursor.execute(create_pos_restaurant_options_table_query)
+
+            # Table Réductions / Remises
+            create_pos_discounts_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_discounts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                utilisateur_id INT NOT NULL,
+                nom VARCHAR(100) NOT NULL,
+                type_reduction VARCHAR(20) NOT NULL,
+                valeur DECIMAL(10,2),
+                est_actif BOOLEAN DEFAULT TRUE,
+                acces_restreint BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+            );
+            """
+            cursor.execute(create_pos_discounts_table_query)
+
+            # Table Clients POS
+            create_pos_clients_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_clients (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                utilisateur_id INT NOT NULL,
+                nom_client VARCHAR(200) NOT NULL,
+                numero_client VARCHAR(50),
+                telephone VARCHAR(50),
+                ville VARCHAR(200),
+                code_postal VARCHAR(20),
+                canton VARCHAR(200),
+                pays VARCHAR(200) DEFAULT 'Suisse',
+                remarque VARCHAR(250),
+                code_client VARCHAR(200),
+                email VARCHAR(100),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                INDEX idx_nom_client (nom_client),
+                INDEX idx_utilisateur (utilisateur_id)
+            );
+            """
+            cursor.execute(create_pos_clients_table_query)
+
+            # Table Articles (produits vendus)
+            create_pos_articles_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_articles (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                utilisateur_id INT NOT NULL,
+                id_categorie INT NOT NULL,
+                id_sous_categorie INT NULL,
+                nom_article VARCHAR(200) NOT NULL,
+                description TEXT,
+                vendu_type VARCHAR(50) DEFAULT 'piece',
+                prix_unitaire DECIMAL(10,2) DEFAULT 0,
+                cout_unitaire DECIMAL(10,2) DEFAULT 0,
+                stock INT DEFAULT 0,
+                stock_alerte INT DEFAULT 0,
+                is_variable_price BOOLEAN DEFAULT FALSE,
+                variante VARCHAR(100),
+                code_barre VARCHAR(100),
+                icone VARCHAR(50) DEFAULT 'box',
+                couleur VARCHAR(7) DEFAULT '#6c757d',
+                actif BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                FOREIGN KEY (id_categorie) REFERENCES pos_categories(id),
+                FOREIGN KEY (id_sous_categorie) REFERENCES pos_sous_categories(id) ON DELETE SET NULL,
+                INDEX idx_nom_article (nom_article),
+                INDEX idx_utilisateur (utilisateur_id)
+            );
+            """
+            cursor.execute(create_pos_articles_table_query)
+
+            # Table Variantes d'articles (tailles, couleurs, etc.)
+            create_pos_variantes_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_variantes (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                article_id INT NOT NULL,
+                nom VARCHAR(100) NOT NULL,
+                option_name VARCHAR(100),
+                prix DECIMAL(10,2) DEFAULT 0,
+                cout DECIMAL(10,2) DEFAULT 0,
+                stock INT DEFAULT 0,
+                code_barre VARCHAR(100),
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (article_id) REFERENCES pos_articles(id) ON DELETE CASCADE
+            );
+            """
+            cursor.execute(create_pos_variantes_table_query)
+
+            # Table Modificateurs (options supplémentaires)
+            create_pos_modificateurs_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_modificateurs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                utilisateur_id INT NOT NULL,
+                nom_modificateur VARCHAR(200) NOT NULL,
+                prix_modificateur DECIMAL(10,2) DEFAULT 0,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                INDEX idx_nom_modificateur (nom_modificateur)
+            );
+            """
+            cursor.execute(create_pos_modificateurs_table_query)
+
+            # Table Options de modificateurs
+            create_pos_option_modificateurs_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_option_modificateurs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                nom_option VARCHAR(200) NOT NULL,
+                id_article INT NULL,
+                id_modificateur INT NULL,
+                prix_supplement DECIMAL(10,2) DEFAULT 0,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (id_article) REFERENCES pos_articles(id) ON DELETE CASCADE,
+                FOREIGN KEY (id_modificateur) REFERENCES pos_modificateurs(id) ON DELETE CASCADE
+            );
+            """
+            cursor.execute(create_pos_option_modificateurs_table_query)
+
+            # ============================================================
+            # TABLES DE LIAISON POS (Many-to-Many)
+            # ============================================================
+
+            # Liaison Article ↔ Taxe (avec historique de dates)
+            create_pos_article_taxes_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_article_taxes (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                article_id INT NOT NULL,
+                taxe_id INT NOT NULL,
+                date_debut DATE NOT NULL,
+                date_fin DATE NULL,
+                est_actuelle BOOLEAN DEFAULT FALSE,
+                FOREIGN KEY (article_id) REFERENCES pos_articles(id) ON DELETE CASCADE,
+                FOREIGN KEY (taxe_id) REFERENCES pos_taxes(id) ON DELETE CASCADE,
+                INDEX idx_article (article_id),
+                INDEX idx_taxe (taxe_id)
+            );
+            """
+            cursor.execute(create_pos_article_taxes_table_query)
+
+            # Liaison Article ↔ Modificateur
+            create_pos_article_modificateurs_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_article_modificateurs (
+                article_id INT NOT NULL,
+                modificateur_id INT NOT NULL,
+                PRIMARY KEY (article_id, modificateur_id),
+                FOREIGN KEY (article_id) REFERENCES pos_articles(id) ON DELETE CASCADE,
+                FOREIGN KEY (modificateur_id) REFERENCES pos_modificateurs(id) ON DELETE CASCADE
+            );
+            """
+            cursor.execute(create_pos_article_modificateurs_table_query)
+
+            # ============================================================
+            # TABLE RECEIPTS (Reçus / Tickets de caisse)
+            # 🔗 LIEN AVEC TRANSACTIONS FINANCIÈRES
+            # ============================================================
+            create_pos_receipts_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_receipts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                utilisateur_id INT NOT NULL,
+                porte_monnaie_id INT NULL COMMENT 'Lien vers le porte-monnaie utilisé',
+                date DATETIME NOT NULL,
+                recu_numero VARCHAR(50) NOT NULL,
+                receipt_type VARCHAR(50) DEFAULT 'Vente',
+                ventes_brutes DECIMAL(10,2) DEFAULT 0,
+                reduction DECIMAL(10,2) DEFAULT 0,
+                ventes_nettes DECIMAL(10,2) DEFAULT 0,
+                taxes DECIMAL(10,2) DEFAULT 0,
+                tips DECIMAL(10,2) DEFAULT 0,
+                total_collecte DECIMAL(10,2) DEFAULT 0,
+                cout_marchandises DECIMAL(10,2) DEFAULT 0,
+                marge_brute DECIMAL(10,2) DEFAULT 0,
+                description TEXT,
+                restaurant_option_id INT NULL,
+                pdv VARCHAR(100),
+                magasin VARCHAR(100),
+                nom_du_caissier VARCHAR(100),
+                nom_du_client VARCHAR(200),
+                numero_client VARCHAR(50),
+                id_client INT NULL,
+                discount_id INT NULL,
+                discount_amount DECIMAL(10,2) DEFAULT 0,
+                status VARCHAR(50) DEFAULT 'Fermé',
+                cloture_at DATETIME NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                -- 🔗 LIENS VERS VOTRE SYSTÈME FINANCIER EXISTANT
+                transaction_id INT NULL COMMENT 'Lien vers la transaction financière créée',
+                compte_bancaire_id INT NULL COMMENT 'Compte bancaire où l''argent est encaissé',
+                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                FOREIGN KEY (porte_monnaie_id) REFERENCES pos_porte_monnaie(id) ON DELETE SET NULL,
+                FOREIGN KEY (restaurant_option_id) REFERENCES pos_restaurant_options(id) ON DELETE SET NULL,
+                FOREIGN KEY (id_client) REFERENCES pos_clients(id) ON DELETE SET NULL,
+                FOREIGN KEY (discount_id) REFERENCES pos_discounts(id) ON DELETE SET NULL,
+                FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
+                FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id) ON DELETE SET NULL,
+                INDEX idx_recu_numero (recu_numero),
+                INDEX idx_date (date),
+                INDEX idx_caissier (nom_du_caissier),
+                INDEX idx_utilisateur (utilisateur_id),
+                INDEX idx_transaction (transaction_id),
+                INDEX idx_client (id_client),
+                INDEX idx_porte_monnaie (porte_monnaie_id)
+            );
+            """
+            cursor.execute(create_pos_receipts_table_query)
+
+            # Table Items du reçu (articles vendus dans un ticket)
+            create_pos_receipt_items_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_receipt_items (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                receipt_id INT NOT NULL,
+                article_id INT NOT NULL,
+                variante_id INT NULL,
+                quantite INT DEFAULT 1,
+                prix_unitaire DECIMAL(10,2) DEFAULT 0,
+                total_ligne DECIMAL(10,2) DEFAULT 0,
+                taux_taxe_applique DECIMAL(5,2) DEFAULT 0,
+                FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE,
+                FOREIGN KEY (article_id) REFERENCES pos_articles(id),
+                FOREIGN KEY (variante_id) REFERENCES pos_variantes(id) ON DELETE SET NULL,
+                INDEX idx_receipt (receipt_id)
+            );
+            """
+            cursor.execute(create_pos_receipt_items_table_query)
+
+            # Table Paiements d'un reçu
+            create_pos_payments_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_payments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                receipt_id INT NOT NULL,
+                mode_paiement_id INT NOT NULL,
+                montant DECIMAL(10,2) DEFAULT 0,
+                est_remboursement BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE,
+                FOREIGN KEY (mode_paiement_id) REFERENCES pos_modes_paiement(id),
+                INDEX idx_receipt (receipt_id)
+            );
+            """
+            cursor.execute(create_pos_payments_table_query)
+
+            # ============================================================
+            # TABLES PÉRIODES DE TRAVAIL (Ouverture/fermeture de caisse)
+            # ============================================================
+
+            create_pos_periodes_travail_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_periodes_travail (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                utilisateur_id INT NOT NULL,
+                porte_monnaie_id INT NULL,
+                magasin VARCHAR(100) NOT NULL,
+                pdv_id VARCHAR(100) NOT NULL,
+                date_debut DATETIME NOT NULL,
+                date_fin DATETIME NULL,
+                montant_debut_prevu DECIMAL(10,2) DEFAULT 0,
+                montant_debut_reel DECIMAL(10,2) DEFAULT 0,
+                montant_fin_prevu DECIMAL(10,2) DEFAULT 0,
+                montant_fin_reel DECIMAL(10,2) DEFAULT 0,
+                montant_retrait DECIMAL(10,2) DEFAULT 0,
+                montant_depot DECIMAL(10,2) DEFAULT 0,
+                difference DECIMAL(10,2) DEFAULT 0,
+                status VARCHAR(50) DEFAULT 'Ouvert',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                FOREIGN KEY (porte_monnaie_id) REFERENCES pos_porte_monnaie(id) ON DELETE SET NULL,
+                INDEX idx_utilisateur_date (utilisateur_id, date_debut)
+            );
+            """
+            cursor.execute(create_pos_periodes_travail_table_query)
+
+            create_pos_retraits_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_retraits (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                periode_travail_id INT NOT NULL,
+                montant_retrait DECIMAL(10,2) DEFAULT 0,
+                date_retrait DATETIME NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (periode_travail_id) REFERENCES pos_periodes_travail(id) ON DELETE CASCADE
+            );
+            """
+            cursor.execute(create_pos_retraits_table_query)
+
+            create_pos_depots_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_depots (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                periode_travail_id INT NOT NULL,
+                montant_depot DECIMAL(10,2) DEFAULT 0,
+                date_depot DATETIME NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (periode_travail_id) REFERENCES pos_periodes_travail(id) ON DELETE CASCADE
+            );
+            """
+            cursor.execute(create_pos_depots_table_query)
+
+            # ============================================================
+            # TABLES HISTORIQUE POS
+            # ============================================================
+
+            create_pos_historique_modifications_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_historique_modifications (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                receipt_id INT NOT NULL,
+                utilisateur_id INT NOT NULL,
+                champ_modifie VARCHAR(100) NOT NULL,
+                ancienne_valeur VARCHAR(200),
+                nouvelle_valeur VARCHAR(200),
+                date_modification TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE,
+                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+            );
+            """
+            cursor.execute(create_pos_historique_modifications_table_query)
+
+            create_pos_historique_suppressions_table_query = """
+            CREATE TABLE IF NOT EXISTS pos_historique_suppressions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                receipt_id INT NOT NULL,
+                utilisateur_id INT NOT NULL,
+                recu_numero VARCHAR(50),
+                montant_original DECIMAL(10,2),
+                raison TEXT,
+                date_suppression TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+            );
+            """
+            cursor.execute(create_pos_historique_suppressions_table_query)
+
+            logger.info("✅ Tables POS (Point de Vente) créées/vérifiées avec succès.")
+
+            cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
             logger.info("Toutes les tables ont été vérifiées/créées avec succès.")
             print("✅ Toutes les tables ont été créées ou vérifiées.")
         except Exception as e:
@@ -15128,6 +15595,1450 @@ class Entreprise:
             logger.error(f"Pas d'entreprise pour l'utilisateur {user_id} : {e}")
             return False
 
+# ============================================================
+# MODULE POS (Point de Vente / Caisse)
+# ============================================================
+
+class MagasinPOS:
+    """
+    Gestion des magasins.
+    Lien : Un utilisateur a une Entreprise (via entreprise_model), 
+           et cette entreprise peut avoir plusieurs Magasins.
+    """
+    def __init__(self, db):
+        self.db = db
+
+    def create(self, user_id: int, data: Dict) -> Optional[int]:
+        """Crée un nouveau magasin pour l'utilisateur"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pos_magasins 
+                    (utilisateur_id, nom_magasin, adresse, ville, canton, 
+                     code_postal, pays, telephone, email, description)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    user_id,
+                    data['nom_magasin'],
+                    data.get('adresse'),
+                    data.get('ville'),
+                    data.get('canton'),
+                    data.get('code_postal'),
+                    data.get('pays', 'Suisse'),
+                    data.get('telephone'),
+                    data.get('email'),
+                    data.get('description')
+                ))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur création magasin: {e}")
+            return None
+
+    def get_by_user(self, user_id: int) -> List[Dict]:
+        """Récupère tous les magasins d'un utilisateur"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT m.*, 
+                           (SELECT COUNT(*) FROM pos_points_devente WHERE magasin_id = m.id) as nb_pdv
+                    FROM pos_magasins m
+                    WHERE m.utilisateur_id = %s
+                    ORDER BY m.nom_magasin
+                """, (user_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération magasins: {e}")
+            return []
+
+    def get_by_id(self, magasin_id: int, user_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_magasins 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (magasin_id, user_id))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur récupération magasin {magasin_id}: {e}")
+            return None
+
+    def update(self, magasin_id: int, user_id: int, data: Dict) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_magasins 
+                    SET nom_magasin = %s, adresse = %s, ville = %s, canton = %s,
+                        code_postal = %s, pays = %s, telephone = %s, email = %s,
+                        description = %s
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (
+                    data['nom_magasin'], data.get('adresse'), data.get('ville'),
+                    data.get('canton'), data.get('code_postal'), data.get('pays', 'Suisse'),
+                    data.get('telephone'), data.get('email'), data.get('description'),
+                    magasin_id, user_id
+                ))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur mise à jour magasin: {e}")
+            return False
+
+    def delete(self, magasin_id: int, user_id: int) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute(
+                    "DELETE FROM pos_magasins WHERE id = %s AND utilisateur_id = %s",
+                    (magasin_id, user_id)
+                )
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur suppression magasin: {e}")
+            return False
+
+
+class PointDeVentePOS:
+    """
+    Gestion des points de vente (caisses physiques).
+    Lien : Un PointDeVente appartient à un Magasin.
+    """
+    def __init__(self, db):
+        self.db = db
+
+    def create(self, user_id: int, magasin_id: int, data: Dict) -> Optional[int]:
+        try:
+            with self.db.get_cursor() as cursor:
+                # Vérifier que le magasin appartient à l'utilisateur
+                cursor.execute("""
+                    SELECT id FROM pos_magasins 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (magasin_id, user_id))
+                if not cursor.fetchone():
+                    return None
+                
+                cursor.execute("""
+                    INSERT INTO pos_points_de_vente (magasin_id, nom_pdv)
+                    VALUES (%s, %s)
+                """, (magasin_id, data['nom_pdv']))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur création PDV: {e}")
+            return None
+
+    def get_by_magasin(self, magasin_id: int, user_id: int) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT pdv.*, m.nom_magasin
+                    FROM pos_points_de_vente pdv
+                    JOIN pos_magasins m ON pdv.magasin_id = m.id
+                    WHERE pdv.magasin_id = %s AND m.utilisateur_id = %s
+                    ORDER BY pdv.nom_pdv
+                """, (magasin_id, user_id))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération PDV: {e}")
+            return []
+
+    def get_by_id(self, pdv_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT pdv.*, m.nom_magasin, m.utilisateur_id
+                    FROM pos_points_de_vente pdv
+                    JOIN pos_magasins m ON pdv.magasin_id = m.id
+                    WHERE pdv.id = %s
+                """, (pdv_id,))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur récupération PDV {pdv_id}: {e}")
+            return None
+
+    def delete(self, pdv_id: int, user_id: int) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    DELETE FROM pos_points_de_vente 
+                    WHERE id = %s AND magasin_id IN (
+                        SELECT id FROM pos_magasins WHERE utilisateur_id = %s
+                    )
+                """, (pdv_id, user_id))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur suppression PDV: {e}")
+            return False
+
+
+class CategoriePOS:
+    """Catégories d'articles POS"""
+    def __init__(self, db):
+        self.db = db
+
+    def create(self, user_id: int, nom: str, description: str = "") -> Optional[int]:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pos_categories (utilisateur_id, nom_categorie, description)
+                    VALUES (%s, %s, %s)
+                """, (user_id, nom, description))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur création catégorie POS: {e}")
+            return None
+
+    def get_all(self, user_id: int) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT c.*, 
+                           (SELECT COUNT(*) FROM pos_articles WHERE id_categorie = c.id) as nb_articles
+                    FROM pos_categories c
+                    WHERE c.utilisateur_id = %s
+                    ORDER BY c.nom_categorie
+                """, (user_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération catégories POS: {e}")
+            return []
+
+    def get_by_id(self, categorie_id: int, user_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_categories 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (categorie_id, user_id))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur récupération catégorie POS: {e}")
+            return None
+
+    def update(self, categorie_id: int, user_id: int, data: Dict) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_categories 
+                    SET nom_categorie = %s, description = %s
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (data['nom_categorie'], data.get('description', ''), categorie_id, user_id))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur mise à jour catégorie POS: {e}")
+            return False
+
+    def delete(self, categorie_id: int, user_id: int) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                # Vérifier qu'il n'y a pas d'articles liés
+                cursor.execute("""
+                    SELECT COUNT(*) as cnt FROM pos_articles WHERE id_categorie = %s
+                """, (categorie_id,))
+                if cursor.fetchone()['cnt'] > 0:
+                    return False
+                cursor.execute("""
+                    DELETE FROM pos_categories 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (categorie_id, user_id))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur suppression catégorie POS: {e}")
+            return False
+
+
+class SousCategoriePOS:
+    """Sous-catégories d'articles POS"""
+    def __init__(self, db):
+        self.db = db
+
+    def create(self, id_categorie: int, nom: str, description: str = "") -> Optional[int]:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pos_sous_categories (id_categorie, nom_sous_categorie, description)
+                    VALUES (%s, %s, %s)
+                """, (id_categorie, nom, description))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur création sous-catégorie POS: {e}")
+            return None
+
+    def get_by_categorie(self, categorie_id: int) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_sous_categories 
+                    WHERE id_categorie = %s
+                    ORDER BY nom_sous_categorie
+                """, (categorie_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération sous-catégories: {e}")
+            return []
+
+    def delete(self, sous_categorie_id: int) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute(
+                    "DELETE FROM pos_sous_categories WHERE id = %s",
+                    (sous_categorie_id,)
+                )
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur suppression sous-catégorie: {e}")
+            return False
+
+
+class TaxePOS:
+    """
+    Gestion des taxes (TVA, etc.)
+    Lien : Peut être lié aux taux_tva existants pour cohérence
+    """
+    def __init__(self, db):
+        self.db = db
+
+    def create(self, user_id: int, data: Dict) -> Optional[int]:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pos_taxes 
+                    (utilisateur_id, nom, taux, date_debut, date_fin, est_actif)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    user_id,
+                    data['nom'],
+                    data['taux'],
+                    data.get('date_debut', date.today()),
+                    data.get('date_fin'),
+                    data.get('est_actif', True)
+                ))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur création taxe POS: {e}")
+            return None
+
+    def get_all(self, user_id: int, actif_only: bool = True) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                query = """
+                    SELECT * FROM pos_taxes 
+                    WHERE utilisateur_id = %s
+                """
+                if actif_only:
+                    query += " AND est_actif = TRUE"
+                query += " ORDER BY nom"
+                cursor.execute(query, (user_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération taxes POS: {e}")
+            return []
+
+    def get_taxe_active_for_article(self, article_id: int, date_ref: date = None) -> Optional[Dict]:
+        """Récupère la taxe active pour un article à une date donnée"""
+        if date_ref is None:
+            date_ref = date.today()
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT t.* 
+                    FROM pos_article_taxes at
+                    JOIN pos_taxes t ON at.taxe_id = t.id
+                    WHERE at.article_id = %s
+                      AND at.date_debut <= %s
+                      AND (at.date_fin >= %s OR at.date_fin IS NULL)
+                      AND t.est_actif = TRUE
+                    LIMIT 1
+                """, (article_id, date_ref, date_ref))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur récupération taxe active: {e}")
+            return None
+
+    def assigner_to_article(self, article_id: int, taxe_id: int, 
+                            date_debut: date, date_fin: date = None) -> bool:
+        """Assigne une taxe à un article avec période de validité"""
+        try:
+            with self.db.get_cursor() as cursor:
+                # Désactiver les anciennes liaisons
+                cursor.execute("""
+                    UPDATE pos_article_taxes 
+                    SET est_actuelle = FALSE 
+                    WHERE article_id = %s
+                """, (article_id,))
+                
+                cursor.execute("""
+                    INSERT INTO pos_article_taxes 
+                    (article_id, taxe_id, date_debut, date_fin, est_actuelle)
+                    VALUES (%s, %s, %s, %s, TRUE)
+                """, (article_id, taxe_id, date_debut, date_fin))
+                return True
+        except Exception as e:
+            logger.error(f"Erreur assignation taxe: {e}")
+            return False
+
+
+class ModePaiementPOS:
+    """Modes de paiement (Espèces, Carte, Twint, etc.)"""
+    def __init__(self, db):
+        self.db = db
+
+    def create(self, user_id: int, nom: str, description: str = "") -> Optional[int]:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pos_modes_paiement (utilisateur_id, nom, description)
+                    VALUES (%s, %s, %s)
+                """, (user_id, nom, description))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur création mode paiement POS: {e}")
+            return None
+
+    def get_all(self, user_id: int, actif_only: bool = True) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                query = "SELECT * FROM pos_modes_paiement WHERE utilisateur_id = %s"
+                if actif_only:
+                    query += " AND est_actif = TRUE"
+                query += " ORDER BY nom"
+                cursor.execute(query, (user_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération modes paiement: {e}")
+            return []
+
+    def update(self, mode_id: int, user_id: int, data: Dict) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_modes_paiement 
+                    SET nom = %s, description = %s, est_actif = %s
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (data['nom'], data.get('description', ''), 
+                      data.get('est_actif', True), mode_id, user_id))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur mise à jour mode paiement: {e}")
+            return False
+
+    def delete(self, mode_id: int, user_id: int) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    DELETE FROM pos_modes_paiement 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (mode_id, user_id))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur suppression mode paiement: {e}")
+            return False
+
+
+class RestaurantOptionPOS:
+    """Options de restauration (Sur place, À emporter, Livré)"""
+    def __init__(self, db):
+        self.db = db
+
+    def create(self, user_id: int, nom: str, description: str = "") -> Optional[int]:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pos_restaurant_options (utilisateur_id, nom, description)
+                    VALUES (%s, %s, %s)
+                """, (user_id, nom, description))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur création option restaurant: {e}")
+            return None
+
+    def get_all(self, user_id: int) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_restaurant_options 
+                    WHERE utilisateur_id = %s AND est_actif = TRUE
+                    ORDER BY nom
+                """, (user_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération options restaurant: {e}")
+            return []
+
+
+class DiscountPOS:
+    """Gestion des réductions (pourcentages ou montants fixes)"""
+    def __init__(self, db):
+        self.db = db
+
+    def create(self, user_id: int, data: Dict) -> Optional[int]:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pos_discounts 
+                    (utilisateur_id, nom, type_reduction, valeur, est_actif, acces_restreint)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    user_id,
+                    data['nom'],
+                    data['type_reduction'],  # 'percentage' ou 'fixed'
+                    data.get('valeur'),
+                    data.get('est_actif', True),
+                    data.get('acces_restreint', False)
+                ))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur création discount POS: {e}")
+            return None
+
+    def get_all(self, user_id: int, actif_only: bool = True) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                query = "SELECT * FROM pos_discounts WHERE utilisateur_id = %s"
+                if actif_only:
+                    query += " AND est_actif = TRUE"
+                query += " ORDER BY nom"
+                cursor.execute(query, (user_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération discounts: {e}")
+            return []
+
+    def calculer_reduction(self, discount_id: int, montant_brut: Decimal) -> Decimal:
+        """Calcule le montant de la réduction"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("SELECT * FROM pos_discounts WHERE id = %s", (discount_id,))
+                discount = cursor.fetchone()
+                if not discount:
+                    return Decimal('0')
+                
+                if discount['type_reduction'] == 'percentage':
+                    return (montant_brut * Decimal(str(discount['valeur'])) / Decimal('100')).quantize(Decimal('0.01'))
+                else:
+                    return Decimal(str(discount['valeur']))
+        except Exception as e:
+            logger.error(f"Erreur calcul réduction: {e}")
+            return Decimal('0')
+
+
+class ArticlePOS:
+    """
+    Gestion des articles vendus.
+    Lien : Peut avoir des variantes, taxes, modificateurs.
+    """
+    def __init__(self, db):
+        self.db = db
+        self.variante_model = VariantePOS(db)
+        self.taxe_model = TaxePOS(db)
+
+    def create(self, user_id: int, data: Dict) -> Optional[int]:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pos_articles 
+                    (utilisateur_id, id_categorie, id_sous_categorie, nom_article, 
+                     description, vendu_type, prix_unitaire, cout_unitaire, 
+                     stock, stock_alerte, is_variable_price, variante)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    user_id,
+                    data['id_categorie'],
+                    data.get('id_sous_categorie'),
+                    data['nom_article'],
+                    data.get('description'),
+                    data.get('vendu_type', 'piece'),
+                    data.get('prix_unitaire', 0),
+                    data.get('cout_unitaire', 0),
+                    data.get('stock', 0),
+                    data.get('stock_alerte', 0),
+                    data.get('is_variable_price', False),
+                    data.get('variante')
+                ))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur création article POS: {e}")
+            return None
+
+    def get_all(self, user_id: int, categorie_id: int = None) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                query = """
+                    SELECT a.*, c.nom_categorie, sc.nom_sous_categorie,
+                           (SELECT COUNT(*) FROM pos_variantes WHERE article_id = a.id AND is_active = TRUE) as nb_variantes
+                    FROM pos_articles a
+                    JOIN pos_categories c ON a.id_categorie = c.id
+                    LEFT JOIN pos_sous_categories sc ON a.id_sous_categorie = sc.id
+                    WHERE c.utilisateur_id = %s
+                """
+                params = [user_id]
+                if categorie_id:
+                    query += " AND a.id_categorie = %s"
+                    params.append(categorie_id)
+                query += " ORDER BY a.nom_article"
+                cursor.execute(query, params)
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération articles POS: {e}")
+            return []
+
+    def get_by_id(self, article_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT a.*, c.nom_categorie, sc.nom_sous_categorie
+                    FROM pos_articles a
+                    JOIN pos_categories c ON a.id_categorie = c.id
+                    LEFT JOIN pos_sous_categories sc ON a.id_sous_categorie = sc.id
+                    WHERE a.id = %s
+                """, (article_id,))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur récupération article {article_id}: {e}")
+            return None
+
+    def get_with_details(self, article_id: int) -> Optional[Dict]:
+        """Récupère un article avec ses variantes, taxes et modificateurs"""
+        article = self.get_by_id(article_id)
+        if not article:
+            return None
+        
+        article['variantes'] = self.variante_model.get_by_article(article_id)
+        article['taxe_active'] = self.taxe_model.get_taxe_active_for_article(article_id)
+        article['modificateurs'] = self._get_modificateurs(article_id)
+        return article
+
+    def _get_modificateurs(self, article_id: int) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT m.* 
+                    FROM pos_modificateurs m
+                    JOIN pos_article_modificateurs am ON m.id = am.modificateur_id
+                    WHERE am.article_id = %s
+                """, (article_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération modificateurs: {e}")
+            return []
+
+    def update(self, article_id: int, user_id: int, data: Dict) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_articles 
+                    SET id_categorie = %s, id_sous_categorie = %s, nom_article = %s,
+                        description = %s, vendu_type = %s, prix_unitaire = %s,
+                        cout_unitaire = %s, stock = %s, stock_alerte = %s,
+                        is_variable_price = %s, variante = %s
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (
+                    data['id_categorie'], data.get('id_sous_categorie'),
+                    data['nom_article'], data.get('description'),
+                    data.get('vendu_type', 'piece'), data.get('prix_unitaire', 0),
+                    data.get('cout_unitaire', 0), data.get('stock', 0),
+                    data.get('stock_alerte', 0), data.get('is_variable_price', False),
+                    data.get('variante'), article_id, user_id
+                ))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur mise à jour article: {e}")
+            return False
+
+    def update_stock(self, article_id: int, quantite: int) -> bool:
+        """Met à jour le stock (peut être positif ou négatif)"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_articles 
+                    SET stock = stock + %s 
+                    WHERE id = %s
+                """, (quantite, article_id))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur mise à jour stock: {e}")
+            return False
+
+    def delete(self, article_id: int, user_id: int) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                # Vérifier qu'il n'est pas utilisé dans des receipts
+                cursor.execute("""
+                    SELECT COUNT(*) as cnt FROM pos_receipt_items WHERE article_id = %s
+                """, (article_id,))
+                if cursor.fetchone()['cnt'] > 0:
+                    return False
+                cursor.execute("""
+                    DELETE FROM pos_articles 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (article_id, user_id))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur suppression article: {e}")
+            return False
+
+
+class VariantePOS:
+    """Variantes d'un article (tailles, couleurs, etc.)"""
+    def __init__(self, db):
+        self.db = db
+
+    def create(self, article_id: int, data: Dict) -> Optional[int]:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pos_variantes 
+                    (article_id, nom, option_name, prix, cout, stock, code_barre, is_active)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    article_id,
+                    data['nom'],
+                    data.get('option_name'),
+                    data.get('prix', 0),
+                    data.get('cout', 0),
+                    data.get('stock', 0),
+                    data.get('code_barre'),
+                    data.get('is_active', True)
+                ))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur création variante: {e}")
+            return None
+
+    def get_by_article(self, article_id: int) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_variantes 
+                    WHERE article_id = %s AND is_active = TRUE
+                    ORDER BY nom
+                """, (article_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération variantes: {e}")
+            return []
+
+    def get_by_code_barre(self, code_barre: str) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT v.*, a.nom_article, a.utilisateur_id
+                    FROM pos_variantes v
+                    JOIN pos_articles a ON v.article_id = a.id
+                    WHERE v.code_barre = %s AND v.is_active = TRUE
+                """, (code_barre,))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur récupération variante par code barre: {e}")
+            return None
+
+
+class ModificateurPOS:
+    """Modificateurs (suppléments : sans oignons, extra fromage, etc.)"""
+    def __init__(self, db):
+        self.db = db
+
+    def create(self, user_id: int, data: Dict) -> Optional[int]:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pos_modificateurs 
+                    (utilisateur_id, nom_modificateur, prix_modificateur, description)
+                    VALUES (%s, %s, %s, %s)
+                """, (
+                    user_id,
+                    data['nom_modificateur'],
+                    data.get('prix_modificateur', 0),
+                    data.get('description')
+                ))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur création modificateur: {e}")
+            return None
+
+    def get_all(self, user_id: int) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_modificateurs 
+                    WHERE utilisateur_id = %s
+                    ORDER BY nom_modificateur
+                """, (user_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération modificateurs: {e}")
+            return []
+
+    def assigner_to_article(self, article_id: int, modificateur_id: int) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT IGNORE INTO pos_article_modificateurs 
+                    (article_id, modificateur_id)
+                    VALUES (%s, %s)
+                """, (article_id, modificateur_id))
+                return True
+        except Exception as e:
+            logger.error(f"Erreur assignation modificateur: {e}")
+            return False
+
+
+class ClientPOS:
+    """
+    Gestion des clients de la caisse.
+    Lien : Statistiques calculées à partir des receipts.
+    """
+    def __init__(self, db):
+        self.db = db
+
+    def create(self, user_id: int, data: Dict) -> Optional[int]:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pos_clients 
+                    (utilisateur_id, nom_client, numero_client, telephone, ville,
+                     code_postal, canton, pays, remarque, code_client, email)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    user_id,
+                    data['nom_client'],
+                    data.get('numero_client'),
+                    data.get('telephone'),
+                    data.get('ville'),
+                    data.get('code_postal'),
+                    data.get('canton'),
+                    data.get('pays', 'Suisse'),
+                    data.get('remarque'),
+                    data.get('code_client'),
+                    data.get('email')
+                ))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur création client POS: {e}")
+            return None
+
+    def get_all(self, user_id: int, limit: int = 100) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT c.*,
+                           (SELECT COUNT(*) FROM pos_receipts WHERE id_client = c.id AND receipt_type = 'Vente') as nombre_visites,
+                           (SELECT COALESCE(SUM(total_collecte), 0) FROM pos_receipts WHERE id_client = c.id AND receipt_type = 'Vente') as total_depense
+                    FROM pos_clients c
+                    WHERE c.utilisateur_id = %s
+                    ORDER BY c.nom_client
+                    LIMIT %s
+                """, (user_id, limit))
+                clients = cursor.fetchall()
+                for client in clients:
+                    client['panier_moyen'] = (
+                        float(client['total_depense']) / client['nombre_visites'] 
+                        if client['nombre_visites'] > 0 else 0
+                    )
+                    client['segment'] = self._calculer_segment(client)
+                return clients
+        except Exception as e:
+            logger.error(f"Erreur récupération clients POS: {e}")
+            return []
+
+    def _calculer_segment(self, client: Dict) -> str:
+        if client['nombre_visites'] == 0:
+            return "Inactif"
+        elif client['nombre_visites'] == 1:
+            return "Nouveau"
+        elif client['nombre_visites'] <= 5:
+            return "Occasionnel"
+        elif client['nombre_visites'] <= 15:
+            return "Régulier"
+        elif float(client['total_depense']) > 1000:
+            return "VIP"
+        return "Fidèle"
+
+    def get_by_id(self, client_id: int, user_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_clients 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (client_id, user_id))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur récupération client: {e}")
+            return None
+
+    def search(self, user_id: int, query: str, limit: int = 20) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_clients 
+                    WHERE utilisateur_id = %s 
+                      AND (nom_client LIKE %s OR telephone LIKE %s OR email LIKE %s)
+                    ORDER BY nom_client
+                    LIMIT %s
+                """, (user_id, f"%{query}%", f"%{query}%", f"%{query}%", limit))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur recherche client: {e}")
+            return []
+
+
+class ReceiptPOS:
+    """
+    ⭐ CLASSE CLÉ : Gestion des tickets de caisse.
+    
+    LIENS AVEC LE SYSTÈME EXISTANT :
+    - transaction_id → transactions.id (transaction financière créée)
+    - compte_bancaire_id → comptes_principaux.id (où l'argent est encaissé)
+    - utilisateur_id → utilisateurs.id (caissier)
+    
+    FLUX :
+    1. Création du receipt (pos_receipts)
+    2. Création des items (pos_receipt_items)
+    3. Création des paiements (pos_payments)
+    4. 🔗 Création automatique d'une TransactionFinanciere
+    5. 🔗 Mise à jour du solde du compte bancaire
+    6. Décrémentation du stock des articles
+    """
+    def __init__(self, db):
+        self.db = db
+        self.transaction_model = TransactionFinanciere(db)
+        self.article_model = ArticlePOS(db)
+
+    def get_by_id(self, receipt_id: int, user_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT r.*, 
+                           c.nom_client AS client_nom, c.email AS client_email,
+                           d.nom AS discount_nom,
+                           ro.nom AS restaurant_option_nom,
+                           t.id AS transaction_liee_id,
+                           t.montant AS transaction_montant,
+                           cp.nom_compte AS compte_bancaire_nom
+                    FROM pos_receipts r
+                    LEFT JOIN pos_clients c ON r.id_client = c.id
+                    LEFT JOIN pos_discounts d ON r.discount_id = d.id
+                    LEFT JOIN pos_restaurant_options ro ON r.restaurant_option_id = ro.id
+                    LEFT JOIN transactions t ON r.transaction_id = t.id
+                    LEFT JOIN comptes_principaux cp ON r.compte_bancaire_id = cp.id
+                    WHERE r.id = %s AND r.utilisateur_id = %s
+                """, (receipt_id, user_id))
+                receipt = cursor.fetchone()
+                if receipt:
+                    receipt['items'] = self._get_items(cursor, receipt_id)
+                    receipt['payments'] = self._get_payments(cursor, receipt_id)
+                return receipt
+        except Exception as e:
+            logger.error(f"Erreur récupération receipt {receipt_id}: {e}")
+            return None
+
+    def _get_items(self, cursor, receipt_id: int) -> List[Dict]:
+        cursor.execute("""
+            SELECT ri.*, a.nom_article, a.cout_unitaire,
+                   v.nom AS variante_nom
+            FROM pos_receipt_items ri
+            JOIN pos_articles a ON ri.article_id = a.id
+            LEFT JOIN pos_variantes v ON ri.variante_id = v.id
+            WHERE ri.receipt_id = %s
+        """, (receipt_id,))
+        return cursor.fetchall()
+
+    def _get_payments(self, cursor, receipt_id: int) -> List[Dict]:
+        cursor.execute("""
+            SELECT p.*, mp.nom AS mode_paiement_nom
+            FROM pos_payments p
+            JOIN pos_modes_paiement mp ON p.mode_paiement_id = mp.id
+            WHERE p.receipt_id = %s
+        """, (receipt_id,))
+        return cursor.fetchall()
+
+    def get_all(self, user_id: int, date_from: str = None, date_to: str = None, 
+                limit: int = 100) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                query = """
+                    SELECT r.*, c.nom_client AS client_nom, d.nom AS discount_nom
+                    FROM pos_receipts r
+                    LEFT JOIN pos_clients c ON r.id_client = c.id
+                    LEFT JOIN pos_discounts d ON r.discount_id = d.id
+                    WHERE r.utilisateur_id = %s
+                """
+                params = [user_id]
+                if date_from:
+                    query += " AND r.date >= %s"
+                    params.append(date_from)
+                if date_to:
+                    query += " AND r.date <= %s"
+                    params.append(date_to)
+                query += " ORDER BY r.date DESC LIMIT %s"
+                params.append(limit)
+                cursor.execute(query, params)
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération receipts: {e}")
+            return []
+
+    def creer_vente(self, user_id: int, data: Dict, compte_bancaire_id: int) -> Tuple[bool, str, Optional[int]]:
+        """
+        ⭐ MÉTHODE PRINCIPALE : Crée une vente POS avec transaction financière.
+        
+        data doit contenir :
+        - items: [{'article_id': int, 'quantite': int, 'prix_unitaire': float, 'variante_id': int?}, ...]
+        - payments: [{'mode_paiement_id': int, 'montant': float}, ...]
+        - pdv: str (nom du point de vente)
+        - magasin: str
+        - nom_du_caissier: str
+        - id_client: int? (optionnel)
+        - discount_id: int? (optionnel)
+        - restaurant_option_id: int? (optionnel)
+        - tips: float? (optionnel)
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                # 1. Calculer les totaux
+                ventes_brutes = Decimal('0')
+                cout_marchandises = Decimal('0')
+                total_taxes = Decimal('0')
+                items_data = []
+                
+                for item in data.get('items', []):
+                    cursor.execute("SELECT * FROM pos_articles WHERE id = %s", (item['article_id'],))
+                    article = cursor.fetchone()
+                    if not article:
+                        return False, f"Article {item['article_id']} introuvable", None
+                    
+                    prix = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
+                    qte = int(item.get('quantite', 1))
+                    total_ligne = prix * qte
+                    ventes_brutes += total_ligne
+                    cout_marchandises += Decimal(str(article['cout_unitaire'] or 0)) * qte
+                    
+                    # Calcul taxe
+                    taxe = self._get_taxe_active(cursor, item['article_id'])
+                    taux_taxe = Decimal('0')
+                    if taxe:
+                        taux_taxe = Decimal(str(taxe['taux']))
+                        total_taxes += total_ligne * (taux_taxe / Decimal('100'))
+                    
+                    items_data.append({
+                        'article_id': item['article_id'],
+                        'variante_id': item.get('variante_id'),
+                        'quantite': qte,
+                        'prix_unitaire': prix,
+                        'total_ligne': total_ligne,
+                        'taux_taxe': taux_taxe
+                    })
+                
+                # 2. Appliquer réduction
+                reduction = Decimal('0')
+                if data.get('discount_id'):
+                    cursor.execute("SELECT * FROM pos_discounts WHERE id = %s", (data['discount_id'],))
+                    discount = cursor.fetchone()
+                    if discount:
+                        if discount['type_reduction'] == 'percentage':
+                            reduction = ventes_brutes * (Decimal(str(discount['valeur'])) / Decimal('100'))
+                        else:
+                            reduction = Decimal(str(discount['valeur']))
+                
+                ventes_nettes = ventes_brutes - reduction
+                tips = Decimal(str(data.get('tips', 0)))
+                total_collecte = ventes_nettes + total_taxes + tips
+                marge_brute = ventes_nettes - cout_marchandises
+                
+                # 3. Générer numéro de reçu
+                recu_numero = f"V-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
+                
+                # 4. Insérer le receipt
+                cursor.execute("""
+                    INSERT INTO pos_receipts 
+                    (utilisateur_id, date, recu_numero, receipt_type, ventes_brutes, reduction, 
+                     ventes_nettes, taxes, tips, total_collecte, cout_marchandises, marge_brute,
+                     restaurant_option_id, pdv, magasin, nom_du_caissier,
+                     nom_du_client, numero_client, id_client, discount_id, discount_amount,
+                     status, compte_bancaire_id)
+                    VALUES (%s, NOW(), %s, 'Vente', %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Fermé', %s)
+                """, (
+                    user_id, recu_numero, float(ventes_brutes), float(reduction), float(ventes_nettes),
+                    float(total_taxes), float(tips), float(total_collecte),
+                    float(cout_marchandises), float(marge_brute),
+                    data.get('restaurant_option_id'), data.get('pdv'), data.get('magasin'),
+                    data.get('nom_du_caissier'), data.get('nom_du_client'),
+                    data.get('numero_client'), data.get('id_client'),
+                    data.get('discount_id'), float(reduction),
+                    compte_bancaire_id
+                ))
+                receipt_id = cursor.lastrowid
+                
+                # 5. Insérer les items et décrémenter le stock
+                for item in items_data:
+                    cursor.execute("""
+                        INSERT INTO pos_receipt_items 
+                        (receipt_id, article_id, variante_id, quantite, prix_unitaire, 
+                         total_ligne, taux_taxe_applique)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        receipt_id, item['article_id'], item['variante_id'],
+                        item['quantite'], float(item['prix_unitaire']),
+                        float(item['total_ligne']), float(item['taux_taxe'])
+                    ))
+                    
+                    # Décrémenter le stock
+                    cursor.execute("""
+                        UPDATE pos_articles SET stock = stock - %s WHERE id = %s
+                    """, (item['quantite'], item['article_id']))
+                
+                # 6. Insérer les paiements
+                for payment in data.get('payments', []):
+                    cursor.execute("""
+                        INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant)
+                        VALUES (%s, %s, %s)
+                    """, (receipt_id, payment['mode_paiement_id'], float(payment['montant'])))
+                
+                # 🔗 7. CRÉER LA TRANSACTION FINANCIÈRE LIÉE
+                # La vente est un ENCAISSEMENT (dépôt) dans le compte bancaire
+                success, msg, transaction_id = self.transaction_model._inserer_transaction_with_cursor(
+                    cursor=cursor,
+                    compte_type='compte_principal',
+                    compte_id=compte_bancaire_id,
+                    type_transaction='depot',
+                    montant=total_collecte,
+                    description=f"Vente POS {recu_numero} - {data.get('nom_du_caissier', '')}",
+                    user_id=user_id,
+                    date_transaction=datetime.now(),
+                    validate_balance=False
+                )
+                
+                if success and transaction_id:
+                    # 🔗 8. Lier le receipt à la transaction
+                    cursor.execute("""
+                        UPDATE pos_receipts SET transaction_id = %s WHERE id = %s
+                    """, (transaction_id, receipt_id))
+                    logger.info(f"✅ Vente {receipt_id} liée à transaction {transaction_id}")
+                
+                return True, "Vente créée avec succès", receipt_id
+                
+        except Exception as e:
+            logger.error(f"Erreur création vente POS: {e}", exc_info=True)
+            return False, f"Erreur: {str(e)}", None
+
+    def _get_taxe_active(self, cursor, article_id: int) -> Optional[Dict]:
+        date_ref = date.today()
+        cursor.execute("""
+            SELECT t.* FROM pos_article_taxes at
+            JOIN pos_taxes t ON at.taxe_id = t.id
+            WHERE at.article_id = %s AND at.date_debut <= %s
+              AND (at.date_fin >= %s OR at.date_fin IS NULL)
+            LIMIT 1
+        """, (article_id, date_ref, date_ref))
+        return cursor.fetchone()
+
+    def annuler_vente(self, receipt_id: int, user_id: int, raison: str = "") -> Tuple[bool, str]:
+        """
+        Annule une vente :
+        - Crée une transaction de remboursement
+        - Restaure le stock
+        - Marque le receipt comme annulé
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                # Récupérer le receipt
+                cursor.execute("""
+                    SELECT * FROM pos_receipts 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (receipt_id, user_id))
+                receipt = cursor.fetchone()
+                if not receipt:
+                    return False, "Receipt non trouvé"
+                
+                if receipt['status'] == 'Annulé':
+                    return False, "Receipt déjà annulé"
+                
+                # 🔗 Créer une transaction de remboursement (retrait)
+                if receipt['transaction_id'] and receipt['compte_bancaire_id']:
+                    success, msg, _ = self.transaction_model._inserer_transaction_with_cursor(
+                        cursor=cursor,
+                        compte_type='compte_principal',
+                        compte_id=receipt['compte_bancaire_id'],
+                        type_transaction='retrait',
+                        montant=Decimal(str(receipt['total_collecte'])),
+                        description=f"Annulation vente {receipt['recu_numero']} - {raison}",
+                        user_id=user_id,
+                        date_transaction=datetime.now(),
+                        validate_balance=False
+                    )
+                    if not success:
+                        return False, f"Erreur remboursement: {msg}"
+                
+                # Restaurer le stock
+                cursor.execute("""
+                    SELECT article_id, quantite FROM pos_receipt_items WHERE receipt_id = %s
+                """, (receipt_id,))
+                items = cursor.fetchall()
+                for item in items:
+                    cursor.execute("""
+                        UPDATE pos_articles SET stock = stock + %s WHERE id = %s
+                    """, (item['quantite'], item['article_id']))
+                
+                # Marquer comme annulé
+                cursor.execute("""
+                    UPDATE pos_receipts SET status = 'Annulé', cloture_at = NOW() WHERE id = %s
+                """, (receipt_id,))
+                
+                # Historique
+                cursor.execute("""
+                    INSERT INTO pos_historique_suppressions 
+                    (receipt_id, utilisateur_id, recu_numero, montant_original, raison)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (receipt_id, user_id, receipt['recu_numero'], 
+                      receipt['total_collecte'], raison))
+                
+                return True, "Vente annulée avec succès"
+                
+        except Exception as e:
+            logger.error(f"Erreur annulation vente: {e}")
+            return False, f"Erreur: {str(e)}"
+
+    def get_stats(self, user_id: int, date_from: str, date_to: str) -> Dict:
+        """Statistiques de vente sur une période"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*) as nb_ventes,
+                        COALESCE(SUM(ventes_brutes), 0) as total_brut,
+                        COALESCE(SUM(reduction), 0) as total_reductions,
+                        COALESCE(SUM(ventes_nettes), 0) as total_net,
+                        COALESCE(SUM(taxes), 0) as total_taxes,
+                        COALESCE(SUM(total_collecte), 0) as total_encaisse,
+                        COALESCE(SUM(marge_brute), 0) as total_marge,
+                        COALESCE(AVG(total_collecte), 0) as panier_moyen
+                    FROM pos_receipts
+                    WHERE utilisateur_id = %s 
+                      AND receipt_type = 'Vente'
+                      AND status != 'Annulé'
+                      AND date BETWEEN %s AND %s
+                """, (user_id, date_from, date_to))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur stats POS: {e}")
+            return {}
+
+
+class PeriodeTravailPOS:
+    """
+    Gestion des ouvertures/fermetures de caisse.
+    Lien : utilisateur qui a ouvert la caisse.
+    """
+    def __init__(self, db):
+        self.db = db
+        self.transaction_model = TransactionFinanciere(db)
+
+    def ouvrir_caisse(self, user_id: int, data: Dict) -> Optional[int]:
+        """
+        Ouvre une période de travail (caisse).
+        data: {magasin, pdv_id, montant_debut_prevu, montant_debut_reel}
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                # Vérifier qu'il n'y a pas déjà une période ouverte
+                cursor.execute("""
+                    SELECT id FROM pos_periodes_travail 
+                    WHERE utilisateur_id = %s AND status = 'Ouvert'
+                """, (user_id,))
+                if cursor.fetchone():
+                    return None  # Déjà une période ouverte
+                
+                cursor.execute("""
+                    INSERT INTO pos_periodes_travail 
+                    (utilisateur_id, magasin, pdv_id, date_debut, 
+                     montant_debut_prevu, montant_debut_reel, status)
+                    VALUES (%s, %s, %s, NOW(), %s, %s, 'Ouvert')
+                """, (
+                    user_id,
+                    data['magasin'],
+                    data['pdv_id'],
+                    data.get('montant_debut_prevu', 0),
+                    data.get('montant_debut_reel', 0)
+                ))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur ouverture caisse: {e}")
+            return None
+
+    def fermer_caisse(self, periode_id: int, user_id: int, data: Dict) -> Tuple[bool, str]:
+        """
+        Ferme une période de travail.
+        data: {montant_fin_prevu, montant_fin_reel}
+        Calcule la différence et crée les transactions de retrait/dépôt si nécessaire.
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_periodes_travail 
+                    WHERE id = %s AND utilisateur_id = %s AND status = 'Ouvert'
+                """, (periode_id, user_id))
+                periode = cursor.fetchone()
+                if not periode:
+                    return False, "Période non trouvée ou déjà fermée"
+                
+                montant_fin_reel = Decimal(str(data.get('montant_fin_reel', 0)))
+                montant_debut_reel = Decimal(str(periode['montant_debut_reel']))
+                
+                # Calculer les retraits et dépôts de la période
+                cursor.execute("""
+                    SELECT COALESCE(SUM(montant_retrait), 0) as total_retraits
+                    FROM pos_retraits WHERE periode_travail_id = %s
+                """, (periode_id,))
+                total_retraits = Decimal(str(cursor.fetchone()['total_retraits']))
+                
+                cursor.execute("""
+                    SELECT COALESCE(SUM(montant_depot), 0) as total_depots
+                    FROM pos_depots WHERE periode_travail_id = %s
+                """, (periode_id,))
+                total_depots = Decimal(str(cursor.fetchone()['total_depots']))
+                
+                # Calculer les ventes de la période
+                cursor.execute("""
+                    SELECT COALESCE(SUM(total_collecte), 0) as total_ventes
+                    FROM pos_receipts
+                    WHERE utilisateur_id = %s 
+                      AND date >= %s
+                      AND status != 'Annulé'
+                """, (user_id, periode['date_debut']))
+                total_ventes = Decimal(str(cursor.fetchone()['total_ventes']))
+                
+                # Différence = montant_fin_reel - (montant_debut_reel + ventes + depots - retraits)
+                attendu = montant_debut_reel + total_ventes + total_depots - total_retraits
+                difference = montant_fin_reel - attendu
+                
+                cursor.execute("""
+                    UPDATE pos_periodes_travail 
+                    SET date_fin = NOW(), 
+                        montant_fin_prevu = %s,
+                        montant_fin_reel = %s,
+                        montant_retrait = %s,
+                        montant_depot = %s,
+                        difference = %s,
+                        status = 'Fermé'
+                    WHERE id = %s
+                """, (
+                    data.get('montant_fin_prevu', 0),
+                    float(montant_fin_reel),
+                    float(total_retraits),
+                    float(total_depots),
+                    float(difference),
+                    periode_id
+                ))
+                
+                return True, f"Caisse fermée. Différence: {difference:.2f} CHF"
+                
+        except Exception as e:
+            logger.error(f"Erreur fermeture caisse: {e}")
+            return False, f"Erreur: {str(e)}"
+
+    def get_ouverte(self, user_id: int) -> Optional[Dict]:
+        """Récupère la période de travail ouverte de l'utilisateur"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_periodes_travail 
+                    WHERE utilisateur_id = %s AND status = 'Ouvert'
+                    ORDER BY date_debut DESC
+                    LIMIT 1
+                """, (user_id,))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur récupération période ouverte: {e}")
+            return None
+
+
+class MouvementCaissePOS:
+    """Gestion des retraits et dépôts en caisse"""
+    def __init__(self, db):
+        self.db = db
+        self.transaction_model = TransactionFinanciere(db)
+
+    def enregistrer_retrait(self, periode_id: int, user_id: int, montant: Decimal,
+                            compte_bancaire_id: int = None) -> Tuple[bool, str]:
+        """
+        Enregistre un retrait de caisse.
+        Si compte_bancaire_id fourni, crée une transaction de dépôt dans le compte.
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                # Vérifier la période
+                cursor.execute("""
+                    SELECT * FROM pos_periodes_travail 
+                    WHERE id = %s AND utilisateur_id = %s AND status = 'Ouvert'
+                """, (periode_id, user_id))
+                if not cursor.fetchone():
+                    return False, "Période non trouvée ou fermée"
+                
+                # Enregistrer le retrait
+                cursor.execute("""
+                    INSERT INTO pos_retraits (periode_travail_id, montant_retrait, date_retrait)
+                    VALUES (%s, %s, NOW())
+                """, (periode_id, float(montant)))
+                
+                # 🔗 Si compte bancaire fourni, créer une transaction de dépôt
+                if compte_bancaire_id:
+                    success, msg, _ = self.transaction_model._inserer_transaction_with_cursor(
+                        cursor=cursor,
+                        compte_type='compte_principal',
+                        compte_id=compte_bancaire_id,
+                        type_transaction='depot',
+                        montant=montant,
+                        description=f"Retrait caisse période {periode_id}",
+                        user_id=user_id,
+                        date_transaction=datetime.now(),
+                        validate_balance=False
+                    )
+                    if not success:
+                        return False, f"Retrait enregistré mais erreur transaction: {msg}"
+                
+                return True, "Retrait enregistré"
+                
+        except Exception as e:
+            logger.error(f"Erreur enregistrement retrait: {e}")
+            return False, f"Erreur: {str(e)}"
+
+    def enregistrer_depot(self, periode_id: int, user_id: int, montant: Decimal,
+                          compte_bancaire_id: int = None) -> Tuple[bool, str]:
+        """
+        Enregistre un dépôt en caisse (ex: fond de caisse).
+        Si compte_bancaire_id fourni, crée une transaction de retrait du compte.
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_periodes_travail 
+                    WHERE id = %s AND utilisateur_id = %s AND status = 'Ouvert'
+                """, (periode_id, user_id))
+                if not cursor.fetchone():
+                    return False, "Période non trouvée ou fermée"
+                
+                cursor.execute("""
+                    INSERT INTO pos_depots (periode_travail_id, montant_depot, date_depot)
+                    VALUES (%s, %s, NOW())
+                """, (periode_id, float(montant)))
+                
+                if compte_bancaire_id:
+                    success, msg, _ = self.transaction_model._inserer_transaction_with_cursor(
+                        cursor=cursor,
+                        compte_type='compte_principal',
+                        compte_id=compte_bancaire_id,
+                        type_transaction='retrait',
+                        montant=montant,
+                        description=f"Dépôt caisse période {periode_id}",
+                        user_id=user_id,
+                        date_transaction=datetime.now(),
+                        validate_balance=True
+                    )
+                    if not success:
+                        return False, f"Dépôt enregistré mais erreur transaction: {msg}"
+                
+                return True, "Dépôt enregistré"
+                
+        except Exception as e:
+            logger.error(f"Erreur enregistrement dépôt: {e}")
+            return False, f"Erreur: {str(e)}"
 
 class ModelManager:
     def __init__(self, db):
@@ -15248,6 +17159,64 @@ class ModelManager:
     @property
     def parametre_utilisateur_model(self):
         return self._get_model('parametre_utilisateur', ParametreUtilisateur)
+    @property
+    def magasin_pos_model(self):
+        return self._get_model('magasin_pos', MagasinPOS)
+    @property
+    def pdv_pos_model(self):
+        return self._get_model('pdv_pos', PointDeVentePOS)
+    
+    @property
+    def categorie_pos_model(self):
+        return self._get_model('categorie_pos', CategoriePOS)
+    
+    @property
+    def sous_categorie_pos_model(self):
+        return self._get_model('sous_categorie_pos', SousCategoriePOS)
+    
+    @property
+    def taxe_pos_model(self):
+        return self._get_model('taxe_pos', TaxePOS)
+    
+    @property
+    def mode_paiement_pos_model(self):
+        return self._get_model('mode_paiement_pos', ModePaiementPOS)
+    
+    @property
+    def restaurant_option_pos_model(self):
+        return self._get_model('restaurant_option_pos', RestaurantOptionPOS)
+    
+    @property
+    def discount_pos_model(self):
+        return self._get_model('discount_pos', DiscountPOS)
+    
+    @property
+    def article_pos_model(self):
+        return self._get_model('article_pos', ArticlePOS)
+    
+    @property
+    def variante_pos_model(self):
+        return self._get_model('variante_pos', VariantePOS)
+    
+    @property
+    def modificateur_pos_model(self):
+        return self._get_model('modificateur_pos', ModificateurPOS)
+    
+    @property
+    def client_pos_model(self):
+        return self._get_model('client_pos', ClientPOS)
+    
+    @property
+    def receipt_pos_model(self):
+        return self._get_model('receipt_pos', ReceiptPOS)
+    
+    @property
+    def periode_travail_pos_model(self):
+        return self._get_model('periode_travail_pos', PeriodeTravailPOS)
+    
+    @property
+    def mouvement_caisse_pos_model(self):
+        return self._get_model('mouvement_caisse_pos', MouvementCaissePOS)
     def get_user_by_username(self, username):
         """
         Récupère un utilisateur par nom d'utilisateur.
