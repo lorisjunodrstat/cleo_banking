@@ -1105,7 +1105,7 @@ class DatabaseManager:
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     receipt_id INT NOT NULL,
                     article_id INT NOT NULL,
-                    nom_article VARCHAR(200) NOT NULL
+                    nom_article VARCHAR(200) NOT NULL,
                     variante_id INT NULL,
                     quantite INT DEFAULT 1,
                     prix_unitaire DECIMAL(10,2) DEFAULT 0,
