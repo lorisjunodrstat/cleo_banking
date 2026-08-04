@@ -11334,7 +11334,7 @@ def pos_stats_by_article():
         logger.error(f"Erreur stats par article: {e}")
         articles = []
     
-    return render_template('pos/stats/by_article.html',
+    return render_template('pos/by_article.html',
                          articles=articles,
                          date_from=date_from,
                          date_to=date_to)
@@ -11375,7 +11375,7 @@ def pos_stats_by_category():
         logger.error(f"Erreur stats par catégorie: {e}")
         categories = []
     
-    return render_template('pos/stats/by_category.html',
+    return render_template('pos/by_category.html',
                          categories=categories,
                          date_from=date_from,
                          date_to=date_to)
@@ -11417,7 +11417,7 @@ def pos_stats_by_employee():
         logger.error(f"Erreur stats par employé: {e}")
         employees = []
     
-    return render_template('pos/stats/by_employee.html',
+    return render_template('pos/by_employee.html',
                          employees=employees,
                          date_from=date_from,
                          date_to=date_to)
@@ -11475,7 +11475,7 @@ def pos_stats_payment_methods():
         payment_data = []
         totals = {}
     
-    return render_template('pos/stats/payment_methods.html',
+    return render_template('pos/payment_methods.html',
                          payment_data=payment_data,
                          totals=totals,
                          date_from=date_from,
