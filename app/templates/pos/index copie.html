@@ -34,7 +34,7 @@
     </div>
     
     <button type="submit">Filtrer</button>
-    <a href="{{ url_for('main.index') }}" class="btn-secondary">Réinitialiser</a>
+    <a href="{{ url_for('banking.pos_dashboard') }}" class="btn-secondary">Réinitialiser</a>
 </form>
 
 <table class="table">
@@ -71,13 +71,13 @@
 {% if pagination.pages > 1 %}
 <div class="pagination">
     {% if pagination.has_prev %}
-        <a href="{{ url_for('main.index', page=pagination.prev_num, search=search, payment=payment_filter, date_from=date_from, date_to=date_to) }}">« Précédent</a>
+        <a href="{{ url_for('banking.pos_dashboard', page=pagination.prev_num, search=search, payment=payment_filter, date_from=date_from, date_to=date_to) }}">« Précédent</a>
     {% endif %}
     
     <span>Page {{ pagination.page }} sur {{ pagination.pages }}</span>
     
     {% if pagination.has_next %}
-        <a href="{{ url_for('.main.index', page=pagination.next_num, search=search, payment=payment_filter, date_from=date_from, date_to=date_to) }}">Suivant »</a>
+        <a href="{{ url_for('banking.pos_dashboard', page=pagination.next_num, search=search, payment=payment_filter, date_from=date_from, date_to=date_to) }}">Suivant »</a>
     {% endif %}
 </div>
 {% endif %}

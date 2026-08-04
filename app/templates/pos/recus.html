@@ -1,115 +1,160 @@
-<!-- app/templates/index.html -->
 {% extends "pos.html" %}
 
-{% block title %}Reçus - Archive Loyverse{% endblock %}
+{% block title %}Historique des reçus - Archive Loyverse{% endblock %}
+
+{% block page_header %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-receipt me-2"></i>Archive des reçus</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{{ url_for('banking.pos_caisse') }}" class="btn btn-success">
+            <i class="fas fa-plus me-1"></i> Nouvelle vente
+        </a>
+    </div>
+</div>
+{% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class=row>
-        <div class="col-md-12"> 
-            <div class="card">
-                <div class="card-header">
-                    <h2>Archive des reçus</h2>
-                </div>
-                <div class="stats">
-                    <span>Total: {{ total_receipts }} reçus</span>
-                    <span>Chiffre d'affaires: CHF {{ "%.2f"|format(total_revenue) }}</span>
-                </div>
-                <div class="card-body"> 
-                    <form method="GET" class="filters">
-                        <div class="filter-group">
-                            <input type="text" name="search" placeholder="Rechercher..." value="{{ search }}">
-                        </div>
-                        
-                        <div class="filter-group">
-                            <select name="payment">
-                                <option value="">Tous les paiements</option>
-                                {% for method in payment_methods %}
-                                    <option value="{{ method[0] }}" {% if payment_filter == method[0] %}selected{% endif %}>
-                                        {{ method[0] }}
-                                    </option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        
-                        <div class="filter-group">
-                            <input type="date" name="date_from" value="{{ date_from }}">
-                            <input type="date" name="date_to" value="{{ date_to }}">
-                        </div>
-                        
-                        <button type="submit">Filtrer</button>
-                        <a href="{{ url_for('main.index') }}" class="btn-secondary">Réinitialiser</a>
-                    </form>
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <div class="stat-box p-3 bg-light rounded border">
+                    <h6 class="text-muted mb-1">Total des reçus (période)</h6>
+                    <h3 class="mb-0">{{ total_receipts }}</h3>
                 </div>
             </div>
-            <div class="card">
-                <div class="card-body">
-                    <a href="{{ url_for('main.export_receipts', search=search, payment=payment_filter, date_from=date_from, date_to=date_to) }}" class="btn btn-primary">Exporter les reçus filtrés</a>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>N° Reçu</th>
-                            <th>Client</th>
-                            <th>Paiement</th>
-                            <th>Total</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for receipt in receipts %}
-                        <tr>
-                            <td>{{ receipt.date_formatted }}</td>
-                            <td>{{ receipt.receipt_number }}</td>
-                            <td>{{ receipt.client_name or '-' }}</td>
-                            <td>{{ receipt.payment_method }}</td>
-                            <td>CHF {{ "%.2f"|format(receipt.total_collected) }}</td>
-                            <td>
-                                <a href="#" class="view-receipt" data-receipt-id="{{ receipt.id }}">Voir</a>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="6">Aucun reçu trouvé</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% if pagination.pages > 1 %}
-                <div class="pagination">
-                    {% if pagination.has_prev %}
-                        <a href="{{ url_for('main.index', page=pagination.prev_num, search=search, payment=payment_filter, date_from=date_from, date_to=date_to) }}">« Précédent</a>
-                    {% endif %}
-                    
-                    <span>Page {{ pagination.page }} sur {{ pagination.pages }}</span>
-                    
-                    {% if pagination.has_next %}
-                        <a href="{{ url_for('.main.index', page=pagination.next_num, search=search, payment=payment_filter, date_from=date_from, date_to=date_to) }}">Suivant »</a>
-                    {% endif %}
+            <div class="col-md-4">
+                <div class="stat-box p-3 bg-light rounded border">
+                    <h6 class="text-muted mb-1">Chiffre d'affaires</h6>
+                    <h3 class="mb-0 text-success">CHF {{ "%.2f"|format(total_revenue) }}</h3>
                 </div>
-                {% endif %}
             </div>
         </div>
+
+        <form method="GET" action="{{ url_for('banking.pos_receipts_list') }}" class="row g-3">
+            <div class="col-md-3">
+                <input type="text" name="search" class="form-control" placeholder="Rechercher (N°, client...)" value="{{ search }}">
+            </div>
+            
+            <div class="col-md-3">
+                <select name="payment" class="form-select">
+                    <option value="">Tous les paiements</option>
+                    {% for method in payment_methods %}
+                        <option value="{{ method }}" {% if payment_filter == method %}selected{% endif %}>
+                            {{ method }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="col-md-2">
+                <input type="date" name="date_from" class="form-control" value="{{ date_from }}" title="Date de début">
+            </div>
+            <div class="col-md-2">
+                <input type="date" name="date_to" class="form-control" value="{{ date_to }}" title="Date de fin">
+            </div>
+            
+            <div class="col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1">
+                    <i class="fas fa-filter me-1"></i> Filtrer
+                </button>
+                <!-- CORRECTION ICI : Réinitialiser pointe vers la liste des reçus, pas vers index -->
+                <a href="{{ url_for('banking.pos_receipts_list') }}" class="btn btn-outline-secondary" title="Réinitialiser les filtres">
+                    <i class="fas fa-times"></i>
+                </a>
+            </div>
+        </form>
     </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>N° Reçu</th>
+                        <th>Client</th>
+                        <th>Caissier</th>
+                        <th>Total</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- CORRECTION : Utilisation des noms de champs du modèle ReceiptPOS -->
+                    {% for receipt in receipts %}
+                    <tr>
+                        <td>{{ receipt.date.strftime('%d/%m/%Y %H:%M') if receipt.date else '-' }}</td>
+                        <td><span class="badge bg-secondary">{{ receipt.recu_numero }}</span></td>
+                        <td>{{ receipt.nom_du_client or 'Client de passage' }}</td>
+                        <td>{{ receipt.nom_du_caissier or '-' }}</td>
+                        <td class="fw-bold">CHF {{ "%.2f"|format(receipt.total_collecte or 0) }}</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary view-receipt" data-receipt-id="{{ receipt.id }}">
+                                <i class="fas fa-eye me-1"></i> Voir
+                            </button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-4 text-muted">
+                            <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
+                            Aucun reçu trouvé pour ces critères.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    {% if pagination.pages > 1 %}
+    <div class="card-footer bg-white">
+        <nav aria-label="Pagination">
+            <ul class="pagination justify-content-center mb-0">
+                {% if pagination.has_prev %}
+                    <li class="page-item">
+                        <!-- CORRECTION ICI : pagination pointe vers pos_receipts_list -->
+                        <a class="page-link" href="{{ url_for('banking.pos_receipts_list', page=pagination.prev_num, search=search, payment=payment_filter, date_from=date_from, date_to=date_to) }}">« Précédent</a>
+                    </li>
+                {% endif %}
+                
+                <li class="page-item disabled">
+                    <span class="page-link">Page {{ pagination.page }} sur {{ pagination.pages }}</span>
+                </li>
+                
+                {% if pagination.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('banking.pos_receipts_list', page=pagination.next_num, search=search, payment=payment_filter, date_from=date_from, date_to=date_to) }}">Suivant »</a>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
 </div>
 
 <!-- Modal pour afficher le reçu -->
 <div class="modal fade" id="receiptModal" tabindex="-1" aria-labelledby="receiptModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="receiptModalLabel">Détail du reçu</h5>
+            <div class="modal-header bg-light">
+                <h5 class="modal-title" id="receiptModalLabel"><i class="fas fa-receipt me-2"></i>Détail du reçu</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="receiptModalBody">
-                <div class="text-center">
-                    <div class="spinner-border" role="status">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Chargement...</span>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+                <button type="button" class="btn btn-primary" onclick="window.print()">
+                    <i class="fas fa-print me-1"></i> Imprimer
+                </button>
             </div>
         </div>
     </div>
@@ -122,25 +167,35 @@ document.addEventListener('DOMContentLoaded', function() {
     const modal = new bootstrap.Modal(document.getElementById('receiptModal'));
     const modalBody = document.getElementById('receiptModalBody');
     
+    // ASTUCE : On génère l'URL avec un ID factice (999), puis on le remplace en JavaScript.
+    // Cela évite les problèmes de routage avec les blueprints Flask.
+    // CORRECTION ICI : Utilisation de la route pos_receipt_detail_json du blueprint banking
+    const baseUrl = "{{ url_for('banking.pos_receipt_detail_json', receipt_id=999) }}";
+    
     document.querySelectorAll('.view-receipt').forEach(link => {
         link.addEventListener('click', function(e) {
             e.preventDefault();
             const receiptId = this.dataset.receiptId;
+            const apiUrl = baseUrl.replace('999', receiptId);
             
             // Afficher le spinner
             modalBody.innerHTML = `
-                <div class="text-center">
-                    <div class="spinner-border" role="status">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Chargement...</span>
                     </div>
+                    <p class="mt-2 text-muted">Chargement du reçu...</p>
                 </div>
             `;
             
             modal.show();
             
             // Charger les données du reçu via AJAX
-            fetch(`/receipt/${receiptId}/json`)
-                .then(response => response.json())
+            fetch(apiUrl)
+                .then(response => {
+                    if (!response.ok) throw new Error('Erreur réseau');
+                    return response.json();
+                })
                 .then(data => {
                     if (data.error) {
                         modalBody.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
@@ -149,40 +204,36 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Construire le HTML du reçu
                     let html = `
-                        <div class="receipt-detail">
+                        <div class="receipt-detail p-2">
                             <div class="row mb-3">
                                 <div class="col-md-6">
-                                    <strong>N° Reçu:</strong> ${data.receipt_number}
+                                    <small class="text-muted">N° Reçu</small><br>
+                                    <strong>${data.receipt_number}</strong>
                                 </div>
-                                <div class="col-md-6">
-                                    <strong>Date:</strong> ${data.date_formatted}
+                                <div class="col-md-6 text-md-end">
+                                    <small class="text-muted">Date</small><br>
+                                    <strong>${data.date_formatted}</strong>
                                 </div>
                             </div>
                             <div class="row mb-3">
                                 <div class="col-md-6">
-                                    <strong>Type:</strong> ${data.receipt_type}
+                                    <small class="text-muted">Client</small><br>
+                                    <strong>${data.client_name || 'Client de passage'}</strong>
                                 </div>
-                                <div class="col-md-6">
-                                    <strong>Statut:</strong> ${data.status}
-                                </div>
-                            </div>
-                            <div class="row mb-3">
-                                <div class="col-md-6">
-                                    <strong>Client:</strong> ${data.client_name || '-'}
-                                </div>
-                                <div class="col-md-6">
-                                    <strong>Caissier:</strong> ${data.cashier_name || '-'}
+                                <div class="col-md-6 text-md-end">
+                                    <small class="text-muted">Caissier</small><br>
+                                    <strong>${data.cashier_name || '-'}</strong>
                                 </div>
                             </div>
                             <hr>
-                            <h6>Articles</h6>
-                            <table class="table table-sm">
-                                <thead>
+                            <h6 class="mb-2">Articles</h6>
+                            <table class="table table-sm table-bordered">
+                                <thead class="table-light">
                                     <tr>
                                         <th>Article</th>
-                                        <th>Qté</th>
-                                        <th>Prix unit.</th>
-                                        <th>Total</th>
+                                        <th class="text-center">Qté</th>
+                                        <th class="text-end">Prix unit.</th>
+                                        <th class="text-end">Total</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -193,54 +244,60 @@ document.addEventListener('DOMContentLoaded', function() {
                             html += `
                                 <tr>
                                     <td>${item.nom_article}</td>
-                                    <td>${item.quantite}</td>
-                                    <td>CHF ${parseFloat(item.prix_unitaire).toFixed(2)}</td>
-                                    <td>CHF ${parseFloat(item.total_ligne).toFixed(2)}</td>
+                                    <td class="text-center">${item.quantite}</td>
+                                    <td class="text-end">CHF ${parseFloat(item.prix_unitaire).toFixed(2)}</td>
+                                    <td class="text-end">CHF ${parseFloat(item.total_ligne).toFixed(2)}</td>
                                 </tr>
                             `;
                         });
                     } else {
-                        html += `<tr><td colspan="4" class="text-center">Aucun article</td></tr>`;
+                        html += `<tr><td colspan="4" class="text-center text-muted">Aucun article</td></tr>`;
                     }
                     
                     html += `
                                 </tbody>
                             </table>
-                            <hr>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <strong>Ventes brutes:</strong> CHF ${parseFloat(data.ventes_brutes).toFixed(2)}
+                            <div class="bg-light p-3 rounded">
+                                <div class="row mb-1">
+                                    <div class="col-6">Ventes brutes:</div>
+                                    <div class="col-6 text-end">CHF ${parseFloat(data.ventes_brutes).toFixed(2)}</div>
                                 </div>
-                                <div class="col-md-6">
-                                    <strong>Réductions:</strong> CHF ${parseFloat(data.reduction).toFixed(2)}
+                                <div class="row mb-1">
+                                    <div class="col-6">Réductions:</div>
+                                    <div class="col-6 text-end text-danger">- CHF ${parseFloat(data.reduction).toFixed(2)}</div>
                                 </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <strong>Ventes nettes:</strong> CHF ${parseFloat(data.ventes_nettes).toFixed(2)}
+                                <div class="row mb-1">
+                                    <div class="col-6">Taxes:</div>
+                                    <div class="col-6 text-end">CHF ${parseFloat(data.taxes).toFixed(2)}</div>
                                 </div>
-                                <div class="col-md-6">
-                                    <strong>Taxes:</strong> CHF ${parseFloat(data.taxes).toFixed(2)}
+                                <div class="row mb-1">
+                                    <div class="col-6">Pourboires:</div>
+                                    <div class="col-6 text-end">CHF ${parseFloat(data.tips).toFixed(2)}</div>
                                 </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <strong>Pourboires:</strong> CHF ${parseFloat(data.tips).toFixed(2)}
-                                </div>
-                                <div class="col-md-6">
-                                    <strong>Total collecté:</strong> <strong>CHF ${parseFloat(data.total_collecte).toFixed(2)}</strong>
+                                <hr class="my-2">
+                                <div class="row fw-bold fs-5">
+                                    <div class="col-6">Total collecté:</div>
+                                    <div class="col-6 text-end text-primary">CHF ${parseFloat(data.total_collecte).toFixed(2)}</div>
                                 </div>
                             </div>
                             ${data.paiements && data.paiements.length > 0 ? `
-                            <hr>
-                            <h6>Paiements</h6>
-                            <ul class="list-unstyled">
-                                ${data.paiements.map(p => `<li>${p.mode_paiement}: CHF ${parseFloat(p.montant).toFixed(2)}</li>`).join('')}
-                            </ul>
+                            <div class="mt-3">
+                                <h6 class="mb-2">Paiements effectués</h6>
+                                <ul class="list-group list-group-flush">
+                                    ${data.paiements.map(p => `
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            ${p.mode_paiement}
+                                            <span class="badge bg-primary rounded-pill">CHF ${parseFloat(p.montant).toFixed(2)}</span>
+                                        </li>
+                                    `).join('')}
+                                </ul>
+                            </div>
                             ` : ''}
                             ${data.description ? `
-                            <hr>
-                            <p><strong>Description:</strong> ${data.description}</p>
+                            <div class="mt-3 p-2 bg-light rounded">
+                                <small class="text-muted d-block">Description / Notes:</small>
+                                ${data.description}
+                            </div>
                             ` : ''}
                         </div>
                     `;
@@ -248,7 +305,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     modalBody.innerHTML = html;
                 })
                 .catch(error => {
-                    modalBody.innerHTML = `<div class="alert alert-danger">Erreur lors du chargement du reçu: ${error.message}</div>`;
+                    modalBody.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Erreur lors du chargement du reçu: ${error.message}
+                        </div>`;
                 });
         });
     });

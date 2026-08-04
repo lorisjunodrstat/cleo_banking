@@ -4,7 +4,7 @@
 {% block page_header %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="mb-0"><i class="bi bi-tag me-2"></i>Réductions</h2>
-    <a href="{{ url_for('main.create_discount') }}" class="btn btn-success">
+    <a href="{{ url_for('banking.create_discount') }}" class="btn btn-success">
         <i class="bi bi-plus-circle me-1"></i>Créer une réduction
     </a>
 </div>
@@ -56,11 +56,11 @@
                             </span>
                         </td>
                         <td class="text-end">
-                            <a href="{{ url_for('main.edit_discount', discount_id=discount.id) }}" 
+                            <a href="{{ url_for('banking.edit_discount', discount_id=discount.id) }}" 
                                class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-pencil"></i>
                             </a>
-                            <form method="POST" action="{{ url_for('main.delete_discount', discount_id=discount.id) }}" 
+                            <form method="POST" action="{{ url_for('banking.delete_discount', discount_id=discount.id) }}" 
                                   style="display: inline;" onsubmit="return confirm('Supprimer cette réduction ?')">
                                 <button type="submit" class="btn btn-sm btn-outline-danger">
                                     <i class="bi bi-trash"></i>

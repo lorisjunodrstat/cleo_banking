@@ -4,7 +4,7 @@
 {% block page_header %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="mb-0"><i class="bi bi-tags me-2"></i>Catégories</h2>
-    <a href="{{ url_for('main.create_category') }}" class="btn btn-success">
+    <a href="{{ url_for('banking.create_category') }}" class="btn btn-success">
         <i class="bi bi-plus-circle me-1"></i>Nouvelle catégorie
     </a>
 </div>
@@ -32,11 +32,11 @@
                             <span class="badge bg-primary">{{ cat.item_count }}</span>
                         </td>
                         <td class="text-end">
-                            <a href="{{ url_for('main.edit_category', category_id=cat.id) }}" 
+                            <a href="{{ url_for('banking.edit_category', category_id=cat.id) }}" 
                                class="btn btn-sm btn-outline-primary" title="Modifier">
                                 <i class="bi bi-pencil"></i>
                             </a>
-                            <form method="POST" action="{{ url_for('main.delete_category', category_id=cat.id) }}" 
+                            <form method="POST" action="{{ url_for('banking.delete_category', category_id=cat.id) }}" 
                                   style="display: inline;" 
                                   onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette catégorie ? Cette action est irréversible.')">
                                 <button type="submit" class="btn btn-sm btn-outline-danger" title="Supprimer"

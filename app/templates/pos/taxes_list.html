@@ -3,7 +3,7 @@
 {% block page_header %}
 <h2 class="mb-4">
     Gestion des taxes
-    <a href="{{ url_for('main.create_taxe') }}" class="btn btn-sm btn-success float-end">+ Nouvelle taxe</a>
+    <a href="{{ url_for('banking.create_taxe') }}" class="btn btn-sm btn-success float-end">+ Nouvelle taxe</a>
 </h2>
 {% endblock %}
 
@@ -40,7 +40,7 @@
                         </span>
                     </td>
                     <td class="text-center">
-                        <a href="{{ url_for('main.edit_taxe', taxe_id=taxe.id) }}" class="btn btn-sm btn-outline-primary" title="Modifier la taxe">
+                        <a href="{{ url_for('banking.edit_taxe', taxe_id=taxe.id) }}" class="btn btn-sm btn-outline-primary" title="Modifier la taxe">
                             <i class="bi bi-pencil"></i>
                         </a>
                         <form method="POST" style="display: inline;">
