@@ -10624,18 +10624,68 @@ def pos_pdv_list():
 @bp.route('/pos/pdv/create', methods=['GET', 'POST'])
 @login_required
 def pos_create_pdv():
-    magasins = g.models.magasin_pos_model.get_by_user(current_user.id)
+    """Formulaire de création d'un PDV avec sélection du compte bancaire"""
     if request.method == 'POST':
-        magasin_id = int(request.form.get('magasin_id'))
-        pdv_id = g.models.pdv_pos_model.create(current_user.id, magasin_id, {
-            'nom_pdv': request.form.get('nom_pdv'),
-            'description': request.form.get('description', '')
-        })
+        magasin_id = request.form.get('magasin_id')
+        nom_pdv = request.form.get('nom_pdv')
+        compte_bancaire_id = request.form.get('compte_bancaire_id')
+        
+        pdv_id = g.models.pdv_pos_model.create(
+            current_user.id, 
+            int(magasin_id), 
+            {
+                'nom_pdv': nom_pdv,
+                'compte_bancaire_id': int(compte_bancaire_id) if compte_bancaire_id else None
+            }
+        )
+        
         if pdv_id:
             flash('Point de vente créé avec succès !', 'success')
             return redirect(url_for('banking.pos_pdv_list'))
         flash('Erreur lors de la création.', 'error')
-    return render_template('pos/pdv/create.html', magasins=magasins)
+    
+    # Récupérer les magasins et les comptes pour le formulaire
+    magasins = g.models.magasin_pos_model.get_by_user(current_user.id)
+    comptes = g.models.compte_model.get_by_user_id(current_user.id)
+    
+    return render_template('pos/create_pos.html', magasins=magasins, comptes=comptes)
+
+
+@bp.route('/pos/pdv/<int:pos_id>/edit', methods=['GET', 'POST'])
+@login_required
+def pos_edit_pdv(pos_id):
+    """Formulaire de modification d'un PDV"""
+    pos = g.models.pdv_pos_model.get_by_id(pos_id)
+    
+    # Vérifier que le PDV appartient à l'utilisateur (via le magasin)
+    if not pos or pos.get('utilisateur_id') != current_user.id:
+        flash('Point de vente non trouvé ou non autorisé.', 'error')
+        return redirect(url_for('banking.pos_pdv_list'))
+    
+    if request.method == 'POST':
+        magasin_id = request.form.get('magasin_id')
+        nom_pdv = request.form.get('nom_pdv')
+        compte_bancaire_id = request.form.get('compte_bancaire_id')
+        
+        success = g.models.pdv_pos_model.update(
+            pos_id,
+            current_user.id,
+            {
+                'nom_pdv': nom_pdv,
+                'magasin_id': int(magasin_id),
+                'compte_bancaire_id': int(compte_bancaire_id) if compte_bancaire_id else None
+            }
+        )
+        
+        if success:
+            flash('Point de vente modifié avec succès !', 'success')
+            return redirect(url_for('banking.pos_pdv_list'))
+        flash('Erreur lors de la modification.', 'error')
+    
+    magasins = g.models.magasin_pos_model.get_by_user(current_user.id)
+    comptes = g.models.compte_model.get_by_user_id(current_user.id)
+    
+    return render_template('pos/edit_pos.html', pos=pos, magasins=magasins, comptes=comptes)
 
 @bp.route('/pos/pdv/<int:pos_id>/delete', methods=['POST'])
 @login_required
@@ -10768,6 +10818,35 @@ def pos_receipt_detail(receipt_id):
         return redirect(url_for('banking.pos_receipts_list'))
     return render_template('pos/receipts/detail.html', receipt=receipt)
 
+
+
+@bp.route('/pos/vente/cloturer', methods=['POST'])
+@login_required
+def pos_cloturer_vente():
+    """API pour clôturer une vente et générer la transaction"""
+    data = request.get_json()
+    
+    pdv_id = data.get('pdv_id')
+    items = data.get('items', []) # Ex: [{'nom_article': 'Café', 'quantite': 2, 'prix_unitaire': 3.50}]
+    
+    if not pdv_id or not items:
+        return jsonify({'success': False, 'message': 'Données incomplètes'}), 400
+
+    success, message, receipt_id = g.models.receipt_pos_model.cloturer_vente(
+        user_id=current_user.id,
+        pdv_id=int(pdv_id),
+        items=items,
+        mode_paiement=data.get('mode_paiement', 'Espèces')
+    )
+    
+    if success:
+        return jsonify({
+            'success': True, 
+            'message': message, 
+            'receipt_id': receipt_id
+        })
+    
+    return jsonify({'success': False, 'message': message}), 400
 # --- PÉRIODES DE TRAVAIL ---
 @bp.route('/pos/work-periods')
 @login_required
@@ -11088,3 +11167,40 @@ def pos_affichage_client():
 def pos_stats():
     # Redirige vers votre page de statistiques existante ou en crée une nouvelle
     return redirect(url_for('banking.stats_by_article')) # Exemple
+
+
+# ============================================================
+# CLIENTS POS
+# ============================================================
+@bp.route('/pos/clients')
+@login_required
+def pos_clients_list():
+    """Liste des clients POS"""
+    search = request.args.get('search', '')
+    
+    try:
+        clients = g.models.client_pos_model.get_all(current_user.id, limit=200)
+        
+        if search:
+            search_lower = search.lower()
+            clients = [c for c in clients if 
+                      search_lower in c.get('nom_client', '').lower() or
+                      search_lower in (c.get('email') or '').lower() or
+                      search_lower in (c.get('telephone') or '').lower()]
+        
+        total_clients = len(clients)
+        clients_actifs = sum(1 for c in clients if c.get('segment') != 'Inactif')
+        total_ca_clients = sum(float(c.get('total_depense', 0) or 0) for c in clients)
+    except Exception as e:
+        logger.error(f"Erreur récupération clients POS: {e}")
+        clients = []
+        total_clients = 0
+        clients_actifs = 0
+        total_ca_clients = 0
+    
+    return render_template('pos/clients/list.html',
+                         clients=clients,
+                         search=search,
+                         total_clients=total_clients,
+                         clients_actifs=clients_actifs,
+                         total_ca_clients=total_ca_clients)
