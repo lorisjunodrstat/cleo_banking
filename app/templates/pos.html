@@ -59,55 +59,50 @@
             <div class="collapse navbar-collapse" id="mainNavbar">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'banking.banking_dashboard' %}active{% endif %}" href="{{ url_for('banking.banking_dashboard') }}">
-                            <i class="bi bi-house-door me-1"></i> Accueil
+                        <a class="nav-link {% if request.endpoint == 'banking.pos_dashboard' %}active{% endif %}" href="{{ url_for('banking.pos_dashboard') }}">
+                            <i class="fas fa-tachometer-alt me-1"></i> Tableau de bord
                         </a>
                     </li>
                     <li class="nav-item">
-                        <!-- CORRECTION : pos_receipts_list au lieu de recu -->
+                        <a class="nav-link {% if request.endpoint == 'banking.pos_caisse' %}active{% endif %}" href="{{ url_for('banking.pos_caisse') }}">
+                            <i class="fas fa-cash-register me-1"></i> Caisse
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'banking.pos_receipts_list' %}active{% endif %}" href="{{ url_for('banking.pos_receipts_list') }}">
-                            <i class="bi bi-receipt me-1"></i> Reçus
+                            <i class="fas fa-receipt me-1"></i> Reçus
                         </a>
                     </li>
                     
                     <!-- Dropdown Rapports -->
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle {% if 'pos_stats' in request.endpoint or request.endpoint in ['banking.pos_clients_list', 'banking.pos_work_periods', 'banking.pos_taxes_list'] %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-bar-chart-line me-1"></i> Rapports
+                        <a class="nav-link dropdown-toggle {% if 'pos_stats' in request.endpoint %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-bar-chart me-1"></i> Rapports
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="{{ url_for('banking.pos_stats_payment_methods') }}">Modes de paiement</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_stats_by_article') }}">Ventes par article</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_stats_by_category') }}">Ventes par catégorie</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_stats_by_employee') }}">Ventes par employé</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_clients_list') }}"><i class="bi bi-people me-1"></i> Clients</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_work_periods') }}"><i class="bi bi-clock-history me-1"></i> Périodes de travail</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_taxes_list') }}">Taxes</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_stats') }}">Ventes par article</a></li>
                         </ul>
                     </li>
 
                     <!-- Dropdown Catalogue -->
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle {% if request.endpoint in ['banking.pos_articles_list', 'banking.pos_categories', 'banking.pos_modifiers', 'banking.pos_create_article', 'banking.pos_create_category', 'banking.pos_create_modifier'] %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-box-seam me-1"></i> Catalogue
+                        <a class="nav-link dropdown-toggle {% if 'pos_article' in request.endpoint or 'pos_modifier' in request.endpoint %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-box-seam me-1"></i> Catalogue
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="{{ url_for('banking.pos_articles_list') }}">Liste des articles</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('banking.pos_create_article') }}">+ Nouvel article</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_categories') }}">Liste des catégories</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_create_category') }}">+ Nouvelle catégorie</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_modifiers') }}">Liste des modificateurs</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_create_modifier') }}">+ Nouveau modificateur</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_modifier_options') }}">Options de modificateurs</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_create_modifier_option') }}">+ Option de modificateur</a></li>
                         </ul>
                     </li>
 
                     <!-- Dropdown Configuration -->
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle {% if 'pos_' in request.endpoint and ('store' in request.endpoint or 'pdv' in request.endpoint or 'payment' in request.endpoint or 'taxe' in request.endpoint or 'discount' in request.endpoint) %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-gear me-1"></i> Configuration
+                        <a class="nav-link dropdown-toggle {% if 'pos_store' in request.endpoint or 'pos_pdv' in request.endpoint %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-cog me-1"></i> Configuration
                         </a>
                         <ul class="dropdown-menu">
                             <li><h6 class="dropdown-header">Magasins & PDV</h6></li>
@@ -115,24 +110,13 @@
                             <li><a class="dropdown-item" href="{{ url_for('banking.pos_create_store') }}">+ Nouveau magasin</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('banking.pos_pdv_list') }}">Liste des points de vente</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('banking.pos_create_pdv') }}">+ Nouveau point de vente</a></li>
+                            
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_restaurant_options') }}">
-                                <i class="bi bi-utensils me-1"></i> Options de restauration
-                            </a></li>
-                            <li><h6 class="dropdown-header">Paiements & Taxes</h6></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_payment_methods_list') }}">Liste des modes de paiement</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_create_payment_method') }}">+ Nouveau mode de paiement</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_taxes_list') }}">Liste des taxes</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_create_taxe') }}">+ Nouvelle taxe</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_discounts') }}">Liste des Réductions</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_create_discount') }}">+ Nouvelle Réduction</a></li>
+                            
+                            <li><h6 class="dropdown-header">Clients & Import</h6></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_clients_list') }}">Liste des clients</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_import_data') }}">Importer des données (CSV)</a></li>
                         </ul>
-                    </li>
-
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'banking.pos_import_data' %}active{% endif %}" href="{{ url_for('banking.pos_import_data') }}">
-                            <i class="bi bi-upload me-1"></i> Importer
-                        </a>
                     </li>
                 </ul>
                 
