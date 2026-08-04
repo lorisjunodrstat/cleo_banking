@@ -8,9 +8,10 @@ from calendar import monthrange
 from app.models import DatabaseManager, Banque, ComptePrincipal, SousCompte, TransactionFinanciere, StatistiquesBancaires, PlanComptable, EcritureComptable, HeureTravail, Salaire, SyntheseHebdomadaire, SyntheseMensuelle, Contrat, Contacts, ContactCompte, ComptePrincipalRapport, CategorieComptable, Employe, Equipe, Planning, Competence, PlanningRegles, RegleEcriture, TauxTva
 from io import StringIO
 import os
+import csv as csv_mod
 from werkzeug.utils import secure_filename
 import csv as csv_mod
-
+import pandas as pd
 import secrets
 from io import BytesIO
 from flask import send_file
@@ -2233,7 +2234,7 @@ def liste_transferts():
             per_page=None
         )
         si = StringIO()
-        cw = csv.writer(si, delimiter=';')
+        cw = csv_mod.writer(si, delimiter=';')
         cw.writerow(['Date', 'Type', 'Description', 'Source', 'Destination', 'Montant'])
         
         for t in mouv:  # ✅ utilise 'mouv', pas 'mouvements'
@@ -2392,7 +2393,6 @@ def import_csv_upload():
     if not raw_lines:
         flash("Fichier vide", "danger")
         return redirect(url_for('banking.import_csv_upload'))
-    import csv as csv_mod
     # Détecter le délimiteur
     sample = '\n'.join(raw_lines[:5])
     try:
@@ -11049,7 +11049,7 @@ def pos_import_data():
         
         if file and file.filename.endswith(('.csv', '.xlsx')):
             try:
-                import pandas as pd
+                
                 if file.filename.endswith('.csv'):
                     df = pd.read_csv(file, encoding='utf-8')
                 else:
@@ -11276,14 +11276,6 @@ def pos_commandes_en_cours():
         flash("Erreur lors du chargement des commandes.", "error")
         return redirect(url_for('banking.pos_dashboard'))
 
-
-@bp.route('/pos/affichage-client')
-@login_required
-def pos_affichage_client():
-    """Vue épurée pour un second écran (tablette client)"""
-    # Cette route ne doit pas étendre "base.html" avec la sidebar.
-    # Elle doit utiliser un template minimaliste 'pos/affichage_client_minimal.html'
-    return render_template('pos/affichage_client_minimal.html')
 
 
 @bp.route('/pos/stats')
