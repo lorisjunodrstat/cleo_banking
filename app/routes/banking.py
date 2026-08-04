@@ -11366,7 +11366,7 @@ def pos_stats_by_category():
                         'total_revenue': 0.0
                     }
                 
-                category_stats[category]['times_sold'] += 
+                category_stats[category]['times_sold'] += 1
                 category_stats[category]['total_qty'] += item.get('quantite', 1)
                 category_stats[category]['total_revenue'] += float(item.get('total_ligne', 0) or 0)
         
