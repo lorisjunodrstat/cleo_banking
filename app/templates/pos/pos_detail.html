@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}Caisse - Point de Vente{% endblock %}
+
+{% block page_header %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0"><i class="bi bi-cart4 me-2"></i>Caisse : {{ periode.magasin }} - {{ periode.pdv_id }}</h2>
+    <span class="badge bg-success fs-6">Période ouverte depuis {{ periode.date_debut.strftime('%H:%M') }}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+    <!-- COLONNE GAUCHE : SÉLECTION DES ARTICLES -->
+    <div class="col-lg-8">
+        <!-- Barre de recherche et filtres -->
+        <div class="card mb-3 shadow-sm">
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <input type="text" id="searchArticle" class="form-control form-control-lg" placeholder="🔍 Rechercher un article ou scanner un code-barre...">
+                    </div>
+                    <div class="col-md-6 d-flex flex-wrap gap-2" id="categoryFilters">
+                        <button class="btn btn-outline-primary active filter-cat" data-cat="all">Tous</button>
+                        {% for cat in categories %}
+                            <button class="btn btn-outline-secondary filter-cat" data-cat="{{ cat.id }}">{{ cat.nom_categorie }}</button>
+                        {% endfor %
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Grille des articles -->
+        <div class="row g-2" id="articlesGrid">
+            {% for article in articles %}
+                <div class="col-6 col-md-4 col-lg-3 article-item" 
+                     data-id="{{ article.id }}" 
+                     data-name="{{ article.nom_article }}" 
+                     data-price="{{ article.prix_unitaire }}"
+                     data-cat="{{ article.id_categorie }}"
+                     data-barcode="{{ article.code_barre or '' }}"
+                     onclick="addToCart(this.dataset)">
+                    <div class="card h-100 text-center border-primary hover-shadow" style="cursor: pointer; transition: transform 0.1s;">
+                        <div class="card-body d-flex flex-column justify-content-center">
+                            <h6 class="card-title mb-1 text-truncate" title="{{ article.nom_article }}">{{ article.nom_article }}</h6>
+                            <p class="card-text text-primary fw-bold fs-5 mb-0">{{ "%.2f"|format(article.prix_unitaire) }} CHF</p>
+                            {% if article.stock is not none and article.stock < article.stock_alerte %}
+                                <span class="badge bg-warning text-dark mt-1">Stock bas: {{ article.stock }}</span>
+                            {% endif %}
+                        </ a>
+                    </div>
+                </div>
+            {% else %}
+                <div class="col-12 text-center text-muted py-5">
+                    <i class="bi bi-inbox fs-1"></i>
+                    <p>Aucun article trouvé. Veuillez en créer dans le catalogue.</p>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- COLONNE DROITE : PANIER / TICKET EN COURS -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm h-100 border-primary">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-receipt me-2"></i>Ticket en cours</h5>
+                <button class="btn btn-sm btn-outline-light" onclick="clearCart()" title="Vider le panier">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+            
+            <div class="card-body p-0 d-flex flex-column" style="height: 60vh;">
+                <!-- Liste des articles dans le panier -->
+                <div class="flex-grow-1 overflow-auto p-2" id="cartItems">
+                    <div class="text-center text-muted py-4" id="emptyCartMsg">
+                        <i class="bi bi-cart-x fs-3"></i>
+                        <p class="mb-0">Le panier est vide</p>
+                    </div>
+                </div>
+
+                <!-- Totaux -->
+                <div class="border-top p-3 bg-light">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Sous-total:</span>
+                        <span id="subTotal">0.00 CHF</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="fs-5 fw-bold">TOTAL À PAYER:</span>
+                        <span class="fs-4 fw-bold text-primary" id="grandTotal">0.00 CHF</span>
+                    </div>
+                    
+                    <button class="btn btn-success btn-lg w-100 fw-bold" onclick="openPaymentModal()" id="btnPayer" disabled>
+                        <i class="bi bi-cash-coin me-2"></i>PAYER
+                    </button>
+                </div>
+            </div>
+            <input type="hidden" id="periodeId" value="{{ periode.id }}">
+            <!-- Supposons que votre modèle PeriodeTravail ou PDV a cette info, sinon adaptez -->
+            <input type="hidden" id="compteBancaireId" value="{{ periode.compte_bancaire_id or '' }}"> 
+            <input type="hidden" id="pdvId" value="{{ periode.pdv_id }}">
+            <input type="hidden" id="magasin" value="{{ periode.magasin }}">
+        </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL DE PAIEMENT -->
+<div class="modal fade" id="paymentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">Règlement de la vente</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center mb-4">
+                    <p class="text-muted mb-1">Montant total à encaisser</p>
+                    <h2 class="fw-bold text-success" id="modalTotalAmount">0.00 CHF</h2>
+                </div>
+
+                <p class="fw-bold mb-2">Mode de paiement :</p>
+                <div class="d-grid gap-2 mb-3" id="paymentMethodsGrid">
+                    {% for mode in modes_paiement %}
+                        <button type="button" class="btn btn-outline-dark btn-lg d-flex justify-content-between align-items-center" onclick="selectPaymentMethod({{ mode.id }}, '{{ mode.nom }}')">
+                            <span><i class="bi bi-{{ mode.icone or 'credit-card' }} me-2"></i>{{ mode.nom }}</span>
+                            <i class="bi bi-check-circle-fill text-success d-none" id="check-{{ mode.id }}"></i>
+                        </button>
+                    {% endfor %}
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Montant reçu (pour calcul de la monnaie) :</label>
+                    <input type="number" step="0.05" class="form-control form-control-lg text-end" id="montantRecu" oninput="calculerMonnaie()">
+                </div>
+                <div class="alert alert-info d-flex justify-content-between d-none" id="monnaieAlert">
+                    <span>Monnaie à rendre :</span>
+                    <span class="fw-bold fs-5" id="monnaieARendre">0.00 CHF</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-success btn-lg px-4" onclick="validerVente()" id="btnValiderVente" disabled>
+                    <i class="bi bi-check-lg me-2"></i>Valider la vente
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // --- ÉTAT DU PANIER ---
+    let cart = [];
+    let selectedPaymentMethod = null;
+    let selectedPaymentName = '';
+
+    // --- GESTION DU PANIER ---
+    function addToCart(dataset) {
+        const articleId = parseInt(dataset.id);
+        const existingItem = cart.find(item => item.id === articleId);
+
+        if (existingItem) {
+            existingItem.qty += 1;
+        } else {
+            cart.push({
+                id: articleId,
+                nom: dataset.name,
+                prix: parseFloat(dataset.price),
+                qty: 1
+            });
+        }
+        renderCart();
+    }
+
+    function updateQty(articleId, change) {
+        const item = cart.find(item => item.id === articleId);
+        if (item) {
+            item.qty += change;
+            if (item.qty <= 0) {
+                cart = cart.filter(i => i.id !== articleId);
+            }
+            renderCart();
+        }
+    }
+
+    function removeFromCart(articleId) {
+        cart = cart.filter(item => item.id !== articleId);
+        renderCart();
+    }
+
+    function clearCart() {
+        if (cart.length > 0 && confirm('Voulez-vous vraiment vider le panier ?')) {
+            cart = [];
+            renderCart();
+        }
+    }
+
+    function renderCart() {
+        const cart

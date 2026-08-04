@@ -10548,7 +10548,7 @@ def pos_dashboard():
 @login_required
 def pos_store_list():
     stores = g.models.magasin_pos_model.get_by_user(current_user.id)
-    return render_template('pos/stores/list.html', stores=stores)
+    return render_template('pos/store_list.html', stores=stores)
 
 @bp.route('/pos/stores/create', methods=['GET', 'POST'])
 @login_required
@@ -10569,7 +10569,7 @@ def pos_create_store():
             flash('Magasin créé avec succès !', 'success')
             return redirect(url_for('banking.pos_store_list')) # Adaptez 'banking.' si votre blueprint s'appelle autrement
         flash('Erreur lors de la création du magasin.', 'error')
-    return render_template('pos/stores/create.html')
+    return render_template('pos/create_store.html')
 
 @bp.route('/pos/stores/<int:store_id>/edit', methods=['GET', 'POST'])
 @login_required
@@ -10595,7 +10595,7 @@ def pos_edit_store(store_id):
             flash('Magasin modifié avec succès !', 'success')
             return redirect(url_for('banking.pos_store_list'))
         flash('Erreur lors de la modification.', 'error')
-    return render_template('pos/stores/edit.html', magasin=magasin)
+    return render_template('pos/edit_store.html', magasin=magasin)
 
 @bp.route('/pos/stores/<int:store_id>/delete', methods=['POST'])
 @login_required
@@ -10619,7 +10619,7 @@ def pos_pdv_list():
         for pdv in pdvs:
             pdv['nom_magasin'] = magasin['nom_magasin']
             pos_list.append(pdv)
-    return render_template('pos/pdv/list.html', pos_list=pos_list, magasins=magasins)
+    return render_template('pos/pos_list.html', pos_list=pos_list, magasins=magasins)
 
 @bp.route('/pos/pdv/create', methods=['GET', 'POST'])
 @login_required
@@ -10714,7 +10714,7 @@ def pos_articles_list():
         articles = [a for a in articles if search.lower() in a.get('nom_article', '').lower()]
     
     categories = g.models.categorie_pos_model.get_all(current_user.id)
-    return render_template('pos/articles/list.html', items=articles, categories=categories, search=search, category_filter=category_filter)
+    return render_template('pos/items.html', items=articles, categories=categories, search=search, category_filter=category_filter)
 
 @bp.route('/pos/articles/create', methods=['GET', 'POST'])
 @login_required
@@ -10739,7 +10739,7 @@ def pos_create_article():
             flash('Article créé avec succès !', 'success')
             return redirect(url_for('banking.pos_articles_list'))
         flash('Erreur lors de la création.', 'error')
-    return render_template('pos/articles/create.html', categories=categories, taxes=taxes)
+    return render_template('pos/create_article.html', categories=categories, taxes=taxes)
 
 @bp.route('/pos/articles/<int:article_id>/delete', methods=['POST'])
 @login_required
@@ -10766,7 +10766,7 @@ def pos_caisse():
     articles = g.models.article_pos_model.get_all(user_id)
     modes_paiement = g.models.mode_paiement_pos_model.get_all(user_id)
     
-    return render_template('pos/caisse/index.html',
+    return render_template('pos/pos.html',
                          periode=periode_ouverte,
                          categories=categories,
                          articles=articles,
@@ -10807,7 +10807,7 @@ def pos_create_sale():
 @login_required
 def pos_receipts_list():
     receipts = g.models.receipt_pos_model.get_all(user_id=current_user.id, limit=100)
-    return render_template('pos/receipts/list.html', receipts=receipts)
+    return render_template('pos/recus.html', receipts=receipts)
 
 @bp.route('/pos/receipts/<int:receipt_id>')
 @login_required
@@ -10816,7 +10816,7 @@ def pos_receipt_detail(receipt_id):
     if not receipt:
         flash('Reçu non trouvé.', 'error')
         return redirect(url_for('banking.pos_receipts_list'))
-    return render_template('pos/receipts/detail.html', receipt=receipt)
+    return render_template('pos/receipt_detail.html', receipt=receipt)
 
 
 
@@ -10872,7 +10872,7 @@ def pos_open_work_period():
             flash('Période de travail ouverte avec succès !', 'success')
             return redirect(url_for('banking.pos_work_periods'))
         flash('Une période est peut-être déjà ouverte.', 'error')
-    return render_template('pos/work_periods/open.html')
+    return render_template('pos/work_periods.html')
 
 @bp.route('/pos/work-periods/<int:period_id>/close', methods=['GET', 'POST'])
 @login_required
@@ -10886,7 +10886,7 @@ def pos_close_work_period(period_id):
             flash(msg, 'success')
             return redirect(url_for('banking.pos_work_periods'))
         flash(msg, 'error')
-    return render_template('pos/work_periods/close.html', period_id=period_id)
+    return render_template('pos/work_periods_close.html', period_id=period_id)
 
 # ============================================================
 # OPTIONS DE MODIFICATEURS ET LIAISON AUX ARTICLES
@@ -11198,7 +11198,7 @@ def pos_clients_list():
         clients_actifs = 0
         total_ca_clients = 0
     
-    return render_template('pos/clients/list.html',
+    return render_template('pos/clients_list.html',
                          clients=clients,
                          search=search,
                          total_clients=total_clients,
