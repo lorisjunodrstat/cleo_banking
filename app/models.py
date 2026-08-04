@@ -15637,7 +15637,7 @@ class MagasinPOS:
             with self.db.get_cursor(dictionary=True) as cursor:
                 cursor.execute("""
                     SELECT m.*, 
-                           (SELECT COUNT(*) FROM pos_points_devente WHERE magasin_id = m.id) as nb_pdv
+                           (SELECT COUNT(*) FROM pos_points_de_vente WHERE magasin_id = m.id) as nb_pdv
                     FROM pos_magasins m
                     WHERE m.utilisateur_id = %s
                     ORDER BY m.nom_magasin
