@@ -11255,3 +11255,38 @@ def pos_stats_payment_methods():
                          totals=totals,
                          date_from=date_from,
                          date_to=date_to)
+
+@bp.route('/pos/commandes-en-cours')
+@login_required
+def pos_commandes_en_cours():
+    """Affiche les reçus qui sont encore 'Ouverts' ou 'En cours' (non cloturés)"""
+    user_id = current_user.id
+    try:
+        # On récupère tous les reçus, puis on filtre ceux qui ne sont pas 'Fermé' ou 'Annulé'
+        # (Adaptez la requête si votre modèle a une méthode get_by_status)
+        all_receipts = g.models.receipt_pos_model.get_all(user_id=user_id, limit=200)
+        commandes_en_cours = [r for r in all_receipts if r.get('status') in ['Ouvert', 'En cours', 'En attente']]
+        
+        return render_template('pos/commandes_en_cours.html', commandes=commandes_en_cours)
+    except Exception as e:
+        logger.error(f"Erreur récupération commandes en cours: {e}")
+        flash("Erreur lors du chargement des commandes.", "error")
+        return redirect(url_for('banking.pos_dashboard'))
+
+
+@bp.route('/pos/affichage-client')
+@login_required
+def pos_affichage_client():
+    """Vue épurée pour un second écran (tablette client)"""
+    # Cette route ne doit pas étendre "base.html" avec la sidebar.
+    # Elle doit utiliser un template minimaliste 'pos/affichage_client_minimal.html'
+    return render_template('pos/affichage_client_minimal.html')
+
+
+@bp.route('/pos/stats')
+@login_required
+def pos_stats():
+    """Redirection vers les statistiques par article (ou créez une vraie route si besoin)"""
+    # Si vous avez une route banking.stats_by_article, on redirige vers elle
+    # Sinon, on peut rendre un template simple ici.
+    return redirect(url_for('banking.pos_dashboard')) # À modifier si vous avez une page stats dédiée
