@@ -1013,10 +1013,13 @@ class DatabaseManager:
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     magasin_id INT NOT NULL,
                     nom_pdv VARCHAR(100) NOT NULL,
+                    compte_bancaire_id INT NULL COMMENT 'Lien vers le compte bancaire où encaisser les ventes de ce PDV',
                     description TEXT,
+                    compte_bancaire_id INT NULL COMMENT 'Lien vers le compte principal où encaisser',
                     actif BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE CASCADE
+                    FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id) ON DELETE SET NULL
                 );
                 """
                 cursor.execute(create_pos_points_de_vente_table_query)
@@ -1040,6 +1043,42 @@ class DatabaseManager:
                 );
                 """
                 cursor.execute(create_pos_porte_monnaie_table_query)
+
+                # 3. Reçus (avec liaison à la transaction financière)
+                create_pos_receipts_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_receipts (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
+                    pdv_id INT NOT NULL,
+                    date DATETIME NOT NULL,
+                    recu_numero VARCHAR(50) NOT NULL,
+                    receipt_type VARCHAR(50) DEFAULT 'Vente',
+                    total_collecte DECIMAL(10,2) DEFAULT 0,
+                    status VARCHAR(50) DEFAULT 'Fermé',
+                    transaction_id INT NULL COMMENT 'Lien vers la transaction financière générée',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (pdv_id) REFERENCES pos_points_de_vente(id),
+                    FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
+                    INDEX idx_recu_numero (recu_numero),
+                    INDEX idx_date (date)
+                );
+                """
+                cursor.execute(create_pos_receipts_table_query)
+
+                # 4. Lignes du reçu (Articles)
+                create_pos_receipt_items_table_query = """
+                CREATE TABLE IF NOT EXISTS pos_receipt_items (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    receipt_id INT NOT NULL,
+                    nom_article VARCHAR(200) NOT NULL,
+                    quantite INT DEFAULT 1,
+                    prix_unitaire DECIMAL(10,2) DEFAULT 0,
+                    total_ligne DECIMAL(10,2) DEFAULT 0,
+                    FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE
+                );
+                """
+                cursor.execute(create_pos_receipt_items_table_query)
 
                 # Table Catégories POS
                 create_pos_categories_table_query = """
@@ -15703,12 +15742,29 @@ class PointDeVentePOS:
                     return None
                 
                 cursor.execute("""
-                    INSERT INTO pos_points_de_vente (magasin_id, nom_pdv)
-                    VALUES (%s, %s)
-                """, (magasin_id, data['nom_pdv']))
+                    INSERT INTO pos_points_de_vente (magasin_id, nom_pdv, compte_bancaire_id)
+                    VALUES (%s, %s, %s)
+                """, (magasin_id, data['nom_pdv'], data.get('compte_bancaire_id')))
                 return cursor.lastrowid
         except Exception as e:
             logger.error(f"Erreur création PDV: {e}")
+            return None
+
+    def get_with_bank_info(self, pdv_id: int, user_id: int) -> Optional[Dict]:
+        """Récupère le PDV et les infos de son compte bancaire lié"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                query = """
+                    SELECT p.id, p.nom_pdv, p.compte_bancaire_id, c.nom_compte as banque_nom
+                    FROM pos_points_de_vente p
+                    JOIN pos_magasins m ON p.magasin_id = m.id
+                    LEFT JOIN comptes_principaux c ON p.compte_bancaire_id = c.id
+                    WHERE p.id = %s AND m.utilisateur_id = %s
+                """
+                cursor.execute(query, (pdv_id, user_id))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur récupération PDV: {e}")
             return None
 
     def get_by_magasin(self, magasin_id: int, user_id: int) -> List[Dict]:
@@ -16487,6 +16543,7 @@ class ReceiptPOS:
         self.db = db
         self.transaction_model = TransactionFinanciere(db)
         self.article_model = ArticlePOS(db)
+        self.pdv_model = PointDeVentePOS(db)
 
     def get_by_id(self, receipt_id: int, user_id: int) -> Optional[Dict]:
         try:
@@ -16809,10 +16866,78 @@ class ReceiptPOS:
                     WHERE r.utilisateur_id = %s AND r.status = 'open'
                     """)
                 return cursor.fetchall()
-        except e as Exception
+        except Exception as e:
             logger.error(f"Erreur dans la requete: {e}")
             return {}
-                    
+
+    
+    def cloturer_vente(self, user_id: int, pdv_id: int, items: List[Dict], 
+                           mode_paiement: str = 'Espèces') -> Tuple[bool, str, Optional[int]]:
+            """
+            Clôture une vente, enregistre le reçu et CRÉE la transaction financière.
+            """
+            try:
+                # 1. Vérifier le PDV et son compte bancaire lié
+                pdv_info = self.pdv_model.get_with_bank_info(pdv_id, user_id)
+                if not pdv_info:
+                    return False, "Point de vente introuvable", None
+                
+                compte_bancaire_id = pdv_info.get('compte_bancaire_id')
+                if not compte_bancaire_id:
+                    return False, f"Le PDV '{pdv_info['nom_pdv']}' n'est lié à aucun compte bancaire. Veuillez le configurer.", None
+    
+                total_collecte = Decimal('0')
+                for item in items:
+                    total_collecte += Decimal(str(item['prix_unitaire'])) * Decimal(str(item['quantite']))
+    
+                recu_numero = f"POS-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    
+                with self.db.get_cursor() as cursor:
+                    # 2. Insérer le reçu (sans transaction_id pour l'instant)
+                    cursor.execute("""
+                        INSERT INTO pos_receipts (utilisateur_id, pdv_id, date, recu_numero, total_collecte, status)
+                        VALUES (%s, %s, NOW(), %s, %s, 'Fermé')
+                    """, (user_id, pdv_id, recu_numero, float(total_collecte)))
+                    receipt_id = cursor.lastrowid
+    
+                    # 3. Insérer les lignes d'articles
+                    for item in items:
+                        cursor.execute("""
+                            INSERT INTO pos_receipt_items (receipt_id, nom_article, quantite, prix_unitaire, total_ligne)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (
+                            receipt_id, item['nom_article'], item['quantite'], 
+                            float(item[' prix_unitaire']), float(item['quantite']) * float(item['prix_unitaire'])
+                        ))
+    
+                    # 4. 🔗 CRÉER LA TRANSACTION FINANCIÈRE LIÉE
+                    success, msg, transaction_id = self.tx_model._inserer_transaction_with_cursor(
+                        cursor=cursor,
+                        compte_type='compte_principal',
+                        compte_id=compte_bancaire_id,
+                        type_transaction='depot', # Encaissement
+                        montant=total_collecte,
+                        description=f"Encaissement POS {recu_numero} ({pdv_info['nom_pdv']})",
+                        user_id=user_id,
+                        date_transaction=datetime.now(),
+                        validate_balance=False
+                    )
+    
+                    if success and transaction_id:
+                        # 5. 🔗 METTRE À JOUR LE REÇU AVEC L'ID DE LA TRANSACTION
+                        cursor.execute("""
+                            UPDATE pos_receipts SET transaction_id = %s WHERE id = %s
+                        """, (transaction_id, receipt_id))
+                        logger.info(f"✅ Vente {receipt_id} liée avec succès à la transaction {transaction_id}")
+                        return True, "Vente clôturée et comptabilisée avec succès", receipt_id
+                    else:
+                        # Si la transaction échoue, on annule tout (le gestionnaire de contexte fera un rollback)
+                        return False, f"Échec de la comptabilisation : {msg}", None
+    
+            except Exception as e:
+                logger.error(f"Erreur clôture vente POS: {e}", exc_info=True)
+                return False, f"Erreur système: {str(e)}", None
+                            
 
     def get_stats(self, user_id: int, date_from: str, date_to: str) -> Dict:
         """Statistiques de vente sur une période"""
