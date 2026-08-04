@@ -11165,12 +11165,6 @@ def pos_affichage_client():
     # À implémenter : vue épurée sans sidebar, destinée à un second écran
     return render_template('pos/affichage_client.html')
 
-@bp.route('/pos/stats')
-@login_required
-def pos_stats():
-    # Redirige vers votre page de statistiques existante ou en crée une nouvelle
-    return redirect(url_for('banking.stats_by_article')) # Exemple
-
 
 # ============================================================
 # CLIENTS POS
