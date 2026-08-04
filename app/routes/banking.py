@@ -11202,56 +11202,6 @@ def pos_clients_list():
                          clients_actifs=clients_actifs,
                          total_ca_clients=total_ca_clients)
 
-@bp.route('/pos/stats/payment-methods')
-@login_required
-def pos_stats_payment_methods():
-    """Statistiques des ventes par mode de paiement"""
-    date_from = request.args.get('date_from', '')
-    date_to = request.args.get('date_to', '')
-    
-    # Récupérer les reçus via le modèle
-    receipts = g.models.receipt_pos_model.get_all(
-        user_id=current_user.id,
-        date_from=date_from,
-        date_to=date_to
-    )
-    
-    # Agréger les données par mode de paiement
-    payment_stats = {}
-    for receipt in receipts:
-        for payment in receipt.get('payments', []):
-            mode_nom = payment.get('mode_paiement_nom', 'Inconnu')
-            if mode_nom not in payment_stats:
-                payment_stats[mode_nom] = {
-                    'method': mode_nom, 'transactions': 0, 'amount': 0,
-                    'refund_transactions': 0, 'refund_amount': 0, 'net': 0
-                }
-            
-            payment_stats[mode_nom]['transactions'] += 1
-            montant = float(payment.get('montant', 0) or 0)
-            payment_stats[mode_nom]['amount'] += montant
-            
-            if receipt.get('receipt_type') == 'Remboursement':
-                payment_stats[mode_nom]['refund_transactions'] += 1
-                payment_stats[mode_nom]['refund_amount'] += montant
-            else:
-                payment_stats[mode_nom]['net'] += montant
-    
-    payment_data = list(payment_stats.values())
-    
-    totals = {
-        'transactions': sum(p['transactions'] for p in payment_data),
-        'amount': sum(p['amount'] for p in payment_data),
-        'refund_transactions': sum(p['refund_transactions'] for p in payment_data),
-        'refund_amount': sum(p['refund_amount'] for p in payment_data),
-        'net': sum(p['net'] for p in payment_data)
-    }
-    
-    return render_template('pos/payment_methods.html',
-                         payment_data=payment_data,
-                         totals=totals,
-                         date_from=date_from,
-                         date_to=date_to)
 
 @bp.route('/pos/commandes-en-cours')
 @login_required
@@ -11409,6 +11359,7 @@ def pos_stats_by_employee():
                          date_to=date_to)
 
 
+
 @bp.route('/pos/stats/payment-methods')
 @login_required
 def pos_stats_payment_methods():
@@ -11425,8 +11376,12 @@ def pos_stats_payment_methods():
         
         payment_stats = {}
         for receipt in receipts:
+            is_refund = receipt.get('receipt_type') == 'Remboursement'
+            
             for payment in receipt.get('payments', []):
                 mode_nom = payment.get('mode_paiement_nom', 'Inconnu')
+                montant = float(payment.get('montant', 0) or 0)
+                
                 if mode_nom not in payment_stats:
                     payment_stats[mode_nom] = {
                         'method': mode_nom,
@@ -11437,15 +11392,16 @@ def pos_stats_payment_methods():
                         'net': 0.0
                     }
                 
-                payment_stats[mode_nom]['transactions'] += 1
-                montant = float(payment.get('montant', 0) or 0)
-                payment_stats[mode_nom]['amount'] += montant
+                stats = payment_stats[mode_nom]
+                stats['transactions'] += 1
+                stats['amount'] += montant
                 
-                if receipt.get('receipt_type') == 'Remboursement':
-                    payment_stats[mode_nom]['refund_transactions'] += 1
-                    payment_stats[mode_nom]['refund_amount'] += montant
+                if is_refund:
+                    stats['refund_transactions'] += 1
+                    stats['refund_amount'] += montant
+                    stats['net'] -= montant  # Déduit le remboursement du net
                 else:
-                    payment_stats[mode_nom]['net'] += montant
+                    stats['net'] += montant
         
         payment_data = list(payment_stats.values())
         
@@ -11459,10 +11415,18 @@ def pos_stats_payment_methods():
     except Exception as e:
         logger.error(f"Erreur stats modes de paiement: {e}")
         payment_data = []
-        totals = {}
+        totals = {
+            'transactions': 0,
+            'amount': 0.0,
+            'refund_transactions': 0,
+            'refund_amount': 0.0,
+            'net': 0.0
+        }
     
-    return render_template('pos/payment_methods.html',
-                         payment_data=payment_data,
-                         totals=totals,
-                         date_from=date_from,
-                         date_to=date_to)
+    return render_template(
+        'pos/payment_methods.html',
+        payment_data=payment_data,
+        totals=totals,
+        date_from=date_from,
+        date_to=date_to
+    )
