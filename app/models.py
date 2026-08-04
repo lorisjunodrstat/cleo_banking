@@ -1015,10 +1015,9 @@ class DatabaseManager:
                     nom_pdv VARCHAR(100) NOT NULL,
                     compte_bancaire_id INT NULL COMMENT 'Lien vers le compte bancaire où encaisser les ventes de ce PDV',
                     description TEXT,
-                    compte_bancaire_id INT NULL COMMENT 'Lien vers le compte principal où encaisser',
                     actif BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE CASCADE
+                    FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE CASCADE,
                     FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id) ON DELETE SET NULL
                 );
                 """
@@ -1045,37 +1044,77 @@ class DatabaseManager:
                 cursor.execute(create_pos_porte_monnaie_table_query)
 
                 # 3. Reçus (avec liaison à la transaction financière)
+                
+                # ============================================================
+                # TABLE RECEIPTS (Reçus / Tickets de caisse)
+                # 🔗 LIEN AVEC TRANSACTIONS FINANCIÈRES
+                # ============================================================
                 create_pos_receipts_table_query = """
                 CREATE TABLE IF NOT EXISTS pos_receipts (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     utilisateur_id INT NOT NULL,
-                    pdv_id INT NOT NULL,
+                    porte_monnaie_id INT NULL COMMENT 'Lien vers le porte-monnaie utilisé',
                     date DATETIME NOT NULL,
                     recu_numero VARCHAR(50) NOT NULL,
                     receipt_type VARCHAR(50) DEFAULT 'Vente',
+                    ventes_brutes DECIMAL(10,2) DEFAULT 0,
+                    reduction DECIMAL(10,2) DEFAULT 0,
+                    ventes_nettes DECIMAL(10,2) DEFAULT 0,
+                    taxes DECIMAL(10,2) DEFAULT 0,
+                    tips DECIMAL(10,2) DEFAULT 0,
                     total_collecte DECIMAL(10,2) DEFAULT 0,
+                    cout_marchandises DECIMAL(10,2) DEFAULT 0,
+                    marge_brute DECIMAL(10,2) DEFAULT 0,
+                    description TEXT,
+                    restaurant_option_id INT NULL,
+                    pdv VARCHAR(100),
+                    magasin VARCHAR(100),
+                    nom_du_caissier VARCHAR(100),
+                    nom_du_client VARCHAR(200),
+                    numero_client VARCHAR(50),
+                    id_client INT NULL,
+                    discount_id INT NULL,
+                    discount_amount DECIMAL(10,2) DEFAULT 0,
                     status VARCHAR(50) DEFAULT 'Fermé',
-                    transaction_id INT NULL COMMENT 'Lien vers la transaction financière générée',
+                    cloture_at DATETIME NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    -- 🔗 LIENS VERS VOTRE SYSTÈME FINANCIER EXISTANT
+                    transaction_id INT NULL COMMENT 'Lien vers la transaction financière créée',
+                    compte_bancaire_id INT NULL COMMENT 'Compte bancaire où l''argent est encaissé',
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                    FOREIGN KEY (pdv_id) REFERENCES pos_points_de_vente(id),
+                    FOREIGN KEY (porte_monnaie_id) REFERENCES pos_porte_monnaie(id) ON DELETE SET NULL,
+                    FOREIGN KEY (restaurant_option_id) REFERENCES pos_restaurant_options(id) ON DELETE SET NULL,
+                    FOREIGN KEY (id_client) REFERENCES pos_clients(id) ON DELETE SET NULL,
+                    FOREIGN KEY (discount_id) REFERENCES pos_discounts(id) ON DELETE SET NULL,
                     FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
+                    FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id) ON DELETE SET NULL,
                     INDEX idx_recu_numero (recu_numero),
-                    INDEX idx_date (date)
+                    INDEX idx_date (date),
+                    INDEX idx_caissier (nom_du_caissier),
+                    INDEX idx_utilisateur (utilisateur_id),
+                    INDEX idx_transaction (transaction_id),
+                    INDEX idx_client (id_client),
+                    INDEX idx_porte_monnaie (porte_monnaie_id)
                 );
                 """
                 cursor.execute(create_pos_receipts_table_query)
 
-                # 4. Lignes du reçu (Articles)
+                # Table Items du reçu (articles vendus dans un ticket)
                 create_pos_receipt_items_table_query = """
                 CREATE TABLE IF NOT EXISTS pos_receipt_items (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     receipt_id INT NOT NULL,
-                    nom_article VARCHAR(200) NOT NULL,
+                    article_id INT NOT NULL,
+                    nom_article VARCHAR(200) NOT NULL
+                    variante_id INT NULL,
                     quantite INT DEFAULT 1,
                     prix_unitaire DECIMAL(10,2) DEFAULT 0,
                     total_ligne DECIMAL(10,2) DEFAULT 0,
-                    FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE
+                    taux_taxe_applique DECIMAL(5,2) DEFAULT 0,
+                    FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE,
+                    FOREIGN KEY (article_id) REFERENCES pos_articles(id),
+                    FOREIGN KEY (variante_id) REFERENCES pos_variantes(id) ON DELETE SET NULL,
+                    INDEX idx_receipt (receipt_id)
                 );
                 """
                 cursor.execute(create_pos_receipt_items_table_query)
@@ -1313,78 +1352,9 @@ class DatabaseManager:
                 """
                 cursor.execute(create_pos_article_modificateurs_table_query)
 
-                # ============================================================
-                # TABLE RECEIPTS (Reçus / Tickets de caisse)
-                # 🔗 LIEN AVEC TRANSACTIONS FINANCIÈRES
-                # ============================================================
-                create_pos_receipts_table_query = """
-                CREATE TABLE IF NOT EXISTS pos_receipts (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    utilisateur_id INT NOT NULL,
-                    porte_monnaie_id INT NULL COMMENT 'Lien vers le porte-monnaie utilisé',
-                    date DATETIME NOT NULL,
-                    recu_numero VARCHAR(50) NOT NULL,
-                    receipt_type VARCHAR(50) DEFAULT 'Vente',
-                    ventes_brutes DECIMAL(10,2) DEFAULT 0,
-                    reduction DECIMAL(10,2) DEFAULT 0,
-                    ventes_nettes DECIMAL(10,2) DEFAULT 0,
-                    taxes DECIMAL(10,2) DEFAULT 0,
-                    tips DECIMAL(10,2) DEFAULT 0,
-                    total_collecte DECIMAL(10,2) DEFAULT 0,
-                    cout_marchandises DECIMAL(10,2) DEFAULT 0,
-                    marge_brute DECIMAL(10,2) DEFAULT 0,
-                    description TEXT,
-                    restaurant_option_id INT NULL,
-                    pdv VARCHAR(100),
-                    magasin VARCHAR(100),
-                    nom_du_caissier VARCHAR(100),
-                    nom_du_client VARCHAR(200),
-                    numero_client VARCHAR(50),
-                    id_client INT NULL,
-                    discount_id INT NULL,
-                    discount_amount DECIMAL(10,2) DEFAULT 0,
-                    status VARCHAR(50) DEFAULT 'Fermé',
-                    cloture_at DATETIME NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    -- 🔗 LIENS VERS VOTRE SYSTÈME FINANCIER EXISTANT
-                    transaction_id INT NULL COMMENT 'Lien vers la transaction financière créée',
-                    compte_bancaire_id INT NULL COMMENT 'Compte bancaire où l''argent est encaissé',
-                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                    FOREIGN KEY (porte_monnaie_id) REFERENCES pos_porte_monnaie(id) ON DELETE SET NULL,
-                    FOREIGN KEY (restaurant_option_id) REFERENCES pos_restaurant_options(id) ON DELETE SET NULL,
-                    FOREIGN KEY (id_client) REFERENCES pos_clients(id) ON DELETE SET NULL,
-                    FOREIGN KEY (discount_id) REFERENCES pos_discounts(id) ON DELETE SET NULL,
-                    FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
-                    FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id) ON DELETE SET NULL,
-                    INDEX idx_recu_numero (recu_numero),
-                    INDEX idx_date (date),
-                    INDEX idx_caissier (nom_du_caissier),
-                    INDEX idx_utilisateur (utilisateur_id),
-                    INDEX idx_transaction (transaction_id),
-                    INDEX idx_client (id_client),
-                    INDEX idx_porte_monnaie (porte_monnaie_id)
-                );
-                """
-                cursor.execute(create_pos_receipts_table_query)
+               
 
-                # Table Items du reçu (articles vendus dans un ticket)
-                create_pos_receipt_items_table_query = """
-                CREATE TABLE IF NOT EXISTS pos_receipt_items (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    receipt_id INT NOT NULL,
-                    article_id INT NOT NULL,
-                    variante_id INT NULL,
-                    quantite INT DEFAULT 1,
-                    prix_unitaire DECIMAL(10,2) DEFAULT 0,
-                    total_ligne DECIMAL(10,2) DEFAULT 0,
-                    taux_taxe_applique DECIMAL(5,2) DEFAULT 0,
-                    FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE,
-                    FOREIGN KEY (article_id) REFERENCES pos_articles(id),
-                    FOREIGN KEY (variante_id) REFERENCES pos_variantes(id) ON DELETE SET NULL,
-                    INDEX idx_receipt (receipt_id)
-                );
-                """
-                cursor.execute(create_pos_receipt_items_table_query)
+
 
                 # Table Paiements d'un reçu
                 create_pos_payments_table_query = """
@@ -15749,6 +15719,30 @@ class PointDeVentePOS:
         except Exception as e:
             logger.error(f"Erreur création PDV: {e}")
             return None
+
+    def update(self, pdv_id: int, user_id: int, data: Dict) -> bool:
+        """Met à jour un point de vente"""
+        try:
+            with self.db.get_cursor() as cursor:
+                # Vérifier que le PDV appartient bien à l'utilisateur via son magasin
+                cursor.execute("""
+                    SELECT pdv.id FROM pos_points_de_vente pdv
+                    JOIN pos_magasins m ON pdv.magasin_id = m.id
+                    WHERE pdv.id = %s AND m.utilisateur_id = %s
+                """, (pdv_id, user_id))
+                
+                if not cursor.fetchone():
+                    return False
+                
+                cursor.execute("""
+                    UPDATE pos_points_de_vente 
+                    SET nom_pdv = %s, magasin_id = %s, compte_bancaire_id = %s
+                    WHERE id = %s
+                """, (data['nom_pdv'], data['magasin_id'], data.get('compte_bancaire_id'), pdv_id))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur mise à jour PDV: {e}")
+            return False
 
     def get_with_bank_info(self, pdv_id: int, user_id: int) -> Optional[Dict]:
         """Récupère le PDV et les infos de son compte bancaire lié"""
