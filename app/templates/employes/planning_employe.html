@@ -3,60 +3,66 @@
 {% block title %}Planning de {{ employe.prenom }} {{ employe.nom }}{% endblock %}
 
 {% block content %}
-<h2>Planning de {{ employe.prenom }} {{ employe.nom }} - {{ mois }}/{{ annee }}</h2>
+{% if employe %}
+    <h2>Planning de {{ employe.prenom }} {{ employe.nom }} - {{ mois }}/{{ annee }}</h2>
 
-<div style="margin-bottom: 1rem;">
-    <a href="{{ url_for('banking.planning_employe', employe_id=employe.id, mois=mois-1, annee=annee) }}"
-        class="btn btn-sm btn-outline-secondary">◀ Mois précédent</a>
-    |
-    <a href="{{ url_for('banking.planning_employe', employe_id=employe.id, mois=mois+1, annee=annee) }}"
-        class="btn btn-sm btn-outline-secondary">Mois suivant ▶</a>
-</div>
+    <div style="margin-bottom: 1rem;">
+        <a href="{{ url_for('banking.planning_employe', employe_id=employe.id, mois=mois-1, annee=annee) }}"
+            class="btn btn-sm btn-outline-secondary">◀ Mois précédent</a>
+        |
+        <a href="{{ url_for('banking.planning_employe', employe_id=employe.id, mois=mois+1, annee=annee) }}"
+            class="btn btn-sm btn-outline-secondary">Mois suivant ▶</a>
+    </div>
 
-{% if not heures %}
-<div class="alert alert-info">
-    Aucune heure enregistrée pour ce mois.
-</div>
+    {% if not heures %}
+    <div class="alert alert-info">
+        Aucune heure enregistrée pour ce mois.
+    </div>
+    {% else %}
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Heure début</th>
+                <th>Heure fin</th>
+                <th>Durée</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for heure in heures %}
+            <tr>
+                <td>{{ heure.date.strftime('%d/%m/%Y') if heure.date else '' }}</td>
+                <td>{{ heure.heure_debut or '--:--' }}</td>
+                <td>{{ heure.heure_fin or '--:--' }}</td>
+                <td>
+                    {% if heure.heure_debut and heure.heure_fin %}
+                    {{ "%.2f"|format(heure.duree) }} h
+                    {% else %}
+                    0.00 h
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{{ url_for('banking.modifier_heure', heure_id=heure.id) }}"
+                        class="btn btn-sm btn-outline-primary">Modifier</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <div style="margin-top: 2rem;">
+        <a href="{{ url_for('banking.liste_employe') }}" class="btn btn-secondary">
+            ← Retour à la liste
+        </a>
+        <a href="{{ url_for('banking.planning_hebdomadaire') }}" class="btn btn-primary">
+            📅 Voir planning hebdomadaire
+        </a>
+    </div>
 {% else %}
-<table class="table table-bordered">
-    <thead>
-        <tr>
-            <th>Date</th>
-            <th>Heure début</th>
-            <th>Heure fin</th>
-            <th>Durée</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for heure in heures %}
-        <tr>
-            <td>{{ heure.date.strftime('%d/%m/%Y') if heure.date else '' }}</td>
-            <td>{{ heure.heure_debut or '--:--' }}</td>
-            <td>{{ heure.heure_fin or '--:--' }}</td>
-            <td>
-                {% if heure.heure_debut and heure.heure_fin %}
-                {{ "%.2f"|format(heure.duree) }} h
-                {% else %}
-                0.00 h
-                {% endif %}
-            </td>
-            <td>
-                <a href="{{ url_for('banking.modifier_heure', heure_id=heure.id) }}"
-                    class="btn btn-sm btn-outline-primary">Modifier</a>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+    <div class="alert alert-danger">
+        Employé non trouvé.
+    </div>
 {% endif %}
-
-<div style="margin-top: 2rem;">
-    <a href="{{ url_for('banking.liste_employe') }}" class="btn btn-secondary">
-        ← Retour à la liste
-    </a>
-    <a href="{{ url_for('banking.planning_hebdomadaire') }}" class="btn btn-primary">
-        📅 Voir planning hebdomadaire
-    </a>
-</div>
 {% endblock %}
