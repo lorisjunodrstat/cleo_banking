@@ -9661,6 +9661,7 @@ def modifier_employe(employe_id, user_id):
             logging.error(f"Erreur lors de la mise à jour de l'employé: {e}")
             flash(f'Erreur lors de la mise à jour : {str(e)}', 'error')
             return render_template('employes/modifier_employe.html', employe=employe, user_id=user_id, form_data=data)
+
 @bp.route('/employes/detail_employe/<int:employe_id>', methods=['GET'])
 @login_required
 def detail_employe(employe_id):
@@ -9905,6 +9906,7 @@ def modifier_equipe(id_equipe):
 
     # Méthode GET : afficher le formulaire avec les données actuelles
     return render_template('equipe/modifier.html', equipe=equipe)
+
 @bp.route('/equipe/supprimer/<int:id_equipe>', methods=['POST'])
 @login_required
 def supprimer_equipe(id_equipe):
@@ -9916,8 +9918,8 @@ def supprimer_equipe(id_equipe):
             nom_equipe = equipe['nom']
             success = g.models.equipe_model.supprimer(current_user_id, id_equipe)
             if success:
-                flash(f"Equipe {nom_equipe} supprime avec succes", 'success')
-                return redirect(url_for('banking.dashboard_employe'))
+                flash(f"Équipe {nom_equipe} supprimée avec succès", 'success')
+                return redirect(url_for('banking.dashboard_employes'))
             else:
                 flash(f'Echec de suppresion equipe {nom_equipe}', 'error')
                 return redirect(url_for('banking.dashboard_employe'))
@@ -9998,6 +10000,7 @@ def planning_employe(employe_id):
         annee=annee,
         mois=mois
     )
+
 @bp.route('/employes/planning-hebdomadaire')
 @login_required
 def planning_hebdomadaire():
@@ -10064,6 +10067,7 @@ def planning_hebdomadaire():
         prev_week=(lundi - timedelta(days=7)).strftime('%Y-%m-%d'),
         next_week=(lundi + timedelta(days=7)).strftime('%Y-%m-%d')
     )
+
 def get_semaine_from_date(date_str: str):
     """
     Retourne les 7 jours de la semaine (lundi à dimanche)
@@ -10373,6 +10377,7 @@ def planning_modifier_jour():
         mode=mode,
         current_user_id=user_id
     )
+
 # Sauvegarder jour → crée/écrase avec type_heures='simulees'
 @bp.route('/planning/sauvegarder_jour', methods=['POST'])
 @login_required
@@ -11153,11 +11158,6 @@ def pos_import_modifiers(df):
     return count
 
 
-@bp.route('/pos/commandes-en-cours')
-@login_required
-def pos_commandes_en_cours():
-    # À implémenter : logique pour récupérer les reçus avec statut 'En cours' ou 'Ouvert'
-    return render_template('pos/commandes_en_cours.html')
 
 @bp.route('/pos/affichage-client')
 @login_required
