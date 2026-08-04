@@ -46,7 +46,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-loyverse sticky-top shadow-sm">
         <div class="container-fluid">
             <!-- Logo / Titre -->
-            <a class="navbar-brand fw-bold" href="{{ url_for('main.banking_dashboard') }}">
+            <a class="navbar-brand fw-bold" href="{{ url_for('banking.banking_dashboard') }}">
                 <i class="bi bi-receipt-cutoff me-2"></i>Banking Local
             </a>
             
@@ -59,12 +59,12 @@
             <div class="collapse navbar-collapse" id="mainNavbar">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'main.index' %}active{% endif %}" href="{{ url_for('main.index') }}">
+                        <a class="nav-link {% if request.endpoint == 'banking.banking_dashboard' %}active{% endif %}" href="{{ url_for('banking.banking_dashboard') }}">
                             <i class="bi bi-house-door me-1"></i> Accueil
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'main.recu' %}active{% endif %}" href="{{ url_for('main.recu') }}">
+                        <a class="nav-link {% if request.endpoint == 'banking.recu' %}active{% endif %}" href="{{ url_for('banking.recu') }}">
                             <i class="bi bi-receipt me-1"></i> Reçus
                         </a>
                     </li>
@@ -75,14 +75,14 @@
                             <i class="bi bi-bar-chart-line me-1"></i> Rapports
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{{ url_for('main.payment_methods') }}">Modes de paiement</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.by_article') }}">Ventes par article</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.by_category') }}">Ventes par catégorie</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.by_employee') }}">Ventes par employé</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.clients_list') }}"><i class="bi bi-people me-1"></i> Clients</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.work_periods') }}"><i class="bi bi-clock-history me-1"></i> Périodes de travail</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.payment_methods') }}">Modes de paiement</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.by_article') }}">Ventes par article</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.by_category') }}">Ventes par catégorie</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.by_employee') }}">Ventes par employé</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.clients_list') }}"><i class="bi bi-people me-1"></i> Clients</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.work_periods') }}"><i class="bi bi-clock-history me-1"></i> Périodes de travail</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.taxes') }}">Taxes</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.taxes') }}">Taxes</a></li>
                         </ul>
                     </li>
 
@@ -92,16 +92,16 @@
                             <i class="bi bi-box-seam me-1"></i> Catalogue
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{{ url_for('main.items') }}">Liste des articles</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.create_article') }}">+ Nouvel article</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.items') }}">Liste des articles</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.create_article') }}">+ Nouvel article</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.categories') }}">Liste des catégories</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.create_category') }}">+ Nouvelle catégorie</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.categories') }}">Liste des catégories</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.create_category') }}">+ Nouvelle catégorie</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.modifiers') }}">Liste des modificateurs</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.create_modifier') }}">+ Nouveau modificateur</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.modifier_options') }}"><i class="bi bi-list-check me-1"></i> Options de modificateurs</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.create_modifier_option') }}">+ Option de modificateur</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.modifiers') }}">Liste des modificateurs</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.create_modifier') }}">+ Nouveau modificateur</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.modifier_options') }}"><i class="bi bi-list-check me-1"></i> Options de modificateurs</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.create_modifier_option') }}">+ Option de modificateur</a></li>
                         </ul>
                     </li>
 
@@ -112,27 +112,27 @@
                         </a>
                         <ul class="dropdown-menu">
                             <li><h6 class="dropdown-header">Magasins & PDV</h6></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.store_list') }}">Liste des magasins</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.create_store') }}">+ Nouveau magasin</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.pos_list') }}">Liste des points de vente</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.create_pos') }}">+ Nouveau point de vente</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.store_list') }}">Liste des magasins</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.create_store') }}">+ Nouveau magasin</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.pos_list') }}">Liste des points de vente</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.create_pos') }}">+ Nouveau point de vente</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.restaurant_options_list') }}">
+                            <li><a class="dropdown-item" href="{{ url_for('banking.restaurant_options_list') }}">
                                 <i class="bi bi-utensils me-1"></i> Options de restauration
                                 </a></li>
                             <li><h6 class="dropdown-header">Paiements & Taxes</h6></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.payment_methods_list') }}">Liste des modes de paiement</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.create_payment_method') }}">+ Nouveau mode de paiement</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.taxes_list') }}">Liste des taxes</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.create_taxe') }}">+ Nouvelle taxe</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.discounts_list') }}">Liste des Reductions</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.create_discount') }}">+ Nouvelle Reductions</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.payment_methods_list') }}">Liste des modes de paiement</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.create_payment_method') }}">+ Nouveau mode de paiement</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.taxes_list') }}">Liste des taxes</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.create_taxe') }}">+ Nouvelle taxe</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.discounts_list') }}">Liste des Reductions</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('banking.create_discount') }}">+ Nouvelle Reductions</a></li>
                         
                         </ul>
                     </li>
 
                     <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'main.import_data' %}active{% endif %}" href="{{ url_for('main.import_data') }}">
+                        <a class="nav-link {% if request.endpoint == 'banking.import_data' %}active{% endif %}" href="{{ url_for('banking.import_data') }}">
                             <i class="bi bi-upload me-1"></i> Importer
                         </a>
                     </li>
@@ -146,14 +146,14 @@
                                 <i class="bi bi-person-circle me-1"></i> {{ current_user.nom_utilisateur }}
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end">
-                                <li><a class="dropdown-item" href="{{ url_for('main.profil') }}"><i class="bi bi-gear me-2"></i>Profil</a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('banking.profil') }}"><i class="bi bi-gear me-2"></i>Profil</a></li>
                                 <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item text-danger" href="{{ url_for('main.logout') }}"><i class="bi bi-box-arrow-right me-2"></i>Déconnexion</a></li>
+                                <li><a class="dropdown-item text-danger" href="{{ url_for('banking.logout') }}"><i class="bi bi-box-arrow-right me-2"></i>Déconnexion</a></li>
                             </ul>
                         </li>
                     {% else %}
                         <li class="nav-item">
-                            <a class="nav-link text-white" href="{{ url_for('main.login') }}">
+                            <a class="nav-link text-white" href="{{ url_for('banking.login') }}">
                                 <i class="bi bi-box-arrow-in-right me-1"></i> Connexion
                             </a>
                         </li>
