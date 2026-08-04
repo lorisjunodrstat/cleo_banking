@@ -1,7 +1,7 @@
 {% extends "pos.html" %}
 {% block title %}Liste des points de vente{% endblock %}
 {% block page_header %}<h2 class="mb-4">Liste des points de vente
-    <a href="{{ url_for('banking.create_pos') }}" class="btn btn-sm btn-success float-end">+ Nouveau</a>
+    <a href="{{ url_for('banking.pos_create_pdv') }}" class="btn btn-sm btn-success float-end">+ Nouveau</a>
 </h2>
 {% endblock %}
 
@@ -24,7 +24,7 @@
                             <td>{{ pos.nom_pdv }}</td>
                             <td>{{ pos.magasin.nom_magasin if pos.magasin else '-' }}</td>
                             <td>
-                                <a href="{{ url_for('banking.edit_pos', pos_id=pos.id) }}" class="btn btn-sm btn-outline-primary">Modifier</a>
+                                <a href="{{ url_for('banking.pos_edit_pdv', pos_id=pos.id) }}" class="btn btn-sm btn-outline-primary">Modifier</a>
                             </td>
                         </tr>
                         {% else %}
