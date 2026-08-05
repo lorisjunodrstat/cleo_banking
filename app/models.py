@@ -17493,9 +17493,14 @@ class PeriodeTravailPOS:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 cursor.execute("""
-                    SELECT * FROM pos_periodes_travail 
-                    WHERE utilisateur_id = %s AND DATE(date_debut) = %s
+                    SELECT * 
+                    FROM pos_periodes_travail AS ppt
+                    LEFT JOIN pos_points_de_vente AS ppv ON ppt.pdv_id = ppv.id
+                    WHERE ppt.utilisateur_id = %s 
+                    AND DATE(ppt.date_debut) = %s
                     ORDER BY date_debut DESC
+                    LIMIT 0, 25;
+                    
                 """, (user_id, date_str))
                 return cursor.fetchall()
         except:
