@@ -3,7 +3,7 @@
 {% block page_header %}
 <h2 class="mb-4">
     Modes de paiement
-    <a href="{{ url_for('main.create_payment_method') }}" class="btn btn-sm btn-success float-end">+ Nouveau</a>
+    <a href="{{ url_for('main.pos_create_payment_method') }}" class="btn btn-sm btn-success float-end">+ Nouveau</a>
 </h2>
 {% endblock %}
 
@@ -29,8 +29,8 @@
                     <td>{{ mode.description or '-' }}</td>
                     <td><span class="badge bg-{{ 'success' if mode.est_actif else 'secondary' }}">{{ 'Actif' if mode.est_actif else 'Inactif' }}</span></td>
                     <td>
-                        <a href="{{ url_for('main.edit_payment_method', mode_id=mode.id) }}" class="btn btn-primary btn-sm">Modifier</a>
-                        <a href="{{ url_for('main.delete_payment_method', mode_id=mode.id) }}" class="btn btn-danger btn-sm" onclick="return confirm('Êtes-vous sûr de vouloir supprimer ce mode de paiement ?')">Supprimer</a>
+                        <a href="{{ url_for('main.pos_edit_payment_method', mode_id=mode.id) }}" class="btn btn-primary btn-sm">Modifier</a>
+                        <a href="{{ url_for('main.pos_delete_payment_method', mode_id=mode.id) }}" class="btn btn-danger btn-sm" onclick="return confirm('Êtes-vous sûr de vouloir supprimer ce mode de paiement ?')">Supprimer</a>
                     </td>
                 </tr>
                 {% else %}

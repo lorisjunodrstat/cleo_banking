@@ -29,9 +29,9 @@
                     <td><strong>{{ mod.nom_modificateur }}</strong></td>
                     <td class="text-muted">{{ mod.description or '-' }}</td>
                     <td>
-                        <a href="{{ url_for('banking.modifier_detail', modifier_id=mod.id) }}"  class="btn btn-sm btn-outline-primary" title="Voir les détails"><i class="bi bi-eye"></i></a>
-                        <a href="{{ url_for('banking.edit_modifier', modifier_id=mod.id) }}" class="btn btn-primary btn-sm">Modifier</a>
-                        <a href="{{ url_for('banking.delete_modifier', modifier_id=mod.id) }}" class="btn btn-danger btn-sm" onclick="return confirm('Êtes-vous sûr de vouloir supprimer ce modificateur ?')">Supprimer</a>
+                        <a href="{{ url_for('banking.pos_modifier_detail', modifier_id=mod.id) }}"  class="btn btn-sm btn-outline-primary" title="Voir les détails"><i class="bi bi-eye"></i></a>
+                        <a href="{{ url_for('banking.pos_edit_modifier', modifier_id=mod.id) }}" class="btn btn-primary btn-sm">Modifier</a>
+                        <a href="{{ url_for('banking.pos_delete_modifier', modifier_id=mod.id) }}" class="btn btn-danger btn-sm" onclick="return confirm('Êtes-vous sûr de vouloir supprimer ce modificateur ?')">Supprimer</a>
                     </td>
                 </tr>
                 {% else %}

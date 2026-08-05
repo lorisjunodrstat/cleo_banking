@@ -3,7 +3,7 @@
 
 {% block page_header %}
 <h2 class="mb-4">
-    <a href="{{ url_for('banking.clients_list') }}" class="btn btn-sm btn-outline-secondary me-2">
+    <a href="{{ url_for('banking.pos_clients_list') }}" class="btn btn-sm btn-outline-secondary me-2">
         <i class="bi bi-arrow-left"></i> Retour
     </a>
     <i class="bi bi-person-circle me-2"></i>{{ client.nom_client }}
@@ -167,7 +167,7 @@
                     <td>{{ visite.nom_du_caissier }}</td>
                     <td class="text-end fw-bold">CHF {{ "%.2f"|format(visite.total_collecte) }}</td>
                     <td class="text-center">
-                        <a href="{{ url_for('banking.receipt_detail', id=visite.id) }}" 
+                        <a href="{{ url_for('banking.pos_receipt_detail', id=visite.id) }}" 
                            class="btn btn-sm btn-outline-primary">
                             <i class="bi bi-eye"></i>
                         </a>

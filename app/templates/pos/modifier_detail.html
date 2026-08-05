@@ -4,13 +4,13 @@
 {% block page_header %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="mb-0">
-        <a href="{{ url_for('banking.modifiers') }}" class="btn btn-sm btn-outline-secondary me-2">
+        <a href="{{ url_for('banking.pos_modifiers') }}" class="btn btn-sm btn-outline-secondary me-2">
             <i class="bi bi-arrow-left"></i>
         </a>
         <i class="bi bi-sliders me-2"></i>{{ modifier.nom_modificateur }}
     </h2>
     <div>
-        <a href="{{ url_for('banking.modifiers') }}" class="btn btn-outline-secondary">
+        <a href="{{ url_for('banking.pos_modifiers') }}" class="btn btn-outline-secondary">
             <i class="bi bi-list me-1"></i>Tous les modificateurs
         </a>
     </div>
@@ -84,10 +84,10 @@
             </div>
             <div class="card-body">
                 <div class="d-grid gap-2">
-                    <a href="{{ url_for('banking.create_modifier_option') }}" class="btn btn-outline-primary">
+                    <a href="{{ url_for('banking.pos_create_modifier_option') }}" class="btn btn-outline-primary">
                         <i class="bi bi-plus-circle me-1"></i>Nouvelle option (formulaire complet)
                     </a>
-                    <form method="POST" action="{{ url_for('banking.delete_modifier', modifier_id=modifier.id) }}" 
+                    <form method="POST" action="{{ url_for('banking.pos_delete_modifier', modifier_id=modifier.id) }}" 
                           onsubmit="return confirm('Supprimer ce modificateur et toutes ses options ?')">
                         <button type="submit" class="btn btn-outline-danger w-100">
                             <i class="bi bi-trash me-1"></i>Supprimer le modificateur
@@ -185,7 +185,7 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <a href="{{ url_for('banking.edit_modifier_option', option_id=option.id) }}" 
+                                    <a href="{{ url_for('banking.pos_edit_modifier_option', option_id=option.id) }}" 
                                        class="btn btn-sm btn-outline-primary" title="Modifier">
                                         <i class="bi bi-pencil"></i>
                                     </a>

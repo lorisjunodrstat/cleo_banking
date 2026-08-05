@@ -22,7 +22,7 @@
                         {% for pos in pos_list %}
                         <tr>
                             <td>{{ pos.nom_pdv }}</td>
-                            <td>{{ pos.magasin.nom_magasin if pos.magasin else '-' }}</td>
+                            <td>{{ pos.magasin.nom_magasin if pos.nom_magasin else '-' }}</td>
                             <td>
                                 <a href="{{ url_for('banking.pos_edit_pdv', pos_id=pos.id) }}" class="btn btn-sm btn-outline-primary">Modifier</a>
                             </td>
