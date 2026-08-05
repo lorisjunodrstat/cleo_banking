@@ -11865,7 +11865,7 @@ def pos_taxes_receipts():
     return render_template('pos/taxes.html', receipts=receipts, total=total,
                            date_from=date_from, date_to=date_to)
 
-                           @bp.route('/pos/receipts/<int:receipt_id>/json')
+@bp.route('/pos/receipts/<int:receipt_id>/json')
 @login_required
 def pos_receipt_detail_json(receipt_id):
     receipt = g.models.receipt_pos_model.get_by_id(receipt_id, current_user.id)
