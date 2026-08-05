@@ -4,7 +4,7 @@
 {% block page_header %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="mb-0"><i class="bi bi-utensils me-2"></i>Options de restauration</h2>
-    <a href="{{ url_for('banking.create_restaurant_option') }}" class="btn btn-success">
+    <a href="{{ url_for('banking.pos_create_restaurant_option') }}" class="btn btn-success">
         <i class="bi bi-plus-circle me-1"></i>Ajouter l'option restauration
     </a>
 </div>
@@ -34,11 +34,11 @@
                             </span>
                         </td>
                         <td class="text-end">
-                            <a href="{{ url_for('banking.edit_restaurant_option', option_id=option.id) }}" 
+                            <a href="{{ url_for('banking.pos_edit_restaurant_option', option_id=option.id) }}" 
                                class="btn btn-sm btn-outline-primary" title="Modifier">
                                 <i class="bi bi-pencil"></i>
                             </a>
-                            <form method="POST" action="{{ url_for('banking.delete_restaurant_option', option_id=option.id) }}" 
+                            <form method="POST" action="{{ url_for('banking.pos_delete_restaurant_option', option_id=option.id) }}" 
                                   style="display: inline;" 
                                   onsubmit="return confirm('Supprimer cette option ?')">
                                 <button type="submit" class="btn btn-sm btn-outline-danger" title="Supprimer">
