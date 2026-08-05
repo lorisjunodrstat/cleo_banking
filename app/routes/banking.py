@@ -10521,35 +10521,27 @@ def safe_float(val, default=0.0):
 @bp.route('/pos')
 @login_required
 def pos_dashboard():
-    """Tableau de bord principal du module POS"""
     user_id = current_user.id
-    
-    # 1. Récupérer les magasins de l'utilisateur
-    magasins = g.models.magasin_pos_model.get_by_user(user_id)
-    
-    # 2. Récupérer les reçus du jour
-    today = date.today().strftime('%Y-%m-%d')
+
+    magasins       = g.models.magasin_pos_model.get_by_user(user_id)
+    today          = date.today().strftime('%Y-%m-%d')
     receipts_today = g.models.receipt_pos_model.get_all(
-        user_id=user_id,
-        date_from=today,
-        date_to=today
+        user_id=user_id, date_from=today, date_to=today
     )
-    
-    # 3. Calculer les statistiques du jour (un seul filtrage)
-    ventes_du_jour = [r for r in receipts_today if r.get('receipt_type') == 'Vente']
-    total_ventes_jour = sum(float(r.get('total_collecte', 0) or 0) for r in ventes_du_jour)
-    nb_ventes_jour = len(ventes_du_jour)
-    
-    # 4. Vérifier si une période de travail est ouverte
+
+    ventes_du_jour   = [r for r in receipts_today if r.get('receipt_type') == 'Vente']
+    total_ventes_jour = sum(safe_float(r.get('total_collecte')) for r in ventes_du_jour)
+    nb_ventes_jour    = len(ventes_du_jour)
+
     periode_ouverte = g.models.periode_travail_pos_model.get_ouverte(user_id)
-    
+
     return render_template(
         'pos/dashboard.html',
         magasins=magasins,
         total_ventes_jour=total_ventes_jour,
         nb_ventes_jour=nb_ventes_jour,
         periode_ouverte=periode_ouverte,
-        now=datetime.now()  # ← Important : utilisé par base.html pour le footer
+        now=datetime.now(),
     )
 # --- MAGASINS ---
 @bp.route('/pos/stores')
