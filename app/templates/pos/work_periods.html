@@ -5,8 +5,13 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="mb-0">
         <i class="bi bi-clock-history me-2"></i>Périodes de travail
+        {% if period_ouverte %}
+            <span class="badge bg-warning text-dark ms-2">
+                <i class="bi bi-hourglass-split me-1"></i>1 période en cours
+            </span>
+        {% endif %}
     </h2>
-    <a href="{{ url_for('banking.open_work_period') }}" class="btn btn-success">
+    <a href="{{ url_for('banking.pos_open_work_period') }}" class="btn btn-success">
         <i class="bi bi-plus-circle me-1"></i>Ouvrir une caisse
     </a>
 </div>
@@ -27,7 +32,7 @@
                 </button>
             </div>
             <div class="col-md-6 text-end">
-                <a href="{{ url_for('banking.work_periods') }}" class="btn btn-outline-secondary">
+                <a href="{{ url_for('banking.pos_work_periods') }}" class="btn btn-outline-secondary">
                     <i class="bi bi-calendar-today me-1"></i>Aujourd'hui
                 </a>
             </div>
@@ -322,7 +327,7 @@ function openReportModal(periodId) {
     const modal = new bootstrap.Modal(document.getElementById('reportModal'));
     modal.show();
     
-    fetch(`/work-period/${periodId}/json`)
+    fetch(`/pos/work-period/${periodId}/json`)
         .then(response => response.json())
         .then(data => {
             // Infos générales
@@ -397,10 +402,10 @@ function openReportModal(periodId) {
             // Actions dans le footer
             let actionsHTML = '';
             if (data.status === 'Ouvert') {
-                actionsHTML += `<a href="/work-period/${data.id}/cash-movement" class="btn btn-outline-primary me-2">
+                actionsHTML += `<a href="/pos/work-period/${data.id}/cash-movement" class="btn btn-outline-primary me-2">
                     <i class="bi bi-cash-stack me-1"></i>Mouvement d'espèces
                 </a>`;
-                actionsHTML += `<a href="/work-period/${data.id}/close" class="btn btn-danger">
+                actionsHTML += `<a href="/pos/work-period/${data.id}/close" class="btn btn-danger">
                     <i class="bi bi-lock me-1"></i>Fermer la caisse
                 </a>`;
             }

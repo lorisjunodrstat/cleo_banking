@@ -11219,7 +11219,7 @@ def pos_work_periods():
     date_filter = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
     period_ouverte = g.models.periode_travail_pos_model.get_ouverte(current_user.id)
     periods = g.models.periode_travail_pos_model.get_by_date(current_user.id, date_filter)
-    return render_template('pos/work_periods/list.html', 
+    return render_template('pos/work_periods.html', 
                            periods=periods, period_ouverte=period_ouverte,
                            date_filter=date_filter)
 

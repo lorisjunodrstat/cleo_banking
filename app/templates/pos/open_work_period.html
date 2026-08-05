@@ -1,0 +1,98 @@
+{% extends "pos.html" %}
+
+{% block title %}Ouvrir une période de travail{% endblock %}
+
+{% block page_header %}
+<h2 class="mb-4">Ouvrir une période de travail</h2>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-door-open me-2"></i>
+                    Ouverture de caisse
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        Vous êtes sur le point d'ouvrir une nouvelle période de travail.
+                        Assurez-vous qu'aucune autre période n'est déjà en cours.
+                    </div>
+
+                    <!-- Point de vente -->
+                    <div class="mb-3">
+                        <label for="pdv_id" class="form-label">
+                            Point de vente <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="pdv_id" name="pdv_id" required>
+                            <option value="" disabled selected>-- Sélectionner un point de vente --</option>
+                            {% for pdv in pdvs %}
+                                <option value="{{ pdv.id }}">{{ pdv.nom_pdv if pdv.nom_pdv else 'PDV #' ~ pdv.id }}</option>
+                            {% endfor %}
+                        </select>
+                        {% if not pdvs %}
+                            <div class="form-text text-danger">
+                                Aucun point de vente disponible. Veuillez d'abord créer un magasin et un PDV.
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Magasin -->
+                    <div class="mb-3">
+                        <label for="magasin" class="form-label">
+                            Magasin / Lieu
+                        </label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="magasin" 
+                               name="magasin" 
+                               placeholder="Ex: Magasin principal, Marché de Noël..."
+                               value="">
+                        <div class="form-text">
+                            Nom ou lieu de l'activité (optionnel).
+                        </div>
+                    </div>
+
+                    <!-- Montant de début -->
+                    <div class="mb-3">
+                        <label for="montant_debut" class="form-label">
+                            Montant de départ (CHF) <span class="text-danger">*</span>
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text">CHF</span>
+                            <input type="number" 
+                                   step="0.01" 
+                                   min="0" 
+                                   class="form-control" 
+                                   id="montant_debut" 
+                                   name="montant_debut" 
+                                   placeholder="0.00"
+                                   value="0"
+                                   required>
+                        </div>
+                        <div class="form-text">
+                            Saisissez le montant compté dans la caisse à l'ouverture (fond de caisse).
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <div class="d-flex gap-2">
+                        <a href="{{ url_for('banking.pos_work_periods') }}" class="btn btn-secondary flex-grow-1">
+                            <i class="bi bi-x-circle me-2"></i>Annuler
+                        </a>
+                        <button type="submit" class="btn btn-success flex-grow-1" {% if not pdvs %}disabled{% endif %}>
+                            <i class="bi bi-door-open me-2"></i>Ouvrir la période
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
