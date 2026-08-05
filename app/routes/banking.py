@@ -11269,15 +11269,34 @@ def pos_close_work_period(period_id):
 @login_required
 def pos_modifier_options():
     modifiers = g.models.modificateur_pos_model.get_all(current_user.id)
+    
+    # Créer un dictionnaire {id: article} pour accès rapide
+    articles = g.models.article_pos_model.get_all(current_user.id)
+    articles_by_id = {a['id']: a for a in articles}
+    
     modifiers_data = []
+    total_options = 0
+    
     for mod in modifiers:
         options = g.models.option_modificateur_pos_model.get_by_modifier(mod['id'])
+        options_count = len(options)
+        total_options += options_count
+        
         modifiers_data.append({
             'modifier': mod,
             'options': options,
-            'options_count': len(options),
+            'options_count': options_count,
         })
-    return render_template('pos/modifier_options.html', modifiers_data=modifiers_data)
+    
+    total_modifiers = len(modifiers)
+    
+    return render_template(
+        'pos/modifier_options.html',
+        modifiers_data=modifiers_data,
+        articles_by_id=articles_by_id,
+        total_options=total_options,
+        total_modifiers=total_modifiers
+    )
 
 @bp.route('/pos/modifier-option/create', methods=['GET', 'POST'])
 @login_required
