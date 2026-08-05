@@ -10740,7 +10740,7 @@ def pos_edit_category(category_id):
         })
         flash('Catégorie modifiée !', 'success')
         return redirect(url_for('banking.pos_categories_list'))
-    return render_template('pos/edit_category.html', categorie=cat)
+    return render_template('pos/edit_category.html', category=cat)
 
 
 @bp.route('/pos/categories/<int:category_id>/delete', methods=['POST'])
