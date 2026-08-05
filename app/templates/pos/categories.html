@@ -26,10 +26,10 @@
                 <tbody>
                     {% for cat in categories %}
                     <tr>
-                        <td><strong>{{ cat.name }}</strong></td>
+                        <td><strong>{{ cat.nom_categorie }}</strong></td>
                         <td class="text-muted">{{ cat.description or '-' }}</td>
                         <td class="text-center">
-                            <span class="badge bg-primary">{{ cat.item_count }}</span>
+                            <span class="badge bg-primary">{{ cat.nb_articles }}</span>
                         </td>
                         <td class="text-end">
                             <a href="{{ url_for('banking.pos_edit_category', category_id=cat.id) }}" 
@@ -40,7 +40,7 @@
                                   style="display: inline;" 
                                   onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette catégorie ? Cette action est irréversible.')">
                                 <button type="submit" class="btn btn-sm btn-outline-danger" title="Supprimer"
-                                        {% if cat.item_count > 0 %}disabled title="Des articles sont liés à cette catégorie"{% endif %}>
+                                        {% if cat.nb_articles > 0 %}disabled title="Des articles sont liés à cette catégorie"{% endif %}>
                                     <i class="bi bi-trash"></i>
                                 </button>
                             </form>

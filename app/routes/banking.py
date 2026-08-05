@@ -10958,20 +10958,63 @@ def pos_delete_modifier_option(opt_id):
 @login_required
 def pos_articles_list():
     page = request.args.get('page', 1, type=int)
-    search = request.args.get('search', '')
-    category_filter = request.args.get('category', '')
+    search = request.args.get('search', '', type=str).strip()
+    category_filter = request.args.get('category', '', type=str).strip()
+    category_id = request.args.get('category', type=int)
     
     articles = g.models.article_pos_model.get_all(
         user_id=current_user.id,
-        categorie_id=int(category_filter) if category_filter else None
+        categorie_id=category_id
     )
     
     if search:
-        articles = [a for a in articles if search.lower() in a.get('nom_article', '').lower()]
+        search_lower = search.lower()
+        articles = [
+            a for a in articles 
+            if search_lower in (a.get('nom_article', '') if isinstance(a, dict) else getattr(a, 'nom_article', '')).lower()
+        ]
     
     categories = g.models.categorie_pos_model.get_all(current_user.id)
-    return render_template('pos/items.html', items=articles, categories=categories, search=search, category_filter=category_filter)
-
+    
+    # Pagination manuelle (comme dans banking_compte_detail)
+    per_page = current_app.config.get('PER_PAGE', 20)
+    total = len(articles)
+    total_pages = (total + per_page - 1) // per_page if total > 0 else 1
+    
+    # S'assurer que la page est dans les limites
+    if page < 1:
+        page = 1
+    elif page > total_pages:
+        page = total_pages
+    
+    # Pagination des résultats
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+    items_page = articles[start_idx:end_idx]
+    
+    # Créer un objet pagination compatible avec le template
+    from types import SimpleNamespace
+    
+    pagination = SimpleNamespace(
+        page=page,
+        pages=total_pages,
+        per_page=per_page,
+        total=total,
+        items=items_page,
+        has_prev=page > 1,
+        prev_num=page - 1,
+        has_next=page < total_pages,
+        next_num=page + 1 if page < total_pages else None
+    )
+    
+    return render_template(
+        'pos/items.html',
+        items=pagination.items,
+        categories=categories,
+        search=search,
+        category_filter=category_filter,
+        pagination=pagination
+    )
 @bp.route('/pos/articles/create', methods=['GET', 'POST'])
 @login_required
 def pos_create_article():
