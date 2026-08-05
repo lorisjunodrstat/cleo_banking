@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Caisse — {{ pdv.nom_pdv if pdv else 'Sélection PDV' }}</title>
+<style>
+:root{
+  --green:#4CAF50; --green-dark:#388E3C; --green-head:#43A047;
+  --bg:#f5f6f8; --card:#fff; --txt:#222; --muted:#888; --danger:#e53935;
+}
+*{box-sizing:border-box; margin:0; padding:0; font-family:Roboto,Arial,sans-serif}
+body{background:var(--bg); color:var(--txt); height:100vh; display:flex; flex-direction:column; overflow:hidden}
+button{cursor:pointer; border:none; background:none}
+/* ---------- Topbar ---------- */
+.topbar{background:var(--green-head); color:#fff; display:flex; align-items:center; gap:12px; padding:0 12px; height:56px; flex-shrink:0}
+.topbar .title{font-size:20px; font-weight:500; flex:1}
+.topbar .badge{border:1px dashed #fff; padding:2px 8px; font-size:14px; margin-left:6px}
+.iconbtn{color:#fff; font-size:22px; padding:6px 10px; border-radius:6px}
+.iconbtn:hover{background:rgba(255,255,255,.15)}
+/* ---------- Écrans sélection / période ---------- */
+.screen{flex:1; display:flex; align-items:center; justify-content:center; padding:20px; overflow:auto}
+.card{background:var(--card); border-radius:10px; box-shadow:0 2px 10px rgba(0,0,0,.12); padding:28px; width:100%; max-width:560px}
+.card h1{font-size:22px; margin-bottom:6px}
+.card p.sub{color:var(--muted); margin-bottom:20px}
+.pdv-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px}
+.pdv-item{border:2px solid #e0e0e0; border-radius:10px; padding:16px 10px; text-align:center; cursor:pointer}
+.pdv-item:hover{border-color:var(--green)}
+.pdv-item .nom{font-weight:600}
+.pdv-item .mag{font-size:12px; color:var(--muted)}
+.field{margin:14px 0}
+.field label{display:block; font-size:13px; color:var(--muted); margin-bottom:6px}
+.field input{width:100%; padding:12px; border:1px solid #ccc; border-radius:6px; font-size:16px}
+.btn{display:block; width:100%; background:var(--green); color:#fff; font-size:17px; font-weight:600; padding:14px; border-radius:6px; text-align:center}
+.btn:hover{background:var(--green-dark)}
+.btn.red{background:var(--danger)}
+.warn{background:#fff3cd; border:1px solid #ffe08a; border-radius:6px; padding:10px; margin-bottom:14px; font-size:14px}
+.link-quit{display:inline-block; margin-top:14px; color:var(--muted); font-size:13px; text-decoration:underline}
+/* ---------- Caisse : layout ---------- */
+.main{flex:1; display:flex; min-height:0}
+.left{flex:1.4; display:flex; flex-direction:column; min-width:0; border-right:1px solid #ddd; background:#fff}
+.right{flex:1; display:flex; flex-direction:column; min-width:340px; background:var(--bg)}
+.searchbar{display:flex; border-bottom:1px solid #ddd}
+.searchbar select{width:45%; border:none; padding:14px 10px; font-size:15px; background:#fff; border-right:1px solid #ddd}
+.searchbar input{flex:1; border:none; padding:14px 12px; font-size:15px; outline:none}
+.articles{flex:1; overflow-y:auto}
+.art-row{display:flex; align-items:center; gap:12px; padding:14px 16px; border-bottom:1px solid #eee; cursor:pointer}
+.art-row:hover{background:#f2f7f2}
+.art-thumb{width:44px; height:44px; background:#e0e0e0; border-radius:4px; flex-shrink:0}
+.art-name{flex:1; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.art-price{font-size:15px; color:#333}
+/* ---------- Ticket ---------- */
+.option-bar{display:flex; align-items:center; gap:8px; padding:10px 12px; background:#fff; border-bottom:1px solid #ddd}
+.option-bar select{flex:1; padding:10px; font-size:15px; border:1px solid #ccc; border-radius:6px}
+.client-chip{background:var(--green); color:#fff; border-radius:16px; padding:6px 12px; font-size:13px; display:none; align-items:center; gap:6px}
+.lines{flex:1; overflow-y:auto; padding:8px}
+.line{background:#fff; border-radius:8px; padding:10px 12px; margin-bottom:8px; box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.line .l1{display:flex; justify-content:space-between; gap:8px}
+.line .lname{font-size:15px; flex:1}
+.line .lprice{font-weight:600}
+.line .l2{display:flex; align-items:center; gap:10px; margin-top:6px}
+.qtybtn{width:30px; height:30px; border:1px solid #ccc; border-radius:6px; font-size:17px; background:#fafafa}
+.line .meta{font-size:12px; color:var(--muted)}
+.line .del{color:var(--danger); margin-left:auto; font-size:16px}
+.totals{background:#fff; padding:12px 16px; border-top:1px solid #ddd; font-size:15px}
+.totals .row{display:flex; justify-content:space-between; margin:3px 0}
+.totals .grand{font-size:18px; font-weight:700}
+.bottombar{display:flex; flex-shrink:0}
+.bottombar button{flex:1; padding:18px 8px; font-size:16px; font-weight:700; color:#fff; background:var(--green)}
+.bottombar button:first-child{background:#66BB6A; border-right:1px solid rgba(255,255,255,.4)}
+.bottombar button:disabled{opacity:.6}
+/* ---------- Drawer ---------- */
+#drawer{position:fixed; left:0; top:0; bottom:0; width:280px; background:#fff; z-index:60; transform:translateX(-100%); transition:transform .25s; box-shadow:2px 0 12px rgba(0,0,0,.25); display:flex; flex-direction:column}
+#drawer.open{transform:translateX(0)}
+.drawer-head{background:var(--green-head); color:#fff; padding:22px 16px}
+.drawer-head .u{font-size:19px; font-weight:600}
+.drawer-head .s{font-size:13px; opacity:.9; margin-top:4px}
+#drawer a{display:flex; align-items:center; gap:14px; padding:15px 18px; color:#333; text-decoration:none; font-size:16px; border-bottom:1px solid #f0f0f0}
+#drawer a.active{background:#eef7ee; color:var(--green-dark); font-weight:600}
+#drawer a.quit{color:var(--danger)}
+#scrim{position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:50; display:none}
+#scrim.show{display:block}
+/* ---------- Menus & modales ---------- */
+.menu{position:fixed; top:56px; right:8px; background:#fff; border-radius:8px; box-shadow:0 4px 18px rgba(0,0,0,.25); z-index:70; display:none; min-width:230px; padding:6px 0}
+.menu.show{display:block}
+.menu button,.menu a{display:flex; width:100%; align-items:center; gap:12px; padding:13px 18px; font-size:15px; color:#444; text-decoration:none; text-align:left}
+.menu button:hover,.menu a:hover{background:#f5f5f5}
+.modal{position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:80; display:none; align-items:center; justify-content:center; padding:16px}
+.modal.show{display:flex}
+.modal .box{background:#fff; border-radius:10px; width:100%; max-width:480px; max-height:90vh; overflow-y:auto; padding:20px}
+.modal h2{font-size:18px; margin-bottom:14px}
+.modal .close{float:right; font-size:20px; color:#888}
+.pay-line{display:flex; justify-content:space-between; align-items:center; background:#f7f7f7; border-radius:6px; padding:8px 10px; margin:6px 0}
+.pay-line input{width:110px; padding:8px; border:1px solid #ccc; border-radius:6px; text-align:right}
+.modes{display:flex; flex-wrap:wrap; gap:8px; margin:10px 0}
+.modes button{border:1px solid var(--green); color:var(--green-dark); border-radius:18px; padding:8px 14px; font-size:14px; background:#fff}
+.modes button:hover{background:var(--green); color:#fff}
+.success-box{text-align:center; padding:30px 10px}
+.success-box .ok{font-size:52px; color:var(--green)}
+.parked-item{display:flex; justify-content:space-between; align-items:center; background:#f7f7f7; border-radius:6px; padding:10px; margin:6px 0}
+@media (max-width:900px){ .main{flex-direction:column} .right{min-width:0; flex:1} }
+</style>
+</head>
+<body>
+
+{# ================= ÉTAT 1 : SÉLECTION DU PDV ================= #}
+{% if etat == 'select_pdv' %}
+<div class="screen">
+  <div class="card">
+    <h1>Mode Caisse</h1>
+    <p class="sub">Sélectionnez le point de vente à utiliser sur cet appareil.</p>
+    {% if not pdvs %}
+      <p>Aucun point de vente défini. Créez d'abord un magasin et un PDV dans le Back Office.</p>
+    {% else %}
+      <form method="POST" action="{{ url_for('banking.pos_vente_select_pdv') }}">
+        <div class="pdv-grid">
+          {% for p in pdvs %}
+          <label class="pdv-item">
+            <input type="radio" name="pdv_id" value="{{ p.id }}" required style="margin-bottom:8px">
+            <div class="nom">{{ p.nom_pdv }}</div>
+            <div class="mag">{{ p.nom_magasin }}</div>
+          </label>
+          {% endfor %}
+        </div>
+        <button class="btn" style="margin-top:18px" type="submit">Continuer</button>
+      </form>
+    {% endif %}
+    <a class="link-quit" href="{{ url_for('banking.pos_dashboard') }}">← Retour au Back Office</a>
+  </div>
+</div>
+
+{# ================= ÉTAT 2 : OUVERTURE / FERMETURE PÉRIODE ================= #}
+{% elif etat == 'periode' %}
+<div class="screen">
+  <div class="card">
+    <h1>{{ pdv.nom_pdv }} — {{ pdv.nom_magasin }}</h1>
+
+    {% if periode %}
+      {# Une période est ouverte sur UN AUTRE PDV : il faut la fermer d'abord #}
+      <p class="warn">⚠️ Une période est déjà ouverte sur <b>{{ periode.magasin or 'un autre PDV' }}</b>. Fermez-la avant de continuer.</p>
+      <p class="sub">Montant prévu en caisse : <b>CHF {{ '%.2f'|format(detail.montant_prevu if detail else 0) }}</b></p>
+      <form method="POST" action="{{ url_for('banking.pos_vente_close_period') }}">
+        <div class="field">
+          <label>Montant de fin réel (CHF)</label>
+          <input type="number" step="0.05" name="montant_fin_reel" value="{{ detail.montant_prevu if detail else 0 }}" required>
+        </div>
+        <button class="btn red" type="submit">Fermer la caisse</button>
+      </form>
+    {% else %}
+      <p class="sub">Ouvrez la caisse pour commencer à vendre.</p>
+      <form method="POST" action="{{ url_for('banking.pos_vente_open_period') }}">
+        <div class="field">
+          <label>Fond de caisse / montant de début (CHF)</label>
+          <input type="number" step="0.05" name="montant_debut" value="0" required>
+        </div>
+        <button class="btn" type="submit">Ouvrir la caisse</button>
+      </form>
+    {% endif %}
+    <a class="link-quit" href="{{ url_for('banking.pos_vente_quit') }}">Changer de PDV / quitter</a>
+  </div>
+</div>
+
+{# ================= ÉTAT 3 : CAISSE ================= #}
+{% else %}
+<header class="topbar">
+  <button class="iconbtn" id="btnDrawer">☰</button>
+  <div class="title">Ticket <span class="badge" id="ticketCount">0</span></div>
+  <button class="iconbtn" id="btnClient" title="Attribuer le ticket">👤+</button>
+  <button class="iconbtn" id="btnMenu">⋮</button>
+</header>
+
+<nav id="drawer">
+  <div class="drawer-head">
+    <div class="u">{{ current_user.nom_utilisateur if current_user.nom_utilisateur else 'Caissier' }}</div>
+    <div class="s">{{ pdv.nom_pdv }}</div>
+    <div class="s">{{ pdv.nom_magasin }}</div>
+  </div>
+  <a href="#" class="active">🛒 Ventes</a>
+  <a href="{{ url_for('banking.pos_receipts_list') }}">🧾 Reçus</a>
+  <a href="{{ url_for('banking.pos_work_periods') }}">🕐 Période de travail</a>
+  <a href="{{ url_for('banking.pos_articles_list') }}">📋 Articles</a>
+  <a href="{{ url_for('banking.pos_dashboard') }}">📊 Back Office</a>
+  <a href="{{ url_for('banking.pos_vente_quit') }}" class="quit">🚪 Quitter le mode caisse</a>
+</nav>
+<div id="scrim"></div>
+
+<div class="menu" id="menu">
+  <button onclick="clearTicket()">🗑️ Effacer le ticket</button>
+  <button onclick="parkTicket()">⏸️ Mettre en attente</button>
+  <button onclick="openClientModal()">👤 Attribuer le ticket</button>
+  <button onclick="openClosePeriodModal()">🔒 Fermer la période</button>
+  <a href="{{ url_for('banking.pos_vente_quit') }}">🚪 Quitter le mode caisse</a>
+</div>
+
+<main class="main">
+  {# ----- Colonne gauche : menu articles ----- #}
+  <section class="left">
+    <div class="searchbar">
+      <select id="catFilter"><option value="">Tous les articles</option></select>
+      <input id="search" placeholder="🔍 Rechercher…">
+    </div>
+    <div class="articles" id="articlesList"></div>
+  </section>
+
+  {# ----- Colonne droite : ticket ----- #}
+  <aside class="right">
+    <div class="option-bar">
+      <select id="restoOption">
+        <option value="">— Option de restauration —</option>
+        {% for o in restaurant_options %}<option value="{{ o.id }}">{{ o.nom }}</option>{% endfor %}
+      </select>
+      <span class="client-chip" id="clientChip"></span>
+    </div>
+    <div class="lines" id="ticketLines"></div>
+    <div class="totals">
+      <div class="row"><span>Sous-total</span><span id="tSousTotal">CHF 0.00</span></div>
+      <div class="row"><span>Taxes</span><span id="tTaxes">CHF 0.00</span></div>
+      <div class="row grand"><span>TOTAL</span><span id="tTotal">CHF 0.00</span></div>
+    </div>
+    <div class="bottombar">
+      <button onclick="openParkedModal()">TICKETS OUVERTS</button>
+      <button id="btnPay" onclick="openPayModal()">PAYER<br><span id="payTotal">CHF 0.00</span></button>
+    </div>
+  </aside>
+</main>
+
+{# ---------- Modale : choix article (variantes / modificateurs / prix variable) ---------- #}
+<div class="modal" id="modalArticle"><div class="box">
+  <button class="close" onclick="closeModal('modalArticle')">✕</button>
+  <h2 id="maNom"></h2>
+  <div id="maVariantes" style="margin:8px 0"></div>
+  <div id="maMods" style="margin:8px 0"></div>
+  <div class="field" id="maPrixWrap" style="display:none">
+    <label>Prix unitaire (CHF)</label><input type="number" step="0.05" id="maPrix">
+  </div>
+  <div class="field"><label>Quantité</label><input type="number" id="maQty" value="1" min="1"></div>
+  <button class="btn" onclick="confirmAddArticle()">Ajouter au ticket</button>
+</div></div>
+
+{# ---------- Modale : paiement ---------- #}
+<div class="modal" id="modalPay"><div class="box">
+  <button class="close" onclick="closeModal('modalPay')">✕</button>
+  <h2>Paiement — <span id="payTotalModal">CHF 0.00</span></h2>
+  <div class="modes" id="modesButtons"></div>
+  <div id="payLines"></div>
+  <div class="field"><label>Pourboire (CHF)</label><input type="number" step="0.05" id="tips" value="0"></div>
+  <div class="row" style="display:flex;justify-content:space-between;margin:8px 0"><span>Reçu</span><b id="payRecu">CHF 0.00</b></div>
+  <div class="row" style="display:flex;justify-content:space-between;margin:8px 0"><span>Rendu</span><b id="payRendu">CHF 0.00</b></div>
+  <button class="btn" onclick="submitPay()">Encaisser</button>
+</div></div>
+
+{# ---------- Modale : client ---------- #}
+<div class="modal" id="modalClient"><div class="box">
+  <button class="close" onclick="closeModal('modalClient')">✕</button>
+  <h2>Attribuer le ticket à un client</h2>
+  <div class="field"><input id="clientSearch" placeholder="Rechercher un client…" oninput="searchClients()"></div>
+  <div id="clientResults"></div>
+  <button class="btn" style="background:#999;margin-top:10px" onclick="removeClient()">Retirer le client</button>
+</div></div>
+
+{# ---------- Modale : tickets ouverts ---------- #}
+<div class="modal" id="modalParked"><div class="box">
+  <button class="close" onclick="closeModal('modalParked')">✕</button>
+  <h2>Tickets ouverts</h2>
+  <div id="parkedList"></div>
+</div></div>
+
+{# ---------- Modale : fermeture de période ---------- #}
+<div class="modal" id="modalClosePeriod"><div class="box">
+  <button class="close" onclick="closeModal('modalClosePeriod')">✕</button>
+  <h2>Fermer la caisse</h2>
+  <p style="margin:8px 0">Montant prévu : <b id="cpPrevu">—</b></p>
+  <form method="POST" action="{{ url_for('banking.pos_vente_close_period') }}">
+    <div class="field"><label>Montant de fin réel (CHF)</label>
+      <input type="number" step="0.05" name="montant_fin_reel" id="cpReel" required></div>
+    <button class="btn red" type="submit">Fermer la caisse</button>
+  </form>
+</div></div>
+
+{# ---------- Modale : succès ---------- #}
+<div class="modal" id="modalSuccess"><div class="box success-box">
+  <div class="ok">✔</div>
+  <h2 id="successMsg">Vente encaissée</h2>
+  <button class="btn" style="margin-top:16px" onclick="closeModal('modalSuccess'); newTicket();">Nouvelle vente</button>
+</div></div>
+
+<script>
+const URL_ARTICLES = "{{ url_for('banking.pos_vente_articles_json') }}";
+const URL_CLIENTS  = "{{ url_for('banking.pos_vente_clients_json') }}";
+const URL_PAY      = "{{ url_for('banking.pos_vente_pay') }}";
+const URL_PERIOD_JSON = {{ (url_for('banking.pos_work_period_json', period_id=periode.id))|tojson }};
+const MODES = {{ modes_paiement|tojson }};
+
+let ARTICLES = [], CATS = [];
+let ticket = JSON.parse(localStorage.getItem('pos_current_ticket') || '{"lines":[],"client":null}');
+let parked = JSON.parse(localStorage.getItem('pos_parked_tickets') || '[]');
+let pendingArticle = null;
+let payments = [];
+
+const $ = id => document.getElementById(id);
+const fmt = n => 'CHF ' + (parseFloat(n)||0).toFixed(2);
+const save = () => localStorage.setItem('pos_current_ticket', JSON.stringify(ticket));
+
+/* ---------- Chargement ---------- */
+async function init(){
+  const r = await fetch(URL_ARTICLES); const d = await r.json();
+  ARTICLES = d.articles; CATS = d.categories;
+  CATS.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.nom_categorie; $('catFilter').appendChild(o); });
+  renderArticles(); renderTicket();
+  $('catFilter').onchange = renderArticles;
+  $('search').oninput = renderArticles;
+}
+
+function renderArticles(){
+  const cat = $('catFilter').value, q = $('search').value.toLowerCase();
+  const list = ARTICLES.filter(a =>
+    (!cat || a.id_categorie == cat) &&
+    (!q || (a.nom_article||'').toLowerCase().includes(q)));
+  $('articlesList').innerHTML = list.map(a => `
+    <div class="art-row" onclick="clickArticle(${a.id})">
+      <div class="art-thumb"></div>
+      <div class="art-name">${a.nom_article}</div>
+      <div class="art-price">${a.is_variable_price ? '—' : fmt(a.prix_unitaire)}</div>
+    </div>`).join('') || '<p style="padding:20px;color:#888">Aucun article.</p>';
+}
+
+/* ---------- Ajout au ticket ---------- */
+function clickArticle(id){
+  const a = ARTICLES.find(x => x.id === id); pendingArticle = a;
+  $('maNom').textContent = a.nom_article;
+  $('maVariantes').innerHTML = (a.variantes||[]).length
+    ? '<label style="font-size:13px;color:#888">Variante</label><select id="maVar">' +
+      a.variantes.map(v => `<option value="${v.id}" data-prix="${v.prix}">${v.option_name||''} ${v.nom} (${fmt(v.prix)})</option>`).join('') + '</select>'
+    : '';
+  $('maMods').innerHTML = (a.modificateurs||[]).length
+    ? '<label style="font-size:13px;color:#888">Modificateurs</label>' +
+      a.modificateurs.map(m => `<label style="display:block;margin:4px 0"><input type="checkbox" class="maMod" data-prix="${m.prix_modificateur}" value="${m.nom_modificateur}"> ${m.nom_modificateur} (+${fmt(m.prix_modificateur)})</label>`).join('')
+    : '';
+  $('maPrixWrap').style.display = a.is_variable_price ? 'block' : 'none';
+  $('maPrix').value = a.prix_unitaire || 0;
+  $('maQty').value = 1;
+  $('modalArticle').classList.add('show');
+}
+
+function confirmAddArticle(){
+  const a = pendingArticle; if(!a) return;
+  let prix = a.is_variable_price ? parseFloat($('maPrix').value||0) : parseFloat(a.prix_unitaire||0);
+  let varianteId = null, extras = [];
+  const sel = $('maVar');
+  if (sel){ varianteId = parseInt(sel.value); prix = parseFloat(sel.selectedOptions[0].dataset.prix||prix); extras.push(sel.selectedOptions[0].textContent); }
+  document.querySelectorAll('.maMod:checked').forEach(m => { prix += parseFloat(m.dataset.prix); extras.push(m.value); });
+  const qty = parseInt($('maQty').value||1);
+  const key = a.id + '_' + (varianteId||0) + '_' + extras.join('+');
+  const existing = ticket.lines.find(l => l.key === key);
+  if (existing) existing.qty += qty;
+  else ticket.lines.push({ key, article_id:a.id, variante_id:varianteId, nom:a.nom_article,
+                           extras:extras.join(', '), prix, qty, taux:a.taux_taxe||0 });
+  save(); renderTicket(); closeModal('modalArticle');
+}
+
+/* ---------- Ticket ---------- */
+function renderTicket(){
+  $('ticketLines').innerHTML = ticket.lines.map((l,i) => `
+    <div class="line">
+      <div class="l1"><span class="lname">${l.nom}${l.extras?` <span class="meta">(${l.extras})</span>`:''}</span>
+      <span class="lprice">${fmt(l.prix*l.qty)}</span></div>
+      <div class="l2">
+        <button class="qtybtn" onclick="chgQty(${i},-1)">−</button>
+        <span>${l.qty}</span>
+        <button class="qtybtn" onclick="chgQty(${i},1)">+</button>
+        <span class="meta">${fmt(l.prix)} / unité</span>
+        <button class="del" onclick="delLine(${i})">✕</button>
+      </div>
+    </div>`).join('') || '<p style="padding:20px;color:#888;text-align:center">Ticket vide</p>';
+  const sousTotal = ticket.lines.reduce((s,l) => s + l.prix*l.qty, 0);
+  const taxes = ticket.lines.reduce((s,l) => s + l.prix*l.qty*l.taux/100, 0);
+  const total = sousTotal + taxes;
+  $('tSousTotal').textContent = fmt(sousTotal);
+  $('tTaxes').textContent = fmt(taxes);
+  $('tTotal').textContent = fmt(total);
+  $('payTotal').textContent = fmt(total);
+  $('ticketCount').textContent = ticket.lines.reduce((s,l)=>s+l.qty,0);
+  const chip = $('clientChip');
+  if (ticket.client){ chip.style.display='inline-flex'; chip.innerHTML = `👤 ${ticket.client.nom_client} ✕`; chip.onclick = removeClient; }
+  else chip.style.display='none';
+}
+function chgQty(i,d){ ticket.lines[i].qty += d; if(ticket.lines[i].qty<=0) ticket.lines.splice(i,1); save(); renderTicket(); }
+function delLine(i){ ticket.lines.splice(i,1); save(); renderTicket(); }
+function clearTicket(){ ticket = {lines:[], client:null}; save(); renderTicket(); $('menu').classList.remove('show'); }
+function newTicket(){ ticket = {lines:[], client:null}; $('restoOption').value=''; $('tips').value=0; save(); renderTicket(); }
+
+/* ---------- Tickets ouverts (attente) ---------- */
+function parkTicket(){
+  if(!ticket.lines.length) return;
+  parked.push({...ticket, saved_at:new Date().toLocaleTimeString('fr-CH',{hour:'2-digit',minute:'2-digit'})});
+  localStorage.setItem('pos_parked_tickets', JSON.stringify(parked));
+  newTicket(); $('menu').classList.remove('show');
+}
+function openParkedModal(){
+  $('parkedList').innerHTML = parked.map((t,i) => `
+    <div class="parked-item">
+      <span>${t.saved_at} — ${t.lines.length} ligne(s) — ${fmt(t.lines.reduce((s,l)=>s+l.prix*l.qty,0))}</span>
+      <span>
+        <button class="qtybtn" onclick="resumeParked(${i})">▶</button>
+        <button class="qtybtn" style="color:#e53935" onclick="deleteParked(${i})">✕</button>
+      </span>
+    </div>`).join('') || '<p style="color:#888">Aucun ticket en attente.</p>';
+  $('modalParked').classList.add('show');
+}
+function resumeParked(i){
+  if(ticket.lines.length) parkTicket();
+  ticket = parked.splice(i,1)[0];
+  localStorage.setItem('pos_parked_tickets', JSON.stringify(parked));
+  save(); renderTicket(); closeModal('modalParked');
+}
+function deleteParked(i){ parked.splice(i,1); localStorage.setItem('pos_parked_tickets', JSON.stringify(parked)); openParkedModal(); }
+
+/* ---------- Client ---------- */
+function openClientModal(){ $('menu').classList.remove('show'); $('modalClient').classList.add('show'); searchClients(); }
+async function searchClients(){
+  const q = $('clientSearch').value;
+  const r = await fetch(URL_CLIENTS + '?q=' + encodeURIComponent(q)); const list = await r.json();
+  $('clientResults').innerHTML = list.map(c =>
+    `<div class="art-row" onclick='selectClient(${JSON.stringify({id:c.id, nom_client:c.nom_client})})'>
+       <div class="art-name">${c.nom_client}</div><span class="meta">${c.telephone||''}</span></div>`).join('') || '<p style="color:#888">Aucun client.</p>';
+}
+function selectClient(c){ ticket.client = c; save(); renderTicket(); closeModal('modalClient'); }
+function removeClient(){ ticket.client = null; save(); renderTicket(); closeModal('modalClient'); }
+
+/* ---------- Paiement ---------- */
+function openPayModal(){
+  if(!ticket.lines.length) return;
+  payments = [];
+  $('modesButtons').innerHTML = MODES.map(m => `<button onclick="addPayment(${m.id})">${m.nom}</button>`).join('');
+  $('tips').value = 0; $('tips').oninput = renderPayments;
+  addPayment(MODES[0] ? MODES[0].id : null);
+  $('modalPay').classList.add('show');
+}
+function totalDue(){
+  const sousTotal = ticket.lines.reduce((s,l)=>s+l.prix*l.qty,0);
+  const taxes = ticket.lines.reduce((s,l)=>s+l.prix*l.qty*l.taux/100,0);
+  return sousTotal + taxes + (parseFloat($('tips').value)||0);
+}
+function addPayment(modeId){
+  const due = totalDue(); const already = payments.reduce((s,p)=>s+p.montant,0);
+  payments.push({ mode_paiement_id:modeId, montant: Math.max(0, due - already) });
+  renderPayments();
+}
+function renderPayments(){
+  const due = totalDue();
+  $('payLines').innerHTML = payments.map((p,i) => {
+    const nom = (MODES.find(m=>m.id===p.mode_paiement_id)||{}).nom || '?';
+    return `<div class="pay-line"><span>${nom}</span>
+      <span><input type="number" step="0.05" value="${p.montant.toFixed(2)}" onchange="setPay(${i}, this.value)">
+      <button class="del" style="color:#e53935" onclick="rmPay(${i})">✕</button></span></div>`;
+  }).join('');
+  const paid = payments.reduce((s,p)=>s+p.montant,0);
+  $('payTotalModal').textContent = fmt(due);
+  $('payRecu').textContent = fmt(paid);
+  $('payRendu').textContent = fmt(Math.max(0, paid - due));
+}
+function setPay(i,v){ payments[i].montant = parseFloat(v)||0; renderPayments(); }
+function rmPay(i){ payments.splice(i,1); renderPayments(); }
+
+async function submitPay(){
+  const due = totalDue(); const paid = payments.reduce((s,p)=>s+p.montant,0);
+  if (paid + 0.001 < due){ alert('Montant payé insuffisant.'); return; }
+  const payload = {
+    items: ticket.lines.map(l => ({ article_id:l.article_id, variante_id:l.variante_id, quantite:l.qty, prix_unitaire:l.prix })),
+    payments: payments.filter(p => p.montant > 0),
+    tips: parseFloat($('tips').value)||0,
+    restaurant_option_id: parseInt($('restoOption').value) || null,
+    id_client: ticket.client ? ticket.client.id : null,
+    nom_du_client: ticket.client ? ticket.client.nom_client : '',
+  };
+  const r = await fetch(URL_PAY, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const d = await r.json();
+  if (d.success){
+    closeModal('modalPay');
+    $('successMsg').textContent = 'Vente encaissée — ' + (d.recu_numero || '');
+    $('modalSuccess').classList.add('show');
+  } else { alert(d.message || 'Erreur lors de l\'encaissement.'); }
+}
+
+/* ---------- Période / menus divers ---------- */
+async function openClosePeriodModal(){
+  $('menu').classList.remove('show');
+  try{
+    const r = await fetch(URL_PERIOD_JSON); const d = await r.json();
+    $('cpPrevu').textContent = fmt(d.montant_prevu||0);
+    $('cpReel').value = (d.montant_prevu||0).toFixed(2);
+  }catch(e){}
+  $('modalClosePeriod').classList.add('show');
+}
+function closeModal(id){ $(id).classList.remove('show'); }
+
+$('btnDrawer').onclick = () => { $('drawer').classList.add('open'); $('scrim').classList.add('show'); };
+$('scrim').onclick = () => { $('drawer').classList.remove('open'); $('scrim').classList.remove('show'); };
+$('btnMenu').onclick = e => { e.stopPropagation(); $('menu').classList.toggle('show'); };
+$('btnClient').onclick = () => openClientModal();
+document.addEventListener('click', e => { if(!$('menu').contains(e.target)) $('menu').classList.remove('show'); });
+
+init();
+</script>
+{% endif %}
+</body>
+</html>

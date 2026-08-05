@@ -15810,13 +15810,13 @@ class CategoriePOS:
     def __init__(self, db):
         self.db = db
 
-    def create(self, user_id: int, nom: str, description: str = "") -> Optional[int]:
+    def create(self, user_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO pos_categories (utilisateur_id, nom_categorie, description)
                     VALUES (%s, %s, %s)
-                """, (user_id, nom, description))
+                """, (user_id, data['nom_categorie'], data.get('description', '')))
                 return cursor.lastrowid
         except Exception as e:
             logger.error(f"Erreur création catégorie POS: {e}")
@@ -16850,6 +16850,28 @@ class ClientPOS:
             logger.error(f"Erreur recherche client: {e}")
             return []
 
+    def get_or_create(self, user_id: int, nom_client: str, numero_client: str = '') -> Optional[int]:
+        """Récupère ou crée un client par son nom"""
+        if not nom_client or nom_client.strip() == '' or nom_client == 'nan':
+            return None
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT id FROM pos_clients 
+                    WHERE utilisateur_id = %s AND nom_client = %s
+                """, (user_id, nom_client.strip()))
+                existing = cursor.fetchone()
+                if existing:
+                    return existing['id']
+                
+                cursor.execute("""
+                    INSERT INTO pos_clients (utilisateur_id, nom_client, numero_client)
+                    VALUES (%s, %s, %s)
+                """, (user_id, nom_client.strip(), numero_client or ''))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur get_or_create client: {e}")
+            return None
 
 class ReceiptPOS:
     """
@@ -17184,7 +17206,30 @@ class ReceiptPOS:
             logger.error(f"Erreur annulation vente: {e}")
             return False, f"Erreur: {str(e)}"
 
-
+    def add_payment(self, receipt_id: int, data: Dict) -> Optional[int]:
+        """Ajoute un paiement à un reçu existant"""
+        try:
+            with self.db.get_cursor() as cursor:
+                # Trouver le mode de paiement par nom
+                cursor.execute("""
+                    SELECT id FROM pos_modes_paiement 
+                    WHERE nom = %s AND utilisateur_id = (
+                        SELECT utilisateur_id FROM pos_receipts WHERE id = %s
+                    )
+                """, (data['mode_paiement_nom'], receipt_id))
+                mode = cursor.fetchone()
+                if not mode:
+                    return None
+                
+                cursor.execute("""
+                    INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant, est_remboursement)
+                    VALUES (%s, %s, %s, %s)
+                """, (receipt_id, mode['id'], float(data.get('montant', 0)), 
+                    data.get('est_remboursement', False)))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur add_payment: {e}")
+            return None
     
     def cloturer_vente(self, user_id: int, pdv_id: int, items: List[Dict], 
                    mode_paiement: str = 'Espèces') -> Tuple[bool, str, Optional[int]]:
@@ -17763,7 +17808,9 @@ class ModelManager:
     @property
     def modificateur_pos_model(self):
         return self._get_model('modificateur_pos', ModificateurPOS)
-    
+    @property
+    def option_modificateur_pos_model(self):
+        return self._get_model('option_modificateur_pos', OptionModificateurPOS)
     @property
     def client_pos_model(self):
         return self._get_model('client_pos', ClientPOS)
