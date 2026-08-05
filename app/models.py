@@ -17510,40 +17510,162 @@ class PeriodeTravailPOS:
         """Retourne toutes les données d'une période pour la modal"""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
+                # 1. Récupérer la période avec infos PDV
                 cursor.execute("""
-                    SELECT * FROM pos_periodes_travail WHERE id = %s AND utilisateur_id = %s
+                    SELECT ppt.*, ppv.nom_pdv 
+                    FROM pos_periodes_travail ppt
+                    LEFT JOIN pos_points_de_vente ppv ON ppt.pdv_id = ppv.id
+                    WHERE ppt.id = %s AND ppt.utilisateur_id = %s
                 """, (periode_id, user_id))
                 period = cursor.fetchone()
                 if not period:
                     return None
 
-                # Ventes de la période
+                # 2. Calculer les statistiques de ventes
                 cursor.execute("""
-                    SELECT COALESCE(SUM(total_collecte), 0) as total_ventes
+                    SELECT 
+                        COALESCE(SUM(CASE WHEN receipt_type = 'Vente' THEN ventes_brutes ELSE 0 END), 0) as ventes_brutes,
+                        COALESCE(SUM(CASE WHEN receipt_type = 'Remboursement' THEN ventes_brutes ELSE 0 END), 0) as remboursements,
+                        COALESCE(SUM(reduction), 0) as reductions,
+                        COALESCE(SUM(ventes_nettes), 0) as ventes_nettes,
+                        COALESCE(SUM(taxes), 0) as taxes_total
                     FROM pos_receipts
-                    WHERE utilisateur_id = %s AND date >= %s
+                    WHERE utilisateur_id = %s 
+                    AND date >= %s
                     AND (date <= %s OR %s IS NULL)
                     AND status != 'Annulé'
                 """, (user_id, period['date_debut'], period.get('date_fin'), period.get('date_fin')))
-                total_ventes = float(cursor.fetchone()['total_ventes'])
+                
+                sales_stats = cursor.fetchone()
+                ventes_brutes = float(sales_stats['ventes_brutes'] or 0)
+                remboursements = float(sales_stats['remboursements'] or 0)
+                reductions = float(sales_stats['reductions'] or 0)
+                ventes_nettes = float(sales_stats['ventes_nettes'] or 0)
+                taxes_total = float(sales_stats['taxes_total'] or 0)
 
-                # Retraits et dépôts
-                cursor.execute("SELECT COALESCE(SUM(montant_retrait), 0) as t FROM pos_retraits WHERE periode_travail_id = %s", (periode_id,))
-                total_retraits = float(cursor.fetchone()['t'])
-                cursor.execute("SELECT COALESCE(SUM(montant_depot), 0) as t FROM pos_depots WHERE periode_travail_id = %s", (periode_id,))
-                total_depots = float(cursor.fetchone()['t'])
+                # 3. Ventes par mode de paiement
+                cursor.execute("""
+                    SELECT mode_paiement_nom, 
+                        SUM(montant) as total,
+                        COUNT(*) as count
+                    FROM pos_receipt_payments rp
+                    INNER JOIN pos_receipts r ON rp.receipt_id = r.id
+                    WHERE r.utilisateur_id = %s 
+                    AND r.date >= %s
+                    AND (r.date <= %s OR %s IS NULL)
+                    AND r.status != 'Annulé'
+                    GROUP BY mode_paiement_nom
+                    ORDER BY total DESC
+                """, (user_id, period['date_debut'], period.get('date_fin'), period.get('date_fin')))
+                
+                ventes_par_mode = [
+                    {'nom': row['mode_paiement_nom'], 'total': float(row['total'] or 0)}
+                    for row in cursor.fetchall()
+                ]
 
-                montant_prevu = float(period['montant_debut_reel'] or 0) + total_ventes + total_depots - total_retraits
+                # 4. Espèces (ventes et remboursements en cash)
+                cursor.execute("""
+                    SELECT 
+                        COALESCE(SUM(CASE WHEN r.receipt_type = 'Vente' THEN rp.montant ELSE 0 END), 0) as especes_ventes,
+                        COALESCE(SUM(CASE WHEN r.receipt_type = 'Remboursement' THEN rp.montant ELSE 0 END), 0) as especes_remboursements
+                    FROM pos_receipt_payments rp
+                    INNER JOIN pos_receipts r ON rp.receipt_id = r.id
+                    WHERE r.utilisateur_id = %s 
+                    AND r.date >= %s
+                    AND (r.date <= %s OR %s IS NULL)
+                    AND r.status != 'Annulé'
+                    AND LOWER(rp.mode_paiement_nom) LIKE '%espèce%'
+                """, (user_id, period['date_debut'], period.get('date_fin'), period.get('date_fin')))
+                
+                cash_stats = cursor.fetchone()
+                especes_ventes = float(cash_stats['especes_ventes'] or 0)
+                especes_remboursements = float(cash_stats['especes_remboursements'] or 0)
 
+                # 5. Retraits et dépôts de caisse
+                cursor.execute("""
+                    SELECT COALESCE(SUM(montant), 0) as total
+                    FROM pos_retraits 
+                    WHERE periode_travail_id = %s
+                """, (periode_id,))
+                total_retraits = float(cursor.fetchone()['total'] or 0)
+                
+                cursor.execute("""
+                    SELECT COALESCE(SUM(montant), 0) as total
+                    FROM pos_depots 
+                    WHERE periode_travail_id = %s
+                """, (periode_id,))
+                total_depots = float(cursor.fetchone()['total'] or 0)
+
+                # 6. Liste des mouvements de caisse
+                cursor.execute("""
+                    SELECT 'retrait' as type, montant, description, date_mouvement
+                    FROM pos_retraits 
+                    WHERE periode_travail_id = %s
+                    UNION ALL
+                    SELECT 'depot' as type, montant, description, date_mouvement
+                    FROM pos_depots 
+                    WHERE periode_travail_id = %s
+                    ORDER BY date_mouvement
+                """, (periode_id, periode_id))
+                
+                mouvements = [
+                    {
+                        'heure': row['date_mouvement'].strftime('%H:%M') if row['date_mouvement'] else '',
+                        'description': row.get('description', 'Mouvement de caisse'),
+                        'montant': float(row['montant']) if row['type'] == 'depot' else -float(row['montant'])
+                    }
+                    for row in cursor.fetchall()
+                ]
+
+                # 7. Calculs finaux
+                montant_debut = float(period['montant_debut_reel'] or 0)
+                montant_prevu = montant_debut + especes_ventes - especes_remboursements + total_depots - total_retraits
+                montant_fin_reel = float(period['montant_fin_reel'] or 0)
+                
+                # Si la période n'est pas fermée, montant_fin_reel = montant_prevu
+                if not period.get('date_fin'):
+                    montant_fin_reel = montant_prevu
+                
+                difference = montant_fin_reel - montant_prevu if period.get('date_fin') else 0
+
+                # 8. Retourner toutes les données formatées
                 return {
-                    **period,
-                    'total_ventes': total_ventes,
-                    'total_retraits': total_retraits,
+                    # Infos générales
+                    'id': period['id'],
+                    'magasin': period.get('magasin', ''),
+                    'pdv': period.get('nom_pdv', 'N/A'),
+                    'date_debut': period['date_debut'].strftime('%d/%m/%Y %H:%M') if period.get('date_debut') else '',
+                    'date_fin': period['date_fin'].strftime('%d/%m/%Y %H:%M') if period.get('date_fin') else None,
+                    'status': 'Fermé' if period.get('date_fin') else 'Ouvert',
+                    
+                    # Tiroir-caisse
+                    'especes_de_depart': montant_debut,
+                    'especes_ventes': especes_ventes,
+                    'especes_remboursements': especes_remboursements,
                     'total_depots': total_depots,
+                    'total_retraits': total_retraits,
                     'montant_prevu': montant_prevu,
+                    'montant_fin_reel': montant_fin_reel,
+                    'difference': difference,
+                    
+                    # Ventes
+                    'ventes_brutes': ventes_brutes,
+                    'remboursements': remboursements,
+                    'reductions': reductions,
+                    'ventes_nettes': ventes_nettes,
+                    'taxes_total': taxes_total,
+                    
+                    # Modes de paiement
+                    'ventes_par_mode': ventes_par_mode,
+                    
+                    # Mouvements de caisse
+                    'mouvements': mouvements
                 }
+                
         except Exception as e:
             logger.error(f"Erreur get_detail_json: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
 class MouvementCaissePOS:

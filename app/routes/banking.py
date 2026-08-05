@@ -11232,20 +11232,22 @@ def pos_open_work_period():
         montant_debut = safe_float(request.form.get('montant_debut', 0))
         
         period_id = g.models.periode_travail_pos_model.ouvrir_caisse(current_user.id, {
-            'magasin': magasin, 'pdv_id': pdv_id,
-            'montant_debut_prevu': montant_debut, 'montant_debut_reel': montant_debut
+            'magasin': magasin,
+            'pdv_id': pdv_id,
+            'montant_debut_prevu': montant_debut,
+            'montant_debut_reel': montant_debut
         })
         if period_id:
             flash('Période de travail ouverte avec succès !', 'success')
             return redirect(url_for('banking.pos_work_periods'))
         flash('Une période est peut-être déjà ouverte.', 'error')
-        
-    # ✅ RÉCUPÉRER LES PDV POUR LE TEMPLATE (GET)
+    
+    # GET : récupérer les PDV
     pdvs = []
     for mag in g.models.magasin_pos_model.get_by_user(current_user.id):
         pdvs.extend(g.models.pdv_pos_model.get_by_magasin(mag['id'], current_user.id))
-        
-    return render_template('pos/work_periods.html', pdvs=pdvs)
+    
+    return render_template('pos/open_work_period.html', pdvs=pdvs)
 
 @bp.route('/pos/work-periods/<int:period_id>/close', methods=['GET', 'POST'])
 @login_required
@@ -12228,15 +12230,37 @@ def pos_vente():
 
     # ÉTAT 2 : ouverture / fermeture de la période
     periode = g.models.periode_travail_pos_model.get_ouverte(current_user.id)
-    if not periode or periode.get('pdv_id') != pdv['id']:
+    
+    # 🔧 COMPARAISON ROBUSTE DES PDV_ID (gestion int/str/None)
+    periode_pdv_id = None
+    pdv_current_id = None
+    
+    if periode and periode.get('pdv_id') is not None:
+        try:
+            periode_pdv_id = int(periode.get('pdv_id'))
+        except (ValueError, TypeError):
+            periode_pdv_id = None
+    
+    if pdv and pdv.get('id') is not None:
+        try:
+            pdv_current_id = int(pdv.get('id'))
+        except (ValueError, TypeError):
+            pdv_current_id = None
+    
+    # Debug log (à retirer en prod)
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.debug(f"DEBUG POS VENTE: periode_pdv_id={periode_pdv_id}, pdv_current_id={pdv_current_id}")
+    
+    # Si pas de période OU période sur un AUTRE PDV → état "periode"
+    if not periode or periode_pdv_id != pdv_current_id:
         detail = None
         if periode:
             detail = g.models.periode_travail_pos_model.get_detail_json(periode['id'], current_user.id)
         return render_template('pos/vente.html', etat='periode', pdv=pdv, periode=periode, detail=detail)
 
-    # ÉTAT 3 : caisse
+    # ÉTAT 3 : caisse (période existe ET est sur le bon PDV)
     return redirect(url_for('banking.pos_vente_caisse'))
-
 
 @bp.route('/pos/vente/pdv', methods=['POST'])
 @login_required
