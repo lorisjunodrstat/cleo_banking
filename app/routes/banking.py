@@ -20,8 +20,8 @@ import traceback
 import random
 from collections import defaultdict
 from . import db_csv_store
-from generate_excel import generate_excel
-from generate_pdf import generate_pdf
+from ..generate_excel import generate_excel
+from ..generate_pdf import generate_pdf
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
