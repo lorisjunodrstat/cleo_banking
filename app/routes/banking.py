@@ -11255,7 +11255,7 @@ def pos_create_modifier_option():
             return redirect(url_for('banking.pos_modifier_options'))
         flash('Erreur lors de la création.', 'error')
     
-    return render_template('pos/modifier_option_create.html', modifiers=modifiers, articles=articles)
+    return render_template('pos/create_modifier_option.html', modifiers=modifiers, articles=articles)
 
 @bp.route('/pos/article/<int:article_id>/modifiers', methods=['GET', 'POST'])
 @login_required
