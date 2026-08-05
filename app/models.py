@@ -15886,17 +15886,65 @@ class SousCategoriePOS:
     def __init__(self, db):
         self.db = db
 
-    def create(self, id_categorie: int, nom: str, description: str = "") -> Optional[int]:
+    def create(self, user_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
+                # Vérifier que la catégorie parente appartient à l'utilisateur
+                cursor.execute("""
+                    SELECT id FROM pos_categories 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (data['id_categorie'], user_id))
+                if not cursor.fetchone():
+                    return None
                 cursor.execute("""
                     INSERT INTO pos_sous_categories (id_categorie, nom_sous_categorie, description)
                     VALUES (%s, %s, %s)
-                """, (id_categorie, nom, description))
+                """, (data['id_categorie'], data['nom_sous_categorie'], data.get('description', '')))
                 return cursor.lastrowid
         except Exception as e:
-            logger.error(f"Erreur création sous-catégorie POS: {e}")
             return None
+        
+    def get_all(self, user_id: int) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT sc.*, c.nom_categorie 
+                    FROM pos_sous_categories sc
+                    JOIN pos_categories c ON sc.id_categorie = c.id
+                    WHERE c.utilisateur_id = %s
+                    ORDER BY c.nom_categorie, sc.nom_sous_categorie
+                """, (user_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur get_all sous-cat: {e}")
+            return []
+
+    def get_by_id(self, sc_id: int, user_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT sc.*, c.utilisateur_id
+                    FROM pos_sous_categories sc
+                    JOIN pos_categories c ON sc.id_categorie = c.id
+                    WHERE sc.id = %s AND c.utilisateur_id = %s
+                """, (sc_id, user_id))
+                return cursor.fetchone()
+        except Exception as e:
+            return None
+
+    def update(self, sc_id: int, user_id: int, data: Dict) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_sous_categories sc
+                    JOIN pos_categories c ON sc.id_categorie = c.id
+                    SET sc.nom_sous_categorie = %s, sc.id_categorie = %s, sc.description = %s
+                    WHERE sc.id = %s AND c.utilisateur_id = %s
+                """, (data['nom_sous_categorie'], data['id_categorie'],
+                    data.get('description', ''), sc_id, user_id))
+                return cursor.rowcount > 0
+        except Exception as e:
+            return False
 
     def get_by_categorie(self, categorie_id: int) -> List[Dict]:
         try:
@@ -15911,17 +15959,19 @@ class SousCategoriePOS:
             logger.error(f"Erreur récupération sous-catégories: {e}")
             return []
 
-    def delete(self, sous_categorie_id: int) -> bool:
+    def delete(self, sc_id: int, user_id: int) -> bool:
         try:
             with self.db.get_cursor() as cursor:
-                cursor.execute(
-                    "DELETE FROM pos_sous_categories WHERE id = %s",
-                    (sous_categorie_id,)
-                )
+                cursor.execute("""
+                    DELETE sc FROM pos_sous_categories sc
+                    JOIN pos_categories c ON sc.id_categorie = c.id
+                    WHERE sc.id = %s AND c.utilisateur_id = %s
+                """, (sc_id, user_id))
                 return cursor.rowcount > 0
         except Exception as e:
             logger.error(f"Erreur suppression sous-catégorie: {e}")
             return False
+
 
 
 class TaxePOS:
@@ -16011,22 +16061,80 @@ class TaxePOS:
             logger.error(f"Erreur assignation taxe: {e}")
             return False
 
+    def get_by_id(self, taxe_id: int, user_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_taxes WHERE id = %s AND utilisateur_id = %s
+                """, (taxe_id, user_id))
+                return cursor.fetchone()
+        except:
+            return None
+
+    def update(self, taxe_id: int, user_id: int, data: Dict) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_taxes 
+                    SET nom = %s, taux = %s, date_debut = %s, date_fin = %s, est_actif = %s
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (data['nom'], data['taux'], data.get('date_debut'),
+                    data.get('date_fin'), data.get('est_actif', True), taxe_id, user_id))
+                return cursor.rowcount > 0
+        except Exception as e:
+            return False
+
+    def delete(self, taxe_id: int, user_id: int) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("DELETE FROM pos_article_taxes WHERE taxe_id = %s", (taxe_id,))
+                cursor.execute("""
+                    DELETE FROM pos_taxes WHERE id = %s AND utilisateur_id = %s
+                """, (taxe_id, user_id))
+                return cursor.rowcount > 0
+        except:
+            return False
+
+    def get_historique_article(self, article_id: int) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT t.nom, t.taux, at.date_debut, at.date_fin, at.est_actuelle
+                    FROM pos_article_taxes at
+                    JOIN pos_taxes t ON at.taxe_id = t.id
+                    WHERE at.article_id = %s
+                    ORDER BY at.date_debut DESC
+                """, (article_id,))
+                return cursor.fetchall()
+        except:
+            return []
+
+    def remove_from_article(self, article_id: int, taxe_id: int) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    DELETE FROM pos_article_taxes 
+                    WHERE article_id = %s AND taxe_id = %s
+                """, (article_id, taxe_id))
+                return True
+        except:
+            return False
 
 class ModePaiementPOS:
     """Modes de paiement (Espèces, Carte, Twint, etc.)"""
     def __init__(self, db):
         self.db = db
 
-    def create(self, user_id: int, nom: str, description: str = "") -> Optional[int]:
+
+    def create(self, user_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
-                    INSERT INTO pos_modes_paiement (utilisateur_id, nom, description)
-                    VALUES (%s, %s, %s)
-                """, (user_id, nom, description))
+                    INSERT INTO pos_modes_paiement (utilisateur_id, nom, description, est_actif)
+                    VALUES (%s, %s, %s, %s)
+                """, (user_id, data['nom'], data.get('description', ''), data.get('est_actif', True)))
                 return cursor.lastrowid
         except Exception as e:
-            logger.error(f"Erreur création mode paiement POS: {e}")
             return None
 
     def get_all(self, user_id: int, actif_only: bool = True) -> List[Dict]:
@@ -16068,24 +16176,35 @@ class ModePaiementPOS:
             logger.error(f"Erreur suppression mode paiement: {e}")
             return False
 
+    def get_by_id(self, mode_id: int, user_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_modes_paiement WHERE id = %s AND utilisateur_id = %s
+                """, (mode_id, user_id))
+                return cursor.fetchone()
+        except:
+            return None
+
+
+
 
 class RestaurantOptionPOS:
     """Options de restauration (Sur place, À emporter, Livré)"""
     def __init__(self, db):
         self.db = db
 
-    def create(self, user_id: int, nom: str, description: str = "") -> Optional[int]:
+    def create(self, user_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
-                    INSERT INTO pos_restaurant_options (utilisateur_id, nom, description)
-                    VALUES (%s, %s, %s)
-                """, (user_id, nom, description))
+                    INSERT INTO pos_restaurant_options (utilisateur_id, nom, description, est_actif)
+                    VALUES (%s, %s, %s, %s)
+                """, (user_id, data['nom'], data.get('description', ''), data.get('est_actif', True)))
                 return cursor.lastrowid
         except Exception as e:
             logger.error(f"Erreur création option restaurant: {e}")
             return None
-
     def get_all(self, user_id: int) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
@@ -16098,6 +16217,40 @@ class RestaurantOptionPOS:
         except Exception as e:
             logger.error(f"Erreur récupération options restaurant: {e}")
             return []
+
+    def get_by_id(self, opt_id: int, user_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_restaurant_options WHERE id = %s AND utilisateur_id = %s
+                """, (opt_id, user_id))
+                return cursor.fetchone()
+        except:
+            return None
+
+    def update(self, opt_id: int, user_id: int, data: Dict) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_restaurant_options 
+                    SET nom = %s, description = %s, est_actif = %s
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (data['nom'], data.get('description', ''), 
+                    data.get('est_actif', True), opt_id, user_id))
+                return cursor.rowcount > 0
+        except:
+            return False
+
+    def delete(self, opt_id: int, user_id: int) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    DELETE FROM pos_restaurant_options WHERE id = %s AND utilisateur_id = %s
+                """, (opt_id, user_id))
+                return cursor.rowcount > 0
+        except:
+            return False
+
 
 
 class DiscountPOS:
@@ -16155,6 +16308,40 @@ class DiscountPOS:
             logger.error(f"Erreur calcul réduction: {e}")
             return Decimal('0')
 
+    def get_by_id(self, disc_id: int, user_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_discounts WHERE id = %s AND utilisateur_id = %s
+                """, (disc_id, user_id))
+                return cursor.fetchone()
+        except:
+            return None
+
+    def update(self, disc_id: int, user_id: int, data: Dict) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_discounts 
+                    SET nom = %s, type_reduction = %s, valeur = %s, 
+                        est_actif = %s, acces_restreint = %s
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (data['nom'], data.get('type_reduction', 'percentage'),
+                    data.get('valeur'), data.get('est_actif', True),
+                    data.get('acces_restreint', False), disc_id, user_id))
+                return cursor.rowcount > 0
+        except:
+            return False
+
+    def delete(self, disc_id: int, user_id: int) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    DELETE FROM pos_discounts WHERE id = %s AND utilisateur_id = %s
+                """, (disc_id, user_id))
+                return cursor.rowcount > 0
+        except:
+            return False
 
 class ArticlePOS:
     """
@@ -16311,34 +16498,46 @@ class ArticlePOS:
             logger.error(f"Erreur suppression article: {e}")
             return False
 
+    def get_linked_modifiers(self, article_id: int) -> List[Dict]:
+        return self._get_modificateurs(article_id)
+
+    def set_modifiers(self, article_id: int, modifier_ids: List[int]) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("DELETE FROM pos_article_modificateurs WHERE article_id = %s", (article_id,))
+                for mod_id in modifier_ids:
+                    cursor.execute("""
+                        INSERT IGNORE INTO pos_article_modificateurs (article_id, modificateur_id)
+                        VALUES (%s, %s)
+                    """, (article_id, mod_id))
+                return True
+        except:
+            return False
 
 class VariantePOS:
     """Variantes d'un article (tailles, couleurs, etc.)"""
     def __init__(self, db):
         self.db = db
 
-    def create(self, article_id: int, data: Dict) -> Optional[int]:
+    def create(self, user_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
+                # Vérifier que l'article appartient à l'utilisateur
+                cursor.execute("""
+                    SELECT id FROM pos_articles WHERE id = %s AND utilisateur_id = %s
+                """, (data['article_id'], user_id))
+                if not cursor.fetchone():
+                    return None
                 cursor.execute("""
                     INSERT INTO pos_variantes 
-                    (article_id, nom, option_name, prix, cout, stock, code_barre, is_active)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    article_id,
-                    data['nom'],
-                    data.get('option_name'),
-                    data.get('prix', 0),
-                    data.get('cout', 0),
-                    data.get('stock', 0),
-                    data.get('code_barre'),
-                    data.get('is_active', True)
-                ))
+                    (article_id, nom, option_name, prix, is_active)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (data['article_id'], data['nom'], data.get('option_name', ''),
+                      data.get('prix', 0), data.get('is_active', True)))
                 return cursor.lastrowid
         except Exception as e:
             logger.error(f"Erreur création variante: {e}")
             return None
-
     def get_by_article(self, article_id: int) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
@@ -16366,6 +16565,19 @@ class VariantePOS:
             logger.error(f"Erreur récupération variante par code barre: {e}")
             return None
 
+    def delete(self, variante_id: int, user_id: int) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    DELETE v FROM pos_variantes v
+                    JOIN pos_articles a ON v.article_id = a.id
+                    WHERE v.id = %s AND a.utilisateur_id = %s
+                """, (variante_id, user_id))
+                return cursor.rowcount > 0
+        except:
+            return False
+
+  
 
 class ModificateurPOS:
     """Modificateurs (suppléments : sans oignons, extra fromage, etc.)"""
@@ -16416,6 +16628,129 @@ class ModificateurPOS:
             logger.error(f"Erreur assignation modificateur: {e}")
             return False
 
+    def get_by_id(self, mod_id: int, user_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_modificateurs WHERE id = %s AND utilisateur_id = %s
+                """, (mod_id, user_id))
+                return cursor.fetchone()
+        except:
+            return None
+
+    def update(self, mod_id: int, user_id: int, data: Dict) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_modificateurs 
+                    SET nom_modificateur = %s, prix_modificateur = %s, description = %s
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (data['nom_modificateur'], data.get('prix_modificateur', 0),
+                    data.get('description', ''), mod_id, user_id))
+                return cursor.rowcount > 0
+        except:
+            return False
+
+    def delete(self, mod_id: int, user_id: int) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("DELETE FROM pos_article_modificateurs WHERE modificateur_id = %s", (mod_id,))
+                cursor.execute("""
+                    DELETE FROM pos_modificateurs WHERE id = %s AND utilisateur_id = %s
+                """, (mod_id, user_id))
+                return cursor.rowcount > 0
+        except:
+            return False
+        
+class OptionModificateurPOS:
+    """Options de modificateurs — CLASSE MANQUANTE"""
+    def __init__(self, db):
+        self.db = db
+
+    def create(self, user_id: int, data: Dict) -> Optional[int]:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pos_options_modificateurs 
+                    (utilisateur_id, nom_option, id_modificateur, id_article, 
+                     prix_supplement, description)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    user_id, data['nom_option'], data.get('id_modificateur'),
+                    data.get('id_article'), data.get('prix_supplement', 0),
+                    data.get('description', '')
+                ))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur création option modificateur: {e}")
+            return None
+
+    def get_by_modifier(self, modificateur_id: int) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_options_modificateurs 
+                    WHERE id_modificateur = %s
+                    ORDER BY nom_option
+                """, (modificateur_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération options: {e}")
+            return []
+
+    def get_by_id(self, option_id: int, user_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_options_modificateurs 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (option_id, user_id))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur get option: {e}")
+            return None
+
+    def update(self, option_id: int, user_id: int, data: Dict) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_options_modificateurs 
+                    SET nom_option = %s, id_modificateur = %s, id_article = %s,
+                        prix_supplement = %s, description = %s
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (
+                    data['nom_option'], data.get('id_modificateur'),
+                    data.get('id_article'), data.get('prix_supplement', 0),
+                    data.get('description', ''), option_id, user_id
+                ))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur update option: {e}")
+            return False
+
+    def delete(self, option_id: int, user_id: int) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    DELETE FROM pos_options_modificateurs 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (option_id, user_id))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur delete option: {e}")
+            return False
+
+    def delete_by_modifier(self, modificateur_id: int, user_id: int) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    DELETE FROM pos_options_modificateurs 
+                    WHERE id_modificateur = %s AND utilisateur_id = %s
+                """, (modificateur_id, user_id))
+                return True
+        except Exception as e:
+            logger.error(f"Erreur delete by modifier: {e}")
+            return False
 
 class ClientPOS:
     """
@@ -16849,89 +17184,66 @@ class ReceiptPOS:
             logger.error(f"Erreur annulation vente: {e}")
             return False, f"Erreur: {str(e)}"
 
-    def get_receipt_open(self, user_id: int) -> Optional[Dict]:
-        try:
-            with self.db.get_cursor(dictionary=True) as cursor:
-                cursor.execute("""
-                    SELECT r.*, c.nom_client AS client_nom, d.nom AS discount_nom
-                    FROM pos_receipts r 
-                    LEFT JOIN pos_clients c ON r.id_client = c.id
-                    LEFT JOIN pos_discounts d ON r.discount_id = d.id
-                    WHERE r.utilisateur_id = %s AND r.status = 'open'
-                    """)
-                return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur dans la requete: {e}")
-            return {}
 
     
     def cloturer_vente(self, user_id: int, pdv_id: int, items: List[Dict], 
-                           mode_paiement: str = 'Espèces') -> Tuple[bool, str, Optional[int]]:
-            """
-            Clôture une vente, enregistre le reçu et CRÉE la transaction financière.
-            """
-            try:
-                # 1. Vérifier le PDV et son compte bancaire lié
-                pdv_info = self.pdv_model.get_with_bank_info(pdv_id, user_id)
-                if not pdv_info:
-                    return False, "Point de vente introuvable", None
-                
-                compte_bancaire_id = pdv_info.get('compte_bancaire_id')
-                if not compte_bancaire_id:
-                    return False, f"Le PDV '{pdv_info['nom_pdv']}' n'est lié à aucun compte bancaire. Veuillez le configurer.", None
-    
-                total_collecte = Decimal('0')
+                   mode_paiement: str = 'Espèces') -> Tuple[bool, str, Optional[int]]:
+        try:
+            pdv_info = self.pdv_model.get_with_bank_info(pdv_id, user_id)
+            if not pdv_info:
+                return False, "Point de vente introuvable", None
+            
+            compte_bancaire_id = pdv_info.get('compte_bancaire_id')
+            if not compte_bancaire_id:
+                return False, f"Le PDV '{pdv_info['nom_pdv']}' n'a pas de compte bancaire.", None
+
+            total_collecte = Decimal('0')
+            for item in items:
+                total_collecte += Decimal(str(item['prix_unitaire'])) * Decimal(str(item['quantite']))
+
+            recu_numero = f"POS-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pos_receipts (utilisateur_id, pdv_id, date, recu_numero, total_collecte, status)
+                    VALUES (%s, %s, NOW(), %s, %s, 'Fermé')
+                """, (user_id, pdv_id, recu_numero, float(total_collecte)))
+                receipt_id = cursor.lastrowid
+
                 for item in items:
-                    total_collecte += Decimal(str(item['prix_unitaire'])) * Decimal(str(item['quantite']))
-    
-                recu_numero = f"POS-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    
-                with self.db.get_cursor() as cursor:
-                    # 2. Insérer le reçu (sans transaction_id pour l'instant)
                     cursor.execute("""
-                        INSERT INTO pos_receipts (utilisateur_id, pdv_id, date, recu_numero, total_collecte, status)
-                        VALUES (%s, %s, NOW(), %s, %s, 'Fermé')
-                    """, (user_id, pdv_id, recu_numero, float(total_collecte)))
-                    receipt_id = cursor.lastrowid
-    
-                    # 3. Insérer les lignes d'articles
-                    for item in items:
-                        cursor.execute("""
-                            INSERT INTO pos_receipt_items (receipt_id, nom_article, quantite, prix_unitaire, total_ligne)
-                            VALUES (%s, %s, %s, %s, %s)
-                        """, (
-                            receipt_id, item['nom_article'], item['quantite'], 
-                            float(item[' prix_unitaire']), float(item['quantite']) * float(item['prix_unitaire'])
-                        ))
-    
-                    # 4. 🔗 CRÉER LA TRANSACTION FINANCIÈRE LIÉE
-                    success, msg, transaction_id = self.tx_model._inserer_transaction_with_cursor(
-                        cursor=cursor,
-                        compte_type='compte_principal',
-                        compte_id=compte_bancaire_id,
-                        type_transaction='depot', # Encaissement
-                        montant=total_collecte,
-                        description=f"Encaissement POS {recu_numero} ({pdv_info['nom_pdv']})",
-                        user_id=user_id,
-                        date_transaction=datetime.now(),
-                        validate_balance=False
-                    )
-    
-                    if success and transaction_id:
-                        # 5. 🔗 METTRE À JOUR LE REÇU AVEC L'ID DE LA TRANSACTION
-                        cursor.execute("""
-                            UPDATE pos_receipts SET transaction_id = %s WHERE id = %s
-                        """, (transaction_id, receipt_id))
-                        logger.info(f"✅ Vente {receipt_id} liée avec succès à la transaction {transaction_id}")
-                        return True, "Vente clôturée et comptabilisée avec succès", receipt_id
-                    else:
-                        # Si la transaction échoue, on annule tout (le gestionnaire de contexte fera un rollback)
-                        return False, f"Échec de la comptabilisation : {msg}", None
-    
-            except Exception as e:
-                logger.error(f"Erreur clôture vente POS: {e}", exc_info=True)
-                return False, f"Erreur système: {str(e)}", None
-                            
+                        INSERT INTO pos_receipt_items (receipt_id, nom_article, quantite, prix_unitaire, total_ligne)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (
+                        receipt_id, item['nom_article'], item['quantite'], 
+                        float(item['prix_unitaire']),  # ✅ corrigé (espace enlevé)
+                        float(item['quantite']) * float(item['prix_unitaire'])
+                    ))
+
+                # ✅ corrigé : self.transaction_model (pas tx_model)
+                success, msg, transaction_id = self.transaction_model._inserer_transaction_with_cursor(
+                    cursor=cursor,
+                    compte_type='compte_principal',
+                    compte_id=compte_bancaire_id,
+                    type_transaction='depot',
+                    montant=total_collecte,
+                    description=f"Encaissement POS {recu_numero} ({pdv_info['nom_pdv']})",
+                    user_id=user_id,
+                    date_transaction=datetime.now(),
+                    validate_balance=False
+                )
+
+                if success and transaction_id:
+                    cursor.execute("""
+                        UPDATE pos_receipts SET transaction_id = %s WHERE id = %s
+                    """, (transaction_id, receipt_id))
+                    return True, "Vente clôturée avec succès", receipt_id
+                else:
+                    return False, f"Échec comptabilisation : {msg}", None
+
+        except Exception as e:
+            logger.error(f"Erreur clôture vente POS: {e}", exc_info=True)
+            return False, f"Erreur système: {str(e)}", None                   
 
     def get_stats(self, user_id: int, date_from: str, date_to: str) -> Dict:
         """Statistiques de vente sur une période"""
@@ -16958,6 +17270,42 @@ class ReceiptPOS:
             logger.error(f"Erreur stats POS: {e}")
             return {}
 
+    def get_by_numero(self, numero: str, user_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_receipts WHERE recu_numero = %s AND utilisateur_id = %s
+                """, (numero, user_id))
+                return cursor.fetchone()
+        except:
+            return None
+
+    def get_by_client(self, client_id: int, limit: int = 20) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_receipts WHERE id_client = %s 
+                    ORDER BY date DESC LIMIT %s
+                """, (client_id, limit))
+                return cursor.fetchall()
+        except:
+            return []
+
+    def get_top_articles_client(self, client_id: int, limit: int = 10) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT a.nom_article, SUM(ri.quantite) as total_qte, SUM(ri.total_ligne) as total_montant
+                    FROM pos_receipt_items ri
+                    JOIN pos_articles a ON ri.article_id = a.id
+                    JOIN pos_receipts r ON ri.receipt_id = r.id
+                    WHERE r.id_client = %s AND r.receipt_type = 'Vente'
+                    GROUP BY a.id, a.nom_article
+                    ORDER BY total_qte DESC LIMIT %s
+                """, (client_id, limit))
+                return cursor.fetchall()
+        except:
+            return []
 
 class PeriodeTravailPOS:
     """
@@ -17086,6 +17434,67 @@ class PeriodeTravailPOS:
             logger.error(f"Erreur récupération période ouverte: {e}")
             return None
 
+    def get_by_id(self, periode_id: int, user_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_periodes_travail WHERE id = %s AND utilisateur_id = %s
+                """, (periode_id, user_id))
+                return cursor.fetchone()
+        except:
+            return None
+
+    def get_by_date(self, user_id: int, date_str: str) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_periodes_travail 
+                    WHERE utilisateur_id = %s AND DATE(date_debut) = %s
+                    ORDER BY date_debut DESC
+                """, (user_id, date_str))
+                return cursor.fetchall()
+        except:
+            return []
+
+    def get_detail_json(self, periode_id: int, user_id: int) -> Optional[Dict]:
+        """Retourne toutes les données d'une période pour la modal"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_periodes_travail WHERE id = %s AND utilisateur_id = %s
+                """, (periode_id, user_id))
+                period = cursor.fetchone()
+                if not period:
+                    return None
+
+                # Ventes de la période
+                cursor.execute("""
+                    SELECT COALESCE(SUM(total_collecte), 0) as total_ventes
+                    FROM pos_receipts
+                    WHERE utilisateur_id = %s AND date >= %s
+                    AND (date <= %s OR %s IS NULL)
+                    AND status != 'Annulé'
+                """, (user_id, period['date_debut'], period.get('date_fin'), period.get('date_fin')))
+                total_ventes = float(cursor.fetchone()['total_ventes'])
+
+                # Retraits et dépôts
+                cursor.execute("SELECT COALESCE(SUM(montant_retrait), 0) as t FROM pos_retraits WHERE periode_travail_id = %s", (periode_id,))
+                total_retraits = float(cursor.fetchone()['t'])
+                cursor.execute("SELECT COALESCE(SUM(montant_depot), 0) as t FROM pos_depots WHERE periode_travail_id = %s", (periode_id,))
+                total_depots = float(cursor.fetchone()['t'])
+
+                montant_prevu = float(period['montant_debut_reel'] or 0) + total_ventes + total_depots - total_retraits
+
+                return {
+                    **period,
+                    'total_ventes': total_ventes,
+                    'total_retraits': total_retraits,
+                    'total_depots': total_depots,
+                    'montant_prevu': montant_prevu,
+                }
+        except Exception as e:
+            logger.error(f"Erreur get_detail_json: {e}")
+            return None
 
 class MouvementCaissePOS:
     """Gestion des retraits et dépôts en caisse"""
@@ -17177,6 +17586,21 @@ class MouvementCaissePOS:
         except Exception as e:
             logger.error(f"Erreur enregistrement dépôt: {e}")
             return False, f"Erreur: {str(e)}"
+
+    def get_by_periode(self, periode_id: int) -> Dict:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT 'retrait' as type, montant_retrait as montant, date_retrait as date
+                    FROM pos_retraits WHERE periode_travail_id = %s
+                    UNION ALL
+                    SELECT 'depot' as type, montant_depot as montant, date_depot as date
+                    FROM pos_depots WHERE periode_travail_id = %s
+                    ORDER BY date
+                """, (periode_id, periode_id))
+                return cursor.fetchall()
+        except:
+            return []
 
 class ModelManager:
     def __init__(self, db):
