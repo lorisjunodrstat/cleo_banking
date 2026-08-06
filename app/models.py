@@ -17130,12 +17130,33 @@ class ReceiptPOS:
                     """, (item['quantite'], item['article_id']))
                 
                 # 6. Insertion des paiements
+
+                nb_paiements = 0
                 for payment in data.get('payments', []):
+                    montant_pay = float(payment.get('montant', 0))
+                    if montant_pay <= 0:
+                        continue
                     cursor.execute("""
                         INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant)
                         VALUES (%s, %s, %s)
-                    """, (receipt_id, payment['mode_paiement_id'], float(payment['montant'])))
-                
+                    """, (receipt_id, payment['mode_paiement_id'], montant_pay))
+                    nb_paiements += 1
+
+                # ✅ GARDE-FOU : si aucun paiement fourni, en enregistrer un par défaut (espèces)
+                if nb_paiements == 0 and float(total_collecte) > 0:
+                    cursor.execute("""
+                        SELECT id FROM pos_modes_paiement 
+                        WHERE utilisateur_id = %s 
+                        ORDER BY (nom LIKE '%%spè%%' OR nom LIKE '%%cash%%') DESC, id 
+                        LIMIT 1
+                    """, (user_id,))
+                    mode_defaut = cursor.fetchone()
+                    if mode_defaut:
+                        cursor.execute("""
+                            INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant)
+                            VALUES (%s, %s, %s)
+                        """, (receipt_id, mode_defaut['id'], float(total_collecte)))
+                        logger.warning(f"Reçu {receipt_id}: aucun paiement fourni, paiement par défaut créé")
                 # 7. Lien avec la transaction financière
                 success, msg, transaction_id = self.transaction_model._inserer_transaction_with_cursor(
                     cursor=cursor,

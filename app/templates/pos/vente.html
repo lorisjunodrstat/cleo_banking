@@ -249,6 +249,9 @@ button{cursor:pointer; border:none; background:none}
   <div class="field"><label>Pourboire (CHF)</label><input type="number" step="0.05" id="tips" value="0"></div>
   <div class="row" style="display:flex;justify-content:space-between;margin:8px 0"><span>Reçu</span><b id="payRecu">CHF 0.00</b></div>
   <div class="row" style="display:flex;justify-content:space-between;margin:8px 0"><span>Rendu</span><b id="payRendu">CHF 0.00</b></div>
+  <div class="row" style="display:flex;justify-content:space-between;margin:8px 0">
+    <span>Restant à payer</span><b id="payRestant" style="color:#e53935">CHF 0.00</b>
+</div>
   <button class="btn" onclick="submitPay()">Encaisser</button>
 </div></div>
 
@@ -687,16 +690,14 @@ function removeClient(){
   closeModal('modalClient'); 
 }
 
-/* ---------- Paiement ---------- */
+/* ---------- Paiement (multi-modes) ---------- */
 function openPayModal(){
   if(!ticket.lines.length) return;
   payments = [];
-  $('modesButtons').innerHTML = MODES.map(m => 
-    `<button onclick="addPayment(${m.id})">${m.nom}</button>`
-  ).join('');
+  $('modesButtons').innerHTML = MODES.map(m => `<button type="button" onclick="addPayment(${m.id})">${m.nom}</button>`).join('');
   $('tips').value = 0; 
   $('tips').oninput = renderPayments;
-  addPayment(MODES[0] ? MODES[0].id : null);
+  addPayment(MODES[0] ? MODES[0].id : null);   // 1er mode = montant total par défaut
   $('modalPay').classList.add('show');
 }
 
@@ -707,9 +708,21 @@ function totalDue(){
 }
 
 function addPayment(modeId){
-  const due = totalDue(); 
+  if(!modeId) return;
+  // ✅ Ne pas dupliquer un mode déjà présent
+  if (payments.some(p => p.mode_paiement_id === modeId)) return;
+  
+  const due = totalDue();
   const already = payments.reduce((s,p)=>s+p.montant,0);
-  payments.push({ mode_paiement_id:modeId, montant: Math.max(0, due - already) });
+  const rest = Math.max(0, due - already);
+  
+  // ✅ Si le total est déjà couvert, avertir pour que le caissier ajuste le 1er montant
+  if (rest === 0) {
+    alert('Le total est déjà couvert par le(s) paiement(s) existant(s).\n\nRéduisez d\'abord le montant du premier paiement pour libérer un reste, puis cliquez sur le 2ème mode.');
+    return;
+  }
+  
+  payments.push({ mode_paiement_id: modeId, montant: rest });
   renderPayments();
 }
 
@@ -718,32 +731,58 @@ function renderPayments(){
   $('payLines').innerHTML = payments.map((p,i) => {
     const nom = (MODES.find(m=>m.id===p.mode_paiement_id)||{}).nom || '?';
     return `<div class="pay-line"><span>${nom}</span>
-      <span><input type="number" step="0.05" value="${p.montant.toFixed(2)}" onchange="setPay(${i}, this.value)">
+      <span><input type="number" step="0.05" value="${p.montant.toFixed(2)}" oninput="setPay(${i}, this.value)">
       <button class="del" style="color:#e53935" onclick="rmPay(${i})">✕</button></span></div>`;
-  }).join('');
+  }).join('') || '<p style="color:#888">Cliquez sur un mode de paiement.</p>';
+  
   const paid = payments.reduce((s,p)=>s+p.montant,0);
+  const rest = Math.max(0, due - paid);
+  
   $('payTotalModal').textContent = fmt(due);
   $('payRecu').textContent = fmt(paid);
   $('payRendu').textContent = fmt(Math.max(0, paid - due));
+  
+  // ✅ Affichage live du restant
+  const restEl = $('payRestant');
+  if (restEl) {
+    restEl.textContent = fmt(rest);
+    restEl.style.color = rest > 0.004 ? '#e53935' : '#2e7d32';
+  }
 }
 
-function setPay(i,v){ 
-  payments[i].montant = parseFloat(v)||0; 
-  renderPayments(); 
-}
-
-function rmPay(i){ 
-  payments.splice(i,1); 
-  renderPayments(); 
-}
+function setPay(i,v){ payments[i].montant = parseFloat(v)||0; renderPayments(); }   // ✅ oninput = live
+function rmPay(i){ payments.splice(i,1); renderPayments(); }
 
 async function submitPay(){
-  const due = totalDue(); 
-  const paid = payments.reduce((s,p)=>s+p.montant,0);
-  if (paid + 0.001 < due){ 
-    alert('Montant payé insuffisant.'); 
-    return; 
-  }
+  const due = totalDue();
+  const pays = payments.filter(p => p.montant > 0.004);   // ✅ on garde les paiements > 0
+  
+  if (!pays.length) { alert('Ajoutez au moins un paiement.'); return; }
+  
+  const paid = pays.reduce((s,p)=>s+p.montant,0);
+  if (paid + 0.001 < due) { alert('Montant payé insuffisant.'); return; }
+  
+  const payload = {
+    items: ticket.lines.map(l => ({ article_id:l.article_id, variante_id:l.variante_id, quantite:l.qty, prix_unitaire:l.prix })),
+    payments: pays,          // ✅ TOUS les paiements (multi-modes)
+    tips: parseFloat($('tips').value)||0,
+    nom_ticket: ticket.nom,
+    commentaire: ticket.commentaire || '',
+    restaurant_option_id: parseInt($('restoOption').value) || null,
+    id_client: ticket.client ? ticket.client.id : null,
+    nom_du_client: ticket.client ? ticket.client.nom_client : '',
+  };
+  
+  try {
+    const r = await fetch(URL_PAY, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    const d = await r.json();
+    if (d.success){
+      closeModal('modalPay');
+      $('successMsg').textContent = 'Vente encaissée — ' + (d.recu_numero || '');
+      $('modalSuccess').classList.add('show');
+    } else { alert(d.message || 'Erreur lors de l\'encaissement.'); }
+  } catch(e) { alert('Erreur réseau: ' + e.message); }
+}
   
   // Demander le nom si vide
   if(!ticket.nom) {
