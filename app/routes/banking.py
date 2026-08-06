@@ -11310,12 +11310,89 @@ def pos_cloturer_vente():
 @bp.route('/pos/work-periods')
 @login_required
 def pos_work_periods():
+    periode = request.args.get('periode', 'jour')
     date_filter = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    date_debut_str = request.args.get('date_debut')
+    date_fin_str = request.args.get('date_fin')
+    mois_select = request.args.get('mois_select')
+    annee_select = request.args.get('annee_select')
+    
+    maintenant = datetime.now()
+    debut = None
+    fin = None
+    libelle_periode = ""
+    
+    if periode == 'personnalisee' and date_debut_str and date_fin_str:
+        try:
+            debut = datetime.strptime(date_debut_str, '%Y-%m-%d')
+            fin = datetime.strptime(date_fin_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+        except ValueError:
+            flash('Dates personnalisées invalides', 'error')
+            return redirect(url_for('banking.pos_work_periods'))
+            
+    elif periode == 'mois_annee' and mois_select and annee_select:
+        try:
+            mois = int(mois_select)
+            annee = int(annee_select)
+            debut = datetime(annee, mois, 1)
+            fin = (debut + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+            fin = fin.replace(hour=23, minute=59, second=59)
+            libelle_periode = debut.strftime('%B %Y')
+        except ValueError:
+            flash('Mois/Année invalides', 'error')
+            return redirect(url_for('banking.pos_work_periods'))
+            
+    elif periode == 'annee':
+        debut = maintenant.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        fin = maintenant.replace(month=12, day=31, hour=23, minute=59, second=59)
+        libelle_periode = "Cette année"
+        
+    elif periode == 'trimestre':
+        trimestre = (maintenant.month - 1) // 3 + 1
+        debut = maintenant.replace(month=(trimestre-1)*3+1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        fin_mois = (debut.replace(month=debut.month+3, day=1) - timedelta(days=1))
+        fin = fin_mois.replace(hour=23, minute=59, second=59)
+        libelle_periode = f"{['1er', '2ème', '3ème', '4ème'][trimestre-1]} trimestre"
+        
+    elif periode == 'semaine':
+        debut = maintenant - timedelta(days=maintenant.weekday())
+        debut = debut.replace(hour=0, minute=0, second=0, microsecond=0)
+        fin = debut + timedelta(days=6, hours=23, minutes=59, seconds=59)
+        libelle_periode = "Cette semaine"
+        
+    elif periode == 'mois':
+        debut = maintenant.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        fin_mois = (debut.replace(month=debut.month+1, day=1) - timedelta(days=1))
+        fin = fin_mois.replace(hour=23, minute=59, second=59)
+        libelle_periode = maintenant.strftime('%B %Y')
+        
+    else:  # jour par défaut
+        debut = datetime.strptime(date_filter, '%Y-%m-%d')
+        fin = debut.replace(hour=23, minute=59, second=59)
+        libelle_periode = debut.strftime('%d %B %Y')
+        periode = 'jour'
+    
     period_ouverte = g.models.periode_travail_pos_model.get_ouverte(current_user.id)
-    periods = g.models.periode_travail_pos_model.get_by_date(current_user.id, date_filter)
-    return render_template('pos/work_periods.html', 
-                           periods=periods, period_ouverte=period_ouverte,
-                           date_filter=date_filter)
+    
+    # ✅ Appel de la nouvelle méthode
+    periods = g.models.periode_travail_pos_model.get_by_date_range(
+        current_user.id, 
+        debut.strftime('%Y-%m-%d'), 
+        fin.strftime('%Y-%m-%d')
+    )
+    
+    return render_template(
+        'pos/work_periods.html', 
+        periods=periods, 
+        period_ouverte=period_ouverte,
+        periode_selectionnee=periode,
+        libelle_periode=libelle_periode,
+        date_filter=date_filter,
+        date_debut_selected=date_debut_str,
+        date_fin_selected=date_fin_str,
+        mois_selected=mois_select,
+        annee_selected=annee_select
+    )
 
 @bp.route('/pos/work-periods/open', methods=['GET', 'POST'])
 @login_required
@@ -12530,3 +12607,26 @@ def pos_vente_save_open():
         return jsonify({'success': True, 'receipt_id': receipt_id, 
                         'recu_numero': receipt.get('recu_numero') if receipt else None})
     return jsonify({'success': False, 'message': msg}), 400
+
+@bp.route('/pos/vente/open-tickets.json')
+@login_required
+def pos_vente_open_tickets_json():
+    """Retourne les tickets ouverts (status 'Ouvert') de la base"""
+    all_receipts = g.models.receipt_pos_model.get_all(user_id=current_user.id, limit=500)
+    commandes = [
+        r for r in all_receipts 
+        if r.get('status') in ('Ouvert', 'En cours', 'En attente')
+    ]
+    
+    # Convertir en format simple pour le JavaScript
+    result = []
+    for c in commandes:
+        items = g.models.receipt_pos_model._get_items(None, c['id']) if hasattr(g.models.receipt_pos_model, '_get_items') else []
+        result.append({
+            'id': c['id'],
+            'nom_ticket': c.get('nom_ticket') or c.get('recu_numero'),
+            'lines': items,  # Il faudrait reformater les items
+            'total': float(c.get('total_collecte', 0))
+        })
+    
+    return jsonify(result)
