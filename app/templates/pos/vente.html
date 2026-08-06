@@ -165,7 +165,7 @@ button{cursor:pointer; border:none; background:none}
 {% else %}
 <header class="topbar">
   <button class="iconbtn" id="btnDrawer">☰</button>
-  <div class="title">Ticket <span class="badge" id="ticketCount">0</span></div>
+  <div class="title"><span id="ticketNomDisplay">Ticket</span> <span class="badge" id="ticketCount">0</span></div>
   <button class="iconbtn" id="btnClient" title="Attribuer le ticket">👤+</button>
   <button class="iconbtn" id="btnMenu">⋮</button>
 </header>
@@ -187,6 +187,7 @@ button{cursor:pointer; border:none; background:none}
 
 <div class="menu" id="menu">
   <button onclick="clearTicket()">🗑️ Effacer le ticket</button>
+  <button onclick="openTicketInfoModal()">✏️ Modifier le ticket</button>
   <button onclick="parkTicket()">⏸️ Mettre en attente</button>
   <button onclick="openClientModal()">👤 Attribuer le ticket</button>
   <button onclick="openClosePeriodModal()">🔒 Fermer la période</button>
@@ -220,6 +221,7 @@ button{cursor:pointer; border:none; background:none}
     </div>
     <div class="bottombar">
       <button onclick="openParkedModal()">TICKETS OUVERTS</button>
+      <button onclick="saveOpenTicket()" style="background:#8BC34A">ENREGISTRER</button>
       <button id="btnPay" onclick="openPayModal()">PAYER<br><span id="payTotal">CHF 0.00</span></button>
     </div>
   </aside>
@@ -258,7 +260,20 @@ button{cursor:pointer; border:none; background:none}
   <div id="clientResults"></div>
   <button class="btn" style="background:#999;margin-top:10px" onclick="removeClient()">Retirer le client</button>
 </div></div>
-
+{# ---------- Modale : nom + commentaire du ticket ---------- #}
+<div class="modal" id="modalTicketInfo"><div class="box">
+  <button class="close" onclick="closeModal('modalTicketInfo')">✕</button>
+  <h2>✏️ Modifier le ticket</h2>
+  <div class="field">
+    <label>Nom</label>
+    <input type="text" id="ticketNom" placeholder="Ex: Table 5, Commande Jean…">
+  </div>
+  <div class="field">
+    <label>Commentaire</label>
+    <input type="text" id="ticketCommentaire" placeholder="Commentaire (optionnel)">
+  </div>
+  <button class="btn" onclick="saveTicketInfo()">ENREGISTRER</button>
+</div></div>
 {# ---------- Modale : tickets ouverts ---------- #}
 <div class="modal" id="modalParked"><div class="box">
   <button class="close" onclick="closeModal('modalParked')">✕</button>
@@ -370,6 +385,56 @@ function renderArticles(){
     </div>`).join('') || '<p style="padding:20px;color:#888">Aucun article.</p>';
 }
 
+
+
+
+
+const URL_SAVE_OPEN = "{{ url_for('banking.pos_vente_save_open') }}";
+
+// Ticket avec nom + commentaire par défaut
+let ticket = JSON.parse(localStorage.getItem('pos_current_ticket') || '{"lines":[],"client":null,"nom":"","commentaire":""}');
+
+// Nom par défaut style Loyverse : date complète (ex: 20260806-1445)
+function openTicketInfoModal(){
+  $('menu').classList.remove('show');
+  $('ticketNom').value = ticket.nom || '';
+  $('ticketCommentaire').value = ticket.commentaire || '';
+  $('modalTicketInfo').classList.add('show');
+}
+
+function saveTicketInfo(){
+  ticket.nom = $('ticketNom').value.trim();
+  ticket.commentaire = $('ticketCommentaire').value.trim();
+  save(); renderTicket();
+  closeModal('modalTicketInfo');
+}
+
+// ENREGISTRER : crée un reçu 'Ouvert' en base (visible dans Commandes en cours)
+async function saveOpenTicket(){
+  if(!ticket.lines.length) return;
+  
+  // Demander le nom si vide
+  if(!ticket.nom) {
+    const nom = prompt('Nom du ticket (ex: Table 5, Précommande…)');
+    if(!nom || !nom.trim()) return;
+    ticket.nom = nom.trim();
+    save();
+    renderTicket();
+  }
+  
+  const payload = {
+    items: ticket.lines.map(l => ({ article_id:l.article_id, variante_id:l.variante_id, quantite:l.qty, prix_unitaire:l.prix })),
+    nom_ticket: ticket.nom,
+    commentaire: ticket.commentaire || '',
+    restaurant_option_id: parseInt($('restoOption').value) || null,
+    id_client: ticket.client ? ticket.client.id : null,
+    nom_du_client: ticket.client ? ticket.client.nom_client : '',
+  };
+  const r = await fetch(URL_SAVE_OPEN, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const d = await r.json();
+  if (d.success){ newTicket(); alert('✅ Ticket enregistré : ' + ticket.nom); }
+  else alert(d.message || 'Erreur.');
+}
 /* ---------- Ajout au ticket ---------- */
 function clickArticle(id){
   const a = ARTICLES.find(x => x.id === id); pendingArticle = a;
@@ -421,6 +486,7 @@ function renderTicket(){
   const sousTotal = ticket.lines.reduce((s,l) => s + l.prix*l.qty, 0);
   const taxes = ticket.lines.reduce((s,l) => s + l.prix*l.qty*l.taux/100, 0);
   const total = sousTotal + taxes;
+  $('ticketNomDisplay').textContent = ticket.nom || 'Ticket';
   $('tSousTotal').textContent = fmt(sousTotal);
   $('tTaxes').textContent = fmt(taxes);
   $('tTotal').textContent = fmt(total);
@@ -433,8 +499,11 @@ function renderTicket(){
 function chgQty(i,d){ ticket.lines[i].qty += d; if(ticket.lines[i].qty<=0) ticket.lines.splice(i,1); save(); renderTicket(); }
 function delLine(i){ ticket.lines.splice(i,1); save(); renderTicket(); }
 function clearTicket(){ ticket = {lines:[], client:null}; save(); renderTicket(); $('menu').classList.remove('show'); }
-function newTicket(){ ticket = {lines:[], client:null}; $('restoOption').value=''; $('tips').value=0; save(); renderTicket(); }
-
+function newTicket(){ 
+  ticket = {lines:[], client:null, nom:'', commentaire:''}; 
+  $('restoOption').value=''; $('tips').value=0; 
+  save(); renderTicket(); 
+}
 /* ---------- Tickets ouverts (attente) ---------- */
 function parkTicket(){
   if(!ticket.lines.length) return;
@@ -511,10 +580,22 @@ function rmPay(i){ payments.splice(i,1); renderPayments(); }
 async function submitPay(){
   const due = totalDue(); const paid = payments.reduce((s,p)=>s+p.montant,0);
   if (paid + 0.001 < due){ alert('Montant payé insuffisant.'); return; }
+  
+  // Demander le nom si vide
+  if(!ticket.nom) {
+    const nom = prompt('Nom du ticket (ex: Table 5, Commande Jean…)');
+    if(!nom || !nom.trim()) return;
+    ticket.nom = nom.trim();
+    save();
+    renderTicket();
+  }
+  
   const payload = {
     items: ticket.lines.map(l => ({ article_id:l.article_id, variante_id:l.variante_id, quantite:l.qty, prix_unitaire:l.prix })),
     payments: payments.filter(p => p.montant > 0),
     tips: parseFloat($('tips').value)||0,
+    nom_ticket: ticket.nom,
+    commentaire: ticket.commentaire || '', 
     restaurant_option_id: parseInt($('restoOption').value) || null,
     id_client: ticket.client ? ticket.client.id : null,
     nom_du_client: ticket.client ? ticket.client.nom_client : '',
