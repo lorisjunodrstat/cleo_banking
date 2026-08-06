@@ -611,7 +611,7 @@ async function openParkedModal(){
       $('dbTicketsList').innerHTML = dbTickets.map(t => `
         <div class="parked-item">
           <span>${t.nom_ticket} — ${t.lines.length} ligne(s) — ${fmt(t.total)}</span>
-          <a href="{{ url_for('banking.pos_receipt_detail', receipt_id='') }}${t.id}" class="qtybtn" style="text-decoration:none">👁️</a>
+          <a href="/pos/receipts/${t.id}" class="qtybtn" style="text-decoration:none">👁️</a>
         </div>
       `).join('');
     } else {

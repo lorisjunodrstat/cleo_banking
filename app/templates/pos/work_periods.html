@@ -24,26 +24,31 @@
         <form method="GET" class="row g-3 align-items-end">
             <!-- Type de période -->
             <div class="col-md-2">
-                <label class="form-label">Période</label>
-                <select name="periode" class="form-select" onchange="this.form.submit()">
+                <label class="form-label">Type</label>
+                <select name="periode" class="form-select" id="periodeSelect" onchange="updatePeriodInputs()">
                     <option value="jour" {% if periode_selectionnee == 'jour' %}selected{% endif %}>Jour</option>
                     <option value="semaine" {% if periode_selectionnee == 'semaine' %}selected{% endif %}>Semaine</option>
                     <option value="mois" {% if periode_selectionnee == 'mois' %}selected{% endif %}>Mois</option>
                     <option value="trimestre" {% if periode_selectionnee == 'trimestre' %}selected{% endif %}>Trimestre</option>
                     <option value="annee" {% if periode_selectionnee == 'annee' %}selected{% endif %}>Année</option>
-                    <option value="mois_annee" {% if periode_selectionnee == 'mois_annee' %}selected{% endif %}>Mois/Année</option>
                     <option value="personnalisee" {% if periode_selectionnee == 'personnalisee' %}selected{% endif %}>Personnalisée</option>
                 </select>
             </div>
             
-            <!-- Sélecteur selon la période -->
-            {% if periode_selectionnee == 'jour' %}
-            <div class="col-md-3">
+            <!-- Jour -->
+            <div class="col-md-3 period-input" id="inputJour" style="{% if periode_selectionnee != 'jour' %}display:none{% endif %}">
                 <label class="form-label">Date</label>
                 <input type="date" name="date" class="form-control" value="{{ date_filter }}">
             </div>
-            {% elif periode_selectionnee == 'mois_annee' %}
-            <div class="col-md-2">
+            
+            <!-- Semaine -->
+            <div class="col-md-3 period-input" id="inputSemaine" style="{% if periode_selectionnee != 'semaine' %}display:none{% endif %}">
+                <label class="form-label">Semaine débutant le</label>
+                <input type="date" name="semaine_debut" class="form-control" value="{{ semaine_debut or '' }}">
+            </div>
+            
+            <!-- Mois -->
+            <div class="col-md-2 period-input" id="inputMois" style="{% if periode_selectionnee != 'mois' %}display:none{% endif %}">
                 <label class="form-label">Mois</label>
                 <select name="mois_select" class="form-select">
                     {% for i in range(1, 13) %}
@@ -53,7 +58,36 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-2 period-input" id="inputMoisAnnee" style="{% if periode_selectionnee != 'mois' %}display:none{% endif %}">
+                <label class="form-label">Année</label>
+                <select name="mois_annee_select" class="form-select">
+                    {% for y in range(2020, 2030) %}
+                    <option value="{{ y }}" {% if mois_annee_selected and mois_annee_selected|int == y %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <!-- Trimestre -->
+            <div class="col-md-2 period-input" id="inputTrimestre" style="{% if periode_selectionnee != 'trimestre' %}display:none{% endif %}">
+                <label class="form-label">Trimestre</label>
+                <select name="trimestre_select" class="form-select">
+                    <option value="1" {% if trimestre_selected == '1' %}selected{% endif %}>T1 (Jan-Mar)</option>
+                    <option value="2" {% if trimestre_selected == '2' %}selected{% endif %}>T2 (Avr-Juin)</option>
+                    <option value="3" {% if trimestre_selected == '3' %}selected{% endif %}>T3 (Juil-Sep)</option>
+                    <option value="4" {% if trimestre_selected == '4' %}selected{% endif %}>T4 (Oct-Déc)</option>
+                </select>
+            </div>
+            <div class="col-md-2 period-input" id="inputTrimestreAnnee" style="{% if periode_selectionnee != 'trimestre' %}display:none{% endif %}">
+                <label class="form-label">Année</label>
+                <select name="trimestre_annee_select" class="form-select">
+                    {% for y in range(2020, 2030) %}
+                    <option value="{{ y }}" {% if trimestre_annee_selected and trimestre_annee_selected|int == y %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <!-- Année -->
+            <div class="col-md-3 period-input" id="inputAnnee" style="{% if periode_selectionnee != 'annee' %}display:none{% endif %}">
                 <label class="form-label">Année</label>
                 <select name="annee_select" class="form-select">
                     {% for y in range(2020, 2030) %}
@@ -61,16 +95,16 @@
                     {% endfor %}
                 </select>
             </div>
-            {% elif periode_selectionnee == 'personnalisee' %}
-            <div class="col-md-2">
+            
+            <!-- Personnalisée -->
+            <div class="col-md-3 period-input" id="inputPersoDebut" style="{% if periode_selectionnee != 'personnalisee' %}display:none{% endif %}">
                 <label class="form-label">Du</label>
                 <input type="date" name="date_debut" class="form-control" value="{{ date_debut_selected or '' }}">
             </div>
-            <div class="col-md-2">
+            <div class="col-md-3 period-input" id="inputPersoFin" style="{% if periode_selectionnee != 'personnalisee' %}display:none{% endif %}">
                 <label class="form-label">Au</label>
                 <input type="date" name="date_fin" class="form-control" value="{{ date_fin_selected or '' }}">
             </div>
-            {% endif %}
             
             <div class="col-md-2">
                 <button type="submit" class="btn btn-primary w-100">
@@ -85,7 +119,7 @@
         </form>
         
         {% if libelle_periode %}
-        <div class="mt-2 text-muted">
+        <div class="mt-3 text-muted">
             <small>
                 <i class="bi bi-info-circle me-1"></i>
                 Affichage : <strong>{{ libelle_periode }}</strong> 
@@ -367,6 +401,27 @@ function formatCHF(montant) {
     return 'CHF ' + parseFloat(montant).toFixed(2).replace('.', ',');
 }
 
+function updatePeriodInputs() {
+    const periode = document.getElementById('periodeSelect').value;
+    document.querySelectorAll('.period-input').forEach(el => el.style.display = 'none');
+    
+    if (periode === 'jour') {
+        document.getElementById('inputJour').style.display = 'block';
+    } else if (periode === 'semaine') {
+        document.getElementById('inputSemaine').style.display = 'block';
+    } else if (periode === 'mois') {
+        document.getElementById('inputMois').style.display = 'block';
+        document.getElementById('inputMoisAnnee').style.display = 'block';
+    } else if (periode === 'trimestre') {
+        document.getElementById('inputTrimestre').style.display = 'block';
+        document.getElementById('inputTrimestreAnnee').style.display = 'block';
+    } else if (periode === 'annee') {
+        document.getElementById('inputAnnee').style.display = 'block';
+    } else if (periode === 'personnalisee') {
+        document.getElementById('inputPersoDebut').style.display = 'block';
+        document.getElementById('inputPersoFin').style.display = 'block';
+    }
+}
 function openReportModal(periodId) {
     document.getElementById('modalPeriodId').textContent = 'Chargement...';
     

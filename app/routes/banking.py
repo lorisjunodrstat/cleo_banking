@@ -11311,70 +11311,80 @@ def pos_cloturer_vente():
 @login_required
 def pos_work_periods():
     periode = request.args.get('periode', 'jour')
+    
+    # Paramètres pour chaque type de période
     date_filter = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    semaine_debut = request.args.get('semaine_debut')
+    mois_select = request.args.get('mois_select')
+    mois_annee_select = request.args.get('mois_annee_select')
+    trimestre_select = request.args.get('trimestre_select')
+    trimestre_annee_select = request.args.get('trimestre_annee_select')
+    annee_select = request.args.get('annee_select')
     date_debut_str = request.args.get('date_debut')
     date_fin_str = request.args.get('date_fin')
-    mois_select = request.args.get('mois_select')
-    annee_select = request.args.get('annee_select')
     
-    maintenant = datetime.now()
     debut = None
     fin = None
     libelle_periode = ""
     
-    if periode == 'personnalisee' and date_debut_str and date_fin_str:
-        try:
-            debut = datetime.strptime(date_debut_str, '%Y-%m-%d')
-            fin = datetime.strptime(date_fin_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
-        except ValueError:
-            flash('Dates personnalisées invalides', 'error')
-            return redirect(url_for('banking.pos_work_periods'))
+    try:
+        if periode == 'jour':
+            if date_filter:
+                debut = datetime.strptime(date_filter, '%Y-%m-%d')
+            else:
+                debut = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            fin = debut.replace(hour=23, minute=59, second=59)
+            libelle_periode = debut.strftime('%d %B %Y')
             
-    elif periode == 'mois_annee' and mois_select and annee_select:
-        try:
-            mois = int(mois_select)
-            annee = int(annee_select)
-            debut = datetime(annee, mois, 1)
-            fin = (debut + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-            fin = fin.replace(hour=23, minute=59, second=59)
+        elif periode == 'semaine':
+            if semaine_debut:
+                debut = datetime.strptime(semaine_debut, '%Y-%m-%d')
+            else:
+                # Lundi de la semaine en cours
+                today = datetime.now()
+                debut = today - timedelta(days=today.weekday())
+            debut = debut.replace(hour=0, minute=0, second=0, microsecond=0)
+            fin = debut + timedelta(days=6, hours=23, minutes=59, seconds=59)
+            libelle_periode = f"Semaine du {debut.strftime('%d/%m/%Y')} au {fin.strftime('%d/%m/%Y')}"
+            
+        elif periode == 'mois':
+            mois = int(mois_select) if mois_select else datetime.now().month
+            annee = int(mois_annee_select) if mois_annee_select else datetime.now().year
+            debut = datetime(annee, mois, 1, 0, 0, 0, 0)
+            fin_mois = (debut.replace(month=debut.month+1, day=1) - timedelta(days=1))
+            fin = fin_mois.replace(hour=23, minute=59, second=59)
             libelle_periode = debut.strftime('%B %Y')
-        except ValueError:
-            flash('Mois/Année invalides', 'error')
-            return redirect(url_for('banking.pos_work_periods'))
             
-    elif periode == 'annee':
-        debut = maintenant.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        fin = maintenant.replace(month=12, day=31, hour=23, minute=59, second=59)
-        libelle_periode = "Cette année"
-        
-    elif periode == 'trimestre':
-        trimestre = (maintenant.month - 1) // 3 + 1
-        debut = maintenant.replace(month=(trimestre-1)*3+1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        fin_mois = (debut.replace(month=debut.month+3, day=1) - timedelta(days=1))
-        fin = fin_mois.replace(hour=23, minute=59, second=59)
-        libelle_periode = f"{['1er', '2ème', '3ème', '4ème'][trimestre-1]} trimestre"
-        
-    elif periode == 'semaine':
-        debut = maintenant - timedelta(days=maintenant.weekday())
-        debut = debut.replace(hour=0, minute=0, second=0, microsecond=0)
-        fin = debut + timedelta(days=6, hours=23, minutes=59, seconds=59)
-        libelle_periode = "Cette semaine"
-        
-    elif periode == 'mois':
-        debut = maintenant.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        fin_mois = (debut.replace(month=debut.month+1, day=1) - timedelta(days=1))
-        fin = fin_mois.replace(hour=23, minute=59, second=59)
-        libelle_periode = maintenant.strftime('%B %Y')
-        
-    else:  # jour par défaut
-        debut = datetime.strptime(date_filter, '%Y-%m-%d')
-        fin = debut.replace(hour=23, minute=59, second=59)
-        libelle_periode = debut.strftime('%d %B %Y')
-        periode = 'jour'
+        elif periode == 'trimestre':
+            trim = int(trimestre_select) if trimestre_select else ((datetime.now().month - 1) // 3 + 1)
+            annee = int(trimestre_annee_select) if trimestre_annee_select else datetime.now().year
+            mois_debut = (trim - 1) * 3 + 1
+            debut = datetime(annee, mois_debut, 1, 0, 0, 0, 0)
+            fin_mois = (debut.replace(month=debut.month+3, day=1) - timedelta(days=1))
+            fin = fin_mois.replace(hour=23, minute=59, second=59)
+            libelle_periode = f"T{trim} {annee}"
+            
+        elif periode == 'annee':
+            annee = int(annee_select) if annee_select else datetime.now().year
+            debut = datetime(annee, 1, 1, 0, 0, 0, 0)
+            fin = datetime(annee, 12, 31, 23, 59, 59)
+            libelle_periode = str(annee)
+            
+        elif periode == 'personnalisee':
+            if date_debut_str and date_fin_str:
+                debut = datetime.strptime(date_debut_str, '%Y-%m-%d')
+                fin = datetime.strptime(date_fin_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+                libelle_periode = f"Du {debut.strftime('%d/%m/%Y')} au {fin.strftime('%d/%m/%Y')}"
+            else:
+                flash('Veuillez sélectionner les deux dates', 'warning')
+                return redirect(url_for('banking.pos_work_periods'))
+                
+    except (ValueError, TypeError) as e:
+        flash(f'Erreur dans les dates: {str(e)}', 'error')
+        return redirect(url_for('banking.pos_work_periods'))
     
     period_ouverte = g.models.periode_travail_pos_model.get_ouverte(current_user.id)
     
-    # ✅ Appel de la nouvelle méthode
     periods = g.models.periode_travail_pos_model.get_by_date_range(
         current_user.id, 
         debut.strftime('%Y-%m-%d'), 
@@ -11388,12 +11398,15 @@ def pos_work_periods():
         periode_selectionnee=periode,
         libelle_periode=libelle_periode,
         date_filter=date_filter,
-        date_debut_selected=date_debut_str,
-        date_fin_selected=date_fin_str,
+        semaine_debut=semaine_debut,
         mois_selected=mois_select,
-        annee_selected=annee_select
+        mois_annee_selected=mois_annee_select,
+        trimestre_selected=trimestre_select,
+        trimestre_annee_selected=trimestre_annee_select,
+        annee_selected=annee_select,
+        date_debut_selected=date_debut_str,
+        date_fin_selected=date_fin_str
     )
-
 @bp.route('/pos/work-periods/open', methods=['GET', 'POST'])
 @login_required
 def pos_open_work_period():
