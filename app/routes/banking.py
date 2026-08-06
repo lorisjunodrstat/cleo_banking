@@ -12630,7 +12630,7 @@ def pos_vente_open_tickets_json():
     
     result = []
     for c in commandes:
-        # ✅ get_by_id ouvre son propre curseur et retourne le reçu AVEC items + payments
+        # ✅ get_by_id ouvre son propre curseur et retourne le reçu AVEC items
         receipt = g.models.receipt_pos_model.get_by_id(c['id'], current_user.id)
         
         lines = []
@@ -12657,8 +12657,7 @@ def pos_vente_open_tickets_json():
         })
     
     return jsonify(result)
-
-
+    
 @bp.route('/pos/vente/open-ticket/<int:receipt_id>/delete', methods=['POST'])
 @login_required
 def pos_vente_delete_open_ticket(receipt_id):
