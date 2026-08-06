@@ -16066,6 +16066,40 @@ class TaxePOS:
             logger.error(f"Erreur assignation taxe: {e}")
             return False
 
+    def get_taxe_active_for_article(self, article_id: int) -> Optional[Dict]:
+        """Récupère la taxe actuellement active pour un article"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT t.* 
+                    FROM pos_taxes t
+                    INNER JOIN pos_article_taxes at ON t.id = at.taxe_id
+                    WHERE at.article_id = %s 
+                    AND at.est_actuelle = TRUE
+                    AND t.est_actif = TRUE
+                    AND (t.date_debut <= CURDATE() OR t.date_debut IS NULL)
+                    AND (t.date_fin >= CURDATE() OR t.date_fin IS NULL)
+                    LIMIT 1
+                """, (article_id,))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur get_taxe_active_for_article: {e}")
+            return None
+
+    def desactiver_taxes_article(self, article_id: int) -> bool:
+        """Désactive toutes les taxes actuelles d'un article"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_article_taxes 
+                    SET est_actuelle = FALSE 
+                    WHERE article_id = %s
+                """, (article_id,))
+                return True
+        except Exception as e:
+            logger.error(f"Erreur desactiver_taxes_article: {e}")
+            return False
+
     def get_by_id(self, taxe_id: int, user_id: int) -> Optional[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
@@ -16620,19 +16654,43 @@ class ModificateurPOS:
             logger.error(f"Erreur récupération modificateurs: {e}")
             return []
 
-    def assigner_to_article(self, article_id: int, modificateur_id: int) -> bool:
+    def assigner_to_article(self, article_id: int, taxe_id: int, date_debut, date_fin=None) -> bool:
+        """Assigne une taxe à un article (désactive les autres taxes actives)"""
         try:
             with self.db.get_cursor() as cursor:
+                # Désactiver toutes les taxes actuelles de cet article
                 cursor.execute("""
-                    INSERT IGNORE INTO pos_article_modificateurs 
-                    (article_id, modificateur_id)
-                    VALUES (%s, %s)
-                """, (article_id, modificateur_id))
+                    UPDATE pos_article_taxes 
+                    SET est_actuelle = FALSE 
+                    WHERE article_id = %s
+                """, (article_id,))
+                
+                # Vérifier si cette taxe est déjà assignée
+                cursor.execute("""
+                    SELECT id FROM pos_article_taxes 
+                    WHERE article_id = %s AND taxe_id = %s
+                """, (article_id, taxe_id))
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # Mettre à jour l'entrée existante
+                    cursor.execute("""
+                        UPDATE pos_article_taxes 
+                        SET date_debut = %s, date_fin = %s, est_actuelle = TRUE
+                        WHERE id = %s
+                    """, (date_debut, date_fin, existing['id']))
+                else:
+                    # Créer une nouvelle entrée
+                    cursor.execute("""
+                        INSERT INTO pos_article_taxes 
+                        (article_id, taxe_id, date_debut, date_fin, est_actuelle)
+                        VALUES (%s, %s, %s, %s, TRUE)
+                    """, (article_id, taxe_id, date_debut, date_fin))
+                
                 return True
         except Exception as e:
-            logger.error(f"Erreur assignation modificateur: {e}")
+            logger.error(f"Erreur assigner_to_article: {e}")
             return False
-
     def get_by_id(self, mod_id: int, user_id: int) -> Optional[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:

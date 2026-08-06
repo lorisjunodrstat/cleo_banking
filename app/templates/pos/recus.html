@@ -17,16 +17,28 @@
 <div class="card shadow-sm mb-4">
     <div class="card-body">
         <div class="row mb-3">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="stat-box p-3 bg-light rounded border">
                     <h6 class="text-muted mb-1">Total des reçus (période)</h6>
                     <h3 class="mb-0">{{ total_receipts }}</h3>
                 </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="stat-box p-3 bg-light rounded border">
-                    <h6 class="text-muted mb-1">Chiffre d'affaires</h6>
+                    <h6 class="text-muted mb-1">Total Encaissé (TTC)</h6>
                     <h3 class="mb-0 text-success">CHF {{ "%.2f"|format(total_revenue) }}</h3>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-box p-3 bg-light rounded border">
+                    <h6 class="text-muted mb-1">CA Comptable (HT)</h6>
+                    <h3 class="mb-0 text-info">CHF {{ "%.2f"|format(total_revenue_ht|default(0)) }}</h3>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-box p-3 bg-light rounded border">
+                    <h6 class="text-muted mb-1">TVA Collectée</h6>
+                    <h3 class="mb-0 text-warning">CHF {{ "%.2f"|format(total_taxes|default(0)) }}</h3>
                 </div>
             </div>
         </div>
@@ -170,7 +182,6 @@
 </div>
 {% endblock %}
 
-
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -178,7 +189,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const modalBody = document.getElementById('receiptModalBody');
     const baseUrl = "{{ url_for('banking.pos_receipt_detail_json', receipt_id=999) }}";
     
-    // Fonction utilitaire pour formater une date
     function formatDate(dateVal) {
         if (!dateVal) return '-';
         const d = new Date(dateVal);
@@ -214,20 +224,61 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     }
                     
-                    // ✅ Utilise les VRAIS noms du modèle
-                    const recuNumero   = data.recu_numero   || data.receipt_number || '-';
+                    const recuNumero   = data.recu_numero || data.receipt_number || '-';
                     const dateStr      = formatDate(data.date || data.date_formatted);
                     const clientName   = data.nom_du_client || data.client_name || 'Client de passage';
                     const cashierName  = data.nom_du_caissier || data.cashier_name || '-';
-                    const ventesBrutes = parseFloat(data.ventes_brutes || 0).toFixed(2);
-                    const reduction    = parseFloat(data.reduction || 0).toFixed(2);
-                    const taxes        = parseFloat(data.taxes || 0).toFixed(2);
-                    const tips         = parseFloat(data.tips || 0).toFixed(2);
-                    const totalCollecte= parseFloat(data.total_collecte || 0).toFixed(2);
+                    const ventesBrutes = parseFloat(data.ventes_brutes || 0);
+                    const reduction    = parseFloat(data.reduction || 0);
+                    const taxes        = parseFloat(data.taxes || 0);
+                    const tips         = parseFloat(data.tips || 0);
+                    const totalCollecte= parseFloat(data.total_collecte || 0);
                     const items        = data.items || [];
-                    const payments     = data.payments || data.paiements || [];  // ✅ Gère les 2 noms
+                    const payments     = data.payments || data.paiements || [];
                     
-                    // Badge statut
+                    // ✅ Calcul des valeurs HT à partir des items
+                    const tvaParTaux = {};
+                    let totalTTC = 0;
+                    let totalReductionsHT = 0;
+                    
+                    items.forEach(item => {
+                        const ligneTTC = parseFloat(item.total_ligne || 0);
+                        const taux = parseFloat(item.taux_taxe_applique || 0);
+                        totalTTC += ligneTTC;
+                        
+                        if (!tvaParTaux[taux]) tvaParTaux[taux] = { ttc: 0, tva: 0 };
+                        tvaParTaux[taux].ttc += ligneTTC;
+                        
+                        if (taux > 0) {
+                            const ligneHT = ligneTTC / (1 + taux / 100);
+                            tvaParTaux[taux].tva += (ligneTTC - ligneHT);
+                        }
+                    });
+                    
+                    // Calcul du CA HT (ventes brutes TTC - TVA)
+                    let totalTVA = 0;
+                    Object.values(tvaParTaux).forEach(d => totalTVA += d.tva);
+                    const ventesNettesHT = (ventesBrutes - totalTVA).toFixed(2);
+                    
+                    // Réduction HT (approximation basée sur le taux moyen)
+                    const tauxMoyen = ventesBrutes > 0 ? (totalTVA / ventesBrutes) * 100 : 0;
+                    const reductionHT = tauxMoyen > 0 
+                        ? (reduction / (1 + tauxMoyen / 100)).toFixed(2)
+                        : reduction.toFixed(2);
+                    
+                    const tauxTries = Object.keys(tvaParTaux)
+                        .map(Number).filter(t => t > 0).sort((a, b) => a - b);
+                    
+                    const tvaDetailHTML = tauxTries.length > 0
+                        ? tauxTries.map(taux => {
+                            const d = tvaParTaux[taux];
+                            return `<div class="row mb-1 text-muted small">
+                                <div class="col-6">&nbsp;&nbsp;↳ TVA ${taux.toFixed(2).replace('.', ',')}% :</div>
+                                <div class="col-6 text-end">CHF ${d.tva.toFixed(2)}</div>
+                            </div>`;
+                        }).join('')
+                        : '';
+                    
                     let statusBadge = '';
                     if (data.status === 'Ouvert') {
                         statusBadge = '<span class="badge bg-warning text-dark ms-2">Ouvert</span>';
@@ -237,7 +288,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         statusBadge = '<span class="badge bg-success ms-2">Fermé</span>';
                     }
                     
-                    // ✅ Section paiements (multi-modes)
                     let paymentsHTML = '';
                     if (payments.length > 0) {
                         const paymentsList = payments.map(p => {
@@ -278,7 +328,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         `;
                     }
                     
-                    // Tableau des articles
                     let itemsHTML = '';
                     if (items.length > 0) {
                         itemsHTML = items.map(item => `
@@ -319,7 +368,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                             </div>
                             <hr>
-                            <h6 class="mb-2"><i class="fas fa-shopping-bag me-1"></i> Articles</h6>
+                            <h6 class="mb-2"><i class="fas fa-shopping-bag me-1"></i> Articles (Prix TTC)</h6>
                             <table class="table table-sm table-bordered">
                                 <thead class="table-light">
                                     <tr>
@@ -333,25 +382,22 @@ document.addEventListener('DOMContentLoaded', function() {
                             </table>
                             <div class="bg-light p-3 rounded">
                                 <div class="row mb-1">
-                                    <div class="col-6">Ventes brutes:</div>
-                                    <div class="col-6 text-end">CHF ${ventesBrutes}</div>
+                                    <div class="col-6">Chiffre d'affaires (HT) :</div>
+                                    <div class="col-6 text-end">CHF ${ventesNettesHT}</div>
                                 </div>
                                 <div class="row mb-1">
-                                    <div class="col-6">Réductions:</div>
-                                    <div class="col-6 text-end text-danger">- CHF ${reduction}</div>
+                                    <div class="col-6">Réductions appliquées (HT) :</div>
+                                    <div class="col-6 text-end text-danger">- CHF ${reductionHT}</div>
                                 </div>
+                                ${tvaDetailHTML}
                                 <div class="row mb-1">
-                                    <div class="col-6">Taxes:</div>
-                                    <div class="col-6 text-end">CHF ${taxes}</div>
-                                </div>
-                                <div class="row mb-1">
-                                    <div class="col-6">Pourboires:</div>
-                                    <div class="col-6 text-end">CHF ${tips}</div>
+                                    <div class="col-6">Pourboires :</div>
+                                    <div class="col-6 text-end">CHF ${tips.toFixed(2)}</div>
                                 </div>
                                 <hr class="my-2">
                                 <div class="row fw-bold fs-5">
-                                    <div class="col-6">Total collecté:</div>
-                                    <div class="col-6 text-end text-primary">CHF ${totalCollecte}</div>
+                                    <div class="col-6">Total Encaissé (TTC) :</div>
+                                    <div class="col-6 text-end text-primary">CHF ${totalCollecte.toFixed(2)}</div>
                                 </div>
                             </div>
                             

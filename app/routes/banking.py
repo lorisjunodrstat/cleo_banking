@@ -11054,6 +11054,10 @@ def pos_edit_article(article_id):
     all_modifiers   = g.models.modificateur_pos_model.get_all(current_user.id)
     linked_mod_ids  = [m['id'] for m in g.models.article_pos_model.get_linked_modifiers(article_id)]
     variantes       = g.models.variante_pos_model.get_by_article(article_id)
+    
+    # Récupérer la taxe actuellement attribuée à l'article
+    taxe_actuelle = g.models.taxe_pos_model.get_taxe_active_for_article(article_id)
+    article['taxe_actuelle'] = taxe_actuelle
 
     if request.method == 'POST':
         # Champs de base
@@ -11079,6 +11083,9 @@ def pos_edit_article(article_id):
         taxe_id = request.form.get('taxe_id')
         if taxe_id:
             g.models.taxe_pos_model.assigner_to_article(article_id, int(taxe_id), datetime.now().date())
+        else:
+            # Si aucune taxe sélectionnée, désactiver toutes les taxes actuelles
+            g.models.taxe_pos_model.desactiver_taxes_article(article_id)
 
         # Supprimer variantes cochées
         for vid in request.form.getlist('delete_variante'):

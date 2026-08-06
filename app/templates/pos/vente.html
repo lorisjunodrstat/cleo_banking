@@ -215,9 +215,9 @@ button{cursor:pointer; border:none; background:none}
     </div>
     <div class="lines" id="ticketLines"></div>
     <div class="totals">
-      <div class="row"><span>Total HT</span><span id="tSousTotal">CHF 0.00</span></div>
-      <div class="row"><span>Dont TVA</span><span id="tTaxes">CHF 0.00</span></div>
-      <div class="row grand"><span>TOTAL TTC</span><span id="tTotal">CHF 0.00</span></div>
+      <div class="row"><span>Sous-total TTC</span><span id="tSousTotal">CHF 0.00</span></div>
+      <div id="tTaxesDetail" style="font-size:13px; color:#666; margin:4px 0;"></div>
+      <div class="row grand" style="margin-top:8px"><span>TOTAL</span><span id="tTotal">CHF 0.00</span></div>
     </div>
     <div class="bottombar">
       <button onclick="openParkedModal()">TICKETS OUVERTS</button>
@@ -239,7 +239,6 @@ button{cursor:pointer; border:none; background:none}
   <div class="field"><label>Quantité</label><input type="number" id="maQty" value="1" min="1"></div>
   <button class="btn" onclick="confirmAddArticle()">Ajouter au ticket</button>
 </div></div>
-
 {# ---------- Modale : paiement ---------- #}
 <div class="modal" id="modalPay"><div class="box">
   <button class="close" onclick="closeModal('modalPay')">✕</button>
@@ -247,11 +246,19 @@ button{cursor:pointer; border:none; background:none}
   <div class="modes" id="modesButtons"></div>
   <div id="payLines"></div>
   <div class="field"><label>Pourboire (CHF)</label><input type="number" step="0.05" id="tips" value="0"></div>
-  <div class="row" style="display:flex;justify-content:space-between;margin:8px 0"><span>Reçu</span><b id="payRecu">CHF 0.00</b></div>
-  <div class="row" style="display:flex;justify-content:space-between;margin:8px 0"><span>Rendu</span><b id="payRendu">CHF 0.00</b></div>
   <div class="row" style="display:flex;justify-content:space-between;margin:8px 0">
-    <span>Restant à payer</span><b id="payRestant" style="color:#e53935">CHF 0.00</b>
-</div>
+    <span>Sous-total TTC</span><b>CHF <span id="payTotalTTC">0.00</span></b>
+  </div>
+  <div id="payTaxesDetail" style="font-size:12px; color:#888; margin:4px 0;"></div>
+  <div class="row" style="display:flex;justify-content:space-between;margin:8px 0">
+      <span>Reçu</span><b id="payRecu">CHF 0.00</b>
+  </div>
+  <div class="row" style="display:flex;justify-content:space-between;margin:8px 0">
+      <span>Restant à payer</span><b id="payRestant" style="color:#e53935">CHF 0.00</b>
+  </div>
+  <div class="row" style="display:flex;justify-content:space-between;margin:8px 0">
+      <span>Rendu</span><b id="payRendu">CHF 0.00</b>
+  </div>
   <button class="btn" onclick="submitPay()">Encaisser</button>
 </div></div>
 
@@ -354,6 +361,9 @@ button{cursor:pointer; border:none; background:none}
   <button class="btn" style="margin-top:16px" onclick="closeModal('modalSuccess'); newTicket();">Nouvelle vente</button>
 </div></div>
 
+
+
+
 <script>
   const URL_ARTICLES = "{{ url_for('banking.pos_vente_articles_json') }}";
   const URL_CLIENTS  = "{{ url_for('banking.pos_vente_clients_json') }}";
@@ -373,6 +383,38 @@ button{cursor:pointer; border:none; background:none}
   const $ = id => document.getElementById(id);
   const fmt = n => 'CHF ' + (parseFloat(n)||0).toFixed(2);
   const save = () => localStorage.setItem('pos_current_ticket', JSON.stringify(ticket));
+
+  /* ---------- Utilitaires TVA ---------- */
+  function calculTVA() {
+    let totalTTC = 0;
+    const tvaParTaux = {};
+    ticket.lines.forEach(l => {
+      const ligneTTC = l.prix * l.qty;
+      totalTTC += ligneTTC;
+      const taux = l.taux || 0;
+      if (!tvaParTaux[taux]) tvaParTaux[taux] = { ttc: 0, tva: 0 };
+      tvaParTaux[taux].ttc += ligneTTC;
+      if (taux > 0) {
+        const ligneHT = ligneTTC / (1 + taux / 100);
+        tvaParTaux[taux].tva += (ligneTTC - ligneHT);
+      }
+    });
+    return { totalTTC, tvaParTaux };
+  }
+
+  function tvaHTMLDetail(tvaParTaux) {
+    const tauxTries = Object.keys(tvaParTaux).map(Number).filter(t => t > 0).sort((a, b) => a - b);
+    if (tauxTries.length === 0) {
+      return '<div class="row" style="margin:2px 0"><span style="color:#888">↳ Pas de TVA</span><span style="color:#888">CHF 0,00</span></div>';
+    }
+    return tauxTries.map(taux => {
+      const data = tvaParTaux[taux];
+      return `<div class="row" style="margin:2px 0">
+        <span style="color:#888">↳ TVA ${taux.toFixed(2).replace('.', ',')}%</span>
+        <span style="color:#888">${fmt(data.tva)}</span>
+      </div>`;
+    }).join('');
+  }
 
   /* ---------- Chargement ---------- */
   async function init(){
@@ -452,7 +494,7 @@ button{cursor:pointer; border:none; background:none}
     closeModal('modalArticle');
   }
 
-  /* ---------- Ticket (TVA extraite du TTC) ---------- */
+  /* ---------- Ticket ---------- */
   function renderTicket(){
     $('ticketLines').innerHTML = ticket.lines.map((l,i) => `
       <div class="line">
@@ -469,25 +511,13 @@ button{cursor:pointer; border:none; background:none}
         </div>
       </div>`).join('') || '<p style="padding:20px;color:#888;text-align:center">Ticket vide</p>';
     
-    let totalTTC = 0;
-    let totalTVA = 0;
-    
-    ticket.lines.forEach(l => {
-      const ligneTTC = l.prix * l.qty;
-      totalTTC += ligneTTC;
-      if (l.taux > 0) {
-        const ligneHT = ligneTTC / (1 + l.taux / 100);
-        totalTVA += (ligneTTC - ligneHT);
-      }
-    });
-    
-    const sousTotalHT = totalTTC - totalTVA;
+    const { totalTTC, tvaParTaux } = calculTVA();
     const tips = parseFloat($('tips').value) || 0;
     
     $('ticketNomDisplay').textContent = ticket.nom || 'Ticket';
-    $('tSousTotal').textContent = fmt(sousTotalHT);
-    $('tTaxes').textContent = fmt(totalTVA);
-    $('tTotal').textContent = fmt(totalTTC);
+    $('tSousTotal').textContent = fmt(totalTTC);
+    $('tTaxesDetail').innerHTML = tvaHTMLDetail(tvaParTaux);
+    $('tTotal').textContent = fmt(totalTTC + tips);
     $('payTotal').textContent = fmt(totalTTC + tips);
     $('ticketCount').textContent = ticket.lines.reduce((s,l)=>s+l.qty,0);
     
@@ -697,7 +727,7 @@ button{cursor:pointer; border:none; background:none}
     closeModal('modalClient'); 
   }
 
-  /* ---------- Paiement (multi-modes) ---------- */
+  /* ---------- Paiement (multi-modes + TVA détaillée) ---------- */
   function openPayModal(){
     if(!ticket.lines.length) return;
     payments = [];
@@ -709,7 +739,7 @@ button{cursor:pointer; border:none; background:none}
   }
 
   function totalDue(){
-    const totalTTC = ticket.lines.reduce((s,l)=>s+l.prix*l.qty,0);
+    const { totalTTC } = calculTVA();
     return totalTTC + (parseFloat($('tips').value)||0);
   }
 
@@ -722,7 +752,7 @@ button{cursor:pointer; border:none; background:none}
     const rest = Math.max(0, due - already);
     
     if (rest === 0) {
-      alert('Le total est déjà couvert par le(s) paiement(s) existant(s).\n\nRéduisez d\'abord le montant du premier paiement pour libérer un reste, puis cliquez sur le 2ème mode.');
+      alert('Le total est déjà couvert.\n\nRéduisez d\'abord le montant du premier paiement, puis cliquez sur le 2ème mode.');
       return;
     }
     
@@ -732,6 +762,8 @@ button{cursor:pointer; border:none; background:none}
 
   function renderPayments(){
     const due = totalDue();
+    const { totalTTC, tvaParTaux } = calculTVA();
+    
     $('payLines').innerHTML = payments.map((p,i) => {
       const nom = (MODES.find(m=>m.id===p.mode_paiement_id)||{}).nom || '?';
       return `<div class="pay-line"><span>${nom}</span>
@@ -743,6 +775,8 @@ button{cursor:pointer; border:none; background:none}
     const rest = Math.max(0, due - paid);
     
     $('payTotalModal').textContent = fmt(due);
+    $('payTotalTTC').textContent = totalTTC.toFixed(2);
+    $('payTaxesDetail').innerHTML = tvaHTMLDetail(tvaParTaux);
     $('payRecu').textContent = fmt(paid);
     $('payRendu').textContent = fmt(Math.max(0, paid - due));
     
@@ -757,7 +791,6 @@ button{cursor:pointer; border:none; background:none}
   function rmPay(i){ payments.splice(i,1); renderPayments(); }
 
   async function submitPay(){
-    // Demander le nom si vide
     if(!ticket.nom) {
       const nom = prompt('Nom du ticket (ex: Table 5, Commande Jean…)');
       if(!nom || !nom.trim()) return;
@@ -916,6 +949,7 @@ button{cursor:pointer; border:none; background:none}
 
   init();
 </script>
+
 {% endif %}
 </body>
 </html>
