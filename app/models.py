@@ -17391,7 +17391,7 @@ class ReceiptPOS:
             return {}
 
     
-        def get_all(self, user_id: int, search: str = None, payment: str = None, 
+    def get_all(self, user_id: int, search: str = None, payment: str = None, 
                 date_from: str = None, date_to: str = None, employee: str = None,
                 limit: int = 100, offset: int = 0) -> List[Dict]:
         """
