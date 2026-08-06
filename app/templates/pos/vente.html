@@ -280,16 +280,11 @@ button{cursor:pointer; border:none; background:none}
   <button class="close" onclick="closeModal('modalParked')">✕</button>
   <h2>Tickets ouverts</h2>
   
-  {# Tickets en attente sur cet appareil (localStorage) #}
   <h3 style="font-size:14px; margin:12px 0 8px 0; color:#666">⏸️ En attente (cet appareil)</h3>
   <div id="parkedList"></div>
   
-  {# Lien vers tous les tickets enregistrés en base #}
-  <hr style="margin:16px 0">
-  <h3 style="font-size:14px; margin:12px 0 8px 0; color:#666">📋 Tickets enregistrés</h3>
-  <a href="{{ url_for('banking.pos_commandes_en_cours') }}" class="btn" style="text-decoration:none">
-    Voir les commandes en cours
-  </a>
+  <h3 style="font-size:14px; margin:16px 0 8px 0; color:#666">💾 Enregistrés (base de données)</h3>
+  <div id="dbTicketsList"></div>
 </div></div>
 
 {# ---------- Modale : fermeture de période ---------- #}
@@ -364,7 +359,7 @@ const URL_SAVE_OPEN = "{{ url_for('banking.pos_vente_save_open') }}";
 const URL_PERIOD_JSON = {{ (url_for('banking.pos_work_period_json', period_id=periode.id))|tojson }};
 const URL_CASH_MOVEMENT = {{ (url_for('banking.pos_add_cash_movement', period_id=periode.id))|tojson }};
 const MODES = {{ modes_paiement|tojson }};
-
+const URL_OPEN_TICKETS = "{{ url_for('banking.pos_vente_open_tickets_json') }}";
 let ARTICLES = [], CATS = [];
 let ticket = JSON.parse(localStorage.getItem('pos_current_ticket') || '{"lines":[],"client":null,"nom":"","commentaire":""}');
 let parked = JSON.parse(localStorage.getItem('pos_parked_tickets') || '[]');
@@ -592,7 +587,7 @@ function parkTicket(){
 }
 
 async function openParkedModal(){
-  // Tickets localStorage
+  // Tickets localStorage (comme avant)
   $('parkedList').innerHTML = parked.map((t,i) => `
     <div class="parked-item">
       <span>${t.nom || t.saved_at} — ${t.lines.length} ligne(s) — ${fmt(t.lines.reduce((s,l)=>s+l.prix*l.qty,0))}</span>
@@ -602,28 +597,50 @@ async function openParkedModal(){
       </span>
     </div>`).join('') || '<p style="color:#888">Aucun ticket en attente.</p>';
   
-  // Tickets de la base
+  // ✅ Tickets de la base de données
   try {
-    const r = await fetch("{{ url_for('banking.pos_vente_open_tickets_json') }}");
+    const r = await fetch(URL_OPEN_TICKETS);
     const dbTickets = await r.json();
-    
-    if (dbTickets.length > 0) {
-      $('dbTicketsList').innerHTML = dbTickets.map(t => `
-        <div class="parked-item">
-          <span>${t.nom_ticket} — ${t.lines.length} ligne(s) — ${fmt(t.total)}</span>
-          <a href="/pos/receipts/${t.id}" class="qtybtn" style="text-decoration:none">👁️</a>
-        </div>
-      `).join('');
-    } else {
-      $('dbTicketsList').innerHTML = '<p style="color:#888">Aucun ticket enregistré.</p>';
-    }
+    $('dbTicketsList').innerHTML = dbTickets.map(t => `
+      <div class="parked-item">
+        <span><strong>${t.nom}</strong> — ${t.lines.length} ligne(s) — ${fmt(t.total)}</span>
+        <span>
+          <button class="qtybtn" title="Reprendre" onclick="resumeDbTicket(${t.id})">▶</button>
+          <button class="qtybtn" style="color:#e53935" title="Supprimer" onclick="deleteDbTicket(${t.id})">✕</button>
+        </span>
+      </div>`).join('') || '<p style="color:#888">Aucun ticket enregistré.</p>';
   } catch(e) {
-    console.error('Erreur chargement tickets DB:', e);
+    $('dbTicketsList').innerHTML = '<p style="color:#888">Erreur de chargement.</p>';
   }
   
   $('modalParked').classList.add('show');
 }
 
+// ▶ Reprendre un ticket enregistré : le recharge dans la caisse ET le retire de la base
+async function resumeDbTicket(id){
+  const r = await fetch(URL_OPEN_TICKETS);
+  const list = await r.json();
+  const t = list.find(x => x.id === id);
+  if(!t) return;
+  
+  // Si le ticket courant a des lignes, on le met en attente d'abord
+  if(ticket.lines.length) parkTicket();
+  
+  ticket = { lines: t.lines, client: t.client, nom: t.nom, commentaire: t.commentaire };
+  save(); 
+  renderTicket();
+  closeModal('modalParked');
+  
+  // Retire de la base pour éviter un doublon à l'encaissement
+  await fetch(`/pos/vente/open-ticket/${id}/delete`, { method:'POST' });
+}
+
+// ✕ Supprimer définitivement un ticket enregistré
+async function deleteDbTicket(id){
+  if(!confirm('Supprimer ce ticket enregistré ?')) return;
+  await fetch(`/pos/vente/open-ticket/${id}/delete`, { method:'POST' });
+  openParkedModal();
+}
 function resumeParked(i){
   if(ticket.lines.length) parkTicket();
   ticket = parked.splice(i,1)[0];

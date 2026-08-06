@@ -17666,6 +17666,25 @@ class ReceiptPOS:
                 return cursor.fetchall()
         except:
             return []
+    def supprimer_ticket_ouvert(self, receipt_id: int, user_id: int) -> bool:
+        """Supprime un ticket 'Ouvert' (jamais payé, sans transaction bancaire)"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT status, transaction_id FROM pos_receipts 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (receipt_id, user_id))
+                r = cursor.fetchone()
+                if not r or r['status'] != 'Ouvert' or r['transaction_id']:
+                    return False  # Sécurité : ne jamais supprimer un reçu payé
+                
+                cursor.execute("DELETE FROM pos_receipt_items WHERE receipt_id = %s", (receipt_id,))
+                cursor.execute("DELETE FROM pos_payments WHERE receipt_id = %s", (receipt_id,))
+                cursor.execute("DELETE FROM pos_receipts WHERE id = %s", (receipt_id,))
+                return True
+        except Exception as e:
+            logger.error(f"Erreur supprimer_ticket_ouvert: {e}")
+            return False
 
 class PeriodeTravailPOS:
     """
