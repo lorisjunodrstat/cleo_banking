@@ -17824,6 +17824,25 @@ class PeriodeTravailPOS:
         except:
             return []
 
+    def get_by_date_range(self, user_id: int, date_from: str, date_to: str) -> List[Dict]:
+        """Récupère les périodes entre deux dates"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT ppt.*, ppv.nom_pdv
+                    FROM pos_periodes_travail AS ppt
+                    LEFT JOIN pos_points_de_vente AS ppv ON ppt.pdv_id = ppv.id
+                    WHERE ppt.utilisateur_id = %s 
+                    AND DATE(ppt.date_debut) >= %s
+                    AND DATE(ppt.date_debut) <= %s
+                    ORDER BY ppt.date_debut DESC
+                    LIMIT 100
+                """, (user_id, date_from, date_to))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur get_by_date_range: {e}")
+            return []
+
     def get_detail_json(self, periode_id: int, user_id: int) -> Optional[Dict]:
         """Retourne toutes les données d'une période pour la modale de fermeture"""
         try:
