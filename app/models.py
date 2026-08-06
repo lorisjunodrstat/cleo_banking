@@ -17438,7 +17438,7 @@ class PeriodeTravailPOS:
                     INNER JOIN pos_receipts r ON r.id = p.receipt_id
                     INNER JOIN pos_modes_paiement mp ON mp.id = p.mode_paiement_id
                     WHERE r.utilisateur_id = %s AND r.date >= %s AND r.status != 'Annulé'
-                    AND (mp.nom LIKE '%spè%' OR mp.nom LIKE '%spe%' OR mp.nom LIKE '%cash%' OR mp.nom LIKE '%liquide%')
+                    AND (mp.nom LIKE '%%spè%%' OR mp.nom LIKE '%%spe%%' OR mp.nom LIKE '%%cash%%' OR mp.nom LIKE '%%liquide%%')
                 """, (user_id, periode['date_debut']))
                 net_especes = Decimal(str(cursor.fetchone()['net_especes']))
 
@@ -17554,9 +17554,9 @@ class PeriodeTravailPOS:
                     INNER JOIN pos_modes_paiement mp ON mp.id = p.mode_paiement_id
                     WHERE r.utilisateur_id = %s AND r.date >= %s 
                     AND (r.date <= %s OR %s IS NULL) AND r.status != 'Annulé'
-                    AND (mp.nom LIKE '%spè%' OR mp.nom LIKE '%spe%' 
-                        OR mp.nom LIKE '%cash%' OR mp.nom LIKE '%liquide%')
-                """, (user_id, period['date_debut'], date_fin, date_fin))
+                    AND (mp.nom LIKE '%%spè%%' OR mp.nom LIKE '%%spe%%' 
+                        OR mp.nom LIKE '%%cash%%' OR mp.nom LIKE '%%liquide%%')
+                    """, (user_id, period['date_debut'], date_fin, date_fin))
                 c = cursor.fetchone()
 
                 # --- Ventes par mode de paiement ---
