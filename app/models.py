@@ -17655,8 +17655,8 @@ class PeriodeTravailPOS:
     class MouvementCaissePOS:
         """Gestion des retraits et dépôts en caisse"""
         def __init__(self, db):
-        self.db = db
-        self.transaction_model = TransactionFinanciere(db)
+            self.db = db
+            self.transaction_model = TransactionFinanciere(db)
 
     def enregistrer_retrait(self, periode_id: int, user_id: int, montant: Decimal,
                             compte_bancaire_id: int = None, description: str = '') -> Tuple[bool, str]:
