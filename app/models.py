@@ -1302,11 +1302,12 @@ class DatabaseManager:
                 );
                 """
                 cursor.execute(create_pos_modificateurs_table_query)
-                
+
                 # Table Options de modificateurs
                 create_pos_options_modificateurs_table_query = """
                 CREATE TABLE IF NOT EXISTS pos_options_modificateurs (
                     id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
                     nom_option VARCHAR(200) NOT NULL,
                     id_article INT NULL,
                     id_modificateur INT NULL,
