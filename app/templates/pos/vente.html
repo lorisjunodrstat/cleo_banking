@@ -352,8 +352,11 @@ const URL_PAY      = "{{ url_for('banking.pos_vente_pay') }}";
 const URL_PERIOD_JSON = {{ (url_for('banking.pos_work_period_json', period_id=periode.id))|tojson }};
 const MODES = {{ modes_paiement|tojson }};
 const URL_CASH_MOVEMENT = {{ (url_for('banking.pos_add_cash_movement', period_id=periode.id))|tojson }};
+const URL_SAVE_OPEN = "{{ url_for('banking.pos_vente_save_open') }}";
+
 let ARTICLES = [], CATS = [];
-let ticket = JSON.parse(localStorage.getItem('pos_current_ticket') || '{"lines":[],"client":null}');
+// ✅ Une seule déclaration avec nom et commentaire
+let ticket = JSON.parse(localStorage.getItem('pos_current_ticket') || '{"lines":[],"client":null,"nom":"","commentaire":""}');
 let parked = JSON.parse(localStorage.getItem('pos_parked_tickets') || '[]');
 let pendingArticle = null;
 let payments = [];
@@ -364,10 +367,18 @@ const save = () => localStorage.setItem('pos_current_ticket', JSON.stringify(tic
 
 /* ---------- Chargement ---------- */
 async function init(){
-  const r = await fetch(URL_ARTICLES); const d = await r.json();
-  ARTICLES = d.articles; CATS = d.categories;
-  CATS.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.nom_categorie; $('catFilter').appendChild(o); });
-  renderArticles(); renderTicket();
+  const r = await fetch(URL_ARTICLES); 
+  const d = await r.json();
+  ARTICLES = d.articles; 
+  CATS = d.categories;
+  CATS.forEach(c => { 
+    const o = document.createElement('option'); 
+    o.value = c.id; 
+    o.textContent = c.nom_categorie; 
+    $('catFilter').appendChild(o); 
+  });
+  renderArticles(); 
+  renderTicket();
   $('catFilter').onchange = renderArticles;
   $('search').oninput = renderArticles;
 }
@@ -385,16 +396,6 @@ function renderArticles(){
     </div>`).join('') || '<p style="padding:20px;color:#888">Aucun article.</p>';
 }
 
-
-
-
-
-const URL_SAVE_OPEN = "{{ url_for('banking.pos_vente_save_open') }}";
-
-// Ticket avec nom + commentaire par défaut
-let ticket = JSON.parse(localStorage.getItem('pos_current_ticket') || '{"lines":[],"client":null,"nom":"","commentaire":""}');
-
-// Nom par défaut style Loyverse : date complète (ex: 20260806-1445)
 function openTicketInfoModal(){
   $('menu').classList.remove('show');
   $('ticketNom').value = ticket.nom || '';
@@ -405,15 +406,14 @@ function openTicketInfoModal(){
 function saveTicketInfo(){
   ticket.nom = $('ticketNom').value.trim();
   ticket.commentaire = $('ticketCommentaire').value.trim();
-  save(); renderTicket();
+  save(); 
+  renderTicket();
   closeModal('modalTicketInfo');
 }
 
-// ENREGISTRER : crée un reçu 'Ouvert' en base (visible dans Commandes en cours)
 async function saveOpenTicket(){
   if(!ticket.lines.length) return;
   
-  // Demander le nom si vide
   if(!ticket.nom) {
     const nom = prompt('Nom du ticket (ex: Table 5, Précommande…)');
     if(!nom || !nom.trim()) return;
@@ -421,6 +421,23 @@ async function saveOpenTicket(){
     save();
     renderTicket();
   }
+  
+  const payload = {
+    items: ticket.lines.map(l => ({ article_id:l.article_id, variante_id:l.variante_id, quantite:l.qty, prix_unitaire:l.prix })),
+    nom_ticket: ticket.nom,
+    commentaire: ticket.commentaire || '',
+    restaurant_option_id: parseInt($('restoOption').value) || null,
+    id_client: ticket.client ? ticket.client.id : null,
+    nom_du_client: ticket.client ? ticket.client.nom_client : '',
+  };
+  const r = await fetch(URL_SAVE_OPEN, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const d = await r.json();
+  if (d.success){ 
+    newTicket(); 
+    alert('✅ Ticket enregistré : ' + ticket.nom); 
+  }
+  else alert(d.message || 'Erreur.');
+}
   
   const payload = {
     items: ticket.lines.map(l => ({ article_id:l.article_id, variante_id:l.variante_id, quantite:l.qty, prix_unitaire:l.prix })),
