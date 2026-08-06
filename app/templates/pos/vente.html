@@ -349,13 +349,12 @@ button{cursor:pointer; border:none; background:none}
 const URL_ARTICLES = "{{ url_for('banking.pos_vente_articles_json') }}";
 const URL_CLIENTS  = "{{ url_for('banking.pos_vente_clients_json') }}";
 const URL_PAY      = "{{ url_for('banking.pos_vente_pay') }}";
-const URL_PERIOD_JSON = {{ (url_for('banking.pos_work_period_json', period_id=periode.id))|tojson }};
-const MODES = {{ modes_paiement|tojson }};
-const URL_CASH_MOVEMENT = {{ (url_for('banking.pos_add_cash_movement', period_id=periode.id))|tojson }};
 const URL_SAVE_OPEN = "{{ url_for('banking.pos_vente_save_open') }}";
+const URL_PERIOD_JSON = {{ (url_for('banking.pos_work_period_json', period_id=periode.id))|tojson }};
+const URL_CASH_MOVEMENT = {{ (url_for('banking.pos_add_cash_movement', period_id=periode.id))|tojson }};
+const MODES = {{ modes_paiement|tojson }};
 
 let ARTICLES = [], CATS = [];
-// ✅ Une seule déclaration avec nom et commentaire
 let ticket = JSON.parse(localStorage.getItem('pos_current_ticket') || '{"lines":[],"client":null,"nom":"","commentaire":""}');
 let parked = JSON.parse(localStorage.getItem('pos_parked_tickets') || '[]');
 let pendingArticle = null;
@@ -396,65 +395,10 @@ function renderArticles(){
     </div>`).join('') || '<p style="padding:20px;color:#888">Aucun article.</p>';
 }
 
-function openTicketInfoModal(){
-  $('menu').classList.remove('show');
-  $('ticketNom').value = ticket.nom || '';
-  $('ticketCommentaire').value = ticket.commentaire || '';
-  $('modalTicketInfo').classList.add('show');
-}
-
-function saveTicketInfo(){
-  ticket.nom = $('ticketNom').value.trim();
-  ticket.commentaire = $('ticketCommentaire').value.trim();
-  save(); 
-  renderTicket();
-  closeModal('modalTicketInfo');
-}
-
-async function saveOpenTicket(){
-  if(!ticket.lines.length) return;
-  
-  if(!ticket.nom) {
-    const nom = prompt('Nom du ticket (ex: Table 5, Précommande…)');
-    if(!nom || !nom.trim()) return;
-    ticket.nom = nom.trim();
-    save();
-    renderTicket();
-  }
-  
-  const payload = {
-    items: ticket.lines.map(l => ({ article_id:l.article_id, variante_id:l.variante_id, quantite:l.qty, prix_unitaire:l.prix })),
-    nom_ticket: ticket.nom,
-    commentaire: ticket.commentaire || '',
-    restaurant_option_id: parseInt($('restoOption').value) || null,
-    id_client: ticket.client ? ticket.client.id : null,
-    nom_du_client: ticket.client ? ticket.client.nom_client : '',
-  };
-  const r = await fetch(URL_SAVE_OPEN, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-  const d = await r.json();
-  if (d.success){ 
-    newTicket(); 
-    alert('✅ Ticket enregistré : ' + ticket.nom); 
-  }
-  else alert(d.message || 'Erreur.');
-}
-  
-  const payload = {
-    items: ticket.lines.map(l => ({ article_id:l.article_id, variante_id:l.variante_id, quantite:l.qty, prix_unitaire:l.prix })),
-    nom_ticket: ticket.nom,
-    commentaire: ticket.commentaire || '',
-    restaurant_option_id: parseInt($('restoOption').value) || null,
-    id_client: ticket.client ? ticket.client.id : null,
-    nom_du_client: ticket.client ? ticket.client.nom_client : '',
-  };
-  const r = await fetch(URL_SAVE_OPEN, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-  const d = await r.json();
-  if (d.success){ newTicket(); alert('✅ Ticket enregistré : ' + ticket.nom); }
-  else alert(d.message || 'Erreur.');
-}
 /* ---------- Ajout au ticket ---------- */
 function clickArticle(id){
-  const a = ARTICLES.find(x => x.id === id); pendingArticle = a;
+  const a = ARTICLES.find(x => x.id === id); 
+  pendingArticle = a;
   $('maNom').textContent = a.nom_article;
   $('maVariantes').innerHTML = (a.variantes||[]).length
     ? '<label style="font-size:13px;color:#888">Variante</label><select id="maVar">' +
@@ -471,27 +415,41 @@ function clickArticle(id){
 }
 
 function confirmAddArticle(){
-  const a = pendingArticle; if(!a) return;
+  const a = pendingArticle; 
+  if(!a) return;
   let prix = a.is_variable_price ? parseFloat($('maPrix').value||0) : parseFloat(a.prix_unitaire||0);
   let varianteId = null, extras = [];
   const sel = $('maVar');
-  if (sel){ varianteId = parseInt(sel.value); prix = parseFloat(sel.selectedOptions[0].dataset.prix||prix); extras.push(sel.selectedOptions[0].textContent); }
-  document.querySelectorAll('.maMod:checked').forEach(m => { prix += parseFloat(m.dataset.prix); extras.push(m.value); });
+  if (sel){ 
+    varianteId = parseInt(sel.value); 
+    prix = parseFloat(sel.selectedOptions[0].dataset.prix||prix); 
+    extras.push(sel.selectedOptions[0].textContent); 
+  }
+  document.querySelectorAll('.maMod:checked').forEach(m => { 
+    prix += parseFloat(m.dataset.prix); 
+    extras.push(m.value); 
+  });
   const qty = parseInt($('maQty').value||1);
   const key = a.id + '_' + (varianteId||0) + '_' + extras.join('+');
   const existing = ticket.lines.find(l => l.key === key);
   if (existing) existing.qty += qty;
-  else ticket.lines.push({ key, article_id:a.id, variante_id:varianteId, nom:a.nom_article,
-                           extras:extras.join(', '), prix, qty, taux:a.taux_taxe||0 });
-  save(); renderTicket(); closeModal('modalArticle');
+  else ticket.lines.push({ 
+    key, article_id:a.id, variante_id:varianteId, nom:a.nom_article,
+    extras:extras.join(', '), prix, qty, taux:a.taux_taxe||0 
+  });
+  save(); 
+  renderTicket(); 
+  closeModal('modalArticle');
 }
 
 /* ---------- Ticket ---------- */
 function renderTicket(){
   $('ticketLines').innerHTML = ticket.lines.map((l,i) => `
     <div class="line">
-      <div class="l1"><span class="lname">${l.nom}${l.extras?` <span class="meta">(${l.extras})</span>`:''}</span>
-      <span class="lprice">${fmt(l.prix*l.qty)}</span></div>
+      <div class="l1">
+        <span class="lname">${l.nom}${l.extras?` <span class="meta">(${l.extras})</span>`:''}</span>
+        <span class="lprice">${fmt(l.prix*l.qty)}</span>
+      </div>
       <div class="l2">
         <button class="qtybtn" onclick="chgQty(${i},-1)">−</button>
         <span>${l.qty}</span>
@@ -500,34 +458,128 @@ function renderTicket(){
         <button class="del" onclick="delLine(${i})">✕</button>
       </div>
     </div>`).join('') || '<p style="padding:20px;color:#888;text-align:center">Ticket vide</p>';
+  
   const sousTotal = ticket.lines.reduce((s,l) => s + l.prix*l.qty, 0);
   const taxes = ticket.lines.reduce((s,l) => s + l.prix*l.qty*l.taux/100, 0);
   const total = sousTotal + taxes;
+  
   $('ticketNomDisplay').textContent = ticket.nom || 'Ticket';
   $('tSousTotal').textContent = fmt(sousTotal);
   $('tTaxes').textContent = fmt(taxes);
   $('tTotal').textContent = fmt(total);
   $('payTotal').textContent = fmt(total);
   $('ticketCount').textContent = ticket.lines.reduce((s,l)=>s+l.qty,0);
+  
   const chip = $('clientChip');
-  if (ticket.client){ chip.style.display='inline-flex'; chip.innerHTML = `👤 ${ticket.client.nom_client} ✕`; chip.onclick = removeClient; }
-  else chip.style.display='none';
+  if (ticket.client){ 
+    chip.style.display='inline-flex'; 
+    chip.innerHTML = `👤 ${ticket.client.nom_client} ✕`; 
+    chip.onclick = removeClient; 
+  } else {
+    chip.style.display='none';
+  }
 }
-function chgQty(i,d){ ticket.lines[i].qty += d; if(ticket.lines[i].qty<=0) ticket.lines.splice(i,1); save(); renderTicket(); }
-function delLine(i){ ticket.lines.splice(i,1); save(); renderTicket(); }
-function clearTicket(){ ticket = {lines:[], client:null}; save(); renderTicket(); $('menu').classList.remove('show'); }
+
+function chgQty(i,d){ 
+  ticket.lines[i].qty += d; 
+  if(ticket.lines[i].qty<=0) ticket.lines.splice(i,1); 
+  save(); 
+  renderTicket(); 
+}
+
+function delLine(i){ 
+  ticket.lines.splice(i,1); 
+  save(); 
+  renderTicket(); 
+}
+
+function clearTicket(){ 
+  ticket = {lines:[], client:null, nom:'', commentaire:''}; 
+  save(); 
+  renderTicket(); 
+  $('menu').classList.remove('show'); 
+}
+
 function newTicket(){ 
   ticket = {lines:[], client:null, nom:'', commentaire:''}; 
-  $('restoOption').value=''; $('tips').value=0; 
-  save(); renderTicket(); 
+  $('restoOption').value=''; 
+  $('tips').value=0; 
+  save(); 
+  renderTicket(); 
 }
+
+/* ---------- Modifier ticket ---------- */
+function openTicketInfoModal(){
+  $('menu').classList.remove('show');
+  $('ticketNom').value = ticket.nom || '';
+  $('ticketCommentaire').value = ticket.commentaire || '';
+  $('modalTicketInfo').classList.add('show');
+}
+
+function saveTicketInfo(){
+  ticket.nom = $('ticketNom').value.trim();
+  ticket.commentaire = $('ticketCommentaire').value.trim();
+  save(); 
+  renderTicket();
+  closeModal('modalTicketInfo');
+}
+
+/* ---------- ENREGISTRER (ticket ouvert) ---------- */
+async function saveOpenTicket(){
+  if(!ticket.lines.length) return;
+  
+  if(!ticket.nom) {
+    const nom = prompt('Nom du ticket (ex: Table 5, Précommande…)');
+    if(!nom || !nom.trim()) return;
+    ticket.nom = nom.trim();
+    save();
+    renderTicket();
+  }
+  
+  const payload = {
+    items: ticket.lines.map(l => ({ 
+      article_id:l.article_id, 
+      variante_id:l.variante_id, 
+      quantite:l.qty, 
+      prix_unitaire:l.prix 
+    })),
+    nom_ticket: ticket.nom,
+    commentaire: ticket.commentaire || '',
+    restaurant_option_id: parseInt($('restoOption').value) || null,
+    id_client: ticket.client ? ticket.client.id : null,
+    nom_du_client: ticket.client ? ticket.client.nom_client : '',
+  };
+  
+  try {
+    const r = await fetch(URL_SAVE_OPEN, { 
+      method:'POST', 
+      headers:{'Content-Type':'application/json'}, 
+      body:JSON.stringify(payload) 
+    });
+    const d = await r.json();
+    if (d.success){ 
+      newTicket(); 
+      alert('✅ Ticket enregistré : ' + ticket.nom); 
+    } else {
+      alert(d.message || 'Erreur.');
+    }
+  } catch(e) {
+    alert('Erreur réseau: ' + e.message);
+  }
+}
+
 /* ---------- Tickets ouverts (attente) ---------- */
 function parkTicket(){
   if(!ticket.lines.length) return;
-  parked.push({...ticket, saved_at:new Date().toLocaleTimeString('fr-CH',{hour:'2-digit',minute:'2-digit'})});
+  parked.push({
+    ...ticket, 
+    saved_at:new Date().toLocaleTimeString('fr-CH',{hour:'2-digit',minute:'2-digit'})
+  });
   localStorage.setItem('pos_parked_tickets', JSON.stringify(parked));
-  newTicket(); $('menu').classList.remove('show');
+  newTicket(); 
+  $('menu').classList.remove('show');
 }
+
 function openParkedModal(){
   $('parkedList').innerHTML = parked.map((t,i) => `
     <div class="parked-item">
@@ -539,45 +591,79 @@ function openParkedModal(){
     </div>`).join('') || '<p style="color:#888">Aucun ticket en attente.</p>';
   $('modalParked').classList.add('show');
 }
+
 function resumeParked(i){
   if(ticket.lines.length) parkTicket();
   ticket = parked.splice(i,1)[0];
   localStorage.setItem('pos_parked_tickets', JSON.stringify(parked));
-  save(); renderTicket(); closeModal('modalParked');
+  save(); 
+  renderTicket(); 
+  closeModal('modalParked');
 }
-function deleteParked(i){ parked.splice(i,1); localStorage.setItem('pos_parked_tickets', JSON.stringify(parked)); openParkedModal(); }
+
+function deleteParked(i){ 
+  parked.splice(i,1); 
+  localStorage.setItem('pos_parked_tickets', JSON.stringify(parked)); 
+  openParkedModal(); 
+}
 
 /* ---------- Client ---------- */
-function openClientModal(){ $('menu').classList.remove('show'); $('modalClient').classList.add('show'); searchClients(); }
+function openClientModal(){ 
+  $('menu').classList.remove('show'); 
+  $('modalClient').classList.add('show'); 
+  searchClients(); 
+}
+
 async function searchClients(){
   const q = $('clientSearch').value;
-  const r = await fetch(URL_CLIENTS + '?q=' + encodeURIComponent(q)); const list = await r.json();
+  const r = await fetch(URL_CLIENTS + '?q=' + encodeURIComponent(q)); 
+  const list = await r.json();
   $('clientResults').innerHTML = list.map(c =>
     `<div class="art-row" onclick='selectClient(${JSON.stringify({id:c.id, nom_client:c.nom_client})})'>
-       <div class="art-name">${c.nom_client}</div><span class="meta">${c.telephone||''}</span></div>`).join('') || '<p style="color:#888">Aucun client.</p>';
+       <div class="art-name">${c.nom_client}</div><span class="meta">${c.telephone||''}</span></div>`
+  ).join('') || '<p style="color:#888">Aucun client.</p>';
 }
-function selectClient(c){ ticket.client = c; save(); renderTicket(); closeModal('modalClient'); }
-function removeClient(){ ticket.client = null; save(); renderTicket(); closeModal('modalClient'); }
+
+function selectClient(c){ 
+  ticket.client = c; 
+  save(); 
+  renderTicket(); 
+  closeModal('modalClient'); 
+}
+
+function removeClient(){ 
+  ticket.client = null; 
+  save(); 
+  renderTicket(); 
+  closeModal('modalClient'); 
+}
 
 /* ---------- Paiement ---------- */
 function openPayModal(){
   if(!ticket.lines.length) return;
   payments = [];
-  $('modesButtons').innerHTML = MODES.map(m => `<button onclick="addPayment(${m.id})">${m.nom}</button>`).join('');
-  $('tips').value = 0; $('tips').oninput = renderPayments;
+  $('modesButtons').innerHTML = MODES.map(m => 
+    `<button onclick="addPayment(${m.id})">${m.nom}</button>`
+  ).join('');
+  $('tips').value = 0; 
+  $('tips').oninput = renderPayments;
   addPayment(MODES[0] ? MODES[0].id : null);
   $('modalPay').classList.add('show');
 }
+
 function totalDue(){
   const sousTotal = ticket.lines.reduce((s,l)=>s+l.prix*l.qty,0);
   const taxes = ticket.lines.reduce((s,l)=>s+l.prix*l.qty*l.taux/100,0);
   return sousTotal + taxes + (parseFloat($('tips').value)||0);
 }
+
 function addPayment(modeId){
-  const due = totalDue(); const already = payments.reduce((s,p)=>s+p.montant,0);
+  const due = totalDue(); 
+  const already = payments.reduce((s,p)=>s+p.montant,0);
   payments.push({ mode_paiement_id:modeId, montant: Math.max(0, due - already) });
   renderPayments();
 }
+
 function renderPayments(){
   const due = totalDue();
   $('payLines').innerHTML = payments.map((p,i) => {
@@ -591,12 +677,24 @@ function renderPayments(){
   $('payRecu').textContent = fmt(paid);
   $('payRendu').textContent = fmt(Math.max(0, paid - due));
 }
-function setPay(i,v){ payments[i].montant = parseFloat(v)||0; renderPayments(); }
-function rmPay(i){ payments.splice(i,1); renderPayments(); }
+
+function setPay(i,v){ 
+  payments[i].montant = parseFloat(v)||0; 
+  renderPayments(); 
+}
+
+function rmPay(i){ 
+  payments.splice(i,1); 
+  renderPayments(); 
+}
 
 async function submitPay(){
-  const due = totalDue(); const paid = payments.reduce((s,p)=>s+p.montant,0);
-  if (paid + 0.001 < due){ alert('Montant payé insuffisant.'); return; }
+  const due = totalDue(); 
+  const paid = payments.reduce((s,p)=>s+p.montant,0);
+  if (paid + 0.001 < due){ 
+    alert('Montant payé insuffisant.'); 
+    return; 
+  }
   
   // Demander le nom si vide
   if(!ticket.nom) {
@@ -608,7 +706,12 @@ async function submitPay(){
   }
   
   const payload = {
-    items: ticket.lines.map(l => ({ article_id:l.article_id, variante_id:l.variante_id, quantite:l.qty, prix_unitaire:l.prix })),
+    items: ticket.lines.map(l => ({ 
+      article_id:l.article_id, 
+      variante_id:l.variante_id, 
+      quantite:l.qty, 
+      prix_unitaire:l.prix 
+    })),
     payments: payments.filter(p => p.montant > 0),
     tips: parseFloat($('tips').value)||0,
     nom_ticket: ticket.nom,
@@ -617,17 +720,27 @@ async function submitPay(){
     id_client: ticket.client ? ticket.client.id : null,
     nom_du_client: ticket.client ? ticket.client.nom_client : '',
   };
-  const r = await fetch(URL_PAY, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-  const d = await r.json();
-  if (d.success){
-    closeModal('modalPay');
-    $('successMsg').textContent = 'Vente encaissée — ' + (d.recu_numero || '');
-    $('modalSuccess').classList.add('show');
-  } else { alert(d.message || 'Erreur lors de l\'encaissement.'); }
+  
+  try {
+    const r = await fetch(URL_PAY, { 
+      method:'POST', 
+      headers:{'Content-Type':'application/json'}, 
+      body:JSON.stringify(payload) 
+    });
+    const d = await r.json();
+    if (d.success){
+      closeModal('modalPay');
+      $('successMsg').textContent = 'Vente encaissée — ' + (d.recu_numero || '');
+      $('modalSuccess').classList.add('show');
+    } else { 
+      alert(d.message || 'Erreur lors de l\'encaissement.'); 
+    }
+  } catch(e) {
+    alert('Erreur réseau: ' + e.message);
+  }
 }
 
-/* ---------- Période / menus divers ---------- */
-/* ---------- Fermeture de caisse : résumé + mouvements ---------- */
+/* ---------- Fermeture de caisse ---------- */
 async function openClosePeriodModal(){
   $('menu').classList.remove('show');
   $('modalClosePeriod').classList.add('show');
@@ -639,7 +752,9 @@ async function refreshClosePeriod(){
     const r = await fetch(URL_PERIOD_JSON);
     const d = await r.json();
     applyDetail(d);
-  }catch(e){ console.error('Erreur chargement période:', e); }
+  }catch(e){ 
+    console.error('Erreur chargement période:', e); 
+  }
 }
 
 function applyDetail(d){
@@ -651,11 +766,9 @@ function applyDetail(d){
   $('cpRetraits').textContent      = fmt(d.total_retraits || 0);
   $('cpPrevu').textContent         = fmt(d.montant_prevu || 0);
 
-  // Pré-remplit le montant réel une seule fois
   if(!$('cpReel').value) $('cpReel').value = (d.montant_prevu || 0).toFixed(2);
   updateCpDiff();
 
-  // Liste des mouvements déjà effectués
   $('cpMouvements').innerHTML = (d.mouvements || []).map(m => {
     const neg   = m.montant < 0;
     const color = neg ? '#e53935' : '#2e7d32';
@@ -676,37 +789,63 @@ function updateCpDiff(){
   el.style.color = diff < 0 ? '#e53935' : '#2e7d32';
 }
 
-/* ---------- Dépôt / retrait (AJAX, seul endroit autorisé) ---------- */
 async function submitCashMovement(){
   const type        = $('mvType').value;
   const montant     = parseFloat($('mvMontant').value) || 0;
   const description = $('mvDescription').value.trim();
 
-  if (montant <= 0){ alert('Montant invalide.'); return; }
+  if (montant <= 0){ 
+    alert('Montant invalide.'); 
+    return; 
+  }
 
-  const r = await fetch(URL_CASH_MOVEMENT, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ type, montant, description })
-  });
-  const d = await r.json();
+  try {
+    const r = await fetch(URL_CASH_MOVEMENT, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ type, montant, description })
+    });
+    const d = await r.json();
 
-  if (d.success){
-    $('mvMontant').value = '';
-    $('mvDescription').value = '';
-    applyDetail(d.detail);   // ✅ refresh immédiat du résumé
-  } else {
-    alert(d.message || 'Erreur lors du mouvement.');
+    if (d.success){
+      $('mvMontant').value = '';
+      $('mvDescription').value = '';
+      applyDetail(d.detail);
+    } else {
+      alert(d.message || 'Erreur lors du mouvement.');
+    }
+  } catch(e) {
+    alert('Erreur réseau: ' + e.message);
   }
 }
-function closeModal(id){ $(id).classList.remove('show'); }
 
-$('btnDrawer').onclick = () => { $('drawer').classList.add('open'); $('scrim').classList.add('show'); };
-$('scrim').onclick = () => { $('drawer').classList.remove('open'); $('scrim').classList.remove('show'); };
-$('btnMenu').onclick = e => { e.stopPropagation(); $('menu').classList.toggle('show'); };
+function closeModal(id){ 
+  $(id).classList.remove('show'); 
+}
+
+/* ---------- Événements UI ---------- */
+$('btnDrawer').onclick = () => { 
+  $('drawer').classList.add('open'); 
+  $('scrim').classList.add('show'); 
+};
+
+$('scrim').onclick = () => { 
+  $('drawer').classList.remove('open'); 
+  $('scrim').classList.remove('show'); 
+};
+
+$('btnMenu').onclick = e => { 
+  e.stopPropagation(); 
+  $('menu').classList.toggle('show'); 
+};
+
 $('btnClient').onclick = () => openClientModal();
-document.addEventListener('click', e => { if(!$('menu').contains(e.target)) $('menu').classList.remove('show'); });
 
+document.addEventListener('click', e => { 
+  if(!$('menu').contains(e.target)) $('menu').classList.remove('show'); 
+});
+
+// Lancer l'initialisation
 init();
 </script>
 {% endif %}
