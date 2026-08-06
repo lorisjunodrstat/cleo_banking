@@ -11171,7 +11171,8 @@ def pos_create_sale():
 @bp.route('/pos/receipts')
 @login_required
 def pos_receipts_list():
-    # Paramètres de filtrage
+    from types import SimpleNamespace
+    
     page = request.args.get('page', 1, type=int)
     search = request.args.get('search', '').strip()
     payment_filter = request.args.get('payment', '').strip()
@@ -11179,81 +11180,60 @@ def pos_receipts_list():
     date_to = request.args.get('date_to', '').strip()
     employee = request.args.get('employee', '').strip()
     
-    per_page = current_app.config.get('PER_PAGE', 20)
-    
-    # 1. Calculer le total pour la pagination
-    total = g.models.receipt_pos_model.count_all(
-        user_id=current_user.id,
-        search=search,
-        payment=payment_filter,
-        date_from=date_from,
-        date_to=date_to,
-        employee=employee
-    )
-    
-    total_pages = (total + per_page - 1) // per_page if total > 0 else 1
-    
-    if page < 1:
-        page = 1
-    elif page > total_pages:
-        page = total_pages
-    
-    # 2. Récupérer les reçus paginés (filtrés côté SQL !)
-    offset = (page - 1) * per_page
+    # Liste filtrée
     receipts = g.models.receipt_pos_model.get_all(
         user_id=current_user.id,
-        search=search,
-        payment=payment_filter,
-        date_from=date_from,
-        date_to=date_to,
-        employee=employee,
-        limit=per_page,
-        offset=offset
+        search=search or None,
+        payment=payment_filter or None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+        employee=employee or None,
+        limit=10000
     )
     
-    # 3. Enrichir avec les modes de paiement
+    # ✅ Construire receipts_data (format attendu par le template : rd.r + rd.payment_str)
     receipts_data = []
     for r in receipts:
-        payment_methods = g.models.receipt_pos_model.get_payment_methods(r['id'])
-        payment_str = ', '.join(payment_methods) if payment_methods else '-'
-        
+        methods = g.models.receipt_pos_model.get_payment_methods(r['id'])
         receipts_data.append({
             'r': r,
-            'payment_str': payment_str
+            'payment_str': ', '.join(methods) if methods else '-'
         })
     
-    # 4. Statistiques (sur les reçus filtrés)
+    # Stats
     stats = g.models.receipt_pos_model.get_filtered_stats(
         user_id=current_user.id,
-        search=search,
-        payment=payment_filter,
-        date_from=date_from,
-        date_to=date_to,
-        employee=employee
+        search=search or None,
+        payment=payment_filter or None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+        employee=employee or None
     )
     
-    # 5. Listes pour les filtres du template
-    payment_methods = g.models.mode_paiement_pos_model.get_all(current_user.id)
-    payment_methods_names = [m['nom'] for m in payment_methods if m.get('est_actif')]
-    employees = g.models.receipt_pos_model.get_unique_employees(current_user.id)
+    # Pagination manuelle
+    per_page = current_app.config.get('PER_PAGE', 20)
+    total = len(receipts_data)
+    total_pages = (total + per_page - 1) // per_page if total > 0 else 1
+    if page < 1: page = 1
+    elif page > total_pages: page = total_pages
+    start = (page - 1) * per_page
+    items_page = receipts_data[start:start + per_page]
     
-    # 6. Pagination
-    from types import SimpleNamespace
     pagination = SimpleNamespace(
-        page=page,
-        pages=total_pages,
-        per_page=per_page,
-        total=total,
-        items=receipts_data,
-        has_prev=page > 1,
-        prev_num=page - 1,
-        has_next=page < total_pages,
-        next_num=page + 1 if page < total_pages else None
+        page=page, pages=total_pages, per_page=per_page, total=total,
+        items=items_page, has_prev=page > 1, prev_num=page - 1,
+        has_next=page < total_pages, next_num=page + 1 if page < total_pages else None
     )
+    
+    payment_methods = [
+        m['nom'] for m in g.models.mode_paiement_pos_model.get_all(current_user.id) 
+        if m.get('est_actif')
+    ]
+    employees = g.models.receipt_pos_model.get_unique_employees(current_user.id)
     
     return render_template(
         'pos/recus.html',
-        receipts_data=pagination.items,
+        receipts_data=pagination.items,          # ✅ NOM CORRECT
         pagination=pagination,
         search=search,
         payment_filter=payment_filter,
@@ -11262,10 +11242,11 @@ def pos_receipts_list():
         employee=employee,
         total_receipts=stats['total_receipts'],
         total_revenue=stats['total_revenue'],
-        payment_methods=payment_methods_names,
+        payment_methods=payment_methods,
         employees=employees,
         sales_count=stats['sales_count'],
-        refunds_count=stats['refunds_count']
+        refunds_count=stats['refunds_count'],
+        periode_ouverte=g.models.periode_travail_pos_model.get_ouverte(current_user.id)
     )
 
 @bp.route('/pos/receipts/<int:receipt_id>')
@@ -12355,6 +12336,7 @@ def pos_import_payments(df):
             flash(f'Reçu {recu_numero} non trouvé, paiement ignoré.', 'warning')
 
     return count
+
 @bp.route('/pos/stats')
 @login_required
 def pos_stats():
@@ -12372,10 +12354,19 @@ def pos_stats():
             payment_stats[nom]['count'] += 1
             payment_stats[nom]['total'] += montant
 
-    # Mensuelles
+    # ✅ Mensuelles — gère datetime ET string
     monthly = {}
     for r in receipts:
-        month = (r.get('date') or '')[:7]  # 'YYYY-MM'
+        date_val = r.get('date')
+        if not date_val:
+            continue
+        
+        # Extraire 'YYYY-MM' quel que soit le type
+        if hasattr(date_val, 'strftime'):
+            month = date_val.strftime('%Y-%m')   # datetime → string
+        else:
+            month = str(date_val)[:7]            # déjà string
+        
         if month:
             if month not in monthly:
                 monthly[month] = {'count': 0, 'total': 0.0}
@@ -12387,7 +12378,6 @@ def pos_stats():
     return render_template('pos/stats.html',
                            payment_stats=list(payment_stats.items()),
                            monthly_stats=monthly_sorted)
-
 @bp.route('/pos/clients/<int:client_id>')
 @login_required
 def pos_client_detail(client_id):
@@ -12657,7 +12647,7 @@ def pos_vente_open_tickets_json():
         })
     
     return jsonify(result)
-    
+
 @bp.route('/pos/vente/open-ticket/<int:receipt_id>/delete', methods=['POST'])
 @login_required
 def pos_vente_delete_open_ticket(receipt_id):

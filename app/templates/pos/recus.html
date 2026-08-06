@@ -82,16 +82,25 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <!-- CORRECTION : Utilisation des noms de champs du modèle ReceiptPOS -->
-                    {% for receipt in receipts %}
+                    {% for rd in receipts_data %}
                     <tr>
-                        <td>{{ receipt.date.strftime('%d/%m/%Y %H:%M') if receipt.date else '-' }}</td>
-                        <td><span class="badge bg-secondary">{{ receipt.recu_numero }}</span></td>
-                        <td>{{ receipt.nom_du_client or 'Client de passage' }}</td>
-                        <td>{{ receipt.nom_du_caissier or '-' }}</td>
-                        <td class="fw-bold">CHF {{ "%.2f"|format(receipt.total_collecte or 0) }}</td>
+                        <td>{{ rd.r.date.strftime('%d/%m/%Y %H:%M') if rd.r.date else '-' }}</td>
+                        <td>
+                            <span class="badge bg-secondary">{{ rd.r.recu_numero }}</span>
+                            {% if rd.r.nom_ticket %}
+                                <br><small class="text-muted">{{ rd.r.nom_ticket }}</small>
+                            {% endif %}
+                            {% if rd.r.status == 'Ouvert' %}
+                                <span class="badge bg-warning text-dark ms-1">Ouvert</span>
+                            {% elif rd.r.status == 'Annulé' %}
+                                <span class="badge bg-danger ms-1">Annulé</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ rd.r.nom_du_client or rd.r.client_nom or 'Client de passage' }}</td>
+                        <td>{{ rd.r.nom_du_caissier or '-' }}</td>
+                        <td class="fw-bold">CHF {{ "%.2f"|format(rd.r.total_collecte or 0) }}</td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary view-receipt" data-receipt-id="{{ receipt.id }}">
+                            <button class="btn btn-sm btn-outline-primary view-receipt" data-receipt-id="{{ rd.r.id }}">
                                 <i class="fas fa-eye me-1"></i> Voir
                             </button>
                         </td>
