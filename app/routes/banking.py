@@ -12624,22 +12624,44 @@ def pos_vente_save_open():
 @bp.route('/pos/vente/open-tickets.json')
 @login_required
 def pos_vente_open_tickets_json():
-    """Retourne les tickets ouverts (status 'Ouvert') de la base"""
-    all_receipts = g.models.receipt_pos_model.get_all(user_id=current_user.id, limit=500)
-    commandes = [
-        r for r in all_receipts 
-        if r.get('status') in ('Ouvert', 'En cours', 'En attente')
-    ]
+    """Retourne les tickets enregistrés (status Ouvert) avec leurs lignes"""
+    all_receipts = g.models.receipt_pos_model.get_all(user_id=current_user.id, limit=200)
+    commandes = [r for r in all_receipts if r.get('status') in ('Ouvert', 'En cours', 'En attente')]
     
-    # Convertir en format simple pour le JavaScript
     result = []
     for c in commandes:
-        items = g.models.receipt_pos_model._get_items(None, c['id']) if hasattr(g.models.receipt_pos_model, '_get_items') else []
+        # ✅ get_by_id ouvre son propre curseur et retourne le reçu AVEC items + payments
+        receipt = g.models.receipt_pos_model.get_by_id(c['id'], current_user.id)
+        
+        lines = []
+        if receipt:
+            for item in receipt.get('items', []):
+                lines.append({
+                    'key': f"{item['article_id']}_{item.get('variante_id') or 0}",
+                    'article_id': item['article_id'],
+                    'variante_id': item.get('variante_id'),
+                    'nom': item['nom_article'],
+                    'extras': '',
+                    'prix': float(item['prix_unitaire'] or 0),
+                    'qty': int(item['quantite'] or 1),
+                    'taux': float(item.get('taux_taxe_applique') or 0)
+                })
+        
         result.append({
             'id': c['id'],
-            'nom_ticket': c.get('nom_ticket') or c.get('recu_numero'),
-            'lines': items,  # Il faudrait reformater les items
-            'total': float(c.get('total_collecte', 0))
+            'nom': c.get('nom_ticket') or c.get('recu_numero'),
+            'commentaire': c.get('description') or '',
+            'lines': lines,
+            'client': None,
+            'total': float(c.get('total_collecte') or 0)
         })
     
     return jsonify(result)
+
+
+@bp.route('/pos/vente/open-ticket/<int:receipt_id>/delete', methods=['POST'])
+@login_required
+def pos_vente_delete_open_ticket(receipt_id):
+    """Supprime un ticket enregistré (utilisé quand on le reprend ou l'annule)"""
+    success = g.models.receipt_pos_model.supprimer_ticket_ouvert(receipt_id, current_user.id)
+    return jsonify({'success': success})
