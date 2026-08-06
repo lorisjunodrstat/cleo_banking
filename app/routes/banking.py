@@ -11171,8 +11171,148 @@ def pos_create_sale():
 @bp.route('/pos/receipts')
 @login_required
 def pos_receipts_list():
-    receipts = g.models.receipt_pos_model.get_all(user_id=current_user.id, limit=100)
-    return render_template('pos/recus.html', receipts=receipts)
+    from types import SimpleNamespace
+    
+    # Paramètres de filtrage
+    page = request.args.get('page', 1, type=int)
+    search = request.args.get('search', '').strip()
+    payment_filter = request.args.get('payment', '').strip()
+    date_from = request.args.get('date_from', '').strip()
+    date_to = request.args.get('date_to', '').strip()
+    employee = request.args.get('employee', '').strip()
+    
+    # 1. Récupérer tous les reçus de l'utilisateur
+    all_receipts = g.models.receipt_pos_model.get_all(
+        user_id=current_user.id, 
+        limit=10000  # Limite haute pour pouvoir filtrer côté Python
+    )
+    
+    # 2. Appliquer les filtres
+    filtered_receipts = all_receipts
+    
+    # Filtre recherche (numéro, client, description, caissier)
+    if search:
+        search_lower = search.lower()
+        filtered_receipts = [
+            r for r in filtered_receipts
+            if search_lower in (r.get('recu_numero') or '').lower()
+            or search_lower in (r.get('nom_du_client') or '').lower()
+            or search_lower in (r.get('description') or '').lower()
+            or search_lower in (r.get('nom_du_caissier') or '').lower()
+        ]
+    
+    # Filtre par caissier
+    if employee:
+        filtered_receipts = [
+            r for r in filtered_receipts
+            if r.get('nom_du_caissier') == employee
+        ]
+    
+    # Filtre par date de début
+    if date_from:
+        try:
+            dt_from = datetime.strptime(date_from, '%Y-%m-%d')
+            filtered_receipts = [
+                r for r in filtered_receipts
+                if r.get('date') and (r['date'] if isinstance(r['date'], datetime) 
+                    else datetime.strptime(str(r['date'])[:10], '%Y-%m-%d')) >= dt_from
+            ]
+        except ValueError:
+            pass
+    
+    # Filtre par date de fin
+    if date_to:
+        try:
+            dt_to = datetime.strptime(date_to, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+            filtered_receipts = [
+                r for r in filtered_receipts
+                if r.get('date') and (r['date'] if isinstance(r['date'], datetime) 
+                    else datetime.strptime(str(r['date'])[:10], '%Y-%m-%d')) <= dt_to
+            ]
+        except ValueError:
+            pass
+    
+    # 3. Récupérer les modes de paiement pour chaque reçu filtré
+    receipts_data = []
+    for r in filtered_receipts:
+        # Récupérer les modes de paiement de ce reçu
+        payment_methods = g.models.receipt_pos_model.get_payment_methods(r['id'])
+        payment_str = ', '.join(payment_methods) if payment_methods else '-'
+        
+        receipts_data.append({
+            'r': r,
+            'payment_str': payment_str
+        })
+    
+    # 4. Filtre par mode de paiement (après avoir enrichi avec payment_str)
+    if payment_filter:
+        receipts_data = [
+            rd for rd in receipts_data
+            if payment_filter.lower() in rd['payment_str'].lower()
+        ]
+    
+    # 5. Statistiques (sur les reçus filtrés)
+    total_receipts = len(receipts_data)
+    total_revenue = sum(
+        float(rd['r'].get('total_collecte', 0) or 0) 
+        for rd in receipts_data
+        if rd['r'].get('receipt_type') == 'Vente'
+    )
+    sales_count = sum(1 for rd in receipts_data if rd['r'].get('receipt_type') == 'Vente')
+    refunds_count = sum(1 for rd in receipts_data if rd['r'].get('receipt_type') == 'Remboursement')
+    
+    # 6. Listes pour les filtres du template
+    payment_methods = g.models.mode_paiement_pos_model.get_all(current_user.id)
+    payment_methods_names = [m['nom'] for m in payment_methods if m.get('est_actif')]
+    
+    employees = sorted(set(
+        r.get('nom_du_caissier') 
+        for r in all_receipts 
+        if r.get('nom_du_caissier')
+    ))
+    
+    # 7. Pagination manuelle
+    per_page = current_app.config.get('PER_PAGE', 20)
+    total = len(receipts_data)
+    total_pages = (total + per_page - 1) // per_page if total > 0 else 1
+    
+    if page < 1:
+        page = 1
+    elif page > total_pages:
+        page = total_pages
+    
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+    receipts_page = receipts_data[start_idx:end_idx]
+    
+    pagination = SimpleNamespace(
+        page=page,
+        pages=total_pages,
+        per_page=per_page,
+        total=total,
+        items=receipts_page,
+        has_prev=page > 1,
+        prev_num=page - 1,
+        has_next=page < total_pages,
+        next_num=page + 1 if page < total_pages else None
+    )
+    
+    return render_template(
+        'pos/recus.html',
+        receipts_data=pagination.items,
+        pagination=pagination,
+        search=search,
+        payment_filter=payment_filter,
+        date_from=date_from,
+        date_to=date_to,
+        employee=employee,
+        total_receipts=total_receipts,
+        total_revenue=float(total_revenue),
+        payment_methods=payment_methods_names,
+        employees=employees,
+        sales_count=sales_count,
+        refunds_count=refunds_count
+    )
 
 @bp.route('/pos/receipts/<int:receipt_id>')
 @login_required
