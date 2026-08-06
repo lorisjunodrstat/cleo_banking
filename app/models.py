@@ -18,7 +18,7 @@ import uuid
 import time
 import math
 from collections import defaultdict
-
+from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Dict, Optional, Tuple, TypedDict, Any
 import traceback
 from contextlib import contextmanager
@@ -16931,8 +16931,8 @@ class ReceiptPOS:
 
     def _get_items(self, cursor, receipt_id: int) -> List[Dict]:
         cursor.execute("""
-            SELECT ri.*, a.nom_article, a.cout_unitaire,
-                   v.nom AS variante_nom
+            SELECT ri.*, a.cout_unitaire, a.nom_article AS nom_article_actuel,
+                v.nom AS variante_nom
             FROM pos_receipt_items ri
             JOIN pos_articles a ON ri.article_id = a.id
             LEFT JOIN pos_variantes v ON ri.variante_id = v.id
@@ -16992,25 +16992,13 @@ class ReceiptPOS:
 
     def creer_vente(self, user_id: int, data: Dict, compte_bancaire_id: int) -> Tuple[bool, str, Optional[int]]:
         """
-        ⭐ MÉTHODE PRINCIPALE : Crée une vente POS avec transaction financière.
-        
-        data doit contenir :
-        - items: [{'article_id': int, 'quantite': int, 'prix_unitaire': float, 'variante_id': int?}, ...]
-        - payments: [{'mode_paiement_id': int, 'montant': float}, ...]
-        - pdv: str (nom du point de vente)
-        - magasin: str
-        - nom_du_caissier: str
-        - id_client: int? (optionnel)
-        - discount_id: int? (optionnel)
-        - restaurant_option_id: int? (optionnel)
-        - tips: float? (optionnel)
+        ⭐ MÉTHODE PRINCIPALE : Crée une vente POS avec extraction de TVA depuis un prix TTC.
         """
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                # 1. Calculer les totaux
-                ventes_brutes = Decimal('0')
+                # 1. Calculer les totaux (Le prix en base est TTC)
+                ventes_brutes_ht = Decimal('0')
                 cout_marchandises = Decimal('0')
-                total_taxes = Decimal('0')
                 items_data = []
                 
                 for item in data.get('items', []):
@@ -17019,49 +17007,88 @@ class ReceiptPOS:
                     if not article:
                         return False, f"Article {item['article_id']} introuvable", None
                     
-                    prix = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
+                    # Le prix saisi est TTC
+                    prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
                     qte = int(item.get('quantite', 1))
-                    total_ligne = prix * qte
-                    ventes_brutes += total_ligne
+                    total_ligne_ttc = prix_ttc * qte
                     cout_marchandises += Decimal(str(article['cout_unitaire'] or 0)) * qte
                     
-                    # Calcul taxe
+                    # Récupération du taux
                     taxe = self._get_taxe_active(cursor, item['article_id'])
                     taux_taxe = Decimal('0')
                     if taxe:
                         taux_taxe = Decimal(str(taxe['taux']))
-                        total_taxes += total_ligne * (taux_taxe / Decimal('100'))
+                        
+                    # Extraction du HT brut (avant réduction)
+                    if taux_taxe > Decimal('0'):
+                        diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
+                        ligne_ht_brut = (total_ligne_ttc / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    else:
+                        ligne_ht_brut = total_ligne_ttc.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                        
+                    ventes_brutes_ht += ligne_ht_brut
                     
                     items_data.append({
                         'article_id': item['article_id'],
                         'nom_article': article['nom_article'],
                         'variante_id': item.get('variante_id'),
                         'quantite': qte,
-                        'prix_unitaire': prix,
-                        'total_ligne': total_ligne,
+                        'prix_ttc': prix_ttc,
+                        'total_ligne_ttc': total_ligne_ttc,
+                        'ligne_ht_brut': ligne_ht_brut,
                         'taux_taxe': taux_taxe
                     })
                 
-                # 2. Appliquer réduction
-                reduction = Decimal('0')
+                # 2. Calcul de la réduction (Appliquée sur le montant TTC global)
+                reduction_ttc = Decimal('0')
                 if data.get('discount_id'):
                     cursor.execute("SELECT * FROM pos_discounts WHERE id = %s", (data['discount_id'],))
                     discount = cursor.fetchone()
                     if discount:
+                        total_ttc_global = sum(i['total_ligne_ttc'] for i in items_data)
                         if discount['type_reduction'] == 'percentage':
-                            reduction = ventes_brutes * (Decimal(str(discount['valeur'])) / Decimal('100'))
+                            reduction_ttc = total_ttc_global * (Decimal(str(discount['valeur'])) / Decimal('100'))
                         else:
-                            reduction = Decimal(str(discount['valeur']))
+                            reduction_ttc = Decimal(str(discount['valeur']))
                 
-                ventes_nettes = ventes_brutes - reduction
+                # 3. Répartition proportionnelle et extraction finale de la TVA
+                total_ttc_global = sum(i['total_ligne_ttc'] for i in items_data)
+                reduction_ratio = Decimal('0')
+                if total_ttc_global > Decimal('0'):
+                    reduction_ratio = reduction_ttc / total_ttc_global
+                    
+                ventes_nettes_ht = Decimal('0')
+                total_taxes = Decimal('0')
+                reduction_ht_total = Decimal('0')
+                
+                for item_data in items_data:
+                    total_ligne_ttc = item_data['total_ligne_ttc']
+                    taux_taxe = item_data['taux_taxe']
+                    
+                    # Montant TTC net après réduction
+                    ligne_ttc_net = total_ligne_ttc - (total_ligne_ttc * reduction_ratio)
+                    
+                    # Extraction finale HT et TVA
+                    if taux_taxe > Decimal('0'):
+                        diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
+                        ligne_ht_net = (ligne_ttc_net / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    else:
+                        ligne_ht_net = ligne_ttc_net.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                        
+                    ligne_taxe = (ligne_ttc_net - ligne_ht_net).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    ligne_reduction_ht = item_data['ligne_ht_brut'] - ligne_ht_net
+                    
+                    ventes_nettes_ht += ligne_ht_net
+                    total_taxes += ligne_taxe
+                    reduction_ht_total += ligne_reduction_ht
+                
                 tips = Decimal(str(data.get('tips', 0)))
-                total_collecte = ventes_nettes + total_taxes + tips
-                marge_brute = ventes_nettes - cout_marchandises
+                total_collecte = ventes_nettes_ht + total_taxes + tips
+                marge_brute = ventes_nettes_ht - cout_marchandises
                 
-                # 3. Générer numéro de reçu
+                # 4. Génération et insertion du reçu
                 recu_numero = f"V-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
                 
-                # 4. Insérer le receipt
                 cursor.execute("""
                     INSERT INTO pos_receipts 
                     (utilisateur_id, date, recu_numero, nom_ticket, description, receipt_type, ventes_brutes, reduction, 
@@ -17072,18 +17099,19 @@ class ReceiptPOS:
                     VALUES (%s, NOW(), %s,%s, %s, 'Vente', %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Fermé', %s)
                 """, (
-                    user_id, recu_numero, data.get('nom_ticket'), data.get('description'), float(ventes_brutes), float(reduction), float(ventes_nettes),
+                    user_id, recu_numero, data.get('nom_ticket'), data.get('description'), 
+                    float(ventes_brutes_ht), float(reduction_ht_total), float(ventes_nettes_ht),
                     float(total_taxes), float(tips), float(total_collecte),
                     float(cout_marchandises), float(marge_brute),
                     data.get('restaurant_option_id'), data.get('pdv'), data.get('magasin'),
                     data.get('nom_du_caissier'), data.get('nom_du_client'),
                     data.get('numero_client'), data.get('id_client'),
-                    data.get('discount_id'), float(reduction),
+                    data.get('discount_id'), float(reduction_ttc), # discount_amount affiché en TTC
                     compte_bancaire_id
                 ))
                 receipt_id = cursor.lastrowid
                 
-                # 5. Insérer les items et décrémenter le stock
+                # 5. Insertion des items (Stockage du TTC pour la lisibilité)
                 for item in items_data:
                     cursor.execute("""
                         INSERT INTO pos_receipt_items 
@@ -17092,24 +17120,23 @@ class ReceiptPOS:
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         receipt_id, item['article_id'], item['nom_article'], item['variante_id'],
-                        item['quantite'], float(item['prix_unitaire']),
-                        float(item['total_ligne']), float(item['taux_taxe'])
+                        item['quantite'], float(item['prix_ttc']), # Prix TTC pour traçabilité
+                        float(item['total_ligne_ttc']),            # Total TTC pour stats clients
+                        float(item['taux_taxe'])
                     ))
                     
-                    # Décrémenter le stock
                     cursor.execute("""
                         UPDATE pos_articles SET stock = stock - %s WHERE id = %s
                     """, (item['quantite'], item['article_id']))
                 
-                # 6. Insérer les paiements
+                # 6. Insertion des paiements
                 for payment in data.get('payments', []):
                     cursor.execute("""
                         INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant)
                         VALUES (%s, %s, %s)
                     """, (receipt_id, payment['mode_paiement_id'], float(payment['montant'])))
                 
-                # 🔗 7. CRÉER LA TRANSACTION FINANCIÈRE LIÉE
-                # La vente est un ENCAISSEMENT (dépôt) dans le compte bancaire
+                # 7. Lien avec la transaction financière
                 success, msg, transaction_id = self.transaction_model._inserer_transaction_with_cursor(
                     cursor=cursor,
                     compte_type='compte_principal',
@@ -17123,7 +17150,6 @@ class ReceiptPOS:
                 )
                 
                 if success and transaction_id:
-                    # 🔗 8. Lier le receipt à la transaction
                     cursor.execute("""
                         UPDATE pos_receipts SET transaction_id = %s WHERE id = %s
                     """, (transaction_id, receipt_id))
@@ -17139,7 +17165,7 @@ class ReceiptPOS:
         """Enregistre un ticket sans paiement (status 'Ouvert'), sans transaction bancaire."""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                ventes_brutes = Decimal('0')
+                ventes_brutes_ht = Decimal('0')
                 total_taxes = Decimal('0')
                 items_data = []
                 
@@ -17149,26 +17175,37 @@ class ReceiptPOS:
                     if not article:
                         return False, f"Article {item['article_id']} introuvable", None
                     
-                    prix = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
+                    prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
                     qte = int(item.get('quantite', 1))
-                    total_ligne = prix * qte
-                    ventes_brutes += total_ligne
+                    total_ligne_ttc = prix_ttc * qte
                     
                     taxe = self._get_taxe_active(cursor, item['article_id'])
-                    taux_taxe = Decimal(str(taxe['taux'])) if taxe else Decimal('0')
-                    total_taxes += total_ligne * (taux_taxe / Decimal('100'))
+                    taux_taxe = Decimal('0')
+                    if taxe:
+                        taux_taxe = Decimal(str(taxe['taux']))
+                        
+                    if taux_taxe > Decimal('0'):
+                        diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
+                        ligne_ht = (total_ligne_ttc / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    else:
+                        ligne_ht = total_ligne_ttc.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                        
+                    ligne_taxe = (total_ligne_ttc - ligne_ht).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    
+                    ventes_brutes_ht += ligne_ht
+                    total_taxes += ligne_taxe
                     
                     items_data.append({
                         'article_id': item['article_id'],
                         'nom_article': article['nom_article'],
                         'variante_id': item.get('variante_id'),
                         'quantite': qte,
-                        'prix_unitaire': prix,
-                        'total_ligne': total_ligne,
+                        'prix_ttc': prix_ttc,
+                        'total_ligne_ttc': total_ligne_ttc,
                         'taux_taxe': taux_taxe
                     })
                 
-                total_collecte = ventes_brutes + total_taxes
+                total_collecte = ventes_brutes_ht + total_taxes
                 recu_numero = f"O-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
                 
                 cursor.execute("""
@@ -17181,7 +17218,7 @@ class ReceiptPOS:
                 """, (
                     user_id, recu_numero,
                     data.get('nom_ticket', ''), data.get('commentaire', ''),
-                    float(ventes_brutes), float(ventes_brutes), float(total_taxes), float(total_collecte),
+                    float(ventes_brutes_ht), float(ventes_brutes_ht), float(total_taxes), float(total_collecte),
                     data.get('restaurant_option_id'), data.get('pdv'), data.get('magasin'),
                     data.get('nom_du_caissier'), data.get('nom_du_client'), data.get('id_client')
                 ))
@@ -17195,8 +17232,8 @@ class ReceiptPOS:
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         receipt_id, item['article_id'], item['nom_article'], item['variante_id'],
-                        item['quantite'], float(item['prix_unitaire']),
-                        float(item['total_ligne']), float(item['taux_taxe'])
+                        item['quantite'], float(item['prix_ttc']),
+                        float(item['total_ligne_ttc']), float(item['taux_taxe'])
                     ))
                 
                 return True, "Ticket enregistré", receipt_id
@@ -17204,13 +17241,17 @@ class ReceiptPOS:
         except Exception as e:
             logger.error(f"Erreur ticket ouvert: {e}")
             return False, f"Erreur: {str(e)}", None
+
     def _get_taxe_active(self, cursor, article_id: int) -> Optional[Dict]:
         date_ref = date.today()
         cursor.execute("""
-            SELECT t.* FROM pos_article_taxes at
+            SELECT t.* 
+            FROM pos_article_taxes at
             JOIN pos_taxes t ON at.taxe_id = t.id
-            WHERE at.article_id = %s AND at.date_debut <= %s
+            WHERE at.article_id = %s 
+              AND at.date_debut <= %s
               AND (at.date_fin >= %s OR at.date_fin IS NULL)
+              AND t.est_actif = TRUE  -- ⚠️ AJOUT IMPORTANT
             LIMIT 1
         """, (article_id, date_ref, date_ref))
         return cursor.fetchone()

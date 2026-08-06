@@ -1,0 +1,228 @@
+Handle,SKU,Name,Category,Description,Sold by weight,Option 1 name,Option 1 value,Option 2 name,Option 2 value,Option 3 name,Option 3 value,Cost,Barcode,SKU of included item,Quantity of included item,Track stock,Available for sale [Esprit Sushi Fribourg],Price [Esprit Sushi Fribourg],In stock [Esprit Sushi Fribourg],Low stock [Esprit Sushi Fribourg],"Modifier - ""Menu Tokyo""","Modifier - ""Menu Empereur""","Modifier - ""Menu Kobe""","Modifier - ""Menu Maki""","Modifier - ""Menu Kyoto""","Modifier - ""Menu Nigiri""","Modifier - ""Menu végétarien I""","Modifier - ""Menu Best of""","Modifier - ""Menu Végétarien II""","Modifier - ""Menu Duo""","Modifier - ""Gyozas""","Modifier - ""Mangajo""","Modifier - ""Coca""","Modifier - ""Henniez""","Modifier - ""Sushiwich""","Modifier - ""Lunchox maki""","Modifier - ""Lunchox gyoza""","Modifier - ""Ciboulette""","Modifier - ""Saint Valentin""","Modifier - ""Menthe""","Modifier - ""Confiture de figue""","Modifier - ""Ravioli""","Modifier - ""Accompagnement ravioli""","Modifier - ""Choix Menu vegetarien II""","Modifier - ""Maki pour menus""","Modifier - ""California""","Modifier - ""Nigiri pour menu""","Modifier - ""Sashimi""","Modifier - ""Option menu tokyo""","Modifier - ""Boissons""","Modifier - ""Boisson 2""","Modifier - ""Formule""","Modifier - ""Dessert""","Modifier - ""Ramune""","Modifier - ""Springroll Pour Menu""","Tax - ""Alcool"" (7.7%)","Tax - ""Alimentaire"" (2.5%)"
+a-la-piece,10157,A la piece,Accompagnement,,N,,,,,,,0.00,,,,N,Y,variable,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+abonnement,10202,Abonnement,Paiement,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+amende-pour-paiement-trop-tôt,10219,Amende pour paiement trop tôt,Paiement,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+avocat,10207,Avocat,Ingrédients,,N,,,,,,,0.00,,,,N,Y,variable,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+baguettes,10156,Baguettes,Supplements gratuits,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+biere,10004,Biere,Boissons,,N,,,,,,,0.00,,,,Y,Y,5.00,-72.000,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N
+bon-cadeau,10160,Bon cadeau,livraison,,N,,,,,,,0.00,,,,N,Y,variable,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+box-de-noël-,10173,Box de Noël,Menus,,N,,,,,,,0.00,,,,N,Y,89.90,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,Y
+box-saint-valentin,10175,Box Saint valentin,Menus,,N,,,,,,,0.00,,,,N,Y,59.90,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+brochette-de-poulet,10146,Brochette de poulet,Accompagnement,,N,,,,,,,0.00,,,,N,Y,8.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california,10085,California,Devis,,N,,,,,,,0.00,,,,N,Y,1.45,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-1,10220,California 2*3,California,,N,fromage,1,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,Y
+california-avocat-cheese-,10168,California avocat cheese,California,,N,,,,,,,,,10207,0.000,N,Y,7.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+,,,,,,,,,,,,,,10208,0.000,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,10209,0.000,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,10210,0.000,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+california-thon-cuit-mayonnaise-avocat,10187,California avocat thon cuit mayonnaise,California,,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-concombre-avocat,10036,California concombre avocat,California,,N,,,,,,,0.00,,,,N,Y,7.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-concombre-avocat-cheese,10037,California concombre avocat cheese,California,,N,,,,,,,0.00,,,,N,Y,8.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-concombre-cheese,10035,California concombre cheese,California,,N,,,,,,,0.00,,,,N,Y,7.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-crevette-avocat,10188,California crevette avocat,California,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-crevette-concombre,10033,California crevette concombre,California,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-crevette-concombre-menthe,10034,California crevette concombre menthe,California,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-crevette-spicy-mangue,10144,California crevette spicy mangue,California,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-foie-gras,10014,California foie gras,California,,N,,,,,,,0.00,,,,N,Y,10.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-poulet-avocat-poivron,10015,California Poulet avocat poivron,California,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-poulet-mangue-menthe,10038,California poulet mangue menthe,California,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-poulet-mangue-moutarde-de-bénichon,10190,California poulet mangue moutarde de Bénichon,California,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+poulet-mangue-poivron-,10172,California Poulet mangue poivron,California,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-saumon-avocat,10026,california saumon avocat,California,,N,,,,,,,0.00,,,,N,Y,8.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-saumon-avocat-cheese,10186,California saumon avocat cheese,California,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-saumon-avocat-mangue,10213,California saumon avocat mangue,California,<p>California saumon avocat mangue</p>,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-saumon-concombre-cheese,10027,California saumon concombre cheese,California,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-standard-,10170,California standard,,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-surimi-avocat-mayonnaise,10185,California surimi avocat mayonnaise,California,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-surimi-concombre-mayonnaise,10032,California Surimi concombre mayonnaise,California,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-thon-avocat,10029,California thon avocat,California,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-thon-avocat-mangue,10030,California thon avocat mangue,California,,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-thon-cuit-avocat,10090,California Thon cuit avocat,California,,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-thon-cuit-mayonnaise,10031,California thon cuit mayonnaise,California,,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-thon-spicy,10028,California thon spicy,California,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-tobikko-surimi-concombre-mayo,10105,California tobikko Surimi concombre mayo,Originaux,,N,,,,,,,0.00,,,,N,Y,11.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-tofu-au-basilic,10013,California tofu au basilic,California,,N,,,,,,,0.00,,,,N,Y,8.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+california-tofu-au-basilic-confiture-de-figue,10039,california tofu au basilic confiture de figue,California,,N,,,,,,,0.00,,,,N,Y,8.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+californias-(90-pièces),10177,Californias (90 pièces),Lunchbox,,N,,,,,,,0.00,,,,N,Y,90.90,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+carte-,10164,Carte,Paiement,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+cash,10165,Cash,Paiement,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+cheese,10208,Cheese,Ingrédients,,N,,,,,,,0.00,,,,N,Y,variable,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+coca,10212,Coca cola,Boissons,,N,Coca Cola,Coca Cola Zéro,Coca Zéro,Coca Zéro,,,0.00,,,,Y,Y,3.20,0.000,,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+coca,10058,,,,,,normal,,normal,,,0.00,,,,,Y,variable,9.000,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+date-de-début,10197,Date de début,Abonnement,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+date-de-fin,10198,date de Fin,Abonnement,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+demander-sauces-et-baguettes-à-la-livraison,10203,Demander sauces et baguettes à la livraison,Supplements gratuits,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+eat,10192,Eat,Paiement,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+eat-payée-,10167,Eat payée,Paiement,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+espritsushi-fribourg.ch,10204,Espritsushi-fribourg.ch,Paiement,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+feuille-nori-california,10210,Feuille nori California,Ingrédients,,N,,,,,,,0.00,,,,N,Y,variable,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+formule,10199,Formule,Abonnement,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,Y
+frais-de-livraison,10136,Frais de livraison,livraison,,N,,,,,,,0.00,,,,N,Y,1.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+gingembre-,10074,Gingembre,Suppléments,,N,,,,,,,0.00,,,,N,Y,0.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+gingembre-1,10149,Gingembre,Supplements gratuits,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+gunkan-massago,10111,Gunkan massago,Gunkan,,N,,,,,,,0.00,,,,N,Y,10.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+gunkan-poulet-mangue-poivron-,10174,Gunkan poulet mangue poivron,Gunkan,,N,,,,,,,0.00,,,,N,Y,8.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+gunkan-saumon-avocat-aneth,10106,Gunkan saumon avocat aneth,Gunkan,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+tartare-concombre-carotte,10110,Gunkan Tartare concombre carotte,Gunkan,,N,,,,,,,0.00,,,,N,Y,8.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+gunkan-tartare-de-crevette-,10109,Gunkan Tartare de crevette,Gunkan,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+tartare-de-surimi-,10108,Gunkan Tartare de Surimi,Gunkan,,N,,,,,,,0.00,,,,N,Y,8.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+gunkan-thon-avocat-ciboulette,10107,Gunkan thon avocat ciboulette,Gunkan,,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+gyozas,10087,Gyozas,Raviolis,,N,Nombre,15,Accompagnements,Par 15,,,0.00,,,,N,Y,28.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+gyozas,10088,,,,,,9,,Par 12,,,0.00,,,,,Y,25.00,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+gyozas,10086,,,,,,9,,Par 9,,,0.00,,,,,Y,20.00,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+henniez-plate,10120,Henniez,Boissons,,N,type,gazeuse,,,,,0.00,,,,Y,Y,3.00,-3.000,,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+henniez-plate,10119,,,,,,plate,,,,,0.00,,,,,Y,3.00,-7.000,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+henniez-1,10151,Henniez,Boissons,,N,,,,,,,0.00,,,,N,Y,3.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+lunchbox-gyoza,10139,Lunchbox gyoza,Lunchbox,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+lunchbox-gyozas-poulet-/-crevette,10133,lunchbox gyozas Poulet / Crevette,Lunchbox,,N,type,standard,,,,,0.00,,,,N,Y,11.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+lunchbox-gyozas-poulet-/-crevette,10132,,,,,,étudiant,,,,,0.00,,,,,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,,
+lunchbox-gyozas-végétarien,10131,lunchbox gyozas végétarien,Lunchbox,,N,type,normal,,,,,0.00,,,,N,Y,10.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+lunchbox-gyozas-végétarien,10130,,,,,,étudiant,,,,,0.00,,,,,Y,8.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,,
+lunchbox-maki,10138,Lunchbox maki,Lunchbox,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+lunchbox-végétarienne,10123,Lunchbox maki végétariens,Lunchbox,,N,type,standard,,,,,0.00,,,,N,Y,12.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+lunchbox-végétarienne,10122,,,,,,étudiant,,,,,0.00,,,,,Y,10.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,,
+lunchox-maki-s/t,10056,Lunchox Maki Saumon thon,Lunchbox,,N,Type,Etudiant,,,,,0.00,,,,N,Y,12.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+lunchox-maki-s/t,10121,,,,,,standard,,,,,0.00,,,,,Y,15.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,,
+maki,10018,Maki,Devis,,N,,,,,,,0.00,,,,N,Y,1.30,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-2*3,10194,Maki 2*3,Maki,,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-anguille-grillée-mangue,10142,Maki anguille grillée mangue,Maki,,N,,,,,,,0.00,,,,N,Y,13.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-avocat,10023,Maki avocat,Maki,,N,,,,,,,0.00,,,,N,Y,6.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-avocat-cheese,10600,Maki avocat cheese,Maki,,N,,,,,,,0.00,,,,N,Y,6.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-avocat-mangue,10206,Maki Avocat Mangue,Maki,,N,,,,,,,0.00,,,,N,Y,6.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-banana-speculos,10075,Maki banana speculos,Desserts,,N,,,,,,,0.00,,,,N,Y,7.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-banane-nutela,10076,Maki banane nutela,Desserts,,N,,,,,,,0.00,,,,N,Y,7.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-concombre,10205,Maki concombre,Maki,,N,,,,,,,0.00,,,,N,Y,7.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-concombre-avocat,10021,Maki concombre avocat,Maki,,N,,,,,,,0.00,,,,N,Y,6.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-concombre-avocat-cheese,10022,Maki concombre avocat cheese,Maki,,N,,,,,,,0.00,,,,N,Y,6.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-concombre-cheese,10020,Maki concombre cheese,Maki,,N,,,,,,,0.00,,,,N,Y,6.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-crevette-avocat,10089,Maki crevette avocat,Maki,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-crevette-concombre-menthe,10019,Maki crevette concombre,Maki,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-foie-gras-confis-d'oignons,10025,Maki foie gras confis d'oignons,Maki,,N,,,,,,,0.00,,,,N,Y,10.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-mangue-speculos,10077,Maki mangue speculos,Desserts,,N,,,,,,,0.00,,,,N,Y,7.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-poire-nutella-choco,10078,Maki poire Nutella choco,Desserts,,N,,,,,,,0.00,,,,N,Y,7.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-poulet-avocat-poivron,10024,Maki poulet mangue poivron,Maki,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-poulet-moutarde-de-benichon,10189,Maki poulet moutarde de benichon,Maki,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-saumon-1,10006,Maki saumon,Maki,,N,,,,,,,0.00,,,,N,Y,7.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-saumon-avocat,10007,Maki saumon avocat,Maki,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-saumon-cheese,10008,Maki saumon cheese,Maki,,N,,,,,,,0.00,,,,N,Y,8.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-standart,10169,Maki standart,,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-surimi-mayonnaise,10143,maki surimi mayonnaise,Maki,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-surimi-mayonnaise-avocat,10184,Maki surimi mayonnaise avocat,Maki,,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-thon-1,10009,Maki thon,Maki,,N,,,,,,,0.00,,,,N,Y,8.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-thon-avocat,10010,Maki thon avocat,Maki,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-thon-cheese,10001,Maki thon cheese,Maki,,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-thon-cuit-mayonnaise-,10152,Maki Thon cuit mayo avocat,Maki,,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+thon-cuit-mayonnaise-ciboulette,10012,Maki Thon cuit mayonaise,Maki,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-thon-cuit-mayonnaise-avocat,10183,Maki Thon cuit mayonnaise avocat,Maki,,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-tofu-au-basilic,10016,maki tofu au basilic,Maki,,N,,,,,,,0.00,,,,N,Y,7.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-tofu-au-basilic-confiture-de-figue,10017,Maki tofu au basilic confiture de figue,Maki,,N,,,,,,,0.00,,,,N,Y,7.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+maki-vegetarien,10145,Maki vegetarien,Maki,,N,,,,,,,0.00,,,,N,Y,6.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+makis-(120-pièces),10176,Makis (120 pièces),Lunchbox,,N,,,,,,,0.00,,,,N,Y,109.20,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+mangajo-baie-de-goji,10061,Mangajo,Boissons,,N,,,,,,,0.00,,,,Y,Y,4.50,-122.000,,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+best-of,10069,Menu Best of,Menus,,N,,,,,,,0.00,,,,N,Y,22.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,Y
+menu-duo,10068,Menu Duo,Menus,,N,,,,,,,0.00,,,,N,Y,44.90,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,Y,N,N,N,N,N,Y
+menu-edo,10201,Menu Edo,Menus,,N,,,,,,,0.00,,,,N,Y,79.90,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,Y,Y,N,N,N,N,N,Y,N,N,N,Y
+menu-empereur,10071,Menu Empereur,Menus,,N,,,,,,,0.00,,,,N,Y,109.90,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,Y,Y,Y,N,N,N,N,N,N,N,N,Y
+menu-hajime,10217,Menu hajime,Menus,"<p>24 Maki, 18 California, 12 springroll, 6 Nigiri</p>",N,,,,,,,0.00,,,,N,Y,99.90,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,Y,Y,N,N,N,N,N,N,N,Y,N,Y
+menu-kobe,10005,Menu Kobe,Menus,,N,,,,,,,0.00,,,,N,Y,129.90,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,Y,Y,Y,N,N,N,N,N,N,N,N,Y
+menu-kobe-(réduction-303),10180,Menu Kobe (réduction 303),Lunchbox,,N,,,,,,,0.00,,,,N,Y,90.95,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+menu-kyoto,10066,Menu Kyoto,Menus,,N,,,,,,,0.00,,,,N,Y,20.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,Y
+menu-maguro,10215,Menu Maguro,Menus,"<p id=""isPasted"" style='caret-color: rgb(51, 51, 51); color: rgb(51, 51, 51); font-family: ""Open Sans"", sans-serif;'>Menu sp&eacute;cial thon</p><p style='caret-color: rgb(51, 51, 51); color: rgb(51, 51, 51); font-family: ""Open Sans"", sans-serif;'>- 3 maki thon</p><p style='caret-color: rgb(51, 51, 51); color: rgb(51, 51, 51); font-family: ""Open Sans"", sans-serif;'>- 3 maki thon avocat</p><p style='caret-color: rgb(51, 51, 51); color: rgb(51, 51, 51); font-family: ""Open Sans"", sans-serif;'>- 3 california thon avocat</p><p style='caret-color: rgb(51, 51, 51); color: rgb(51, 51, 51); font-family: ""Open Sans"", sans-serif;'>- 3 california thon avocat mangue</p><p style='caret-color: rgb(51, 51, 51); color: rgb(51, 51, 51); font-family: ""Open Sans"", sans-serif;'>- 1 nigiri thon</p><p style='caret-color: rgb(51, 51, 51); color: rgb(51, 51, 51); font-family: ""Open Sans"", sans-serif;'>- 1 nigiri thpn grill&eacute;</p><p><a style=""color: rgb(235, 73, 71); transition: color 400ms, background-color 400ms; font-family: &quot;Open Sans&quot;, sans-serif;""></a></p>",N,,,,,,,0.00,,,,N,Y,27.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,Y
+menu-maki-1,10065,Menu Maki,Menus,,N,,,,,,,0.00,,,,N,Y,20.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,Y
+menu-michiru-akihiro,10216,Menu Michiru-Akihiro,Menus,,N,,,,,,,0.00,,,,N,Y,64.90,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,Y,Y,N,N,N,N,N,N,N,Y,N,Y
+menu-nigiri,10064,Menu Nigiri,Menus,,N,,,,,,,0.00,,,,N,Y,30.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,Y
+menu-shake,10214,Menu Shake,Menus,"<p id=""isPasted"" style='caret-color: rgb(51, 51, 51); color: rgb(51, 51, 51); font-family: ""Open Sans"", sans-serif;'>Menu sp&eacute;cial saumon</p><p style='caret-color: rgb(51, 51, 51); color: rgb(51, 51, 51); font-family: ""Open Sans"", sans-serif;'>3 maki saumon</p><p style='caret-color: rgb(51, 51, 51); color: rgb(51, 51, 51); font-family: ""Open Sans"", sans-serif;'>3 maki saumon avocat</p><p style='caret-color: rgb(51, 51, 51); color: rgb(51, 51, 51); font-family: ""Open Sans"", sans-serif;'>3 california saumon concombre cheese</p><p style='caret-color: rgb(51, 51, 51); color: rgb(51, 51, 51); font-family: ""Open Sans"", sans-serif;'>3 california saumon avocat mangue</p><p style='caret-color: rgb(51, 51, 51); color: rgb(51, 51, 51); font-family: ""Open Sans"", sans-serif;'>1 nigiri saumon</p><p style='caret-color: rgb(51, 51, 51); color: rgb(51, 51, 51); font-family: ""Open Sans"", sans-serif;'>1 nigiri saumon cheese</p><p style='caret-color: rgb(51, 51, 51); color: rgb(51, 51, 51); font-family: ""Open Sans"", sans-serif;'>1 nigiri saumon grill&eacute;</p><p><a style=""color: rgb(235, 73, 71); transition: color 400ms, background-color 400ms; font-family: &quot;Open Sans&quot;, sans-serif;""></a></p>",N,,,,,,,0.00,,,,N,Y,25.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,Y
+menu-shimamoto-san,10218,Menu Shimamoto-san,Menus,,N,,,,,,,0.00,,,,N,Y,119.90,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,Y,Y,N,N,N,N,N,N,N,Y,N,Y
+menu-tokyo,10011,Menu Tokyo,Menus,,N,,,,,,,,,10003,0.000,N,Y,59.90,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,Y,Y,Y,Y,N,N,N,N,N,N,N,Y
+menu-végétarien,10067,Menu Végétarien,Menus,,N,,,,,,,0.00,,,,N,Y,20.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,Y
+menu-végétarien-ii,10070,Menu Végétarien Ii,Menus,,N,,,,,,,0.00,,,,N,Y,22.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,Y,N,N,N,N,N,N,Y
+"ne-pas-sonner,-bebe-dort",10092,"NE PAS SONNER, BEBE DORT",Paiement,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+nigiri,10191,Nigiri,Devis,,N,,,,,,,0.00,,,,N,Y,3.75,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+nigiri-anguille-grillée-,10114,Nigiri anguille grillée,Nigiri,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+nigiri-avocat,10115,Nigiri avocat,Nigiri,,N,,,,,,,0.00,,,,N,Y,6.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+nigiri-chamallow-,10083,Nigiri chamallow,Desserts,,N,,,,,,,0.00,,,,N,Y,6.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+nigiri-crevette,10113,Nigiri crevette,Nigiri,,N,,,,,,,0.00,,,,N,Y,7.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+nigiri-foie-gras,10118,Nigiri foie gras,Nigiri,,N,,,,,,,0.00,,,,N,Y,10.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+nigiri-mangue,10084,Nigiri mangue,Desserts,,N,,,,,,,0.00,,,,N,Y,6.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+nigiri-mozzarella-,10116,Nigiri mozzarella,Nigiri,,N,,,,,,,0.00,,,,N,Y,6.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+nigiri-omelette-japonaise,10117,Nigiri omelette japonaise,Nigiri,,N,,,,,,,0.00,,,,N,Y,6.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+nigiri-saumon,10057,Nigiri Saumon,Nigiri,,N,,,,,,,0.00,,,,N,Y,7.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+nigiri-saumon-cheese,10062,Nigiri saumon cheese,Nigiri,,N,,,,,,,0.00,,,,N,Y,8.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+nigiri-saumon-grillé-,10060,Nigiri saumon grillé,Nigiri,,N,,,,,,,0.00,,,,N,Y,7.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+nigiri-thon,10063,Nigiri thon,Nigiri,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+nigiri-thon-grillé-,10112,Nigiri thon grillé,Nigiri,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+nigiris-(20-pièces9,10178,Nigiris (20 pièces9,Lunchbox,,N,,,,,,,0.00,,,,N,Y,52.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+nom,10196,Nom,Abonnement,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+onion-roll-poulet-mangue-poivron,10159,Onion roll poulet mangue poivron,Originaux,,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+onionroll-poulet-avocat-poivron-,10104,Onionroll poulet avocat poivron,Originaux,,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+onionroll-poulet-mangue-moutarde-de-bénichon,10211,Onionroll poulet mangue moutarde de Bénichon,Originaux,,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+pas-de-baguette,10162,Pas de baguette,Supplements gratuits,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+payé,10193,Payé,Paiement,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+pourboire-,10153,Pourboire,,,N,,,,,,,0.00,,,,N,Y,variable,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+pourboire-1,10154,Pourboire,,,N,,,,,,,0.00,,,,N,Y,variable,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+pourboire--2,10155,Pourboire,livraison,,N,,,,,,,0.00,,,,N,Y,variable,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+ramune,10055,Ramune,Boissons,,N,,,,,,,0.00,,,,Y,Y,4.50,-37.000,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+real-deal-deja-encaisse-,10166,Real deal deja encaisse,Paiement,,N,,,,,,,0.00,,,,N,Y,variable,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+rien,10161,Rien,Supplements gratuits,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+riz-california,10209,Riz California,Ingrédients,,Y,,,,,,,0.00,,,,N,Y,variable,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+riz-vinaigré,10082,Riz vinaigré,Accompagnement,,N,,,,,,,0.00,,,,N,Y,3.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+salade-d'algue-wakame,10080,Salade d'algue wakame,Accompagnement,,N,,,,,,,0.00,,,,N,Y,7.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+salade-de-chou,10079,Salade de chou,Accompagnement,,N,,,,,,,0.00,,,,N,Y,3.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+salade-quinoa-edamame,10400,Salade quinoa Edamame,Accompagnement,,N,,,,,,,0.00,,,,N,Y,7.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+sashimi-6-pieces-saumon-thon,10301,Sashimi 6 pieces saumon thon,Sashimi,,N,,,,,,,0.00,,,,N,Y,11.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+saumon,10002,Sashimi saumon (10pc),Sashimi,,N,,,,,,,0.00,,,,N,Y,16.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+sashimi-saumon-6-pieces,10300,Sashimi saumon 6 pieces,Sashimi,,N,,,,,,,0.00,,,,N,Y,10.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+saumon-thon,10003,Sashimi saumon thon (5/5pc),Sashimi,,N,,,,,,,0.00,,,,N,Y,18.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+sauce-soja-salé-,10000,Sauce soja salé,Suppléments,,N,,,,,,,0.00,,,,N,Y,0.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N
+sauce-soja-sucré-,10053,Sauce soja sucré,Suppléments,,N,,,,,,,0.00,,,,N,Y,1.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N
+sauce-spicy,10094,Sauce spicy,Supplements gratuits,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+signature,10200,Signature,Abonnement,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+soja-salé,10147,Soja salé,Supplements gratuits,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+soja-sucré-,10148,Soja sucré,Supplements gratuits,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+soupe-miso,10081,Soupe miso,Accompagnement,,N,,,,,,,0.00,,,,N,Y,6.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+springroll-(30-pièces),10179,Springroll (30 pièces),Lunchbox,,N,,,,,,,0.00,,,,N,Y,1.60,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+springroll-concombre-avocat-cheese,10100,Springroll concombre avocat cheese,Springroll,,N,,,,,,,0.00,,,,N,Y,10.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+springroll-crevette-concombre-menthe,10098,Springroll crevette concombre menthe,Springroll,,N,,,,,,,0.00,,,,N,Y,10.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+springroll-poulet-mangue-poivron,10099,Springroll poulet mangue poivron,Springroll,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+springroll-saumon-avocat-ciboulette,10158,Springroll saumon avocat ciboulette,Springroll,,N,,,,,,,0.00,,,,N,Y,10.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+springroll-saumon-cheseaux-aneth-,10072,Springroll Saumon cheese aneth,Springroll,,N,,,,,,,0.00,,,,N,Y,10.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+saumon-cheese-aneth,10095,Springroll saumon cheese aneth,Springroll,,N,,,,,,,0.00,,,,N,Y,10.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+springroll-thon-avocat-coriandre-,10096,Springroll thon avocat coriandre,Springroll,,N,,,,,,,0.00,,,,N,Y,11.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+springroll-thon-spicy-ciboulette,10097,Springroll thon spicy ciboulette,Springroll,,N,,,,,,,0.00,,,,N,Y,11.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+supplément-foie-gras,10182,Supplément foie gras,Accompagnement,,N,,,,,,,0.00,,,,N,Y,1.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+supplément-maki-fois-gras,10181,Supplément maki fois gras,Accompagnement,,N,,,,,,,0.00,,,,N,Y,1.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+suppléments-dtandarts,10163,Suppléments standarts,Supplements gratuits,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N
+sushiwich,10137,Sushiwich,Lunchbox,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+sushiwich-poulet,10127,Sushiwich poulet,Lunchbox,,N,type,standard,,,,,0.00,,,,N,Y,11.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+sushiwich-poulet,10126,,,,,,étudiant,,,,,0.00,,,,,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,,
+sushiwich-saumon,10129,Sushiwich saumon,Lunchbox,,N,type,normal,,,,,0.00,,,,N,Y,12.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+sushiwich-saumon,10128,,,,,,étudiant,,,,,0.00,,,,,Y,10.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,,
+sushiwich-thon,10125,Sushiwich thon,Lunchbox,,N,type,normal,,,,,0.00,,,,N,Y,10.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+sushiwich-thon,10124,,,,,,étudiant,,,,,0.00,,,,,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,,
+sushiwich-végétarien,10141,Sushiwich végétarien,Lunchbox,,N,type,standard,,,,,0.00,,,,N,Y,10.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+sushiwich-végétarien,10140,,,,,,étudiant,,,,,0.00,,,,,Y,8.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,,
+tartare-saumon-avocat-aneth,10073,Tartare saumon avocat aneth,Tartare,,N,,,,,,,0.00,,,,N,Y,19.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+tartare-saumon-avocat-aneth-sans-riz,10135,tartare saumon avocat aneth Sans Riz,Tartare,,N,,,,,,,0.00,,,,N,Y,15.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+tartare-thon-saumon,10134,tartare thon saumon,Tartare,,N,,,,,,,0.00,,,,N,Y,21.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+thé-froid,10059,Thé froid,Boissons,,N,,,,,,,0.00,,,,N,Y,3.20,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+thon-cuit-mayo-ciboulette-,10171,Thon cuit mayo ciboulette,Springroll,,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+twint,10091,Twint,Paiement,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+virement-bancaire,10093,Virement bancaire,Paiement,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+wasabi,10054,Wasabi,Suppléments,,N,,,,,,,0.00,,,,N,Y,0.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N
+wasabi--1,10150,Wasabi,Supplements gratuits,,N,,,,,,,0.00,,,,N,Y,0.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+whiteroll-crevette-concombre,10040,whiteroll crevette concombre,whiteroll,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+whiteroll-crevette-concombre-menthe,10041,whiteroll crevette concombre menthe,whiteroll,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+whiteroll-crevette-concombre-menthe-1,10103,Whiteroll crevette concombre menthe,Originaux,,N,,,,,,,0.00,,,,N,Y,8.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+whiteroll-foie-gras,10042,whiteroll foie gras,whiteroll,,N,,,,,,,0.00,,,,N,Y,10.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+whiteroll-poulet-mangue-menthe,10044,whiteroll poulet mangue menthe,whiteroll,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+whiteroll-poulet-avocat-poivron,10043,whiteroll Poulet mangue poivron,whiteroll,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+whiteroll-saumon-avocat,10045,whiteroll saumon avocat,whiteroll,,N,,,,,,,0.00,,,,N,Y,8.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+whiteroll-saumon-avocat-aneth,10046,whiteroll saumon avocat aneth,whiteroll,,N,,,,,,,0.00,,,,N,Y,8.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+whiteroll-saumon-avocat-aneth--1,10101,Whiteroll saumon avocat aneth,Originaux,,N,,,,,,,0.00,,,,N,Y,8.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+whiteroll-surimi-concombre-mayonnaise,10047,whiteroll Surimi concombre mayonnaise,whiteroll,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+whiteroll-thon-avocat,10048,whiteroll thon avocat,whiteroll,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+Whiteroll-thon-avocat-coriandre,10049,whiteroll thon avocat coriandre,whiteroll,,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+whiteroll-thon-avocat-coriandre-1,10102,Whiteroll thon avocat coriandre,Originaux,,N,,,,,,,0.00,,,,N,Y,10.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+whiteroll-thon-cuit-mayonnaise,10050,whiteroll thon cuit mayonnaise,whiteroll,,N,,,,,,,0.00,,,,N,Y,9.50,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+whiteroll-thon-spicy,10051,whiteroll thon spicy,whiteroll,,N,,,,,,,0.00,,,,N,Y,9.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y
+whiteroll-tofu-au-basilic,10052,whiteroll tofu au basilic,whiteroll,,N,,,,,,,0.00,,,,N,Y,8.00,,,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,Y

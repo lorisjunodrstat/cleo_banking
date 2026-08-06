@@ -170,16 +170,22 @@
 </div>
 {% endblock %}
 
+
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const modal = new bootstrap.Modal(document.getElementById('receiptModal'));
     const modalBody = document.getElementById('receiptModalBody');
-    
-    // ASTUCE : On génère l'URL avec un ID factice (999), puis on le remplace en JavaScript.
-    // Cela évite les problèmes de routage avec les blueprints Flask.
-    // CORRECTION ICI : Utilisation de la route pos_receipt_detail_json du blueprint banking
     const baseUrl = "{{ url_for('banking.pos_receipt_detail_json', receipt_id=999) }}";
+    
+    // Fonction utilitaire pour formater une date
+    function formatDate(dateVal) {
+        if (!dateVal) return '-';
+        const d = new Date(dateVal);
+        if (isNaN(d.getTime())) return dateVal;
+        const pad = n => String(n).padStart(2, '0');
+        return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
     
     document.querySelectorAll('.view-receipt').forEach(link => {
         link.addEventListener('click', function(e) {
@@ -187,7 +193,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const receiptId = this.dataset.receiptId;
             const apiUrl = baseUrl.replace('999', receiptId);
             
-            // Afficher le spinner
             modalBody.innerHTML = `
                 <div class="text-center py-5">
                     <div class="spinner-border text-primary" role="status">
@@ -196,13 +201,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     <p class="mt-2 text-muted">Chargement du reçu...</p>
                 </div>
             `;
-            
             modal.show();
             
-            // Charger les données du reçu via AJAX
             fetch(apiUrl)
                 .then(response => {
-                    if (!response.ok) throw new Error('Erreur réseau');
+                    if (!response.ok) throw new Error('Erreur réseau ' + response.status);
                     return response.json();
                 })
                 .then(data => {
@@ -211,31 +214,112 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     }
                     
-                    // Construire le HTML du reçu
-                    let html = `
+                    // ✅ Utilise les VRAIS noms du modèle
+                    const recuNumero   = data.recu_numero   || data.receipt_number || '-';
+                    const dateStr      = formatDate(data.date || data.date_formatted);
+                    const clientName   = data.nom_du_client || data.client_name || 'Client de passage';
+                    const cashierName  = data.nom_du_caissier || data.cashier_name || '-';
+                    const ventesBrutes = parseFloat(data.ventes_brutes || 0).toFixed(2);
+                    const reduction    = parseFloat(data.reduction || 0).toFixed(2);
+                    const taxes        = parseFloat(data.taxes || 0).toFixed(2);
+                    const tips         = parseFloat(data.tips || 0).toFixed(2);
+                    const totalCollecte= parseFloat(data.total_collecte || 0).toFixed(2);
+                    const items        = data.items || [];
+                    const payments     = data.payments || data.paiements || [];  // ✅ Gère les 2 noms
+                    
+                    // Badge statut
+                    let statusBadge = '';
+                    if (data.status === 'Ouvert') {
+                        statusBadge = '<span class="badge bg-warning text-dark ms-2">Ouvert</span>';
+                    } else if (data.status === 'Annulé') {
+                        statusBadge = '<span class="badge bg-danger ms-2">Annulé</span>';
+                    } else if (data.status === 'Fermé') {
+                        statusBadge = '<span class="badge bg-success ms-2">Fermé</span>';
+                    }
+                    
+                    // ✅ Section paiements (multi-modes)
+                    let paymentsHTML = '';
+                    if (payments.length > 0) {
+                        const paymentsList = payments.map(p => {
+                            const modeNom  = p.mode_paiement_nom || p.mode_paiement || 'Mode inconnu';
+                            const montant  = parseFloat(p.montant || 0).toFixed(2);
+                            const isRemb   = p.est_remboursement ? ' <span class="badge bg-warning text-dark">Remboursement</span>' : '';
+                            return `
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    ${modeNom}${isRemb}
+                                    <span class="badge bg-primary rounded-pill">CHF ${montant}</span>
+                                </li>
+                            `;
+                        }).join('');
+                        
+                        const totalPaid = payments
+                            .filter(p => !p.est_remboursement)
+                            .reduce((s, p) => s + parseFloat(p.montant || 0), 0)
+                            .toFixed(2);
+                        
+                        paymentsHTML = `
+                            <div class="mt-3">
+                                <h6 class="mb-2">
+                                    <i class="fas fa-credit-card me-1"></i>
+                                    Paiements effectués 
+                                    <small class="text-muted">(Total: CHF ${totalPaid})</small>
+                                </h6>
+                                <ul class="list-group list-group-flush">
+                                    ${paymentsList}
+                                </ul>
+                            </div>
+                        `;
+                    } else {
+                        paymentsHTML = `
+                            <div class="alert alert-info mt-3 mb-0">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Aucun paiement enregistré pour ce reçu.
+                            </div>
+                        `;
+                    }
+                    
+                    // Tableau des articles
+                    let itemsHTML = '';
+                    if (items.length > 0) {
+                        itemsHTML = items.map(item => `
+                            <tr>
+                                <td>
+                                    ${item.nom_article}
+                                    ${item.variante_nom ? `<br><small class="text-muted">${item.variante_nom}</small>` : ''}
+                                </td>
+                                <td class="text-center">${item.quantite}</td>
+                                <td class="text-end">CHF ${parseFloat(item.prix_unitaire || 0).toFixed(2)}</td>
+                                <td class="text-end">CHF ${parseFloat(item.total_ligne || 0).toFixed(2)}</td>
+                            </tr>
+                        `).join('');
+                    } else {
+                        itemsHTML = `<tr><td colspan="4" class="text-center text-muted">Aucun article</td></tr>`;
+                    }
+                    
+                    modalBody.innerHTML = `
                         <div class="receipt-detail p-2">
                             <div class="row mb-3">
                                 <div class="col-md-6">
                                     <small class="text-muted">N° Reçu</small><br>
-                                    <strong>${data.receipt_number}</strong>
+                                    <strong>${recuNumero}</strong>${statusBadge}
                                 </div>
                                 <div class="col-md-6 text-md-end">
                                     <small class="text-muted">Date</small><br>
-                                    <strong>${data.date_formatted}</strong>
+                                    <strong>${dateStr}</strong>
                                 </div>
                             </div>
                             <div class="row mb-3">
                                 <div class="col-md-6">
                                     <small class="text-muted">Client</small><br>
-                                    <strong>${data.client_name || 'Client de passage'}</strong>
+                                    <strong>${clientName}</strong>
                                 </div>
                                 <div class="col-md-6 text-md-end">
                                     <small class="text-muted">Caissier</small><br>
-                                    <strong>${data.cashier_name || '-'}</strong>
+                                    <strong>${cashierName}</strong>
                                 </div>
                             </div>
                             <hr>
-                            <h6 class="mb-2">Articles</h6>
+                            <h6 class="mb-2"><i class="fas fa-shopping-bag me-1"></i> Articles</h6>
                             <table class="table table-sm table-bordered">
                                 <thead class="table-light">
                                     <tr>
@@ -245,79 +329,55 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <th class="text-end">Total</th>
                                     </tr>
                                 </thead>
-                                <tbody>
-                    `;
-                    
-                    if (data.items && data.items.length > 0) {
-                        data.items.forEach(item => {
-                            html += `
-                                <tr>
-                                    <td>${item.nom_article}</td>
-                                    <td class="text-center">${item.quantite}</td>
-                                    <td class="text-end">CHF ${parseFloat(item.prix_unitaire).toFixed(2)}</td>
-                                    <td class="text-end">CHF ${parseFloat(item.total_ligne).toFixed(2)}</td>
-                                </tr>
-                            `;
-                        });
-                    } else {
-                        html += `<tr><td colspan="4" class="text-center text-muted">Aucun article</td></tr>`;
-                    }
-                    
-                    html += `
-                                </tbody>
+                                <tbody>${itemsHTML}</tbody>
                             </table>
                             <div class="bg-light p-3 rounded">
                                 <div class="row mb-1">
                                     <div class="col-6">Ventes brutes:</div>
-                                    <div class="col-6 text-end">CHF ${parseFloat(data.ventes_brutes).toFixed(2)}</div>
+                                    <div class="col-6 text-end">CHF ${ventesBrutes}</div>
                                 </div>
                                 <div class="row mb-1">
                                     <div class="col-6">Réductions:</div>
-                                    <div class="col-6 text-end text-danger">- CHF ${parseFloat(data.reduction).toFixed(2)}</div>
+                                    <div class="col-6 text-end text-danger">- CHF ${reduction}</div>
                                 </div>
                                 <div class="row mb-1">
                                     <div class="col-6">Taxes:</div>
-                                    <div class="col-6 text-end">CHF ${parseFloat(data.taxes).toFixed(2)}</div>
+                                    <div class="col-6 text-end">CHF ${taxes}</div>
                                 </div>
                                 <div class="row mb-1">
                                     <div class="col-6">Pourboires:</div>
-                                    <div class="col-6 text-end">CHF ${parseFloat(data.tips).toFixed(2)}</div>
+                                    <div class="col-6 text-end">CHF ${tips}</div>
                                 </div>
                                 <hr class="my-2">
                                 <div class="row fw-bold fs-5">
                                     <div class="col-6">Total collecté:</div>
-                                    <div class="col-6 text-end text-primary">CHF ${parseFloat(data.total_collecte).toFixed(2)}</div>
+                                    <div class="col-6 text-end text-primary">CHF ${totalCollecte}</div>
                                 </div>
                             </div>
-                            ${data.paiements && data.paiements.length > 0 ? `
-                            <div class="mt-3">
-                                <h6 class="mb-2">Paiements effectués</h6>
-                                <ul class="list-group list-group-flush">
-                                    ${data.paiements.map(p => `
-                                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                                            ${p.mode_paiement}
-                                            <span class="badge bg-primary rounded-pill">CHF ${parseFloat(p.montant).toFixed(2)}</span>
-                                        </li>
-                                    `).join('')}
-                                </ul>
-                            </div>
-                            ` : ''}
+                            
+                            ${paymentsHTML}
+                            
                             ${data.description ? `
-                            <div class="mt-3 p-2 bg-light rounded">
-                                <small class="text-muted d-block">Description / Notes:</small>
-                                ${data.description}
-                            </div>
+                                <div class="mt-3 p-2 bg-light rounded">
+                                    <small class="text-muted d-block">Description / Notes:</small>
+                                    ${data.description}
+                                </div>
+                            ` : ''}
+                            
+                            ${data.nom_ticket ? `
+                                <div class="mt-2 p-2 bg-info bg-opacity-10 rounded">
+                                    <small class="text-muted d-block">Nom du ticket:</small>
+                                    <strong>${data.nom_ticket}</strong>
+                                </div>
                             ` : ''}
                         </div>
                     `;
-                    
-                    modalBody.innerHTML = html;
                 })
                 .catch(error => {
                     modalBody.innerHTML = `
                         <div class="alert alert-danger">
                             <i class="fas fa-exclamation-triangle me-2"></i>
-                            Erreur lors du chargement du reçu: ${error.message}
+                            Erreur lors du chargement: ${error.message}
                         </div>`;
                 });
         });
