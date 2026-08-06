@@ -56,11 +56,11 @@
                             </span>
                         </td>
                         <td class="text-end">
-                            <a href="{{ url_for('banking.pos_edit_discount', discount_id=discount.id) }}" 
+                            <a href="{{ url_for('banking.pos_edit_discount', disc_id=discount.id) }}" 
                                class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-pencil"></i>
                             </a>
-                            <form method="POST" action="{{ url_for('banking.pos_delete_discount', discount_id=discount.id) }}" 
+                            <form method="POST" action="{{ url_for('banking.pos_delete_discount', disc_id=discount.id) }}" 
                                   style="display: inline;" onsubmit="return confirm('Supprimer cette réduction ?')">
                                 <button type="submit" class="btn btn-sm btn-outline-danger">
                                     <i class="bi bi-trash"></i>

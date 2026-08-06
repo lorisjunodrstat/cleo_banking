@@ -38,7 +38,7 @@
                                class="btn btn-sm btn-outline-primary" title="Modifier">
                                 <i class="bi bi-pencil"></i>
                             </a>
-                            <form method="POST" action="{{ url_for('banking.pos_delete_restaurant_option', option_id=option.id) }}" 
+                            <form method="POST" action="{{ url_for('banking.pos_delete_restaurant_option', opt_id=option.id) }}" 
                                   style="display: inline;" 
                                   onsubmit="return confirm('Supprimer cette option ?')">
                                 <button type="submit" class="btn btn-sm btn-outline-danger" title="Supprimer">
