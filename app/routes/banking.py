@@ -11947,31 +11947,44 @@ def pos_work_period_json(period_id):
     return jsonify(data)
 
 
-@bp.route('/pos/work-periods/<int:period_id>/cash-movement', methods=['GET', 'POST'])
+@bp.route('/pos/work-periods/<int:period_id>/cash-movement', methods=['POST'])
 @login_required
 def pos_add_cash_movement(period_id):
+    """SEUL endroit où l'on peut faire un dépôt / retrait (AJAX depuis la modale de fermeture)."""
+    data = request.get_json(silent=True) or {}
+    type_mvt    = data.get('type')
+    montant     = safe_float(data.get('montant'))
+    description = (data.get('description') or '').strip()
+
+    # Vérifier que la période est ouverte et appartient à l'utilisateur
     period = g.models.periode_travail_pos_model.get_by_id(period_id, current_user.id)
-    if not period or period.get('status') == 'Fermé':
-        flash('Période non trouvée ou fermée.', 'error')
-        return redirect(url_for('banking.pos_work_periods'))
+    if not period or period.get('status') != 'Ouvert':
+        return jsonify({'success': False, 'message': 'Période non trouvée ou déjà fermée.'}), 400
 
-    if request.method == 'POST':
-        type_mvt = request.form.get('type')
-        montant = safe_float(request.form.get('montant'))
-        
-        if type_mvt == 'retrait':
-            success, msg = g.models.mouvement_caisse_pos_model.enregistrer_retrait(
-                period_id, current_user.id, Decimal(str(montant))
-            )
-        else:
-            success, msg = g.models.mouvement_caisse_pos_model.enregistrer_depot(
-                period_id, current_user.id, Decimal(str(montant))
-            )
-        
-        flash(msg, 'success' if success else 'error')
-        return redirect(url_for('banking.pos_work_periods'))
+    if montant <= 0:
+        return jsonify({'success': False, 'message': 'Montant invalide.'}), 400
 
-    return render_template('pos/work_periods/cash_movement.html', period=period)
+    if type_mvt == 'retrait':
+        success, msg = g.models.mouvement_caisse_pos_model.enregistrer_retrait(
+            period_id,
+            current_user.id,
+            Decimal(str(montant)),
+            description=description      # ⚠️ en mot-clé !
+        )
+    else:
+        success, msg = g.models.mouvement_caisse_pos_model.enregistrer_depot(
+            period_id,
+            current_user.id,
+            Decimal(str(montant)),
+            description=description      # ⚠️ en mot-clé !
+        )
+
+    if not success:
+        return jsonify({'success': False, 'message': msg}), 400
+
+    # Retourne le détail à jour pour rafraîchir la modale sans recharger
+    detail = g.models.periode_travail_pos_model.get_detail_json(period_id, current_user.id)
+    return jsonify({'success': True, 'message': msg, 'detail': detail})
 
     # --- OPTIONS DE RESTAURATION ---
 @bp.route('/pos/restaurant-options')
@@ -12235,7 +12248,7 @@ def pos_vente():
     periode_pdv_id = None
     pdv_current_id = None
     
-    if periode and periode.get('pdv_id') is not None:
+    if periode and periode.get('pdv_id') != pdv['id']:
         try:
             periode_pdv_id = int(periode.get('pdv_id'))
         except (ValueError, TypeError):

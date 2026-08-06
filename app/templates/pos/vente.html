@@ -49,6 +49,7 @@ button{cursor:pointer; border:none; background:none}
 .art-thumb{width:44px; height:44px; background:#e0e0e0; border-radius:4px; flex-shrink:0}
 .art-name{flex:1; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .art-price{font-size:15px; color:#333}
+.field select{width:100%; padding:12px; border:1px solid #ccc; border-radius:6px; font-size:15px; background:#fff}
 /* ---------- Ticket ---------- */
 .option-bar{display:flex; align-items:center; gap:8px; padding:10px 12px; background:#fff; border-bottom:1px solid #ddd}
 .option-bar select{flex:1; padding:10px; font-size:15px; border:1px solid #ccc; border-radius:6px}
@@ -266,14 +267,59 @@ button{cursor:pointer; border:none; background:none}
 </div></div>
 
 {# ---------- Modale : fermeture de période ---------- #}
-<div class="modal" id="modalClosePeriod"><div class="box">
+{# ---------- Modale : fermeture de période (résumé + mouvements + clôture) ---------- #}
+<div class="modal" id="modalClosePeriod"><div class="box" style="max-width:560px">
   <button class="close" onclick="closeModal('modalClosePeriod')">✕</button>
-  <h2>Fermer la caisse</h2>
-  <p style="margin:8px 0">Montant prévu : <b id="cpPrevu">—</b></p>
-  <form method="POST" action="{{ url_for('banking.pos_vente_close_period') }}">
-    <div class="field"><label>Montant de fin réel (CHF)</label>
-      <input type="number" step="0.05" name="montant_fin_reel" id="cpReel" required></div>
-    <button class="btn red" type="submit">Fermer la caisse</button>
+  <h2>🔒 Fermeture de la caisse</h2>
+
+  <!-- ===== RÉSUMÉ DE LA PÉRIODE ===== -->
+  <div style="margin:10px 0">
+    <div class="pay-line"><span>Espèces de départ</span><b id="cpDepart">—</b></div>
+    <div class="pay-line"><span>Règlements en espèces</span><b id="cpEspeceVentes">—</b></div>
+    <div class="pay-line"><span>Remboursements en espèces</span><b id="cpEspeceRemb">—</b></div>
+    <div class="pay-line"><span>Total dépôts</span><b id="cpDepots">—</b></div>
+    <div class="pay-line"><span>Total retraits</span><b id="cpRetraits">—</b></div>
+    <div class="pay-line" style="background:#eef7ee">
+      <span><b>Montant prévu en caisse</b></span><b id="cpPrevu">—</b>
+    </div>
+  </div>
+
+  <!-- ===== MOUVEMENTS D'ESPÈCES (SEUL ENDROIT AUTORISÉ) ===== -->
+  <div style="border-top:1px solid #eee; padding-top:12px; margin-top:10px">
+    <h2 style="font-size:15px; margin-bottom:8px">💵 Entrée / sortie d'espèces</h2>
+    
+    <div id="cpMouvements" style="max-height:130px; overflow-y:auto; margin-bottom:8px"></div>
+    
+    <div style="display:flex; gap:8px; align-items:flex-end">
+      <div class="field" style="flex:1.2; margin:0">
+        <label>Type</label>
+        <select id="mvType">
+          <option value="depot">➕ Dépôt (entrée)</option>
+          <option value="retrait">➖ Retrait (sortie)</option>
+        </select>
+      </div>
+      <div class="field" style="flex:1; margin:0">
+        <label>Montant (CHF)</label>
+        <input type="number" step="0.05" min="0.05" id="mvMontant" placeholder="0.00">
+      </div>
+      <button class="btn" style="width:auto; padding:12px 18px" onclick="submitCashMovement()">OK</button>
+    </div>
+    <div class="field" style="margin-top:8px">
+      <input type="text" id="mvDescription" placeholder="Motif (ex: achat rouleaux, prélèvement patron…)">
+    </div>
+  </div>
+
+  <!-- ===== FERMETURE DÉFINITIVE ===== -->
+  <form method="POST" action="{{ url_for('banking.pos_vente_close_period') }}"
+        style="border-top:1px solid #eee; padding-top:14px; margin-top:14px">
+    <div class="field">
+      <label>Montant compté réellement en caisse (CHF)</label>
+      <input type="number" step="0.05" name="montant_fin_reel" id="cpReel" required oninput="updateCpDiff()">
+    </div>
+    <div style="display:flex; justify-content:space-between; margin:8px 0; font-size:15px">
+      <span>Différence (réel − prévu)</span><b id="cpDiff">—</b>
+    </div>
+    <button class="btn red" type="submit">Fermer définitivement la caisse</button>
   </form>
 </div></div>
 
@@ -290,7 +336,7 @@ const URL_CLIENTS  = "{{ url_for('banking.pos_vente_clients_json') }}";
 const URL_PAY      = "{{ url_for('banking.pos_vente_pay') }}";
 const URL_PERIOD_JSON = {{ (url_for('banking.pos_work_period_json', period_id=periode.id))|tojson }};
 const MODES = {{ modes_paiement|tojson }};
-
+const URL_CASH_MOVEMENT = {{ (url_for('banking.pos_add_cash_movement', period_id=periode.id))|tojson }};
 let ARTICLES = [], CATS = [];
 let ticket = JSON.parse(localStorage.getItem('pos_current_ticket') || '{"lines":[],"client":null}');
 let parked = JSON.parse(localStorage.getItem('pos_parked_tickets') || '[]');
@@ -483,14 +529,77 @@ async function submitPay(){
 }
 
 /* ---------- Période / menus divers ---------- */
+/* ---------- Fermeture de caisse : résumé + mouvements ---------- */
 async function openClosePeriodModal(){
   $('menu').classList.remove('show');
-  try{
-    const r = await fetch(URL_PERIOD_JSON); const d = await r.json();
-    $('cpPrevu').textContent = fmt(d.montant_prevu||0);
-    $('cpReel').value = (d.montant_prevu||0).toFixed(2);
-  }catch(e){}
   $('modalClosePeriod').classList.add('show');
+  await refreshClosePeriod();
+}
+
+async function refreshClosePeriod(){
+  try{
+    const r = await fetch(URL_PERIOD_JSON);
+    const d = await r.json();
+    applyDetail(d);
+  }catch(e){ console.error('Erreur chargement période:', e); }
+}
+
+function applyDetail(d){
+  if(!d) return;
+  $('cpDepart').textContent        = fmt(d.especes_de_depart || 0);
+  $('cpEspeceVentes').textContent  = fmt(d.especes_ventes || 0);
+  $('cpEspeceRemb').textContent    = fmt(d.especes_remboursements || 0);
+  $('cpDepots').textContent        = fmt(d.total_depots || 0);
+  $('cpRetraits').textContent      = fmt(d.total_retraits || 0);
+  $('cpPrevu').textContent         = fmt(d.montant_prevu || 0);
+
+  // Pré-remplit le montant réel une seule fois
+  if(!$('cpReel').value) $('cpReel').value = (d.montant_prevu || 0).toFixed(2);
+  updateCpDiff();
+
+  // Liste des mouvements déjà effectués
+  $('cpMouvements').innerHTML = (d.mouvements || []).map(m => {
+    const neg   = m.montant < 0;
+    const color = neg ? '#e53935' : '#2e7d32';
+    const sign  = neg ? '-' : '+';
+    return `<div class="pay-line">
+      <span>${m.heure} — ${m.description || 'Mouvement'}</span>
+      <b style="color:${color}">${sign}${fmt(Math.abs(m.montant))}</b>
+    </div>`;
+  }).join('') || '<p style="color:#888; font-size:13px">Aucun mouvement pour cette période.</p>';
+}
+
+function updateCpDiff(){
+  const prevu = parseFloat(($('cpPrevu').textContent || '').replace('CHF ', '')) || 0;
+  const reel  = parseFloat($('cpReel').value) || 0;
+  const diff  = reel - prevu;
+  const el = $('cpDiff');
+  el.textContent = (diff >= 0 ? '+' : '') + diff.toFixed(2) + ' CHF';
+  el.style.color = diff < 0 ? '#e53935' : '#2e7d32';
+}
+
+/* ---------- Dépôt / retrait (AJAX, seul endroit autorisé) ---------- */
+async function submitCashMovement(){
+  const type        = $('mvType').value;
+  const montant     = parseFloat($('mvMontant').value) || 0;
+  const description = $('mvDescription').value.trim();
+
+  if (montant <= 0){ alert('Montant invalide.'); return; }
+
+  const r = await fetch(URL_CASH_MOVEMENT, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ type, montant, description })
+  });
+  const d = await r.json();
+
+  if (d.success){
+    $('mvMontant').value = '';
+    $('mvDescription').value = '';
+    applyDetail(d.detail);   // ✅ refresh immédiat du résumé
+  } else {
+    alert(d.message || 'Erreur lors du mouvement.');
+  }
 }
 function closeModal(id){ $(id).classList.remove('show'); }
 

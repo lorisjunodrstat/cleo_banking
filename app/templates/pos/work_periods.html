@@ -327,14 +327,15 @@ function openReportModal(periodId) {
     const modal = new bootstrap.Modal(document.getElementById('reportModal'));
     modal.show();
     
-    fetch(`/pos/work-period/${periodId}/json`)
+    // ✅ URL corrigée : /pos/work-periods/ (avec un 's')
+    fetch(`/pos/work-periods/${periodId}/json`)
         .then(response => response.json())
         .then(data => {
             // Infos générales
             document.getElementById('modalPeriodId').textContent = data.id;
-            document.getElementById('modalMagasin').textContent = data.magasin;
-            document.getElementById('modalPdv').textContent = data.pdv;
-            document.getElementById('modalDateDebut').textContent = data.date_debut;
+            document.getElementById('modalMagasin').textContent = data.magasin || '';
+            document.getElementById('modalPdv').textContent = data.pdv || '';
+            document.getElementById('modalDateDebut').textContent = data.date_debut || '';
             document.getElementById('modalDateFin').textContent = data.date_fin || 'En cours...';
             
             // Badge statut
@@ -348,16 +349,16 @@ function openReportModal(periodId) {
             }
             
             // Tiroir-caisse
-            document.getElementById('modalEspeceDepart').textContent = formatCHF(data.especes_de_depart);
-            document.getElementById('modalEspeceVentes').textContent = formatCHF(data.especes_ventes);
-            document.getElementById('modalEspeceRemboursements').textContent = formatCHF(data.especes_remboursements);
-            document.getElementById('modalDepots').textContent = formatCHF(data.total_depots);
-            document.getElementById('modalRetraits').textContent = formatCHF(data.total_retraits);
-            document.getElementById('modalMontantPrevu').textContent = formatCHF(data.montant_prevu);
-            document.getElementById('modalMontantReel').textContent = formatCHF(data.montant_fin_reel);
+            document.getElementById('modalEspeceDepart').textContent = formatCHF(data.especes_de_depart || 0);
+            document.getElementById('modalEspeceVentes').textContent = formatCHF(data.especes_ventes || 0);
+            document.getElementById('modalEspeceRemboursements').textContent = formatCHF(data.especes_remboursements || 0);
+            document.getElementById('modalDepots').textContent = formatCHF(data.total_depots || 0);
+            document.getElementById('modalRetraits').textContent = formatCHF(data.total_retraits || 0);
+            document.getElementById('modalMontantPrevu').textContent = formatCHF(data.montant_prevu || 0);
+            document.getElementById('modalMontantReel').textContent = formatCHF(data.montant_fin_reel || 0);
             
             const diffEl = document.getElementById('modalDifference');
-            const diffVal = parseFloat(data.difference);
+            const diffVal = parseFloat(data.difference || 0);
             if (diffVal < 0) {
                 diffEl.innerHTML = '<span class="text-danger">' + formatCHF(data.difference) + '</span>';
             } else if (diffVal > 0) {
@@ -367,22 +368,26 @@ function openReportModal(periodId) {
             }
             
             // Récapitulatif des ventes
-            document.getElementById('modalVentesBrutes').textContent = formatCHF(data.ventes_brutes);
-            document.getElementById('modalRemboursements').textContent = formatCHF(data.remboursements);
-            document.getElementById('modalReductions').textContent = formatCHF(data.reductions);
-            document.getElementById('modalVentesNettes').textContent = formatCHF(data.ventes_nettes);
-            document.getElementById('modalTaxes').textContent = formatCHF(data.taxes_total);
+            document.getElementById('modalVentesBrutes').textContent = formatCHF(data.ventes_brutes || 0);
+            document.getElementById('modalRemboursements').textContent = formatCHF(data.remboursements || 0);
+            document.getElementById('modalReductions').textContent = formatCHF(data.reductions || 0);
+            document.getElementById('modalVentesNettes').textContent = formatCHF(data.ventes_nettes || 0);
+            document.getElementById('modalTaxes').textContent = formatCHF(data.taxes_total || 0);
             
             // Modes de paiement
             let modesHTML = '<table class="table table-sm"><tbody>';
-            data.ventes_par_mode.forEach(mode => {
-                modesHTML += `<tr><td>${mode.nom}</td><td class="text-end">${formatCHF(mode.total)}</td></tr>`;
-            });
+            if (data.ventes_par_mode && data.ventes_par_mode.length > 0) {
+                data.ventes_par_mode.forEach(mode => {
+                    modesHTML += `<tr><td>${mode.nom}</td><td class="text-end">${formatCHF(mode.total)}</td></tr>`;
+                });
+            } else {
+                modesHTML += '<tr><td colspan="2" class="text-center text-muted">Aucune vente</td></tr>';
+            }
             modesHTML += '</tbody></table>';
             document.getElementById('modalModesPaiement').innerHTML = modesHTML;
             
             // Mouvements
-            if (data.mouvements.length > 0) {
+            if (data.mouvements && data.mouvements.length > 0) {
                 let mouvHTML = '<table class="table table-sm"><tbody>';
                 data.mouvements.forEach(m => {
                     const sign = m.montant < 0 ? '-' : '';
@@ -402,10 +407,11 @@ function openReportModal(periodId) {
             // Actions dans le footer
             let actionsHTML = '';
             if (data.status === 'Ouvert') {
-                actionsHTML += `<a href="/pos/work-period/${data.id}/cash-movement" class="btn btn-outline-primary me-2">
+                // ✅ URL corrigée : /pos/work-periods/ (avec un 's')
+                actionsHTML += `<a href="/pos/work-periods/${data.id}/cash-movement" class="btn btn-outline-primary me-2">
                     <i class="bi bi-cash-stack me-1"></i>Mouvement d'espèces
                 </a>`;
-                actionsHTML += `<a href="/pos/work-period/${data.id}/close" class="btn btn-danger">
+                actionsHTML += `<a href="/pos/work-periods/${data.id}/close" class="btn btn-danger">
                     <i class="bi bi-lock me-1"></i>Fermer la caisse
                 </a>`;
             }
@@ -413,18 +419,18 @@ function openReportModal(periodId) {
             
             // ===== SIDEBAR (résumé) =====
             document.getElementById('sidebarPeriodId').textContent = data.id;
-            document.getElementById('sidebarMagasin').textContent = data.magasin;
-            document.getElementById('sidebarPdv').textContent = data.pdv;
-            document.getElementById('sidebarDateDebut').textContent = data.date_debut;
+            document.getElementById('sidebarMagasin').textContent = data.magasin || '';
+            document.getElementById('sidebarPdv').textContent = data.pdv || '';
+            document.getElementById('sidebarDateDebut').textContent = data.date_debut || '';
             document.getElementById('sidebarDateFin').textContent = data.date_fin || 'En cours...';
             
-            document.getElementById('sidebarEspeceDepart').textContent = formatCHF(data.especes_de_depart);
-            document.getElementById('sidebarEspeceVentes').textContent = formatCHF(data.especes_ventes);
-            document.getElementById('sidebarEspeceRemboursements').textContent = formatCHF(data.especes_remboursements);
-            document.getElementById('sidebarDepots').textContent = formatCHF(data.total_depots);
-            document.getElementById('sidebarRetraits').textContent = formatCHF(data.total_retraits);
-            document.getElementById('sidebarMontantPrevu').textContent = formatCHF(data.montant_prevu);
-            document.getElementById('sidebarMontantReel').textContent = formatCHF(data.montant_fin_reel);
+            document.getElementById('sidebarEspeceDepart').textContent = formatCHF(data.especes_de_depart || 0);
+            document.getElementById('sidebarEspeceVentes').textContent = formatCHF(data.especes_ventes || 0);
+            document.getElementById('sidebarEspeceRemboursements').textContent = formatCHF(data.especes_remboursements || 0);
+            document.getElementById('sidebarDepots').textContent = formatCHF(data.total_depots || 0);
+            document.getElementById('sidebarRetraits').textContent = formatCHF(data.total_retraits || 0);
+            document.getElementById('sidebarMontantPrevu').textContent = formatCHF(data.montant_prevu || 0);
+            document.getElementById('sidebarMontantReel').textContent = formatCHF(data.montant_fin_reel || 0);
             
             const sidebarDiff = document.getElementById('sidebarDifference');
             if (diffVal < 0) {
@@ -435,22 +441,26 @@ function openReportModal(periodId) {
                 sidebarDiff.innerHTML = '<span class="text-success">CHF 0,00</span>';
             }
             
-            document.getElementById('sidebarVentesBrutes').textContent = formatCHF(data.ventes_brutes);
-            document.getElementById('sidebarRemboursements').textContent = formatCHF(data.remboursements);
-            document.getElementById('sidebarReductions').textContent = formatCHF(data.reductions);
-            document.getElementById('sidebarVentesNettes').textContent = formatCHF(data.ventes_nettes);
-            document.getElementById('sidebarTaxes').textContent = formatCHF(data.taxes_total);
+            document.getElementById('sidebarVentesBrutes').textContent = formatCHF(data.ventes_brutes || 0);
+            document.getElementById('sidebarRemboursements').textContent = formatCHF(data.remboursements || 0);
+            document.getElementById('sidebarReductions').textContent = formatCHF(data.reductions || 0);
+            document.getElementById('sidebarVentesNettes').textContent = formatCHF(data.ventes_nettes || 0);
+            document.getElementById('sidebarTaxes').textContent = formatCHF(data.taxes_total || 0);
             
             let sidebarModesHTML = '';
-            data.ventes_par_mode.forEach(mode => {
-                sidebarModesHTML += `<div class="d-flex justify-content-between small mb-1">
-                    <span>${mode.nom}</span>
-                    <span>${formatCHF(mode.total)}</span>
-                </div>`;
-            });
+            if (data.ventes_par_mode && data.ventes_par_mode.length > 0) {
+                data.ventes_par_mode.forEach(mode => {
+                    sidebarModesHTML += `<div class="d-flex justify-content-between small mb-1">
+                        <span>${mode.nom}</span>
+                        <span>${formatCHF(mode.total)}</span>
+                    </div>`;
+                });
+            } else {
+                sidebarModesHTML = '<p class="text-muted small text-center">Aucune vente</p>';
+            }
             document.getElementById('sidebarModesPaiement').innerHTML = sidebarModesHTML;
             
-            if (data.mouvements.length > 0) {
+            if (data.mouvements && data.mouvements.length > 0) {
                 let sidebarMouvHTML = '';
                 data.mouvements.forEach(m => {
                     const sign = m.montant < 0 ? '-' : '';

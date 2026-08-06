@@ -1382,7 +1382,7 @@ class DatabaseManager:
                     utilisateur_id INT NOT NULL,
                     porte_monnaie_id INT NULL,
                     magasin VARCHAR(100) NOT NULL,
-                    pdv_id VARCHAR(100) NOT NULL,
+                    pdv_id INT NOT NULL,
                     date_debut DATETIME NOT NULL,
                     date_fin DATETIME NULL,
                     montant_debut_prevu DECIMAL(10,2) DEFAULT 0,
@@ -1396,6 +1396,7 @@ class DatabaseManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
                     FOREIGN KEY (porte_monnaie_id) REFERENCES pos_porte_monnaie(id) ON DELETE SET NULL,
+                    FOREIGN KEY (pdv_id) REFERENCES pos_points_de_vente(id) ON DELETE RESTRICT;
                     INDEX idx_utilisateur_date (utilisateur_id, date_debut)
                 );
                 """
@@ -1407,6 +1408,7 @@ class DatabaseManager:
                     periode_travail_id INT NOT NULL,
                     montant_retrait DECIMAL(10,2) DEFAULT 0,
                     date_retrait DATETIME NOT NULL,
+                    description VARCHAR(255) NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (periode_travail_id) REFERENCES pos_periodes_travail(id) ON DELETE CASCADE
                 );
@@ -1419,6 +1421,7 @@ class DatabaseManager:
                     periode_travail_id INT NOT NULL,
                     montant_depot DECIMAL(10,2) DEFAULT 0,
                     date_depot DATETIME NOT NULL,
+                    description VARCHAR(255) NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (periode_travail_id) REFERENCES pos_periodes_travail(id) ON DELETE CASCADE
                 );
@@ -17427,18 +17430,21 @@ class PeriodeTravailPOS:
                 
                 # Calculer les ventes de la période
                 cursor.execute("""
-                    SELECT COALESCE(SUM(total_collecte), 0) as total_ventes
-                    FROM pos_receipts
-                    WHERE utilisateur_id = %s 
-                      AND date >= %s
-                      AND status != 'Annulé'
+                    SELECT
+                        COALESCE(SUM(CASE WHEN p.est_remboursement = 0 THEN p.montant ELSE 0 END), 0) -
+                        COALESCE(SUM(CASE WHEN p.est_remboursement = 1 THEN p.montant ELSE 0 END), 0) AS net_especes
+                    FROM pos_payments p
+                    INNER JOIN pos_receipts r ON r.id = p.receipt_id
+                    INNER JOIN pos_modes_paiement mp ON mp.id = p.mode_paiement_id
+                    WHERE r.utilisateur_id = %s AND r.date >= %s AND r.status != 'Annulé'
+                    AND (mp.nom LIKE '%spè%' OR mp.nom LIKE '%spe%' OR mp.nom LIKE '%cash%' OR mp.nom LIKE '%liquide%')
                 """, (user_id, periode['date_debut']))
-                total_ventes = Decimal(str(cursor.fetchone()['total_ventes']))
-                
-                # Différence = montant_fin_reel - (montant_debut_reel + ventes + depots - retraits)
-                attendu = montant_debut_reel + total_ventes + total_depots - total_retraits
+                net_especes = Decimal(str(cursor.fetchone()['net_especes']))
+
+                # Attendu = départ + espèces nettes + dépôts − retraits
+                attendu = montant_debut_reel + net_especes + total_depots - total_retraits
                 difference = montant_fin_reel - attendu
-                
+                                
                 cursor.execute("""
                     UPDATE pos_periodes_travail 
                     SET date_fin = NOW(), 
@@ -17507,12 +17513,12 @@ class PeriodeTravailPOS:
             return []
 
     def get_detail_json(self, periode_id: int, user_id: int) -> Optional[Dict]:
-        """Retourne toutes les données d'une période pour la modal"""
+        """Retourne toutes les données d'une période pour la modale de fermeture"""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                # 1. Récupérer la période avec infos PDV
+                # --- Période + nom du PDV (pdv_id est VARCHAR → CAST) ---
                 cursor.execute("""
-                    SELECT ppt.*, ppv.nom_pdv 
+                    SELECT ppt.*, ppv.nom_pdv
                     FROM pos_periodes_travail ppt
                     LEFT JOIN pos_points_de_vente ppv ON ppt.pdv_id = ppv.id
                     WHERE ppt.id = %s AND ppt.utilisateur_id = %s
@@ -17521,161 +17527,139 @@ class PeriodeTravailPOS:
                 if not period:
                     return None
 
-                # 2. Calculer les statistiques de ventes
-                cursor.execute("""
-                    SELECT 
-                        COALESCE(SUM(CASE WHEN receipt_type = 'Vente' THEN ventes_brutes ELSE 0 END), 0) as ventes_brutes,
-                        COALESCE(SUM(CASE WHEN receipt_type = 'Remboursement' THEN ventes_brutes ELSE 0 END), 0) as remboursements,
-                        COALESCE(SUM(reduction), 0) as reductions,
-                        COALESCE(SUM(ventes_nettes), 0) as ventes_nettes,
-                        COALESCE(SUM(taxes), 0) as taxes_total
-                    FROM pos_receipts
-                    WHERE utilisateur_id = %s 
-                    AND date >= %s
-                    AND (date <= %s OR %s IS NULL)
-                    AND status != 'Annulé'
-                """, (user_id, period['date_debut'], period.get('date_fin'), period.get('date_fin')))
-                
-                sales_stats = cursor.fetchone()
-                ventes_brutes = float(sales_stats['ventes_brutes'] or 0)
-                remboursements = float(sales_stats['remboursements'] or 0)
-                reductions = float(sales_stats['reductions'] or 0)
-                ventes_nettes = float(sales_stats['ventes_nettes'] or 0)
-                taxes_total = float(sales_stats['taxes_total'] or 0)
+                date_fin = period.get('date_fin')
 
-                # 3. Ventes par mode de paiement
+                # --- Stats ventes (depuis pos_receipts) ---
                 cursor.execute("""
-                    SELECT mode_paiement_nom, 
-                        SUM(montant) as total,
-                        COUNT(*) as count
-                    FROM pos_receipt_payments rp
-                    INNER JOIN pos_receipts r ON rp.receipt_id = r.id
-                    WHERE r.utilisateur_id = %s 
-                    AND r.date >= %s
-                    AND (r.date <= %s OR %s IS NULL)
-                    AND r.status != 'Annulé'
-                    GROUP BY mode_paiement_nom
+                    SELECT
+                        COALESCE(SUM(CASE WHEN receipt_type = 'Vente' THEN ventes_brutes ELSE 0 END), 0) AS ventes_brutes,
+                        COALESCE(SUM(CASE WHEN receipt_type = 'Remboursement' THEN ventes_brutes ELSE 0 END), 0) AS remboursements,
+                        COALESCE(SUM(reduction), 0) AS reductions,
+                        COALESCE(SUM(ventes_nettes), 0) AS ventes_nettes,
+                        COALESCE(SUM(taxes), 0) AS taxes_total
+                    FROM pos_receipts
+                    WHERE utilisateur_id = %s AND date >= %s 
+                    AND (date <= %s OR %s IS NULL) AND status != 'Annulé'
+                """, (user_id, period['date_debut'], date_fin, date_fin))
+                s = cursor.fetchone()
+
+                # --- Espèces uniquement (JOIN pos_payments + pos_modes_paiement) ---
+                cursor.execute("""
+                    SELECT
+                        COALESCE(SUM(CASE WHEN p.est_remboursement = 0 THEN p.montant ELSE 0 END), 0) AS especes_ventes,
+                        COALESCE(SUM(CASE WHEN p.est_remboursement = 1 THEN p.montant ELSE 0 END), 0) AS especes_remboursements
+                    FROM pos_payments p
+                    INNER JOIN pos_receipts r ON r.id = p.receipt_id
+                    INNER JOIN pos_modes_paiement mp ON mp.id = p.mode_paiement_id
+                    WHERE r.utilisateur_id = %s AND r.date >= %s 
+                    AND (r.date <= %s OR %s IS NULL) AND r.status != 'Annulé'
+                    AND (mp.nom LIKE '%spè%' OR mp.nom LIKE '%spe%' 
+                        OR mp.nom LIKE '%cash%' OR mp.nom LIKE '%liquide%')
+                """, (user_id, period['date_debut'], date_fin, date_fin))
+                c = cursor.fetchone()
+
+                # --- Ventes par mode de paiement ---
+                cursor.execute("""
+                    SELECT mp.nom AS nom, COALESCE(SUM(p.montant), 0) AS total
+                    FROM pos_payments p
+                    INNER JOIN pos_receipts r ON r.id = p.receipt_id
+                    INNER JOIN pos_modes_paiement mp ON mp.id = p.mode_paiement_id
+                    WHERE r.utilisateur_id = %s AND r.date >= %s 
+                    AND (r.date <= %s OR %s IS NULL) AND r.status != 'Annulé'
+                    GROUP BY mp.nom
                     ORDER BY total DESC
-                """, (user_id, period['date_debut'], period.get('date_fin'), period.get('date_fin')))
-                
+                """, (user_id, period['date_debut'], date_fin, date_fin))
                 ventes_par_mode = [
-                    {'nom': row['mode_paiement_nom'], 'total': float(row['total'] or 0)}
+                    {'nom': row['nom'], 'total': float(row['total'])}
                     for row in cursor.fetchall()
                 ]
 
-                # 4. Espèces (ventes et remboursements en cash)
+                # --- Totaux retraits / dépôts ---
                 cursor.execute("""
-                    SELECT 
-                        COALESCE(SUM(CASE WHEN r.receipt_type = 'Vente' THEN rp.montant ELSE 0 END), 0) as especes_ventes,
-                        COALESCE(SUM(CASE WHEN r.receipt_type = 'Remboursement' THEN rp.montant ELSE 0 END), 0) as especes_remboursements
-                    FROM pos_receipt_payments rp
-                    INNER JOIN pos_receipts r ON rp.receipt_id = r.id
-                    WHERE r.utilisateur_id = %s 
-                    AND r.date >= %s
-                    AND (r.date <= %s OR %s IS NULL)
-                    AND r.status != 'Annulé'
-                    AND LOWER(rp.mode_paiement_nom) LIKE '%espèce%'
-                """, (user_id, period['date_debut'], period.get('date_fin'), period.get('date_fin')))
-                
-                cash_stats = cursor.fetchone()
-                especes_ventes = float(cash_stats['especes_ventes'] or 0)
-                especes_remboursements = float(cash_stats['especes_remboursements'] or 0)
-
-                # 5. Retraits et dépôts de caisse
-                cursor.execute("""
-                    SELECT COALESCE(SUM(montant), 0) as total
-                    FROM pos_retraits 
-                    WHERE periode_travail_id = %s
+                    SELECT COALESCE(SUM(montant_retrait), 0) AS t 
+                    FROM pos_retraits WHERE periode_travail_id = %s
                 """, (periode_id,))
-                total_retraits = float(cursor.fetchone()['total'] or 0)
-                
-                cursor.execute("""
-                    SELECT COALESCE(SUM(montant), 0) as total
-                    FROM pos_depots 
-                    WHERE periode_travail_id = %s
-                """, (periode_id,))
-                total_depots = float(cursor.fetchone()['total'] or 0)
+                total_retraits = float(cursor.fetchone()['t'])
 
-                # 6. Liste des mouvements de caisse
                 cursor.execute("""
-                    SELECT 'retrait' as type, montant, description, date_mouvement
-                    FROM pos_retraits 
-                    WHERE periode_travail_id = %s
+                    SELECT COALESCE(SUM(montant_depot), 0) AS t 
+                    FROM pos_depots WHERE periode_travail_id = %s
+                """, (periode_id,))
+                total_depots = float(cursor.fetchone()['t'])
+
+                # --- Liste des mouvements (avec motif) ---
+                cursor.execute("""
+                    SELECT 'retrait' AS type_mvt, montant_retrait AS montant, 
+                        date_retrait AS date_mvt, description
+                    FROM pos_retraits WHERE periode_travail_id = %s
                     UNION ALL
-                    SELECT 'depot' as type, montant, description, date_mouvement
-                    FROM pos_depots 
-                    WHERE periode_travail_id = %s
-                    ORDER BY date_mouvement
+                    SELECT 'depot', montant_depot, date_depot, description
+                    FROM pos_depots WHERE periode_travail_id = %s
+                    ORDER BY date_mvt
                 """, (periode_id, periode_id))
-                
                 mouvements = [
                     {
-                        'heure': row['date_mouvement'].strftime('%H:%M') if row['date_mouvement'] else '',
-                        'description': row.get('description', 'Mouvement de caisse'),
-                        'montant': float(row['montant']) if row['type'] == 'depot' else -float(row['montant'])
+                        'heure': row['date_mvt'].strftime('%H:%M') if row['date_mvt'] else '',
+                        'description': row['description'] or ("Retrait d'espèces" if row['type_mvt'] == 'retrait' else "Dépôt d'espèces"),
+                        'montant': -float(row['montant']) if row['type_mvt'] == 'retrait' else float(row['montant'])
                     }
                     for row in cursor.fetchall()
                 ]
 
-                # 7. Calculs finaux
+                # --- Calculs finaux ---
                 montant_debut = float(period['montant_debut_reel'] or 0)
-                montant_prevu = montant_debut + especes_ventes - especes_remboursements + total_depots - total_retraits
-                montant_fin_reel = float(period['montant_fin_reel'] or 0)
-                
-                # Si la période n'est pas fermée, montant_fin_reel = montant_prevu
-                if not period.get('date_fin'):
-                    montant_fin_reel = montant_prevu
-                
-                difference = montant_fin_reel - montant_prevu if period.get('date_fin') else 0
+                especes_ventes = float(c['especes_ventes'])
+                especes_remb = float(c['especes_remboursements'])
 
-                # 8. Retourner toutes les données formatées
+                montant_prevu = (montant_debut + especes_ventes - especes_remb 
+                                + total_depots - total_retraits)
+                montant_fin_reel = float(period['montant_fin_reel'] or 0)
+
+                if not date_fin:
+                    montant_fin_reel = montant_prevu
+
+                difference = (montant_fin_reel - montant_prevu) if date_fin else 0
+
                 return {
-                    # Infos générales
                     'id': period['id'],
                     'magasin': period.get('magasin', ''),
                     'pdv': period.get('nom_pdv', 'N/A'),
                     'date_debut': period['date_debut'].strftime('%d/%m/%Y %H:%M') if period.get('date_debut') else '',
-                    'date_fin': period['date_fin'].strftime('%d/%m/%Y %H:%M') if period.get('date_fin') else None,
-                    'status': 'Fermé' if period.get('date_fin') else 'Ouvert',
-                    
-                    # Tiroir-caisse
+                    'date_fin': period['date_fin'].strftime('%d/%m/%Y %H:%M') if date_fin else None,
+                    'status': 'Fermé' if date_fin else 'Ouvert',
+
                     'especes_de_depart': montant_debut,
                     'especes_ventes': especes_ventes,
-                    'especes_remboursements': especes_remboursements,
+                    'especes_remboursements': especes_remb,
                     'total_depots': total_depots,
                     'total_retraits': total_retraits,
                     'montant_prevu': montant_prevu,
                     'montant_fin_reel': montant_fin_reel,
                     'difference': difference,
-                    
-                    # Ventes
-                    'ventes_brutes': ventes_brutes,
-                    'remboursements': remboursements,
-                    'reductions': reductions,
-                    'ventes_nettes': ventes_nettes,
-                    'taxes_total': taxes_total,
-                    
-                    # Modes de paiement
+
+                    'ventes_brutes': float(s['ventes_brutes']),
+                    'remboursements': float(s['remboursements']),
+                    'reductions': float(s['reductions']),
+                    'ventes_nettes': float(s['ventes_nettes']),
+                    'taxes_total': float(s['taxes_total']),
+
                     'ventes_par_mode': ventes_par_mode,
-                    
-                    # Mouvements de caisse
                     'mouvements': mouvements
                 }
-                
+
         except Exception as e:
             logger.error(f"Erreur get_detail_json: {e}")
             import traceback
             traceback.print_exc()
             return None
-
-class MouvementCaissePOS:
-    """Gestion des retraits et dépôts en caisse"""
-    def __init__(self, db):
+    class MouvementCaissePOS:
+        """Gestion des retraits et dépôts en caisse"""
+        def __init__(self, db):
         self.db = db
         self.transaction_model = TransactionFinanciere(db)
 
     def enregistrer_retrait(self, periode_id: int, user_id: int, montant: Decimal,
-                            compte_bancaire_id: int = None) -> Tuple[bool, str]:
+                            compte_bancaire_id: int = None, description: str = '') -> Tuple[bool, str]:
         """
         Enregistre un retrait de caisse.
         Si compte_bancaire_id fourni, crée une transaction de dépôt dans le compte.
@@ -17692,9 +17676,9 @@ class MouvementCaissePOS:
                 
                 # Enregistrer le retrait
                 cursor.execute("""
-                    INSERT INTO pos_retraits (periode_travail_id, montant_retrait, date_retrait)
-                    VALUES (%s, %s, NOW())
-                """, (periode_id, float(montant)))
+                    INSERT INTO pos_retraits (periode_travail_id, montant_retrait, date_retrait, description)
+                    VALUES (%s, %s, NOW(), %s)
+                """, (periode_id, float(montant), description))
                 
                 # 🔗 Si compte bancaire fourni, créer une transaction de dépôt
                 if compte_bancaire_id:
@@ -17719,7 +17703,7 @@ class MouvementCaissePOS:
             return False, f"Erreur: {str(e)}"
 
     def enregistrer_depot(self, periode_id: int, user_id: int, montant: Decimal,
-                          compte_bancaire_id: int = None) -> Tuple[bool, str]:
+                          compte_bancaire_id: int = None, description: str = '') -> Tuple[bool, str]:
         """
         Enregistre un dépôt en caisse (ex: fond de caisse).
         Si compte_bancaire_id fourni, crée une transaction de retrait du compte.
@@ -17734,9 +17718,9 @@ class MouvementCaissePOS:
                     return False, "Période non trouvée ou fermée"
                 
                 cursor.execute("""
-                    INSERT INTO pos_depots (periode_travail_id, montant_depot, date_depot)
-                    VALUES (%s, %s, NOW())
-                """, (periode_id, float(montant)))
+                    INSERT INTO pos_depots (periode_travail_id, montant_depot, date_depot, description)
+                    VALUES (%s, %s, NOW(), %s)
+                """, (periode_id, float(montant), description))
                 
                 if compte_bancaire_id:
                     success, msg, _ = self.transaction_model._inserer_transaction_with_cursor(
