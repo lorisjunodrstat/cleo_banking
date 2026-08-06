@@ -275,10 +275,21 @@ button{cursor:pointer; border:none; background:none}
   <button class="btn" onclick="saveTicketInfo()">ENREGISTRER</button>
 </div></div>
 {# ---------- Modale : tickets ouverts ---------- #}
+
 <div class="modal" id="modalParked"><div class="box">
   <button class="close" onclick="closeModal('modalParked')">✕</button>
   <h2>Tickets ouverts</h2>
+  
+  {# Tickets en attente sur cet appareil (localStorage) #}
+  <h3 style="font-size:14px; margin:12px 0 8px 0; color:#666">⏸️ En attente (cet appareil)</h3>
   <div id="parkedList"></div>
+  
+  {# Lien vers tous les tickets enregistrés en base #}
+  <hr style="margin:16px 0">
+  <h3 style="font-size:14px; margin:12px 0 8px 0; color:#666">📋 Tickets enregistrés</h3>
+  <a href="{{ url_for('banking.pos_commandes_en_cours') }}" class="btn" style="text-decoration:none">
+    Voir les commandes en cours
+  </a>
 </div></div>
 
 {# ---------- Modale : fermeture de période ---------- #}
@@ -580,15 +591,36 @@ function parkTicket(){
   $('menu').classList.remove('show');
 }
 
-function openParkedModal(){
+async function openParkedModal(){
+  // Tickets localStorage
   $('parkedList').innerHTML = parked.map((t,i) => `
     <div class="parked-item">
-      <span>${t.saved_at} — ${t.lines.length} ligne(s) — ${fmt(t.lines.reduce((s,l)=>s+l.prix*l.qty,0))}</span>
+      <span>${t.nom || t.saved_at} — ${t.lines.length} ligne(s) — ${fmt(t.lines.reduce((s,l)=>s+l.prix*l.qty,0))}</span>
       <span>
         <button class="qtybtn" onclick="resumeParked(${i})">▶</button>
         <button class="qtybtn" style="color:#e53935" onclick="deleteParked(${i})">✕</button>
       </span>
     </div>`).join('') || '<p style="color:#888">Aucun ticket en attente.</p>';
+  
+  // Tickets de la base
+  try {
+    const r = await fetch("{{ url_for('banking.pos_vente_open_tickets_json') }}");
+    const dbTickets = await r.json();
+    
+    if (dbTickets.length > 0) {
+      $('dbTicketsList').innerHTML = dbTickets.map(t => `
+        <div class="parked-item">
+          <span>${t.nom_ticket} — ${t.lines.length} ligne(s) — ${fmt(t.total)}</span>
+          <a href="{{ url_for('banking.pos_receipt_detail', receipt_id='') }}${t.id}" class="qtybtn" style="text-decoration:none">👁️</a>
+        </div>
+      `).join('');
+    } else {
+      $('dbTicketsList').innerHTML = '<p style="color:#888">Aucun ticket enregistré.</p>';
+    }
+  } catch(e) {
+    console.error('Erreur chargement tickets DB:', e);
+  }
+  
   $('modalParked').classList.add('show');
 }
 

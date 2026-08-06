@@ -17827,8 +17827,11 @@ class PeriodeTravailPOS:
     def get_detail_json(self, periode_id: int, user_id: int) -> Optional[Dict]:
         """Retourne toutes les données d'une période pour la modale de fermeture"""
         try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
             with self.db.get_cursor(dictionary=True) as cursor:
-                # --- Période + nom du PDV (pdv_id est VARCHAR → CAST) ---
+                # --- Période + nom du PDV ---
                 cursor.execute("""
                     SELECT ppt.*, ppv.nom_pdv
                     FROM pos_periodes_travail ppt
@@ -17836,12 +17839,19 @@ class PeriodeTravailPOS:
                     WHERE ppt.id = %s AND ppt.utilisateur_id = %s
                 """, (periode_id, user_id))
                 period = cursor.fetchone()
+                
+                logger.info(f"DEBUG get_detail_json: period = {period}")
+                
                 if not period:
+                    logger.warning(f"DEBUG: Période {periode_id} non trouvée pour user {user_id}")
                     return None
 
                 date_fin = period.get('date_fin')
+                date_debut = period['date_debut']
+                
+                logger.info(f"DEBUG: date_debut = {date_debut}, date_fin = {date_fin}")
 
-                # --- Stats ventes (depuis pos_receipts) ---
+                # --- Stats ventes ---
                 cursor.execute("""
                     SELECT
                         COALESCE(SUM(CASE WHEN receipt_type = 'Vente' THEN ventes_brutes ELSE 0 END), 0) AS ventes_brutes,
@@ -17852,10 +17862,12 @@ class PeriodeTravailPOS:
                     FROM pos_receipts
                     WHERE utilisateur_id = %s AND date >= %s 
                     AND (date <= %s OR %s IS NULL) AND status != 'Annulé'
-                """, (user_id, period['date_debut'], date_fin, date_fin))
+                """, (user_id, date_debut, date_fin, date_fin))
+                
                 s = cursor.fetchone()
+                logger.info(f"DEBUG: stats ventes = {s}")
 
-                # --- Espèces uniquement (JOIN pos_payments + pos_modes_paiement) ---
+                # --- Espèces uniquement ---
                 cursor.execute("""
                     SELECT
                         COALESCE(SUM(CASE WHEN p.est_remboursement = 0 THEN p.montant ELSE 0 END), 0) AS especes_ventes,
@@ -17866,9 +17878,12 @@ class PeriodeTravailPOS:
                     WHERE r.utilisateur_id = %s AND r.date >= %s 
                     AND (r.date <= %s OR %s IS NULL) AND r.status != 'Annulé'
                     AND (mp.nom LIKE '%%spè%%' OR mp.nom LIKE '%%spe%%' 
-                        OR mp.nom LIKE '%%cash%%' OR mp.nom LIKE '%%liquide%%')
-                    """, (user_id, period['date_debut'], date_fin, date_fin))
+                        OR mp.nom LIKE '%%cash%%' OR mp.nom LIKE '%%liquide%%'
+                        OR mp.nom LIKE '%%Espè%%' OR mp.nom LIKE '%%Cash%%')
+                """, (user_id, date_debut, date_fin, date_fin))
+                
                 c = cursor.fetchone()
+                logger.info(f"DEBUG: espèces = {c}")
 
                 # --- Ventes par mode de paiement ---
                 cursor.execute("""
@@ -17880,11 +17895,13 @@ class PeriodeTravailPOS:
                     AND (r.date <= %s OR %s IS NULL) AND r.status != 'Annulé'
                     GROUP BY mp.nom
                     ORDER BY total DESC
-                """, (user_id, period['date_debut'], date_fin, date_fin))
+                """, (user_id, date_debut, date_fin, date_fin))
+                
                 ventes_par_mode = [
                     {'nom': row['nom'], 'total': float(row['total'])}
                     for row in cursor.fetchall()
                 ]
+                logger.info(f"DEBUG: ventes_par_mode = {ventes_par_mode}")
 
                 # --- Totaux retraits / dépôts ---
                 cursor.execute("""
@@ -17898,8 +17915,10 @@ class PeriodeTravailPOS:
                     FROM pos_depots WHERE periode_travail_id = %s
                 """, (periode_id,))
                 total_depots = float(cursor.fetchone()['t'])
+                
+                logger.info(f"DEBUG: retraits = {total_retraits}, depots = {total_depots}")
 
-                # --- Liste des mouvements (avec motif) ---
+                # --- Liste des mouvements ---
                 cursor.execute("""
                     SELECT 'retrait' AS type_mvt, montant_retrait AS montant, 
                         date_retrait AS date_mvt, description
@@ -17909,19 +17928,23 @@ class PeriodeTravailPOS:
                     FROM pos_depots WHERE periode_travail_id = %s
                     ORDER BY date_mvt
                 """, (periode_id, periode_id))
+                
+                mouvements_raw = cursor.fetchall()
+                logger.info(f"DEBUG: mouvements_raw = {mouvements_raw}")
+                
                 mouvements = [
                     {
                         'heure': row['date_mvt'].strftime('%H:%M') if row['date_mvt'] else '',
                         'description': row['description'] or ("Retrait d'espèces" if row['type_mvt'] == 'retrait' else "Dépôt d'espèces"),
                         'montant': -float(row['montant']) if row['type_mvt'] == 'retrait' else float(row['montant'])
                     }
-                    for row in cursor.fetchall()
+                    for row in mouvements_raw
                 ]
 
                 # --- Calculs finaux ---
                 montant_debut = float(period['montant_debut_reel'] or 0)
-                especes_ventes = float(c['especes_ventes'])
-                especes_remb = float(c['especes_remboursements'])
+                especes_ventes = float(c['especes_ventes'] or 0)
+                especes_remb = float(c['especes_remboursements'] or 0)
 
                 montant_prevu = (montant_debut + especes_ventes - especes_remb 
                                 + total_depots - total_retraits)
@@ -17932,7 +17955,7 @@ class PeriodeTravailPOS:
 
                 difference = (montant_fin_reel - montant_prevu) if date_fin else 0
 
-                return {
+                result = {
                     'id': period['id'],
                     'magasin': period.get('magasin', ''),
                     'pdv': period.get('nom_pdv', 'N/A'),
@@ -17949,26 +17972,31 @@ class PeriodeTravailPOS:
                     'montant_fin_reel': montant_fin_reel,
                     'difference': difference,
 
-                    'ventes_brutes': float(s['ventes_brutes']),
-                    'remboursements': float(s['remboursements']),
-                    'reductions': float(s['reductions']),
-                    'ventes_nettes': float(s['ventes_nettes']),
-                    'taxes_total': float(s['taxes_total']),
+                    'ventes_brutes': float(s['ventes_brutes'] or 0),
+                    'remboursements': float(s['remboursements'] or 0),
+                    'reductions': float(s['reductions'] or 0),
+                    'ventes_nettes': float(s['ventes_nettes'] or 0),
+                    'taxes_total': float(s['taxes_total'] or 0),
 
                     'ventes_par_mode': ventes_par_mode,
                     'mouvements': mouvements
                 }
+                
+                logger.info(f"DEBUG: résultat final = {result}")
+                
+                return result
 
         except Exception as e:
-            logger.error(f"Erreur get_detail_json: {e}")
+            logger.error(f"Erreur get_detail_json: {e}", exc_info=True)
             import traceback
             traceback.print_exc()
             return None
-    class MouvementCaissePOS:
-        """Gestion des retraits et dépôts en caisse"""
-        def __init__(self, db):
-            self.db = db
-            self.transaction_model = TransactionFinanciere(db)
+
+class MouvementCaissePOS:
+    """Gestion des retraits et dépôts en caisse"""
+    def __init__(self, db):
+        self.db = db
+        self.transaction_model = TransactionFinanciere(db)
 
     def enregistrer_retrait(self, periode_id: int, user_id: int, montant: Decimal,
                             compte_bancaire_id: int = None, description: str = '') -> Tuple[bool, str]:

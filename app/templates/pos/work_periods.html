@@ -18,29 +18,85 @@
 {% endblock %}
 
 {% block content %}
-<!-- Filtre par date -->
+<!-- Filtre par période -->
 <div class="card shadow-sm mb-4">
     <div class="card-body">
         <form method="GET" class="row g-3 align-items-end">
-            <div class="col-md-4">
+            <!-- Type de période -->
+            <div class="col-md-2">
+                <label class="form-label">Période</label>
+                <select name="periode" class="form-select" onchange="this.form.submit()">
+                    <option value="jour" {% if periode_selectionnee == 'jour' %}selected{% endif %}>Jour</option>
+                    <option value="semaine" {% if periode_selectionnee == 'semaine' %}selected{% endif %}>Semaine</option>
+                    <option value="mois" {% if periode_selectionnee == 'mois' %}selected{% endif %}>Mois</option>
+                    <option value="trimestre" {% if periode_selectionnee == 'trimestre' %}selected{% endif %}>Trimestre</option>
+                    <option value="annee" {% if periode_selectionnee == 'annee' %}selected{% endif %}>Année</option>
+                    <option value="mois_annee" {% if periode_selectionnee == 'mois_annee' %}selected{% endif %}>Mois/Année</option>
+                    <option value="personnalisee" {% if periode_selectionnee == 'personnalisee' %}selected{% endif %}>Personnalisée</option>
+                </select>
+            </div>
+            
+            <!-- Sélecteur selon la période -->
+            {% if periode_selectionnee == 'jour' %}
+            <div class="col-md-3">
                 <label class="form-label">Date</label>
                 <input type="date" name="date" class="form-control" value="{{ date_filter }}">
             </div>
+            {% elif periode_selectionnee == 'mois_annee' %}
+            <div class="col-md-2">
+                <label class="form-label">Mois</label>
+                <select name="mois_select" class="form-select">
+                    {% for i in range(1, 13) %}
+                    <option value="{{ i }}" {% if mois_selected and mois_selected|int == i %}selected{% endif %}>
+                        {{ ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'][i-1] }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Année</label>
+                <select name="annee_select" class="form-select">
+                    {% for y in range(2020, 2030) %}
+                    <option value="{{ y }}" {% if annee_selected and annee_selected|int == y %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% elif periode_selectionnee == 'personnalisee' %}
+            <div class="col-md-2">
+                <label class="form-label">Du</label>
+                <input type="date" name="date_debut" class="form-control" value="{{ date_debut_selected or '' }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Au</label>
+                <input type="date" name="date_fin" class="form-control" value="{{ date_fin_selected or '' }}">
+            </div>
+            {% endif %}
+            
             <div class="col-md-2">
                 <button type="submit" class="btn btn-primary w-100">
                     <i class="bi bi-search me-1"></i>Filtrer
                 </button>
             </div>
-            <div class="col-md-6 text-end">
-                <a href="{{ url_for('banking.pos_work_periods') }}" class="btn btn-outline-secondary">
+            <div class="col-md-2 text-end">
+                <a href="{{ url_for('banking.pos_work_periods') }}" class="btn btn-outline-secondary w-100">
                     <i class="bi bi-calendar-today me-1"></i>Aujourd'hui
                 </a>
             </div>
         </form>
+        
+        {% if libelle_periode %}
+        <div class="mt-2 text-muted">
+            <small>
+                <i class="bi bi-info-circle me-1"></i>
+                Affichage : <strong>{{ libelle_periode }}</strong> 
+                ({{ periods|length }} période{{ 's' if periods|length > 1 else '' }})
+            </small>
+        </div>
+        {% endif %}
     </div>
 </div>
 
-<!-- Liste des périodes (comme dans la capture Loyverse) -->
+<!-- Liste des périodes -->
 <div class="card shadow-sm">
     <div class="card-body">
         <div class="table-responsive">
@@ -60,7 +116,7 @@
                     <tr class="period-row" 
                         data-period-id="{{ period.id }}" 
                         style="cursor: pointer;">
-                        <td><strong>{{ period.pdv_id }}</strong></td>
+                        <td><strong>{{ period.nom_pdv or period.pdv_id }}</strong></td>
                         <td>{{ period.date_debut.strftime('%d %b. %Y à %H:%M') }}</td>
                         <td>
                             {% if period.date_fin %}
@@ -86,7 +142,7 @@
                     {% else %}
                     <tr>
                         <td colspan="6" class="text-center text-muted py-4">
-                            Aucune période de travail pour cette date
+                            Aucune période de travail pour cette période
                         </td>
                     </tr>
                     {% endfor %}
@@ -209,7 +265,7 @@
                         </div>
                     </div>
 
-                    <!-- Sidebar résumé (comme dans la capture) -->
+                    <!-- Sidebar résumé -->
                     <div class="col-md-4">
                         <div class="card bg-light border-0 sticky-top" style="top: 0;">
                             <div class="card-body">
@@ -299,7 +355,6 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Clic sur une ligne du tableau
     document.querySelectorAll('.period-row').forEach(row => {
         row.addEventListener('click', function() {
             const periodId = this.dataset.periodId;
@@ -312,33 +367,21 @@ function formatCHF(montant) {
     return 'CHF ' + parseFloat(montant).toFixed(2).replace('.', ',');
 }
 
-function formatMontantSigned(montant) {
-    const val = parseFloat(montant);
-    if (val < 0) {
-        return '<span class="text-danger">-CHF ' + Math.abs(val).toFixed(2).replace('.', ',') + '</span>';
-    }
-    return 'CHF ' + val.toFixed(2).replace('.', ',');
-}
-
 function openReportModal(periodId) {
-    // Afficher un loader
     document.getElementById('modalPeriodId').textContent = 'Chargement...';
     
     const modal = new bootstrap.Modal(document.getElementById('reportModal'));
     modal.show();
     
-    // ✅ URL corrigée : /pos/work-periods/ (avec un 's')
     fetch(`/pos/work-periods/${periodId}/json`)
         .then(response => response.json())
         .then(data => {
-            // Infos générales
             document.getElementById('modalPeriodId').textContent = data.id;
             document.getElementById('modalMagasin').textContent = data.magasin || '';
             document.getElementById('modalPdv').textContent = data.pdv || '';
             document.getElementById('modalDateDebut').textContent = data.date_debut || '';
             document.getElementById('modalDateFin').textContent = data.date_fin || 'En cours...';
             
-            // Badge statut
             const badge = document.getElementById('modalStatusBadge');
             if (data.status === 'Fermé') {
                 badge.className = 'badge bg-success me-2';
@@ -348,7 +391,6 @@ function openReportModal(periodId) {
                 badge.textContent = 'Ouvert';
             }
             
-            // Tiroir-caisse
             document.getElementById('modalEspeceDepart').textContent = formatCHF(data.especes_de_depart || 0);
             document.getElementById('modalEspeceVentes').textContent = formatCHF(data.especes_ventes || 0);
             document.getElementById('modalEspeceRemboursements').textContent = formatCHF(data.especes_remboursements || 0);
@@ -367,14 +409,12 @@ function openReportModal(periodId) {
                 diffEl.innerHTML = '<span class="text-success">CHF 0,00 <i class="bi bi-check-circle"></i></span>';
             }
             
-            // Récapitulatif des ventes
             document.getElementById('modalVentesBrutes').textContent = formatCHF(data.ventes_brutes || 0);
             document.getElementById('modalRemboursements').textContent = formatCHF(data.remboursements || 0);
             document.getElementById('modalReductions').textContent = formatCHF(data.reductions || 0);
             document.getElementById('modalVentesNettes').textContent = formatCHF(data.ventes_nettes || 0);
             document.getElementById('modalTaxes').textContent = formatCHF(data.taxes_total || 0);
             
-            // Modes de paiement
             let modesHTML = '<table class="table table-sm"><tbody>';
             if (data.ventes_par_mode && data.ventes_par_mode.length > 0) {
                 data.ventes_par_mode.forEach(mode => {
@@ -386,7 +426,6 @@ function openReportModal(periodId) {
             modesHTML += '</tbody></table>';
             document.getElementById('modalModesPaiement').innerHTML = modesHTML;
             
-            // Mouvements
             if (data.mouvements && data.mouvements.length > 0) {
                 let mouvHTML = '<table class="table table-sm"><tbody>';
                 data.mouvements.forEach(m => {
@@ -404,10 +443,8 @@ function openReportModal(periodId) {
                 document.getElementById('modalMouvements').innerHTML = '<p class="text-muted text-center">Aucun mouvement</p>';
             }
             
-            // Actions dans le footer
             let actionsHTML = '';
             if (data.status === 'Ouvert') {
-                // ✅ URL corrigée : /pos/work-periods/ (avec un 's')
                 actionsHTML += `<a href="/pos/work-periods/${data.id}/cash-movement" class="btn btn-outline-primary me-2">
                     <i class="bi bi-cash-stack me-1"></i>Mouvement d'espèces
                 </a>`;
@@ -417,7 +454,6 @@ function openReportModal(periodId) {
             }
             document.getElementById('modalActions').innerHTML = actionsHTML;
             
-            // ===== SIDEBAR (résumé) =====
             document.getElementById('sidebarPeriodId').textContent = data.id;
             document.getElementById('sidebarMagasin').textContent = data.magasin || '';
             document.getElementById('sidebarPdv').textContent = data.pdv || '';
