@@ -1112,6 +1112,7 @@ class DatabaseManager:
                     prix_unitaire DECIMAL(10,2) DEFAULT 0,
                     total_ligne DECIMAL(10,2) DEFAULT 0,
                     taux_taxe_applique DECIMAL(5,2) DEFAULT 0,
+                    commentaire VARCHAR(255) NULL,
                     FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE,
                     FOREIGN KEY (article_id) REFERENCES pos_articles(id),
                     FOREIGN KEY (variante_id) REFERENCES pos_variantes(id) ON DELETE SET NULL,
@@ -17094,7 +17095,8 @@ class ReceiptPOS:
                         'prix_ttc': prix_ttc,
                         'total_ligne_ttc': total_ligne_ttc,
                         'ligne_ht_brut': ligne_ht_brut,
-                        'taux_taxe': taux_taxe
+                        'taux_taxe': taux_taxe,
+                        'commentaire': item.get('commentaire', '') or '',
                     })
                 
                 # 2. Calcul de la réduction (Appliquée sur le montant TTC global)
@@ -17174,13 +17176,14 @@ class ReceiptPOS:
                     cursor.execute("""
                         INSERT INTO pos_receipt_items 
                         (receipt_id, article_id, nom_article, variante_id, quantite, prix_unitaire, 
-                         total_ligne, taux_taxe_applique)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                         total_ligne, taux_taxe_applique, commentaire)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         receipt_id, item['article_id'], item['nom_article'], item['variante_id'],
                         item['quantite'], float(item['prix_ttc']), # Prix TTC pour traçabilité
                         float(item['total_ligne_ttc']),            # Total TTC pour stats clients
-                        float(item['taux_taxe'])
+                        float(item['taux_taxe']),                   # Taux de taxe appliqué
+                        item.get('commentaire')                     # Commentaire sur l'article
                     ))
                     
                     cursor.execute("""
@@ -17281,25 +17284,45 @@ class ReceiptPOS:
                         'quantite': qte,
                         'prix_ttc': prix_ttc,
                         'total_ligne_ttc': total_ligne_ttc,
-                        'taux_taxe': taux_taxe
+                        'taux_taxe': taux_taxe,
+                        'commentaire': item.get('commentaire', '') or '',
                     })
                 
                 total_collecte = ventes_brutes_ht + total_taxes
                 recu_numero = f"O-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
-                
+                reduction_ttc = Decimal('0')
+                reduction_ht = Decimal('0')
+                if data.get('discount_id'):
+                    cursor.execute("SELECT * FROM pos_discounts WHERE id = %s", (data['discount_id'],))
+                    discount = cursor.fetchone()
+                    if discount:
+                        total_ttc_global = sum(i['total_ligne_ttc'] for i in items_data)
+                        if discount['type_reduction'] == 'percentage':
+                            reduction_ttc = total_ttc_global * (Decimal(str(discount['valeur'])) / Decimal('100'))
+                        else:
+                            reduction_ttc = Decimal(str(discount['valeur']))
+                        # HT de la réduction
+                        if total_taxes > 0 and ventes_brutes_ht > 0:
+                            taux_moyen = (total_taxes / ventes_brutes_ht) * 100
+                            reduction_ht = reduction_ttc / (Decimal('1') + taux_moyen/Decimal('100'))
+                        else:
+                            reduction_ht = reduction_ttc
                 cursor.execute("""
                     INSERT INTO pos_receipts 
                     (utilisateur_id, date, recu_numero, nom_ticket, description, receipt_type,
-                    ventes_brutes, ventes_nettes, taxes, total_collecte,
+                    ventes_brutes, reduction, ventes_nettes, taxes, total_collecte,
                     restaurant_option_id, pdv, magasin, nom_du_caissier,
-                    nom_du_client, id_client, status)
-                    VALUES (%s, NOW(), %s, %s, %s, 'Vente', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Ouvert')
+                    nom_du_client, id_client, discount_id, discount_amount, status)
+                    VALUES (%s, NOW(), %s, %s, %s, 'Vente', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Ouvert')
                 """, (
                     user_id, recu_numero,
                     data.get('nom_ticket', ''), data.get('commentaire', ''),
-                    float(ventes_brutes_ht), float(ventes_brutes_ht), float(total_taxes), float(total_collecte),
+                    float(ventes_brutes_ht), float(reduction_ht), 
+                    float(ventes_brutes_ht - reduction_ht), float(total_taxes), 
+                    float(total_collecte - float(reduction_ttc)),
                     data.get('restaurant_option_id'), data.get('pdv'), data.get('magasin'),
-                    data.get('nom_du_caissier'), data.get('nom_du_client'), data.get('id_client')
+                    data.get('nom_du_caissier'), data.get('nom_du_client'), data.get('id_client'),
+                    data.get('discount_id'), float(reduction_ttc)
                 ))
                 receipt_id = cursor.lastrowid
                 
@@ -17307,8 +17330,8 @@ class ReceiptPOS:
                     cursor.execute("""
                         INSERT INTO pos_receipt_items 
                         (receipt_id, article_id, nom_article, variante_id, quantite, prix_unitaire, 
-                        total_ligne, taux_taxe_applique)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        total_ligne, taux_taxe_applique, commentaire)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         receipt_id, item['article_id'], item['nom_article'], item['variante_id'],
                         item['quantite'], float(item['prix_ttc']),

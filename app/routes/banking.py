@@ -11763,45 +11763,108 @@ def pos_commandes_en_cours():
 @bp.route('/pos/stats/by-article')
 @login_required
 def pos_stats_by_article():
-    """Statistiques des ventes par article"""
+    """Statistiques des ventes par article — avec diagnostic"""
     date_from = request.args.get('date_from', '')
     date_to = request.args.get('date_to', '')
+    search = request.args.get('search', '').strip()
+    debug = request.args.get('debug', '')  # Ajoute ?debug=1 à l'URL pour voir les infos
     
     try:
-        receipts = g.models.receipt_pos_model.get_all(
-            user_id=current_user.id,
-            date_from=date_from,
-            date_to=date_to
-        )
-        
-        # Agréger par article
-        article_stats = {}
-        for receipt in receipts:
-            for item in receipt.get('items', []):
-                article_id = item.get('article_id')
-                if article_id not in article_stats:
-                    article_stats[article_id] = {
-                        'name': item.get('nom_article', 'Inconnu'),
-                        'times_sold': 0,
-                        'total_qty': 0,
-                        'total_revenue': 0.0
-                    }
+        with g.db.get_cursor(dictionary=True) as cursor:
+            # === DIAGNOSTIC ===
+            debug_info = {}
+            if debug:
+                cursor.execute("SELECT COUNT(*) as total FROM pos_receipts WHERE utilisateur_id = %s", (current_user.id,))
+                debug_info['total_receipts'] = cursor.fetchone()['total']
                 
-                article_stats[article_id]['times_sold'] += 1
-                article_stats[article_id]['total_qty'] += item.get('quantite', 1)
-                article_stats[article_id]['total_revenue'] += float(item.get('total_ligne', 0) or 0)
-        
-        articles = sorted(article_stats.values(), key=lambda x: x['total_revenue'], reverse=True)
+                cursor.execute("""
+                    SELECT receipt_type, status, COUNT(*) as nb 
+                    FROM pos_receipts 
+                    WHERE utilisateur_id = %s 
+                    GROUP BY receipt_type, status
+                """, (current_user.id,))
+                debug_info['receipt_types'] = cursor.fetchall()
+                
+                cursor.execute("SELECT COUNT(*) as total FROM pos_receipt_items", ())
+                debug_info['total_items'] = cursor.fetchone()['total']
+                
+                cursor.execute("""
+                    SELECT COUNT(DISTINCT ri.receipt_id) as receipts_with_items
+                    FROM pos_receipt_items ri
+                    INNER JOIN pos_receipts r ON ri.receipt_id = r.id
+                    WHERE r.utilisateur_id = %s
+                """, (current_user.id,))
+                debug_info['receipts_with_items'] = cursor.fetchone()['receipts_with_items']
+            
+            # === REQUÊTE PRINCIPALE (simplifiée pour debug) ===
+            query = """
+                SELECT 
+                    ri.article_id,
+                    ri.nom_article,
+                    c.nom_categorie AS category,
+                    COUNT(DISTINCT r.id) AS times_sold,
+                    SUM(ri.quantite) AS total_qty,
+                    SUM(ri.total_ligne) AS total_revenue,
+                    AVG(ri.prix_unitaire) AS prix_moyen
+                FROM pos_receipt_items ri
+                INNER JOIN pos_receipts r ON ri.receipt_id = r.id
+                LEFT JOIN pos_articles a ON ri.article_id = a.id
+                LEFT JOIN pos_categories c ON a.id_categorie = c.id
+                WHERE r.utilisateur_id = %s
+            """
+            params = [current_user.id]
+            
+            # Filtres optionnels (commentés pour debug)
+            if not debug:
+                query += " AND r.status != 'Annulé'"
+                query += " AND r.receipt_type = 'Vente'"
+            
+            if date_from:
+                query += " AND DATE(r.date) >= %s"
+                params.append(date_from)
+            if date_to:
+                query += " AND DATE(r.date) <= %s"
+                params.append(date_to)
+            if search:
+                query += " AND ri.nom_article LIKE %s"
+                params.append(f"%{search}%")
+            
+            query += " GROUP BY ri.article_id, ri.nom_article, c.nom_categorie"
+            query += " ORDER BY total_revenue DESC"
+            
+            cursor.execute(query, params)
+            articles = cursor.fetchall()
+            
+            # Convertir en float et calculer totaux
+            total_revenue = 0
+            total_qty = 0
+            total_times = 0
+            for a in articles:
+                a['total_revenue'] = float(a['total_revenue'] or 0)
+                a['total_qty'] = int(a['total_qty'] or 0)
+                a['times_sold'] = int(a['times_sold'] or 0)
+                a['prix_moyen'] = float(a['prix_moyen'] or 0)
+                total_revenue += a['total_revenue']
+                total_qty += a['total_qty']
+                total_times += a['times_sold']
+                
     except Exception as e:
-        logger.error(f"Erreur stats par article: {e}")
+        logger.error(f"Erreur stats par article: {e}", exc_info=True)
         articles = []
+        total_revenue = total_qty = total_times = 0
+        debug_info = {'error': str(e)}
     
-    return render_template('pos/by_article.html',
-                         articles=articles,
-                         date_from=date_from,
-                         date_to=date_to)
-
-
+    return render_template(
+        'pos/by_article.html',
+        articles=articles,
+        date_from=date_from,
+        date_to=date_to,
+        search=search,
+        total_revenue=total_revenue,
+        total_qty=total_qty,
+        total_times=total_times,
+        debug_info=debug_info if debug else None,
+    )
 @bp.route('/pos/stats/by-category')
 @login_required
 def pos_stats_by_category():
@@ -12512,6 +12575,21 @@ def pos_vente_caisse():
     if not periode:
         return redirect(url_for('banking.pos_vente'))
 
+    # ✅ AJOUT : récupérer les réductions actives
+    try:
+        discounts_raw = g.models.discount_pos_model.get_all(current_user.id)
+        discounts = [
+            {
+                'id': d['id'], 
+                'nom': d['nom'], 
+                'type_reduction': d['type_reduction'], 
+                'valeur': float(d['valeur'])
+            }
+            for d in discounts_raw if d.get('est_actif')
+        ]
+    except Exception:
+        discounts = []
+
     return render_template(
         'pos/vente.html',
         etat='caisse',
@@ -12519,6 +12597,7 @@ def pos_vente_caisse():
         periode=periode,
         restaurant_options=g.models.restaurant_option_pos_model.get_all(current_user.id),
         modes_paiement=g.models.mode_paiement_pos_model.get_all(current_user.id),
+        discounts=discounts,   # ✅ AJOUT
         detail=None,
     )
 
@@ -12542,6 +12621,12 @@ def pos_vente_articles_json():
         mods = g.models.article_pos_model.get_linked_modifiers(a['id'])
         for m in mods:
             m['prix_modificateur'] = f(m.get('prix_modificateur'))
+            # ✅ OPTIONS du modificateur
+            opts = g.models.option_modificateur_pos_model.get_by_modifier(m['id'])
+            m['options'] = [
+                {'id': o['id'], 'nom_option': o['nom_option'], 'prix_supplement': f(o.get('prix_supplement'))}
+                for o in opts
+            ]
         a['modificateurs'] = mods
 
     return jsonify({
@@ -12641,13 +12726,15 @@ def pos_vente_open_tickets_json():
                     'extras': '',
                     'prix': float(item['prix_unitaire'] or 0),
                     'qty': int(item['quantite'] or 1),
-                    'taux': float(item.get('taux_taxe_applique') or 0)
+                    'taux': float(item.get('taux_taxe_applique') or 0),
+                    'commentaire': item.get('commentaire') or ''
                 })
         
         result.append({
             'id': c['id'],
             'nom': c.get('nom_ticket') or c.get('recu_numero'),
             'commentaire': c.get('description') or '',
+            'restaurant_option_id': c.get('restaurant_option_id'),
             'lines': lines,
             'client': None,
             'total': float(c.get('total_collecte') or 0)

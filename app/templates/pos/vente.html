@@ -211,12 +211,19 @@ button{cursor:pointer; border:none; background:none}
         <option value="">— Option de restauration —</option>
         {% for o in restaurant_options %}<option value="{{ o.id }}">{{ o.nom }}</option>{% endfor %}
       </select>
+      <select id="discountSelect" onchange="renderTicket()">
+        <option value="">— Réduction —</option>
+        {% for d in discounts %}
+        <option value="{{ d.id }}">{{ d.nom }}{% if d.type_reduction == 'percentage' %} ({{ d.valeur }}%){% else %} (CHF {{ d.valeur }}){% endif %}</option>
+        {% endfor %}
+      </select>
       <span class="client-chip" id="clientChip"></span>
     </div>
     <div class="lines" id="ticketLines"></div>
     <div class="totals">
       <div class="row"><span>Sous-total TTC</span><span id="tSousTotal">CHF 0.00</span></div>
       <div id="tTaxesDetail" style="font-size:13px; color:#666; margin:4px 0;"></div>
+      <div class="row" id="tReductionRow" style="display:none; color:#e53935"><span>Réduction</span><span id="tReduction">- CHF 0.00</span></div>
       <div class="row grand" style="margin-top:8px"><span>TOTAL</span><span id="tTotal">CHF 0.00</span></div>
     </div>
     <div class="bottombar">
@@ -237,6 +244,7 @@ button{cursor:pointer; border:none; background:none}
     <label>Prix unitaire (CHF)</label><input type="number" step="0.05" id="maPrix">
   </div>
   <div class="field"><label>Quantité</label><input type="number" id="maQty" value="1" min="1"></div>
+  <div class="field"><label>Commentaire</label><input type="text" id="maCommentaire" placeholder="Saisissez un commentaire"></div>
   <button class="btn" onclick="confirmAddArticle()">Ajouter au ticket</button>
 </div></div>
 {# ---------- Modale : paiement ---------- #}
@@ -372,10 +380,11 @@ button{cursor:pointer; border:none; background:none}
   const URL_PERIOD_JSON = {{ (url_for('banking.pos_work_period_json', period_id=periode.id))|tojson }};
   const URL_CASH_MOVEMENT = {{ (url_for('banking.pos_add_cash_movement', period_id=periode.id))|tojson }};
   const MODES = {{ modes_paiement|tojson }};
+  const DISCOUNTS = {{ discounts|tojson }};
   const URL_OPEN_TICKETS = "{{ url_for('banking.pos_vente_open_tickets_json') }}";
 
   let ARTICLES = [], CATS = [];
-  let ticket = JSON.parse(localStorage.getItem('pos_current_ticket') || '{"lines":[],"client":null,"nom":"","commentaire":""}');
+  let ticket = JSON.parse(localStorage.getItem('pos_current_ticket') || '{"lines":[],"client":null,"nom":"","commentaire":"","restaurant_option_id":null}');
   let parked = JSON.parse(localStorage.getItem('pos_parked_tickets') || '[]');
   let pendingArticle = null;
   let payments = [];
@@ -414,6 +423,18 @@ button{cursor:pointer; border:none; background:none}
         <span style="color:#888">${fmt(data.tva)}</span>
       </div>`;
     }).join('');
+  }
+
+  /* ---------- Réduction ---------- */
+  function calcReduction(){
+    const sel = $('discountSelect');
+    if(!sel || !sel.value) return 0;
+    const d = DISCOUNTS.find(x => x.id == sel.value);
+    if(!d) return 0;
+    const { totalTTC } = calculTVA();
+    return d.type_reduction === 'percentage'
+      ? totalTTC * (parseFloat(d.valeur)||0) / 100
+      : Math.min(totalTTC, parseFloat(d.valeur)||0);
   }
 
   /* ---------- Chargement ---------- */
@@ -456,13 +477,31 @@ button{cursor:pointer; border:none; background:none}
       ? '<label style="font-size:13px;color:#888">Variante</label><select id="maVar">' +
         a.variantes.map(v => `<option value="${v.id}" data-prix="${v.prix}">${v.option_name||''} ${v.nom} (${fmt(v.prix)})</option>`).join('') + '</select>'
       : '';
+    
+    // ✅ MODIFICATEURS AVEC OPTIONS (style Loyverse)
     $('maMods').innerHTML = (a.modificateurs||[]).length
       ? '<label style="font-size:13px;color:#888">Modificateurs</label>' +
-        a.modificateurs.map(m => `<label style="display:block;margin:4px 0"><input type="checkbox" class="maMod" data-prix="${m.prix_modificateur}" value="${m.nom_modificateur}"> ${m.nom_modificateur} (+${fmt(m.prix_modificateur)})</label>`).join('')
+        a.modificateurs.map(m => {
+          if ((m.options||[]).length) {
+            // Modificateur avec options : liste de choix (radio)
+            return `<div style="margin:6px 0;border:1px solid #eee;border-radius:8px;padding:10px">
+              <div style="font-weight:600;font-size:14px;margin-bottom:4px">${m.nom_modificateur}</div>
+              ${m.options.map(o => `
+                <label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;padding:8px 10px;border:1px solid #e8e8e8;border-radius:6px;cursor:pointer">
+                  <span><input type="radio" name="mod_${m.id}" class="maModOpt" data-prix="${o.prix_supplement}" value="${o.nom_option}"> ${o.nom_option}</span>
+                  <span style="color:#888;font-size:13px">${o.prix_supplement > 0 ? '+' + fmt(o.prix_supplement) : ''}</span>
+                </label>`).join('')}
+            </div>`;
+          }
+          // Modificateur simple sans options : case à cocher
+          return `<label style="display:block;margin:4px 0"><input type="checkbox" class="maMod" data-prix="${m.prix_modificateur}" value="${m.nom_modificateur}"> ${m.nom_modificateur} (+${fmt(m.prix_modificateur)})</label>`;
+        }).join('')
       : '';
+    
     $('maPrixWrap').style.display = a.is_variable_price ? 'block' : 'none';
     $('maPrix').value = a.prix_unitaire || 0;
     $('maQty').value = 1;
+    $('maCommentaire').value = '';
     $('modalArticle').classList.add('show');
   }
 
@@ -481,56 +520,75 @@ button{cursor:pointer; border:none; background:none}
       prix += parseFloat(m.dataset.prix); 
       extras.push(m.value); 
     });
+    // ✅ Options choisies dans les modificateurs
+    document.querySelectorAll('.maModOpt:checked').forEach(o => { 
+      prix += parseFloat(o.dataset.prix||0); 
+      extras.push(o.value); 
+    });
     const qty = parseInt($('maQty').value||1);
+    const commentaire = $('maCommentaire').value.trim();
     const key = a.id + '_' + (varianteId||0) + '_' + extras.join('+');
     const existing = ticket.lines.find(l => l.key === key);
-    if (existing) existing.qty += qty;
-    else ticket.lines.push({ 
-      key, article_id:a.id, variante_id:varianteId, nom:a.nom_article,
-      extras:extras.join(', '), prix, qty, taux:a.taux_taxe||0 
-    });
+    if (existing) {
+      existing.qty += qty;
+      if (commentaire) existing.commentaire = commentaire;
+    } else {
+      ticket.lines.push({ 
+        key, article_id:a.id, variante_id:varianteId, nom:a.nom_article,
+        extras:extras.join(', '), prix, qty, taux:a.taux_taxe||0, commentaire
+      });
+    }
     save(); 
     renderTicket(); 
     closeModal('modalArticle');
   }
 
   /* ---------- Ticket ---------- */
-  function renderTicket(){
-    $('ticketLines').innerHTML = ticket.lines.map((l,i) => `
-      <div class="line">
-        <div class="l1">
-          <span class="lname">${l.nom}${l.extras?` <span class="meta">(${l.extras})</span>`:''}</span>
-          <span class="lprice">${fmt(l.prix*l.qty)}</span>
-        </div>
-        <div class="l2">
-          <button class="qtybtn" onclick="chgQty(${i},-1)">−</button>
-          <span>${l.qty}</span>
-          <button class="qtybtn" onclick="chgQty(${i},1)">+</button>
-          <span class="meta">${fmt(l.prix)} / unité (TTC)</span>
-          <button class="del" onclick="delLine(${i})">✕</button>
-        </div>
-      </div>`).join('') || '<p style="padding:20px;color:#888;text-align:center">Ticket vide</p>';
-    
-    const { totalTTC, tvaParTaux } = calculTVA();
-    const tips = parseFloat($('tips').value) || 0;
-    
-    $('ticketNomDisplay').textContent = ticket.nom || 'Ticket';
-    $('tSousTotal').textContent = fmt(totalTTC);
-    $('tTaxesDetail').innerHTML = tvaHTMLDetail(tvaParTaux);
-    $('tTotal').textContent = fmt(totalTTC + tips);
-    $('payTotal').textContent = fmt(totalTTC + tips);
-    $('ticketCount').textContent = ticket.lines.reduce((s,l)=>s+l.qty,0);
-    
-    const chip = $('clientChip');
-    if (ticket.client){ 
-      chip.style.display='inline-flex'; 
-      chip.innerHTML = `👤 ${ticket.client.nom_client} ✕`; 
-      chip.onclick = removeClient; 
-    } else {
-      chip.style.display='none';
-    }
+ function renderTicket(){
+  $('ticketLines').innerHTML = ticket.lines.map((l,i) => `
+    <div class="line">
+      <div class="l1">
+        <span class="lname">${l.nom}${l.extras?` <span class="meta">(${l.extras})</span>`:''}</span>
+        <span class="lprice">${fmt(l.prix*l.qty)}</span>
+      </div>
+      ${l.commentaire ? `<div class="meta" style="margin:2px 0">💬 ${l.commentaire}</div>` : ''}
+      <div class="l2">
+        <button class="qtybtn" onclick="chgQty(${i},-1)">−</button>
+        <span>${l.qty}</span>
+        <button class="qtybtn" onclick="chgQty(${i},1)">+</button>
+        <span class="meta">${fmt(l.prix)} / unité (TTC)</span>
+        <button class="del" onclick="delLine(${i})">✕</button>
+      </div>
+    </div>`).join('') || '<p style="padding:20px;color:#888;text-align:center">Ticket vide</p>';
+  
+  const { totalTTC, tvaParTaux } = calculTVA();
+  const reduction = calcReduction();
+  const tips = parseFloat($('tips').value) || 0;
+  const total = Math.max(0, totalTTC - reduction) + tips;
+  
+  $('ticketNomDisplay').textContent = ticket.nom || 'Ticket';
+  $('tSousTotal').textContent = fmt(totalTTC);
+  $('tTaxesDetail').innerHTML = tvaHTMLDetail(tvaParTaux);
+  $('tReductionRow').style.display = reduction > 0 ? 'flex' : 'none';
+  $('tReduction').textContent = '- ' + fmt(reduction);
+  $('tTotal').textContent = fmt(total);
+  $('payTotal').textContent = fmt(total);
+  $('ticketCount').textContent = ticket.lines.reduce((s,l)=>s+l.qty,0);
+  
+  // ✅ Restaurer l'option de restauration dans le select
+  if (ticket.restaurant_option_id) {
+    $('restoOption').value = ticket.restaurant_option_id;
   }
-
+  
+  const chip = $('clientChip');
+  if (ticket.client){ 
+    chip.style.display='inline-flex'; 
+    chip.innerHTML = `👤 ${ticket.client.nom_client} ✕`; 
+    chip.onclick = removeClient; 
+  } else {
+    chip.style.display='none';
+  }
+}
   function chgQty(i,d){ 
     ticket.lines[i].qty += d; 
     if(ticket.lines[i].qty<=0) ticket.lines.splice(i,1); 
@@ -545,15 +603,18 @@ button{cursor:pointer; border:none; background:none}
   }
 
   function clearTicket(){ 
-    ticket = {lines:[], client:null, nom:'', commentaire:''}; 
+    ticket = {lines:[], client:null, nom:'', commentaire:'', restaurant_option_id:null}; 
+    $('restoOption').value='';
+    if ($('discountSelect')) $('discountSelect').value='';
     save(); 
     renderTicket(); 
     $('menu').classList.remove('show'); 
   }
 
   function newTicket(){ 
-    ticket = {lines:[], client:null, nom:'', commentaire:''}; 
+    ticket = {lines:[], client:null, nom:'', commentaire:'', restaurant_option_id:null}; 
     $('restoOption').value=''; 
+    if ($('discountSelect')) $('discountSelect').value='';
     $('tips').value=0; 
     save(); 
     renderTicket(); 
@@ -592,11 +653,13 @@ button{cursor:pointer; border:none; background:none}
         article_id:l.article_id, 
         variante_id:l.variante_id, 
         quantite:l.qty, 
-        prix_unitaire:l.prix 
+        prix_unitaire:l.prix,
+        commentaire:l.commentaire || ''
       })),
       nom_ticket: ticket.nom,
       commentaire: ticket.commentaire || '',
       restaurant_option_id: parseInt($('restoOption').value) || null,
+      discount_id: parseInt($('discountSelect').value) || null,
       id_client: ticket.client ? ticket.client.id : null,
       nom_du_client: ticket.client ? ticket.client.nom_client : '',
     };
@@ -619,9 +682,10 @@ button{cursor:pointer; border:none; background:none}
     }
   }
 
-  /* ---------- Tickets ouverts (attente) ---------- */
+  /* ---------- Tickets ouverts ---------- */
   function parkTicket(){
     if(!ticket.lines.length) return;
+    ticket.restaurant_option
     parked.push({
       ...ticket, 
       saved_at:new Date().toLocaleTimeString('fr-CH',{hour:'2-digit',minute:'2-digit'})
@@ -667,9 +731,15 @@ button{cursor:pointer; border:none; background:none}
     
     if(ticket.lines.length) parkTicket();
     
-    ticket = { lines: t.lines, client: t.client, nom: t.nom, commentaire: t.commentaire };
+    ticket = { 
+      lines: t.lines, 
+      client: t.client, 
+      nom: t.nom, 
+      commentaire: t.commentaire,
+      restaurant_option_id: t.restaurant_option_id || null  // ✅ Restaurer l'option
+    };
     save(); 
-    renderTicket();
+    renderTicket();  // ✅ renderTicket va restaurer l'option dans le select
     closeModal('modalParked');
     
     await fetch(`/pos/vente/open-ticket/${id}/delete`, { method:'POST' });
@@ -686,7 +756,7 @@ button{cursor:pointer; border:none; background:none}
     ticket = parked.splice(i,1)[0];
     localStorage.setItem('pos_parked_tickets', JSON.stringify(parked));
     save(); 
-    renderTicket(); 
+    renderTicket();  // ✅ renderTicket va restaurer l'option dans le select
     closeModal('modalParked');
   }
 
@@ -727,7 +797,7 @@ button{cursor:pointer; border:none; background:none}
     closeModal('modalClient'); 
   }
 
-  /* ---------- Paiement (multi-modes + TVA détaillée) ---------- */
+  /* ---------- Paiement ---------- */
   function openPayModal(){
     if(!ticket.lines.length) return;
     payments = [];
@@ -740,7 +810,7 @@ button{cursor:pointer; border:none; background:none}
 
   function totalDue(){
     const { totalTTC } = calculTVA();
-    return totalTTC + (parseFloat($('tips').value)||0);
+    return Math.max(0, totalTTC - calcReduction()) + (parseFloat($('tips').value)||0);
   }
 
   function addPayment(modeId){
@@ -812,13 +882,15 @@ button{cursor:pointer; border:none; background:none}
         article_id:l.article_id, 
         variante_id:l.variante_id, 
         quantite:l.qty, 
-        prix_unitaire:l.prix 
+        prix_unitaire:l.prix,
+        commentaire:l.commentaire || ''
       })),
       payments: pays,
       tips: parseFloat($('tips').value)||0,
       nom_ticket: ticket.nom,
       commentaire: ticket.commentaire || '',
       restaurant_option_id: parseInt($('restoOption').value) || null,
+      discount_id: parseInt($('discountSelect').value) || null,
       id_client: ticket.client ? ticket.client.id : null,
       nom_du_client: ticket.client ? ticket.client.nom_client : '',
     };
@@ -948,6 +1020,10 @@ button{cursor:pointer; border:none; background:none}
   });
 
   init();
+  $('restoOption').addEventListener('change', function() {
+  ticket.restaurant_option_id = this.value ? parseInt(this.value) : null;
+  save();
+});
 </script>
 
 {% endif %}
