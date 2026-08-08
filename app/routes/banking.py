@@ -12410,19 +12410,110 @@ def pos_import_payments(df):
 @bp.route('/pos/stats')
 @login_required
 def pos_stats():
-    """Stats générales : par mode de paiement + mensuelles."""
-    receipts = g.models.receipt_pos_model.get_all(user_id=current_user.id)
+    """Récapitulatif des ventes — style Loyverse"""
+    now = datetime.now()
+    date_from = request.args.get('date_from') or now.replace(day=1).strftime('%Y-%m-%d')
+    date_to   = request.args.get('date_to') or now.strftime('%Y-%m-%d')
+    employee  = request.args.get('employee', '').strip()
 
-    # Par mode de paiement
-    payment_stats = {}
-    for r in receipts:
-        for p in r.get('payments', []):
-            nom     = p.get('mode_paiement_nom', 'Inconnu')
-            montant = safe_float(p.get('montant'))
-            if nom not in payment_stats:
-                payment_stats[nom] = {'count': 0, 'total': 0.0}
-            payment_stats[nom]['count'] += 1
-            payment_stats[nom]['total'] += montant
+    # Période précédente (même durée) pour les % d'évolution
+    d_from = datetime.strptime(date_from, '%Y-%m-%d')
+    d_to   = datetime.strptime(date_to, '%Y-%m-%d')
+    nb_jours = (d_to - d_from).days + 1
+    prev_to   = d_from - timedelta(days=1)
+    prev_from = prev_to - timedelta(days=nb_jours - 1)
+
+    def agg(df, dt):
+        with g.db.get_cursor(dictionary=True) as cursor:
+            q = """
+                SELECT
+                  COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END),0) AS ventes_brutes,
+                  COALESCE(SUM(CASE WHEN receipt_type='Remboursement' THEN ABS(ventes_brutes) ELSE 0 END),0) AS remboursements,
+                  COALESCE(SUM(reduction),0) AS reductions,
+                  COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END),0) AS ventes_nettes,
+                  COALESCE(SUM(marge_brute),0) AS marge_brute,
+                  COALESCE(SUM(taxes),0) AS taxes,
+                  COALESCE(SUM(total_collecte),0) AS total_collecte,
+                  COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN 1 ELSE 0 END),0) AS nb_ventes
+                FROM pos_receipts
+                WHERE utilisateur_id=%s AND status!='Annulé'
+                  AND DATE(date) >= %s AND DATE(date) <= %s
+            """
+            params = [current_user.id, df, dt]
+            if employee:
+                q += " AND nom_du_caissier = %s"
+                params.append(employee)
+            cursor.execute(q, params)
+            row = cursor.fetchone()
+            return {
+                'ventes_brutes': float(row['ventes_brutes']), 'remboursements': float(row['remboursements']),
+                'reductions': float(row['reductions']), 'ventes_nettes': float(row['ventes_nettes']),
+                'marge_brute': float(row['marge_brute']), 'taxes': float(row['taxes']),
+                'total_collecte': float(row['total_collecte']), 'nb_ventes': int(row['nb_ventes']),
+            }
+
+    stats = agg(date_from, date_to)
+    prev  = agg(prev_from.strftime('%Y-%m-%d'), prev_to.strftime('%Y-%m-%d'))
+
+    def delta(cur, old):
+        return (cur - old) / old * 100 if old > 0 else None
+
+    deltas = {k: delta(stats[k], prev[k])
+              for k in ('ventes_brutes', 'remboursements', 'reductions', 'ventes_nettes', 'marge_brute')}
+
+    # --- Par jour ---
+    with g.db.get_cursor(dictionary=True) as cursor:
+        q = """
+            SELECT DATE(date) AS jour,
+              SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END) AS ventes_brutes,
+              SUM(CASE WHEN receipt_type='Remboursement' THEN ABS(ventes_brutes) ELSE 0 END) AS remboursements,
+              SUM(reduction) AS reductions,
+              SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END) AS ventes_nettes,
+              SUM(marge_brute) AS marge_brute,
+              SUM(taxes) AS taxes
+            FROM pos_receipts
+            WHERE utilisateur_id=%s AND status!='Annulé'
+              AND DATE(date) >= %s AND DATE(date) <= %s
+        """
+        params = [current_user.id, date_from, date_to]
+        if employee:
+            q += " AND nom_du_caissier=%s"
+            params.append(employee)
+        q += " GROUP BY DATE(date) ORDER BY jour"
+        cursor.execute(q, params)
+        daily = cursor.fetchall()
+
+    for d in daily:
+        for k in ('ventes_brutes', 'remboursements', 'reductions', 'ventes_nettes', 'marge_brute', 'taxes'):
+            d[k] = float(d[k] or 0)
+        d['marge_pct'] = (d['marge_brute'] / d['ventes_nettes'] * 100) if d['ventes_nettes'] else 0
+
+    max_brutes = max([d['ventes_brutes'] for d in daily] or [1]) or 1
+
+    # --- Par mode de paiement ---
+    with g.db.get_cursor(dictionary=True) as cursor:
+        q = """
+            SELECT COALESCE(mp.nom,'Inconnu') AS nom, COUNT(*) AS nb, SUM(p.montant) AS total
+            FROM pos_payments p
+            JOIN pos_receipts r ON r.id = p.receipt_id
+            LEFT JOIN pos_modes_paiement mp ON mp.id = p.mode_paiement_id
+            WHERE r.utilisateur_id=%s AND r.status!='Annulé'
+              AND DATE(r.date) >= %s AND DATE(r.date) <= %s
+        """
+        params = [current_user.id, date_from, date_to]
+        if employee:
+            q += " AND r.nom_du_caissier=%s"
+            params.append(employee)
+        q += " GROUP BY mp.nom ORDER BY total DESC"
+        cursor.execute(q, params)
+        payments = [{'nom': r['nom'], 'nb': int(r['nb']), 'total': float(r['total'])} for r in cursor.fetchall()]
+
+    employees = g.models.receipt_pos_model.get_unique_employees(current_user.id)
+
+    return render_template('pos/stats.html',
+                           stats=stats, deltas=deltas, daily=daily, max_brutes=max_brutes,
+                           payments=payments, employees=employees,
+                           date_from=date_from, date_to=date_to, employee=employee)
 
     # ✅ Mensuelles — gère datetime ET string
     monthly = {}
@@ -12458,6 +12549,7 @@ def pos_client_detail(client_id):
 
     visites = g.models.receipt_pos_model.get_by_client(client_id, limit=20)
     top_articles = g.models.receipt_pos_model.get_top_articles_client(client_id, limit=10)
+    total
     return render_template('pos/client_detail.html', 
                            client=client, visites=visites, top_articles=top_articles)
 

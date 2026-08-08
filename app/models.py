@@ -16850,6 +16850,136 @@ class ClientPOS:
             logger.error(f"Erreur création client POS: {e}")
             return None
 
+    def update(self, user_id:int, data: Dict) -> Optional[int]:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_clients
+                    SET nom_client = %s, numero_client = %s, telephone = %s,
+                        ville = %s, code_postal = %s, canton = %s, pays = %s, remarque = %s, code_client = %s, email = %s
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (
+                    data['nom_client'],
+                    data.get('numero_client'),
+                    data.get('telephone'),
+                    data.get('ville'),
+                    data.get('code_postal'),
+                    data.get('canton'),
+                    data.get('pays', 'Suisse'),
+                    data.get('remarque'),
+                    data.get('code_client'),
+                    data.get('email'),
+                    data['id'],
+                    user_id
+                ))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur mise à jour client POS: {e}")
+            return None
+
+    def get_by_id_with_stats(self, client_id: int, user_id: int) -> Optional[Dict]:
+            """
+            Récupère le client POS + ses statistiques :
+            - nombre_visites
+            - total_depense
+            - panier_moyen
+            - segment_client
+            - premiere_visite
+            - derniere_visite
+            - duree_fidelite
+            - frequence_visite
+            """
+            client = self.get_by_id(client_id, user_id)
+
+            if not client:
+                return None
+
+            stats = self.get_client_stats(client_id, user_id)
+
+            if stats:
+                client.update(stats)
+
+            self._prepare_client_for_template(client)
+
+            return client
+    
+    def get_client_stats(self, client_id: int, user_id: int) -> Optional[Dict]:
+        """
+        Calcule les statistiques du client à partir des reçus POS.
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT
+                        c.id,
+                        COALESCE(SUM(
+                            CASE 
+                                WHEN r.receipt_type = 'Vente' THEN r.total_collecte 
+                                ELSE 0 
+                            END
+                        ), 0) AS total_depense,
+
+                        COALESCE(SUM(
+                            CASE 
+                                WHEN r.receipt_type = 'Vente' THEN 1 
+                                ELSE 0 
+                            END
+                        ), 0) AS nombre_visites,
+
+                        MIN(
+                            CASE 
+                                WHEN r.receipt_type = 'Vente' THEN r.date 
+                            END
+                        ) AS premeire_visite,
+
+                        MAX(
+                            CASE 
+                                WHEN r.receipt_type = 'Vente' THEN r.date 
+                            END
+                        ) AS derniere_visite
+
+                    FROM pos_clients c
+                    LEFT JOIN pos_receipts r ON r.id_client = c.id
+                    WHERE c.id = %s
+                      AND c.utilisateur_id = %s
+                    GROUP BY c.id
+                """, (client_id, user_id))
+
+                row = cursor.fetchone()
+
+            if not row:
+                return {}
+
+            total_depense = float(row.get('total_depense') or 0)
+            nombre_visites = int(row.get('nombre_visites') or 0)
+
+            premeire_visite = row.get('premiere_visite')
+            derniere_visite = row.get('derniere_visite')
+
+            duree_jours = self._duree_en_jours(premiere_visite, derniere_visite)
+
+            # Nombre de mois approximatif, minimum 1 mois pour éviter division par zéro
+            months = max(duree_jours / 30.44, 1.0) if premeire_visite else 1.0
+
+            frequence_visite = round(nombre_visites / months, 1) if nombre_visites > 0 else 0.0
+            panier_moyen = round(total_depense / nombre_visites, 2) if nombre_visites > 0 else 0.0
+
+            row.update({
+                'total_depense': total_depense,
+                'nombre_visites': nombre_visites,
+                'panier_moyen': panier_moyen,
+                'duree_fidelite': duree_jours,
+                'frequence_visite': frequence_visite,
+            })
+
+            row['segment_client'] = self._calculer_segment(row)
+
+            return row
+
+        except Exception as e:
+            logger.error(f"Erreur calcul statistiques client POS: {e}")
+            return {}
+
     def get_all(self, user_id: int, limit: int = 100) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:

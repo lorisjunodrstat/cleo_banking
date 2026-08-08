@@ -1,0 +1,155 @@
+{% extends "pos.html" %}
+{% block title %}Récapitulatif des ventes{% endblock %}
+
+{% block page_header %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0"><i class="bi bi-graph-up me-2"></i>Récapitulatif des ventes</h2>
+    <a href="{{ url_for('banking.pos_stats_by_article') }}" class="btn btn-outline-primary">
+        <i class="bi bi-bar-chart me-1"></i>Ventes par article
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Filtres -->
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Du</label>
+                <input type="date" name="date_from" class="form-control" value="{{ date_from }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Au</label>
+                <input type="date" name="date_to" class="form-control" value="{{ date_to }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Employé</label>
+                <select name="employee" class="form-select">
+                    <option value="">Tous les employés</option>
+                    {% for e in employees %}
+                    <option value="{{ e }}" {% if employee == e %}selected{% endif %}>{{ e }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1"><i class="bi bi-filter me-1"></i>Filtrer</button>
+                <a href="{{ url_for('banking.pos_stats') }}" class="btn btn-outline-secondary"><i class="bi bi-x"></i></a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Cartes KPI -->
+<div class="row g-3 mb-4">
+    {% set kpis = [
+        ('Ventes brutes', stats.ventes_brutes, deltas.ventes_brutes),
+        ('Remboursements', stats.remboursements, deltas.remboursements),
+        ('Réductions', stats.reductions, deltas.reductions),
+        ('Ventes nettes', stats.ventes_nettes, deltas.ventes_nettes),
+        ('Marge brute', stats.marge_brute, deltas.marge_brute)
+    ] %}
+    {% for label, valeur, delta in kpis %}
+    <div class="col-md">
+        <div class="stat-box p-3 bg-light rounded border h-100">
+            <h6 class="text-muted mb-1">{{ label }}</h6>
+            <h4 class="mb-1">CHF {{ "%.2f"|format(valeur) }}</h4>
+            {% if delta is not none %}
+            <small class="{{ 'text-success' if delta >= 0 else 'text-danger' }}">
+                {{ "%+.2f"|format(delta) }}% vs période préc.
+            </small>
+            {% else %}
+            <small class="text-muted">—</small>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Graphique par jour -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-light"><strong>Ventes brutes par jour</strong></div>
+    <div class="card-body">
+        <div class="d-flex align-items-end justify-content-around" style="height:260px">
+            {% for d in daily %}
+            <div class="text-center" style="width:9%">
+                <div class="text-muted small mb-1">{{ "%.0f"|format(d.ventes_brutes) }}</div>
+                <div style="background:#8BC34A; height:{{ (d.ventes_brutes / max_brutes * 200)|round(0) }}px; min-height:2px; border-radius:3px 3px 0 0;"
+                     title="{{ d.jour.strftime('%d/%m/%Y') }} : CHF {{ "%.2f"|format(d.ventes_brutes) }}"></div>
+                <div class="small mt-1">{{ d.jour.strftime('%d %b') }}</div>
+            </div>
+            {% else %}
+            <div class="text-muted text-center w-100 align-self-center">Aucune vente sur la période</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <!-- Tableau par jour (style export Loyverse) -->
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-light"><strong>Détail par jour</strong></div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date</th>
+                                <th class="text-end">Ventes brutes</th>
+                                <th class="text-end">Remboursements</th>
+                                <th class="text-end">Réductions</th>
+                                <th class="text-end">Ventes nettes</th>
+                                <th class="text-end">Marge brute</th>
+                                <th class="text-center">Marge</th>
+                                <th class="text-end">Taxes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for d in daily|reverse %}
+                            <tr>
+                                <td>{{ d.jour.strftime('%d %b. %Y') }}</td>
+                                <td class="text-end">CHF {{ "%.2f"|format(d.ventes_brutes) }}</td>
+                                <td class="text-end">CHF {{ "%.2f"|format(d.remboursements) }}</td>
+                                <td class="text-end">CHF {{ "%.2f"|format(d.reductions) }}</td>
+                                <td class="text-end">CHF {{ "%.2f"|format(d.ventes_nettes) }}</td>
+                                <td class="text-end">CHF {{ "%.2f"|format(d.marge_brute) }}</td>
+                                <td class="text-center">{{ "%.0f"|format(d.marge_pct) }}%</td>
+                                <td class="text-end">CHF {{ "%.2f"|format(d.taxes) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="8" class="text-center text-muted py-4">Aucune donnée</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modes de paiement -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-light"><strong>Par mode de paiement</strong></div>
+            <div class="card-body p-0">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr><th>Mode</th><th class="text-center">Nb</th><th class="text-end">Total</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for p in payments %}
+                        <tr>
+                            <td>{{ p.nom }}</td>
+                            <td class="text-center">{{ p.nb }}</td>
+                            <td class="text-end fw-bold">CHF {{ "%.2f"|format(p.total) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-center text-muted py-4">Aucun paiement</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
