@@ -11702,6 +11702,40 @@ def pos_affichage_client():
 # ============================================================
 # CLIENTS POS
 # ============================================================
+
+@bp.route('/pos/clients')
+@login_required
+def pos_clients_list():
+    """Liste des clients POS"""
+    search = request.args.get('search', '')
+    
+    try:
+        clients = g.models.client_pos_model.get_all(current_user.id, limit=200)
+        
+        if search:
+            search_lower = search.lower()
+            clients = [c for c in clients if 
+                      search_lower in c.get('nom_client', '').lower() or
+                      search_lower in (c.get('email') or '').lower() or
+                      search_lower in (c.get('telephone') or '').lower()]
+        
+        total_clients = len(clients)
+        clients_actifs = sum(1 for c in clients if c.get('segment') != 'Inactif')
+        total_ca_clients = sum(float(c.get('total_depense', 0) or 0) for c in clients)
+    except Exception as e:
+        logger.error(f"Erreur récupération clients POS: {e}")
+        clients = []
+        total_clients = 0
+        clients_actifs = 0
+        total_ca_clients = 0
+    
+    return render_template('pos/clients_list.html',
+                         clients=clients,
+                         search=search,
+                         total_clients=total_clients,
+                         clients_actifs=clients_actifs,
+                         total_ca_clients=total_ca_clients)
+
 @bp.route('/pos/clients/<int:client_id>')
 @login_required
 def pos_client_detail(client_id):
