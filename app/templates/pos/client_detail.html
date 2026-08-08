@@ -1,133 +1,114 @@
 {% extends "pos.html" %}
-{% block title %}{{ client.nom_client }} - Fiche client{% endblock %}
+{% block title %}{{ client.nom_client }} — Profil{% endblock %}
 
 {% block page_header %}
-<h2 class="mb-4">
-    <a href="{{ url_for('banking.pos_clients_list') }}" class="btn btn-sm btn-outline-secondary me-2">
-        <i class="bi bi-arrow-left"></i> Retour
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">
+        <a href="{{ url_for('banking.pos_clients_list') }}" class="btn btn-sm btn-outline-secondary me-2">
+            <i class="bi bi-arrow-left"></i>
+        </a>
+        Profil du client
+    </h2>
+    <a href="{{ url_for('banking.pos_client_receipts', client_id=client.id) }}" class="btn btn-primary">
+        <i class="bi bi-receipt me-1"></i>Consulter l'historique des achats
     </a>
-    <i class="bi bi-person-circle me-2"></i>{{ client.nom_client }}
-    {% if client.code_client %}
-        <span class="badge bg-secondary ms-2">#{{ client.code_client }}</span>
-    {% endif %}
-</h2>
+</div>
 {% endblock %}
 
 {% block content %}
-<!-- Informations personnelles -->
-<div class="row mb-4">
-    <div class="col-md-6">
+<!-- Carte profil style Loyverse -->
+<div class="row justify-content-center mb-4">
+    <div class="col-lg-5 col-md-8">
         <div class="card shadow-sm">
-            <div class="card-header bg-light">
-                <h5 class="mb-0"><i class="bi bi-person me-2"></i>Informations</h5>
-            </div>
-            <div class="card-body">
-                <table class="table table-sm mb-0">
-                    <tr><td class="text-muted" style="width: 40%">Téléphone</td><td>{{ client.telephone or '-' }}</td></tr>
-                    <tr><td class="text-muted">Email</td><td>{{ client.email or '-' }}</td></tr>
-                    <tr><td class="text-muted">Ville</td><td>{{ client.ville or '-' }}</td></tr>
-                    <tr><td class="text-muted">Code postal</td><td>{{ client.code_postal or '-' }}</td></tr>
-                    <tr><td class="text-muted">Canton</td><td>{{ client.canton or '-' }}</td></tr>
-                    <tr><td class="text-muted">Pays</td><td>{{ client.pays or '-' }}</td></tr>
-                    <tr><td class="text-muted">Remarque</td><td>{{ client.remarque or '-' }}</td></tr>
-                </table>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Statistiques clés -->
-    <div class="col-md-6">
-        <div class="row g-3">
-            <div class="col-6">
-                <div class="card shadow-sm text-center">
-                    <div class="card-body">
-                        <div class="text-muted small">Visites</div>
-                        <div class="fs-2 fw-bold text-primary">{{ client.nombre_visites }}</div>
-                    </div>
+            <div class="card-header bg-light"><strong>Base de données clients</strong></div>
+            <div class="card-body text-center">
+                <div class="rounded-circle d-inline-flex align-items-center justify-content-center mb-3"
+                     style="width:110px;height:110px;background:#7986cb">
+                    <i class="bi bi-person-fill text-white" style="font-size:60px"></i>
                 </div>
+                <h3 class="mb-4">{{ client.nom_client }}</h3>
+
+                {% if client.telephone %}
+                <p class="text-start mb-2"><i class="bi bi-telephone me-2 text-muted"></i>{{ client.telephone }}</p>
+                {% endif %}
+                {% if client.email %}
+                <p class="text-start mb-2"><i class="bi bi-envelope me-2 text-muted"></i>{{ client.email }}</p>
+                {% endif %}
+                {% if client.ville or client.code_postal %}
+                <p class="text-start mb-2"><i class="bi bi-geo-alt me-2 text-muted"></i>{{ [client.code_postal, client.ville]|select|join(' ') }}</p>
+                {% endif %}
+                {% if client.remarque %}
+                <p class="text-start mb-0"><i class="bi bi-chat-left-text me-2 text-muted"></i>{{ client.remarque }}</p>
+                {% endif %}
             </div>
-            <div class="col-6">
-                <div class="card shadow-sm text-center">
-                    <div class="card-body">
-                        <div class="text-muted small">Total dépensé</div>
-                        <div class="fs-5 fw-bold text-success">CHF {{ "%.2f"|format(client.total_depense) }}</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-6">
-                <div class="card shadow-sm text-center">
-                    <div class="card-body">
-                        <div class="text-muted small">Panier moyen</div>
-                        <div class="fs-5 fw-bold">CHF {{ "%.2f"|format(client.panier_moyen) }}</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-6">
-                <div class="card shadow-sm text-center">
-                    <div class="card-body">
-                        <div class="text-muted small">Segment</div>
-                        <div class="fs-5 fw-bold">
-                            <span class="badge bg-warning">{{ client.segment_client }}</span>
+            <div class="card-body border-top">
+                <div class="row g-3">
+                    <div class="col-6">
+                        <div class="d-flex">
+                            <i class="bi bi-calendar-check fs-4 me-2 text-muted"></i>
+                            <div>
+                                <div class="fw-bold">{{ client.premiere_visite.strftime('%d %b %Y') if client.premiere_visite else '-' }}</div>
+                                <small class="text-muted">Première visite</small>
+                            </div>
                         </div>
                     </div>
+                    <div class="col-6">
+                        <div class="d-flex">
+                            <i class="bi bi-calendar-event fs-4 me-2 text-muted"></i>
+                            <div>
+                                <div class="fw-bold">{{ client.derniere_visite.strftime('%d %b %Y à %H:%M') if client.derniere_visite else '-' }}</div>
+                                <small class="text-muted">Dernière visite</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="d-flex">
+                            <i class="bi bi-basket fs-4 me-2 text-muted"></i>
+                            <div>
+                                <div class="fw-bold">{{ client.nombre_visites }}</div>
+                                <small class="text-muted">Visites</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="d-flex">
+                            <i class="bi bi-cash fs-4 me-2 text-muted"></i>
+                            <div>
+                                <div class="fw-bold">CHF {{ "%.2f"|format(client.total_depense) }}</div>
+                                <small class="text-muted">Total dépensé</small>
+                            </div>
+                        </div>
+                    </div>
+                    {% if client.points %}
+                    <div class="col-6">
+                        <div class="d-flex">
+                            <i class="bi bi-star-fill fs-4 me-2 text-muted"></i>
+                            <div>
+                                <div class="fw-bold">{{ client.points }}</div>
+                                <small class="text-muted">Points</small>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Timeline fidélité -->
-<div class="card shadow-sm mb-4">
-    <div class="card-header bg-light">
-        <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Historique de fidélité</h5>
-    </div>
-    <div class="card-body">
-        <div class="row text-center">
-            <div class="col-md-3">
-                <div class="text-muted small">Première visite</div>
-                <div class="fw-bold">
-                    {% if client.premiere_visite %}
-                        {{ client.premiere_visite.strftime('%d/%m/%Y') }}
-                    {% else %}-{% endif %}
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="text-muted small">Dernière visite</div>
-                <div class="fw-bold">
-                    {% if client.derniere_visite %}
-                        {{ client.derniere_visite.strftime('%d/%m/%Y') }}
-                    {% else %}-{% endif %}
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="text-muted small">Durée de fidélité</div>
-                <div class="fw-bold">{{ client.duree_fidelite }} jours</div>
-            </div>
-            <div class="col-md-3">
-                <div class="text-muted small">Fréquence</div>
-                <div class="fw-bold">{{ client.frequence_visite }} visites/mois</div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Top articles -->
+<!-- Articles préférés -->
 {% if top_articles %}
 <div class="card shadow-sm mb-4">
-    <div class="card-header bg-light">
-        <h5 class="mb-0"><i class="bi bi-star me-2"></i>Articles préférés</h5>
-    </div>
-    <div class="card-body">
-        <table class="table table-sm mb-0">
-            <thead>
-                <tr><th>Article</th><th class="text-center">Quantité</th><th class="text-end">Montant</th></tr>
-            </thead>
+    <div class="card-header bg-light"><h5 class="mb-0"><i class="bi bi-star me-2"></i>Articles préférés</h5></div>
+    <div class="card-body p-0">
+        <table class="table table-sm align-middle mb-0">
+            <thead class="table-light"><tr><th>Article</th><th class="text-center">Quantité</th><th class="text-end">Montant</th></tr></thead>
             <tbody>
-                {% for article, qte, montant in top_articles %}
+                {% for a in top_articles %}
                 <tr>
-                    <td>{{ article }}</td>
-                    <td class="text-center"><span class="badge bg-info">{{ qte }}</span></td>
-                    <td class="text-end">CHF {{ "%.2f"|format(montant) }}</td>
+                    <td>{{ a.nom_article }}</td>
+                    <td class="text-center"><span class="badge bg-info">{{ a.total_qte }}</span></td>
+                    <td class="text-end">CHF {{ "%.2f"|format(a.total_montant) }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -136,41 +117,25 @@
 </div>
 {% endif %}
 
-<!-- Historique des visites -->
+<!-- Dernières visites -->
 <div class="card shadow-sm">
-    <div class="card-header bg-light">
-        <h5 class="mb-0"><i class="bi bi-receipt me-2"></i>Dernières visites (20)</h5>
-    </div>
-    <div class="card-body">
+    <div class="card-header bg-light"><h5 class="mb-0"><i class="bi bi-receipt me-2"></i>Dernières visites (20)</h5></div>
+    <div class="card-body p-0">
         {% if visites %}
-        <table class="table table-hover table-sm mb-0">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>N° Reçu</th>
-                    <th>Type</th>
-                    <th>Caissier</th>
-                    <th class="text-end">Total</th>
-                    <th class="text-center">Actions</th>
-                </tr>
+        <table class="table table-hover table-sm align-middle mb-0">
+            <thead class="table-light">
+                <tr><th>Date</th><th>N° Reçu</th><th>Type</th><th>Caissier</th><th class="text-end">Total</th><th class="text-center">Actions</th></tr>
             </thead>
             <tbody>
-                {% for visite in visites %}
+                {% for v in visites %}
                 <tr>
-                    <td>{{ visite.date_formatted }}</td>
-                    <td><strong>{{ visite.recu_numero }}</strong></td>
-                    <td>
-                        <span class="badge bg-{{ 'success' if visite.receipt_type == 'Vente' else 'danger' }}">
-                            {{ visite.receipt_type }}
-                        </span>
-                    </td>
-                    <td>{{ visite.nom_du_caissier }}</td>
-                    <td class="text-end fw-bold">CHF {{ "%.2f"|format(visite.total_collecte) }}</td>
+                    <td>{{ v.date.strftime('%d/%m/%Y %H:%M') if v.date else '-' }}</td>
+                    <td><strong>{{ v.recu_numero }}</strong></td>
+                    <td><span class="badge bg-{{ 'success' if v.receipt_type == 'Vente' else 'danger' }}">{{ v.receipt_type }}</span></td>
+                    <td>{{ v.nom_du_caissier or '-' }}</td>
+                    <td class="text-end fw-bold">CHF {{ "%.2f"|format(v.total_collecte or 0) }}</td>
                     <td class="text-center">
-                        <a href="{{ url_for('banking.pos_receipt_detail', id=visite.id) }}" 
-                           class="btn btn-sm btn-outline-primary">
-                            <i class="bi bi-eye"></i>
-                        </a>
+                        <a href="{{ url_for('banking.pos_receipt_detail', receipt_id=v.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
                     </td>
                 </tr>
                 {% endfor %}
