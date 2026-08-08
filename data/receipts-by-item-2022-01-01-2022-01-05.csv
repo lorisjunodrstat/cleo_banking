@@ -1,0 +1,158 @@
+Date,Numéro du reçu,Type de reçu,Catégorie,UGS,Article,Variante,Modificateurs appliqués,Quantité,Ventes brutes,Réductions,Ventes nettes,Coût des marchandises,Marge brute,Taxes,Option de restauration,PDV,Magasin,Nom du caissier,Nom du client,Contacts du client,Commentaire,Statut
+05/01/2022 20:47,11-3901,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.43,0.57,0.00,0.57,0.01,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Plattet,0794227066,,Fermé
+05/01/2022 20:47,11-3901,Vente,Menus,10069,Menu Best of,,Ice Tea,1.000,22.00,9.57,12.43,0.00,12.43,0.31,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Plattet,0794227066,,Fermé
+05/01/2022 20:47,11-3901,Vente,Supplements gratuits,10147,Soja salé,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Plattet,0794227066,,Fermé
+05/01/2022 20:47,11-3901,Vente,Supplements gratuits,10156,Baguettes,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Plattet,0794227066,,Fermé
+05/01/2022 20:46,11-3900,Vente,Menus,10011,Menu Tokyo,,"California  thon avocat, California saumon avocat, Maki saumon, Nigiri saumon, Sashimi saumon",1.000,59.90,0.00,59.90,0.00,59.90,1.46,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Carrell mariella,0787103462,,Fermé
+05/01/2022 20:46,11-3900,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.03,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Carrell mariella,0787103462,,Fermé
+05/01/2022 20:46,11-3900,Vente,Supplements gratuits,10156,Baguettes,,,2.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Carrell mariella,0787103462,,Fermé
+05/01/2022 20:46,11-3900,Vente,Supplements gratuits,10147,Soja salé,,,4.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Carrell mariella,0787103462,,Fermé
+05/01/2022 20:46,11-3900,Vente,Supplements gratuits,10149,Gingembre,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Carrell mariella,0787103462,,Fermé
+05/01/2022 20:46,11-3900,Vente,Paiement,10164,Carte,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Carrell mariella,0787103462,,Fermé
+05/01/2022 20:46,11-3899,Vente,Springroll,10099,Springroll poulet mangue poivron,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,À emporter,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Schwaller Marco,0792816742,,Fermé
+05/01/2022 20:46,11-3899,Vente,California,10090,California Thon cuit avocat,,Avec ciboulette,1.000,9.50,0.00,9.50,0.00,9.50,0.23,À emporter,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Schwaller Marco,0792816742,,Fermé
+05/01/2022 20:46,11-3899,Vente,California,10027,California saumon concombre cheese,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,À emporter,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Schwaller Marco,0792816742,,Fermé
+05/01/2022 20:46,11-3899,Vente,California,10188,California crevette avocat,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,À emporter,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Schwaller Marco,0792816742,,Fermé
+05/01/2022 20:46,11-3899,Vente,California,10038,California poulet mangue menthe,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,À emporter,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Schwaller Marco,0792816742,,Fermé
+05/01/2022 20:46,11-3899,Vente,Maki,10152,Maki Thon cuit mayo avocat,,Avec ciboulette,1.000,9.50,0.00,9.50,0.00,9.50,0.23,À emporter,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Schwaller Marco,0792816742,,Fermé
+05/01/2022 19:58,6-5127,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.02,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,"Christophe Khuu (/Sari Amstutz) ",0798307821,,Fermé
+05/01/2022 19:58,6-5127,Vente,California,10038,California poulet mangue menthe,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,"Christophe Khuu (/Sari Amstutz) ",0798307821,,Fermé
+05/01/2022 19:58,6-5127,Vente,Originaux,10101,Whiteroll saumon avocat aneth,,,1.000,8.00,0.00,8.00,0.00,8.00,0.20,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,"Christophe Khuu (/Sari Amstutz) ",0798307821,,Fermé
+05/01/2022 19:58,6-5127,Vente,Springroll,10072,Springroll Saumon cheese aneth,,,1.000,10.50,0.00,10.50,0.00,10.50,0.26,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,"Christophe Khuu (/Sari Amstutz) ",0798307821,,Fermé
+05/01/2022 19:58,6-5127,Vente,Supplements gratuits,10162,Pas de baguette,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,"Christophe Khuu (/Sari Amstutz) ",0798307821,,Fermé
+05/01/2022 19:58,6-5127,Vente,Supplements gratuits,10147,Soja salé,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,"Christophe Khuu (/Sari Amstutz) ",0798307821,,Fermé
+05/01/2022 19:58,6-5127,Vente,Supplements gratuits,10148,Soja sucré,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,"Christophe Khuu (/Sari Amstutz) ",0798307821,,Fermé
+05/01/2022 19:58,6-5127,Vente,Paiement,10091,Twint,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,"Christophe Khuu (/Sari Amstutz) ",0798307821,,Fermé
+05/01/2022 19:58,6-5127,Vente,Paiement,10092,"NE PAS SONNER, BEBE DORT",,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,"Christophe Khuu (/Sari Amstutz) ",0798307821,,Fermé
+05/01/2022 19:57,6-5126,Vente,Maki,10008,Maki saumon cheese,,,1.000,8.00,0.29,7.71,0.00,7.71,0.19,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,"Byrde Benjamin ",0792733978,,Fermé
+05/01/2022 19:57,6-5126,Vente,Maki,10012,Maki Thon cuit mayonaise,,Avec ciboulette,3.000,27.00,0.99,26.01,0.00,26.01,0.63,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,"Byrde Benjamin ",0792733978,,Fermé
+05/01/2022 19:57,6-5126,Vente,California,10031,California thon cuit mayonnaise,,Avec ciboulette,1.000,9.50,0.35,9.15,0.00,9.15,0.23,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,"Byrde Benjamin ",0792733978,,Fermé
+05/01/2022 19:57,6-5126,Vente,Sashimi,10300,Sashimi saumon 6 pieces,,,1.000,10.00,0.37,9.63,0.00,9.63,0.23,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,"Byrde Benjamin ",0792733978,,Fermé
+05/01/2022 19:57,6-5126,Vente,Supplements gratuits,10156,Baguettes,,,2.000,0.00,0.00,0.00,0.00,0.00,0.00,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,"Byrde Benjamin ",0792733978,,Fermé
+05/01/2022 19:57,6-5126,Vente,Supplements gratuits,10148,Soja sucré,,,6.000,0.00,0.00,0.00,0.00,0.00,0.00,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,"Byrde Benjamin ",0792733978,,Fermé
+05/01/2022 19:56,6-5125,Vente,Maki,10025,Maki foie gras confis d'oignons,,,1.000,10.50,0.00,10.50,0.00,10.50,0.26,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Rossier Jocelyne,0793894288,,Fermé
+05/01/2022 19:56,6-5125,Vente,Maki,10008,Maki saumon cheese,,,1.000,8.00,0.00,8.00,0.00,8.00,0.19,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Rossier Jocelyne,0793894288,,Fermé
+05/01/2022 19:56,6-5125,Vente,Maki,10007,Maki saumon avocat,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Rossier Jocelyne,0793894288,,Fermé
+05/01/2022 19:56,6-5125,Vente,Maki,10010,Maki thon avocat,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Rossier Jocelyne,0793894288,,Fermé
+05/01/2022 19:56,6-5125,Vente,Maki,10024,Maki poulet mangue poivron,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Rossier Jocelyne,0793894288,,Fermé
+05/01/2022 19:56,6-5125,Vente,California,10026,california saumon avocat,,,2.000,17.00,0.00,17.00,0.00,17.00,0.41,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Rossier Jocelyne,0793894288,,Fermé
+05/01/2022 19:56,6-5125,Vente,California,10031,California thon cuit mayonnaise,,Avec ciboulette,1.000,9.50,0.00,9.50,0.00,9.50,0.24,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Rossier Jocelyne,0793894288,,Fermé
+05/01/2022 19:56,6-5125,Vente,California,10027,California saumon concombre cheese,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Rossier Jocelyne,0793894288,,Fermé
+05/01/2022 19:56,6-5125,Vente,Springroll,10072,Springroll Saumon cheese aneth,,,1.000,10.50,0.00,10.50,0.00,10.50,0.25,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Rossier Jocelyne,0793894288,,Fermé
+05/01/2022 18:26,6-5124,Vente,Accompagnement,10157,A la piece,,,1.000,18.00,0.00,18.00,0.00,18.00,0.44,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,,,,Fermé
+04/01/2022 21:10,11-3898,Vente,Paiement,10192,Eat,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Lucia Paolicelli Damiano Rickenbach,0788598173,,Fermé
+04/01/2022 21:10,11-3898,Vente,California,10026,california saumon avocat,,,1.000,8.50,0.00,8.50,0.00,8.50,0.21,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Lucia Paolicelli Damiano Rickenbach,0788598173,,Fermé
+04/01/2022 21:10,11-3898,Vente,Maki,10007,Maki saumon avocat,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Lucia Paolicelli Damiano Rickenbach,0788598173,,Fermé
+04/01/2022 21:10,11-3898,Vente,Nigiri,10057,Nigiri Saumon,,,1.000,7.50,0.00,7.50,0.00,7.50,0.18,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Lucia Paolicelli Damiano Rickenbach,0788598173,,Fermé
+04/01/2022 21:10,11-3898,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.02,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Lucia Paolicelli Damiano Rickenbach,0788598173,,Fermé
+04/01/2022 20:21,11-3897,Vente,Originaux,10103,Whiteroll crevette concombre menthe,,,1.000,8.50,0.00,8.50,0.00,8.50,0.21,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Stefano Pedrojetta,0763429129,,Fermé
+04/01/2022 20:21,11-3897,Vente,California,10031,California thon cuit mayonnaise,,Avec ciboulette,2.000,19.00,0.00,19.00,0.00,19.00,0.46,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Stefano Pedrojetta,0763429129,,Fermé
+04/01/2022 20:21,11-3897,Vente,California,10028,California thon spicy,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Stefano Pedrojetta,0763429129,,Fermé
+04/01/2022 20:21,11-3897,Vente,California,10026,california saumon avocat,,,1.000,8.50,0.00,8.50,0.00,8.50,0.21,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Stefano Pedrojetta,0763429129,,Fermé
+04/01/2022 20:21,11-3897,Vente,Nigiri,10062,Nigiri saumon cheese,,,1.000,8.50,0.00,8.50,0.00,8.50,0.20,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Stefano Pedrojetta,0763429129,,Fermé
+04/01/2022 20:21,11-3897,Vente,Springroll,10072,Springroll Saumon cheese aneth,,,1.000,10.50,0.00,10.50,0.00,10.50,0.26,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Stefano Pedrojetta,0763429129,,Fermé
+04/01/2022 20:21,11-3897,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.03,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Stefano Pedrojetta,0763429129,,Fermé
+04/01/2022 20:21,11-3897,Vente,Paiement,10192,Eat,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Stefano Pedrojetta,0763429129,,Fermé
+04/01/2022 20:21,11-3896,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.02,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Quinodoz Madison,0791046441,,Fermé
+04/01/2022 20:21,11-3896,Vente,Menus,10069,Menu Best of,,Coca,1.000,22.00,0.00,22.00,0.00,22.00,0.54,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Quinodoz Madison,0791046441,,Fermé
+04/01/2022 20:21,11-3896,Vente,Originaux,10101,Whiteroll saumon avocat aneth,,,1.000,8.00,0.00,8.00,0.00,8.00,0.20,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Quinodoz Madison,0791046441,,Fermé
+04/01/2022 20:21,11-3895,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.02,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Léa Gaillet,0798420148,,Fermé
+04/01/2022 20:21,11-3895,Vente,California,10038,California poulet mangue menthe,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Léa Gaillet,0798420148,,Fermé
+04/01/2022 20:21,11-3895,Vente,Menus,10065,Menu Maki,,Bière,2.000,40.00,0.00,40.00,0.00,40.00,0.98,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Léa Gaillet,0798420148,,Fermé
+04/01/2022 20:21,11-3895,Vente,Nigiri,10057,Nigiri Saumon,,,1.000,7.50,0.00,7.50,0.00,7.50,0.18,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Léa Gaillet,0798420148,,Fermé
+04/01/2022 20:21,11-3895,Vente,Nigiri,10063,Nigiri thon,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Léa Gaillet,0798420148,,Fermé
+04/01/2022 20:21,11-3894,Vente,California,10026,california saumon avocat,,,1.000,8.50,0.00,8.50,0.00,8.50,0.21,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Python Kevin,0797677007,,Fermé
+04/01/2022 20:21,11-3894,Vente,California,10029,California thon avocat,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Python Kevin,0797677007,,Fermé
+04/01/2022 20:21,11-3894,Vente,Maki,10009,Maki thon,,,1.000,8.50,0.00,8.50,0.00,8.50,0.20,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Python Kevin,0797677007,,Fermé
+04/01/2022 20:21,11-3894,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.03,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Python Kevin,0797677007,,Fermé
+04/01/2022 20:21,11-3894,Vente,Paiement,10192,Eat,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Python Kevin,0797677007,,Fermé
+04/01/2022 20:21,11-3893,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.02,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Maya Meister,0788371437,,Fermé
+04/01/2022 20:21,11-3893,Vente,California,10014,California foie gras,,,1.000,10.00,0.00,10.00,0.00,10.00,0.25,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Maya Meister,0788371437,,Fermé
+04/01/2022 20:21,11-3893,Vente,Paiement,10192,Eat,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Maya Meister,0788371437,,Fermé
+04/01/2022 20:21,11-3893,Vente,Menus,10066,Menu Kyoto,,Ice Tea,1.000,20.00,0.00,20.00,0.00,20.00,0.49,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Maya Meister,0788371437,,Fermé
+02/01/2022 21:27,11-3892,Vente,Menus,10065,Menu Maki,,Henniez gazeuse,1.000,20.00,0.00,20.00,0.00,20.00,0.49,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Marco Meyer,0767477317,,Fermé
+02/01/2022 21:27,11-3892,Vente,Menus,10069,Menu Best of,,Bière,1.000,22.00,0.00,22.00,0.00,22.00,0.53,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Marco Meyer,0767477317,,Fermé
+02/01/2022 21:27,11-3892,Vente,Menus,10067,Menu Végétarien,,Bière,1.000,20.00,0.00,20.00,0.00,20.00,0.49,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Marco Meyer,0767477317,,Fermé
+02/01/2022 21:27,11-3892,Vente,Paiement,10192,Eat,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Marco Meyer,0767477317,,Fermé
+02/01/2022 21:27,11-3892,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.03,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Marco Meyer,0767477317,,Fermé
+02/01/2022 21:13,6-5123,Vente,Maki,10023,Maki avocat,,,1.000,6.00,0.00,6.00,0.00,6.00,0.15,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,,,,Fermé
+02/01/2022 21:13,6-5123,Vente,California,10036,California concombre avocat,,,1.000,7.50,0.00,7.50,0.00,7.50,0.18,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,,,"Avocat ",Fermé
+02/01/2022 21:13,6-5123,Vente,Boissons,10059,Thé froid,,,1.000,3.20,0.00,3.20,0.00,3.20,0.08,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,,,,Fermé
+02/01/2022 21:13,6-5122,Vente,Menus,10011,Menu Tokyo,,"California saumon avocat cheese, California thon avocat mangue, Maki Surimi avocat, Maki thon cuit mayo ciboulette, Nigiri saumon, Nigiri saumon grillée, Sashimi saumon",1.000,59.90,0.00,59.90,0.00,59.90,1.46,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,"Croset Sylvain ",0792568013,,Fermé
+02/01/2022 21:06,11-3891,Vente,Maki,10006,Maki saumon,,,1.000,7.50,0.00,7.50,0.00,7.50,0.18,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Porche Janique,0793459156,,Fermé
+02/01/2022 21:06,11-3891,Vente,Maki,10007,Maki saumon avocat,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Porche Janique,0793459156,,Fermé
+02/01/2022 21:06,11-3891,Vente,Maki,10009,Maki thon,,,1.000,8.50,0.00,8.50,0.00,8.50,0.21,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Porche Janique,0793459156,,Fermé
+02/01/2022 21:06,11-3891,Vente,Paiement,10192,Eat,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Porche Janique,0793459156,,Fermé
+02/01/2022 21:06,11-3891,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.02,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Porche Janique,0793459156,,Fermé
+02/01/2022 21:01,11-3890,Vente,Paiement,10192,Eat,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Camille Amman,0799037994,,Fermé
+02/01/2022 21:01,11-3890,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.02,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Camille Amman,0799037994,,Fermé
+02/01/2022 21:01,11-3890,Vente,Menus,10068,Menu Duo,,"Ice Tea, Mangajo Citron",1.000,44.90,0.00,44.90,0.00,44.90,1.10,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Camille Amman,0799037994,,Fermé
+02/01/2022 21:01,11-3890,Vente,Nigiri,10063,Nigiri thon,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Camille Amman,0799037994,,Fermé
+02/01/2022 21:01,11-3890,Vente,Nigiri,10113,Nigiri crevette,,,1.000,7.50,0.00,7.50,0.00,7.50,0.18,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Camille Amman,0799037994,,Fermé
+02/01/2022 20:42,6-5121,Vente,Nigiri,10057,Nigiri Saumon,,,2.000,15.00,0.00,15.00,0.00,15.00,0.37,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,De Bernardini Maelle,0796857641,,Fermé
+02/01/2022 20:42,6-5121,Vente,Nigiri,10060,Nigiri saumon grillé,,,1.000,7.50,0.00,7.50,0.00,7.50,0.18,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,De Bernardini Maelle,0796857641,,Fermé
+02/01/2022 20:42,6-5121,Vente,Nigiri,10063,Nigiri thon,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,De Bernardini Maelle,0796857641,,Fermé
+02/01/2022 20:42,6-5121,Vente,Nigiri,10113,Nigiri crevette,,,1.000,7.50,0.00,7.50,0.00,7.50,0.18,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,De Bernardini Maelle,0796857641,,Fermé
+02/01/2022 20:42,6-5121,Vente,Nigiri,10112,Nigiri thon grillé,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,De Bernardini Maelle,0796857641,,Fermé
+02/01/2022 20:42,6-5121,Vente,Maki,10006,Maki saumon,,,1.000,7.50,0.00,7.50,0.00,7.50,0.18,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,De Bernardini Maelle,0796857641,,Fermé
+02/01/2022 20:42,6-5121,Vente,Maki,10009,Maki thon,,,1.000,8.50,0.00,8.50,0.00,8.50,0.21,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,De Bernardini Maelle,0796857641,,Fermé
+02/01/2022 20:42,6-5121,Vente,Maki,10089,Maki crevette avocat,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,De Bernardini Maelle,0796857641,,Fermé
+02/01/2022 20:42,6-5121,Vente,California,10026,california saumon avocat,,,1.000,8.50,0.00,8.50,0.00,8.50,0.21,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,De Bernardini Maelle,0796857641,,Fermé
+02/01/2022 20:42,6-5121,Vente,California,10029,California thon avocat,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,De Bernardini Maelle,0796857641,,Fermé
+02/01/2022 20:42,6-5121,Vente,California,10188,California crevette avocat,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,De Bernardini Maelle,0796857641,,Fermé
+02/01/2022 20:42,6-5121,Vente,California,10186,California saumon avocat cheese,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,De Bernardini Maelle,0796857641,,Fermé
+02/01/2022 20:42,6-5121,Vente,Maki,10007,Maki saumon avocat,,,2.000,18.00,0.00,18.00,0.00,18.00,0.44,Livré,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,De Bernardini Maelle,0796857641,,Fermé
+02/01/2022 20:07,6-5120,Vente,Menus,10011,Menu Tokyo,,Sashimi saumon thon,1.000,59.90,0.00,59.90,0.00,59.90,1.46,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Bussard Thierry,0796687562,,Fermé
+02/01/2022 20:07,6-5119,Vente,Maki,10012,Maki Thon cuit mayonaise,,Avec ciboulette,1.000,9.00,0.00,9.00,0.00,9.00,0.22,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Fragniere Gaelle,0795542407,,Fermé
+02/01/2022 20:07,6-5119,Vente,Maki,10089,Maki crevette avocat,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Fragniere Gaelle,0795542407,,Fermé
+02/01/2022 20:07,6-5119,Vente,Maki,10007,Maki saumon avocat,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Fragniere Gaelle,0795542407,,Fermé
+02/01/2022 20:07,6-5119,Vente,California,10186,California saumon avocat cheese,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Fragniere Gaelle,0795542407,,Fermé
+02/01/2022 20:07,6-5119,Vente,California,10030,California thon avocat mangue,,,1.000,9.50,0.00,9.50,0.00,9.50,0.23,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Fragniere Gaelle,0795542407,,Fermé
+02/01/2022 20:07,6-5119,Vente,California,10038,California poulet mangue menthe,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Fragniere Gaelle,0795542407,,Fermé
+02/01/2022 20:07,6-5119,Vente,California,10014,California foie gras,,,1.000,10.00,0.00,10.00,0.00,10.00,0.24,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Fragniere Gaelle,0795542407,,Fermé
+02/01/2022 20:07,6-5119,Vente,Desserts,10076,Maki banane nutela,,,1.000,7.50,0.00,7.50,0.00,7.50,0.19,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Fragniere Gaelle,0795542407,,Fermé
+02/01/2022 20:07,6-5119,Vente,Desserts,10077,Maki mangue speculos,,,1.000,7.50,0.00,7.50,0.00,7.50,0.18,À emporter,Caisse principal 3,Esprit Sushi Fribourg,Propriétaire,Fragniere Gaelle,0795542407,,Fermé
+02/01/2022 19:42,11-3889,Vente,Paiement,10192,Eat,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Bertschy Julianne,0798543367,,Fermé
+02/01/2022 19:42,11-3889,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.02,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Bertschy Julianne,0798543367,,Fermé
+02/01/2022 19:42,11-3889,Vente,California,10038,California poulet mangue menthe,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Bertschy Julianne,0798543367,,Fermé
+02/01/2022 19:42,11-3889,Vente,Maki,10145,Maki vegetarien,,,1.000,6.00,0.00,6.00,0.00,6.00,0.15,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Bertschy Julianne,0798543367,,Fermé
+02/01/2022 19:42,11-3889,Vente,Maki,10143,maki surimi mayonnaise,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Bertschy Julianne,0798543367,,Fermé
+02/01/2022 19:42,11-3889,Vente,Nigiri,10063,Nigiri thon,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Bertschy Julianne,0798543367,,Fermé
+02/01/2022 19:42,11-3889,Vente,Nigiri,10057,Nigiri Saumon,,,1.000,7.50,0.00,7.50,0.00,7.50,0.18,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Bertschy Julianne,0798543367,,Fermé
+02/01/2022 19:42,11-3889,Vente,Suppléments,10053,Sauce soja sucré,,,1.000,1.00,0.00,1.00,0.00,1.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Bertschy Julianne,0798543367,,Fermé
+02/01/2022 19:17,11-3888,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.02,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Sahitaj Adrian,0796416795,,Fermé
+02/01/2022 19:17,11-3888,Vente,Paiement,10192,Eat,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Sahitaj Adrian,0796416795,,Fermé
+02/01/2022 19:17,11-3888,Vente,California,10028,California thon spicy,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Sahitaj Adrian,0796416795,,Fermé
+02/01/2022 19:17,11-3888,Vente,California,10026,california saumon avocat,,,1.000,8.50,0.00,8.50,0.00,8.50,0.21,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Sahitaj Adrian,0796416795,,Fermé
+02/01/2022 19:17,11-3888,Vente,Maki,10012,Maki Thon cuit mayonaise,,Non,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Sahitaj Adrian,0796416795,,Fermé
+02/01/2022 19:17,11-3888,Vente,Maki,10008,Maki saumon cheese,,,1.000,8.00,0.00,8.00,0.00,8.00,0.20,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Sahitaj Adrian,0796416795,,Fermé
+02/01/2022 19:09,11-3887,Vente,Paiement,10192,Eat,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Ana Andrade,0762398271,,Fermé
+02/01/2022 19:09,11-3887,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.02,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Ana Andrade,0762398271,,Fermé
+02/01/2022 19:09,11-3887,Vente,California,10027,California saumon concombre cheese,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Ana Andrade,0762398271,,Fermé
+02/01/2022 19:09,11-3887,Vente,Maki,10009,Maki thon,,,1.000,8.50,0.00,8.50,0.00,8.50,0.21,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Ana Andrade,0762398271,,Fermé
+02/01/2022 19:09,11-3887,Vente,Maki,10006,Maki saumon,,,1.000,7.50,0.00,7.50,0.00,7.50,0.18,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Ana Andrade,0762398271,,Fermé
+02/01/2022 19:09,11-3887,Vente,Nigiri,10113,Nigiri crevette,,,1.000,7.50,0.00,7.50,0.00,7.50,0.19,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Ana Andrade,0762398271,,Fermé
+02/01/2022 19:09,11-3887,Vente,Nigiri,10057,Nigiri Saumon,,,2.000,15.00,0.00,15.00,0.00,15.00,0.36,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Ana Andrade,0762398271,,Fermé
+02/01/2022 19:09,11-3887,Vente,Suppléments,10000,Sauce soja salé,,,3.000,1.50,0.00,1.50,0.00,1.50,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Ana Andrade,0762398271,,Fermé
+02/01/2022 18:58,11-3886,Vente,Paiement,10192,Eat,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Leonardi,0799106249,,Fermé
+02/01/2022 18:58,11-3886,Vente,California,10144,California crevette spicy mangue,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Leonardi,0799106249,,Fermé
+02/01/2022 18:58,11-3886,Vente,California,10028,California thon spicy,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Leonardi,0799106249,,Fermé
+02/01/2022 18:58,11-3886,Vente,California,10026,california saumon avocat,,,1.000,8.50,0.00,8.50,0.00,8.50,0.21,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Leonardi,0799106249,,Fermé
+02/01/2022 18:58,11-3886,Vente,Maki,10023,Maki avocat,,,1.000,6.00,0.00,6.00,0.00,6.00,0.14,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Leonardi,0799106249,,Fermé
+02/01/2022 18:58,11-3886,Vente,Maki,10024,Maki poulet mangue poivron,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Leonardi,0799106249,,Fermé
+02/01/2022 18:58,11-3886,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.03,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Leonardi,0799106249,,Fermé
+02/01/2022 18:41,11-3885,Vente,Menus,10070,Menu Végétarien Ii,,"California, Springroll",2.000,44.00,0.00,44.00,0.00,44.00,1.07,À emporter,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Toth,0774345585,,Fermé
+02/01/2022 18:29,11-3884,Vente,California,10026,california saumon avocat,,,1.000,8.50,0.00,8.50,0.00,8.50,0.21,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,"Monney Yves ",0794832949,,Fermé
+02/01/2022 18:29,11-3884,Vente,California,10029,California thon avocat,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,"Monney Yves ",0794832949,,Fermé
+02/01/2022 18:29,11-3884,Vente,Maki,10019,Maki crevette concombre,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,"Monney Yves ",0794832949,,Fermé
+02/01/2022 18:29,11-3884,Vente,Maki,10009,Maki thon,,,1.000,8.50,0.00,8.50,0.00,8.50,0.20,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,"Monney Yves ",0794832949,,Fermé
+02/01/2022 18:29,11-3884,Vente,Maki,10007,Maki saumon avocat,,,1.000,9.00,0.00,9.00,0.00,9.00,0.22,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,"Monney Yves ",0794832949,,Fermé
+02/01/2022 18:29,11-3884,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.03,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,"Monney Yves ",0794832949,,Fermé
+02/01/2022 18:29,11-3884,Vente,Paiement,10192,Eat,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,"Monney Yves ",0794832949,,Fermé
+02/01/2022 18:20,11-3883,Vente,livraison,10136,Frais de livraison,,,1.000,1.00,0.00,1.00,0.00,1.00,0.02,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Ballaman Jennifer,0766831700,,Fermé
+02/01/2022 18:20,11-3883,Vente,Menus,10068,Menu Duo,,"Coca, Coca",1.000,44.90,0.00,44.90,0.00,44.90,1.10,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Ballaman Jennifer,0766831700,,Fermé
+02/01/2022 18:20,11-3883,Vente,California,10031,California thon cuit mayonnaise,,Avec ciboulette,1.000,9.50,0.00,9.50,0.00,9.50,0.23,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Ballaman Jennifer,0766831700,,Fermé
+02/01/2022 18:20,11-3883,Vente,Maki,10025,Maki foie gras confis d'oignons,,,1.000,10.50,0.00,10.50,0.00,10.50,0.26,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Ballaman Jennifer,0766831700,,Fermé
+02/01/2022 18:20,11-3883,Vente,Supplements gratuits,10156,Baguettes,,,2.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Ballaman Jennifer,0766831700,,Fermé
+02/01/2022 18:20,11-3883,Vente,Supplements gratuits,10163,Suppléments standarts,,,2.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Ballaman Jennifer,0766831700,,Fermé
+02/01/2022 18:20,11-3883,Vente,Paiement,10164,Carte,,,1.000,0.00,0.00,0.00,0.00,0.00,0.00,Livré,SamsungA40,Esprit Sushi Fribourg,Propriétaire,Ballaman Jennifer,0766831700,,Fermé

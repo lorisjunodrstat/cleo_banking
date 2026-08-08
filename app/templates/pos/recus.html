@@ -358,13 +358,17 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                             </div>
                             <div class="row mb-3">
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <small class="text-muted">Client</small><br>
                                     <strong>${clientName}</strong>
                                 </div>
-                                <div class="col-md-6 text-md-end">
+                                <div class="col-md-4">
                                     <small class="text-muted">Caissier</small><br>
                                     <strong>${cashierName}</strong>
+                                </div>
+                                <div class="col-md-4">
+                                    <small class="text-muted">Option</small><br>
+                                    <strong>${data.restaurant_option_nom || '—'}</strong>
                                 </div>
                             </div>
                             <hr>
