@@ -12561,19 +12561,6 @@ def pos_stats():
 
 
 
-@bp.route('/pos/clients/<int:client_id>')
-@login_required
-def pos_client_detail(client_id):
-    client = g.models.client_pos_model.get_by_id(client_id, current_user.id)
-    if not client:
-        flash('Client introuvable.', 'error')
-        return redirect(url_for('banking.pos_clients_list'))
-
-    visites = g.models.receipt_pos_model.get_by_client(client_id, limit=20)
-    top_articles = g.models.receipt_pos_model.get_top_articles_client(client_id, limit=10)
-    total
-    return render_template('pos/client_detail.html', 
-                           client=client, visites=visites, top_articles=top_articles)
 
 
 # ============================================================
