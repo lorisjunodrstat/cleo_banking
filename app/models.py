@@ -1320,7 +1320,7 @@ class DatabaseManager:
                     FOREIGN KEY (id_modificateur) REFERENCES pos_modificateurs(id) ON DELETE CASCADE
                 );
                 """
-                cursor.execute(create_pos_option_modificateurs_table_query)
+                cursor.execute(create_pos_options_modificateurs_table_query)
 
                 # ============================================================
                 # TABLES DE LIAISON POS (Many-to-Many)
