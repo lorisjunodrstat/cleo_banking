@@ -12411,6 +12411,9 @@ def pos_import_payments(df):
 @login_required
 def pos_stats():
     """Récapitulatif des ventes — style Loyverse"""
+    # ✅ Accès à la base via un modèle (g.db n'existe pas dans cette app)
+    db = g.models.receipt_pos_model.db
+
     now = datetime.now()
     date_from = request.args.get('date_from') or now.replace(day=1).strftime('%Y-%m-%d')
     date_to   = request.args.get('date_to') or now.strftime('%Y-%m-%d')
@@ -12424,7 +12427,7 @@ def pos_stats():
     prev_from = prev_to - timedelta(days=nb_jours - 1)
 
     def agg(df, dt):
-        with g.db.get_cursor(dictionary=True) as cursor:
+        with db.get_cursor(dictionary=True) as cursor:
             q = """
                 SELECT
                   COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END),0) AS ventes_brutes,
@@ -12462,7 +12465,7 @@ def pos_stats():
               for k in ('ventes_brutes', 'remboursements', 'reductions', 'ventes_nettes', 'marge_brute')}
 
     # --- Par jour ---
-    with g.db.get_cursor(dictionary=True) as cursor:
+    with db.get_cursor(dictionary=True) as cursor:
         q = """
             SELECT DATE(date) AS jour,
               SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END) AS ventes_brutes,
@@ -12491,7 +12494,7 @@ def pos_stats():
     max_brutes = max([d['ventes_brutes'] for d in daily] or [1]) or 1
 
     # --- Par mode de paiement ---
-    with g.db.get_cursor(dictionary=True) as cursor:
+    with db.get_cursor(dictionary=True) as cursor:
         q = """
             SELECT COALESCE(mp.nom,'Inconnu') AS nom, COUNT(*) AS nb, SUM(p.montant) AS total
             FROM pos_payments p
@@ -12515,30 +12518,8 @@ def pos_stats():
                            payments=payments, employees=employees,
                            date_from=date_from, date_to=date_to, employee=employee)
 
-    # ✅ Mensuelles — gère datetime ET string
-    monthly = {}
-    for r in receipts:
-        date_val = r.get('date')
-        if not date_val:
-            continue
-        
-        # Extraire 'YYYY-MM' quel que soit le type
-        if hasattr(date_val, 'strftime'):
-            month = date_val.strftime('%Y-%m')   # datetime → string
-        else:
-            month = str(date_val)[:7]            # déjà string
-        
-        if month:
-            if month not in monthly:
-                monthly[month] = {'count': 0, 'total': 0.0}
-            monthly[month]['count'] += 1
-            monthly[month]['total'] += safe_float(r.get('total_collecte'))
 
-    monthly_sorted = sorted(monthly.items(), key=lambda x: x[0])
 
-    return render_template('pos/stats.html',
-                           payment_stats=list(payment_stats.items()),
-                           monthly_stats=monthly_sorted)
 @bp.route('/pos/clients/<int:client_id>')
 @login_required
 def pos_client_detail(client_id):
