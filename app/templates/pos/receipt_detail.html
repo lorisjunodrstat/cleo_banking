@@ -1,83 +1,210 @@
-<!-- app/templates/receipt_detail.html -->
 {% extends "pos.html" %}
+{% block title %}Détail du reçu{% endblock %}
 
-{% block title %}Reçu {{ receipt.receipt_number }}{% endblock %}
+{% block page_header %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">
+        <a href="{{ url_for('banking.pos_receipts_list') }}" class="btn btn-sm btn-outline-secondary me-2">
+            <i class="fas fa-arrow-left"></i>
+        </a>
+        <i class="fas fa-receipt me-2"></i>Détail du reçu
+    </h2>
+    <button type="button" class="btn btn-primary" onclick="window.print()">
+        <i class="fas fa-print me-1"></i> Imprimer
+    </button>
+</div>
+{% endblock %}
 
 {% block content %}
-<div class="receipt-detail">
-    <h1>Reçu {{ receipt.receipt_number }}</h1>
-    
-    <div class="receipt-info">
-        <div class="info-section">
-            <h2>Informations générales</h2>
-            <p><strong>Date:</strong> {{ receipt.date_formatted }}</p>
-            <p><strong>Type:</strong> {{ receipt.receipt_type }}</p>
-            <p><strong>Statut:</strong> {{ receipt.status }}</p>
-            <p><strong>PDV:</strong> {{ receipt.pos }}</p>
-            <p><strong>Magasin:</strong> {{ receipt.store }}</p>
+<div class="card shadow-sm" 
+     data-receipt-id="{{ receipt_id }}" 
+     data-api-url="{{ url_for('banking.pos_receipt_detail_json', receipt_id=receipt_id) }}">
+    <div class="card-body" id="receiptDetailBody">
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Chargement...</span>
+            </div>
+            <p class="mt-2 text-muted">Chargement du reçu...</p>
         </div>
-        
-        <div class="info-section">
-            <h2>Client</h2>
-            <p><strong>Nom:</strong> {{ receipt.client_name or '-' }}</p>
-            <p><strong>Contact:</strong> {{ receipt.client_contact or '-' }}</p>
-        </div>
-        
-        <div class="info-section">
-            <h2>Paiement</h2>
-            <p><strong>Mode:</strong> {{ receipt.payment_method }}</p>
-            <p><strong>Caissier:</strong> {{ receipt.cashier_name }}</p>
-            <p><strong>Option:</strong> {{ receipt.restaurant_option }}</p>
-        </div>
-    </div>
-    
-    <div class="financial-section">
-        <h2>Détails financiers</h2>
-        <table class="table">
-            <tr>
-                <td>Ventes brutes</td>
-                <td>CHF {{ "%.2f"|format(receipt.gross_sales) }}</td>
-            </tr>
-            <tr>
-                <td>Réductions</td>
-                <td>CHF {{ "%.2f"|format(receipt.discounts) }}</td>
-            </tr>
-            <tr>
-                <td>Ventes nettes</td>
-                <td>CHF {{ "%.2f"|format(receipt.net_sales) }}</td>
-            </tr>
-            <tr>
-                <td>Taxes</td>
-                <td>CHF {{ "%.2f"|format(receipt.taxes) }}</td>
-            </tr>
-            <tr>
-                <td>Pourboires</td>
-                <td>CHF {{ "%.2f"|format(receipt.tips) }}</td>
-            </tr>
-            <tr class="total">
-                <td><strong>Total collecté</strong></td>
-                <td><strong>CHF {{ "%.2f"|format(receipt.total_collected) }}</strong></td>
-            </tr>
-            <tr>
-                <td>Coût marchandises</td>
-                <td>CHF {{ "%.2f"|format(receipt.cost_of_goods) }}</td>
-            </tr>
-            <tr>
-                <td>Marge brute</td>
-                <td>CHF {{ "%.2f"|format(receipt.gross_margin) }}</td>
-            </tr>
-        </table>
-    </div>
-    
-    {% if receipt.description %}
-    <div class="description-section">
-        <h2>Description</h2>
-        <p>{{ receipt.description }}</p>
-    </div>
-    {% endif %}
-    
-    <div class="actions">
-        <a href="{{ url_for('main.index') }}" class="btn-secondary">Retour</a>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var container = document.querySelector(".card[data-receipt-id]");
+    var receiptId = parseInt(container.getAttribute("data-receipt-id"), 10);
+    var apiUrl = container.getAttribute("data-api-url");
+    
+    var body = document.getElementById("receiptDetailBody");
+
+    function formatDate(dateVal) {
+        if (!dateVal) return "-";
+        var d = new Date(dateVal);
+        if (isNaN(d.getTime())) return dateVal;
+        var pad = function(n) { return String(n).padStart(2, "0"); };
+        return pad(d.getDate()) + "/" + pad(d.getMonth()+1) + "/" + d.getFullYear() + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+    }
+
+    function fmt(n) {
+        return (parseFloat(n) || 0).toFixed(2);
+    }
+
+    function esc(s) {
+        if (s === null || s === undefined) return "";
+        return String(s).replace(/[&<>"']/g, function(c) {
+            return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+        });
+    }
+
+    fetch(apiUrl)
+        .then(function(response) {
+            if (!response.ok) throw new Error("Erreur réseau " + response.status);
+            return response.json();
+        })
+        .then(function(data) {
+            if (data.error) {
+                body.innerHTML = '<div class="alert alert-danger">' + esc(data.error) + '</div>';
+                return;
+            }
+
+            var recuNumero = data.recu_numero || data.receipt_number || "-";
+            var dateStr = formatDate(data.date || data.date_formatted);
+            var clientName = data.nom_du_client || data.client_name || "Client de passage";
+            var cashierName = data.nom_du_caissier || data.cashier_name || "-";
+            var ventesBrutes = parseFloat(data.ventes_brutes || 0);
+            var reduction = parseFloat(data.reduction || 0);
+            var tips = parseFloat(data.tips || 0);
+            var totalCollecte = parseFloat(data.total_collecte || 0);
+            var items = data.items || [];
+            var payments = data.payments || data.paiements || [];
+
+            var tvaParTaux = {};
+            items.forEach(function(item) {
+                var ligneTTC = parseFloat(item.total_ligne || 0);
+                var taux = parseFloat(item.taux_taxe_applique || 0);
+                if (!tvaParTaux[taux]) tvaParTaux[taux] = { ttc: 0, tva: 0 };
+                tvaParTaux[taux].ttc += ligneTTC;
+                if (taux > 0) {
+                    var ligneHT = ligneTTC / (1 + taux / 100);
+                    tvaParTaux[taux].tva += (ligneTTC - ligneHT);
+                }
+            });
+
+            var totalTVA = 0;
+            Object.keys(tvaParTaux).forEach(function(k) { totalTVA += tvaParTaux[k].tva; });
+            var ventesNettesHT = fmt(ventesBrutes - totalTVA);
+
+            var tauxMoyen = ventesBrutes > 0 ? (totalTVA / ventesBrutes) * 100 : 0;
+            var reductionHT = tauxMoyen > 0 ? fmt(reduction / (1 + tauxMoyen / 100)) : fmt(reduction);
+
+            var tauxTries = Object.keys(tvaParTaux)
+                .map(Number)
+                .filter(function(t) { return t > 0; })
+                .sort(function(a, b) { return a - b; });
+
+            var tvaDetailHTML = "";
+            if (tauxTries.length > 0) {
+                tauxTries.forEach(function(taux) {
+                    var d = tvaParTaux[taux];
+                    tvaDetailHTML += '<div class="row mb-1 text-muted small">' +
+                        '<div class="col-6">&nbsp;&nbsp;↳ TVA ' + taux.toFixed(2).replace(".", ",") + '% :</div>' +
+                        '<div class="col-6 text-end">CHF ' + fmt(d.tva) + '</div>' +
+                        '</div>';
+                });
+            }
+
+            var statusBadge = "";
+            if (data.status === "Ouvert")      statusBadge = '<span class="badge bg-warning text-dark ms-2">Ouvert</span>';
+            else if (data.status === "Annulé") statusBadge = '<span class="badge bg-danger ms-2">Annulé</span>';
+            else if (data.status === "Fermé")  statusBadge = '<span class="badge bg-success ms-2">Fermé</span>';
+
+            var paymentsHTML = "";
+            if (payments.length > 0) {
+                var paymentsList = "";
+                var totalPaid = 0;
+                payments.forEach(function(p) {
+                    var modeNom = p.mode_paiement_nom || p.mode_paiement || "Mode inconnu";
+                    var montant = fmt(p.montant || 0);
+                    var isRemb = p.est_remboursement ? ' <span class="badge bg-warning text-dark">Remboursement</span>' : "";
+                    paymentsList += '<li class="list-group-item d-flex justify-content-between align-items-center">' +
+                        esc(modeNom) + isRemb +
+                        '<span class="badge bg-primary rounded-pill">CHF ' + montant + '</span>' +
+                        '</li>';
+                    if (!p.est_remboursement) totalPaid += parseFloat(p.montant || 0);
+                });
+                paymentsHTML = '<div class="mt-3">' +
+                    '<h6 class="mb-2"><i class="fas fa-credit-card me-1"></i>Paiements effectués ' +
+                    '<small class="text-muted">(Total: CHF ' + fmt(totalPaid) + ')</small></h6>' +
+                    '<ul class="list-group list-group-flush">' + paymentsList + '</ul>' +
+                    '</div>';
+            } else {
+                paymentsHTML = '<div class="alert alert-info mt-3 mb-0">' +
+                    '<i class="fas fa-info-circle me-1"></i>Aucun paiement enregistré pour ce reçu.</div>';
+            }
+
+            var itemsHTML = "";
+            if (items.length > 0) {
+                items.forEach(function(item) {
+                    var name = esc(item.nom_article);
+                    if (item.variante_nom) name += '<br><small class="text-muted">' + esc(item.variante_nom) + '</small>';
+                    if (item.commentaire) name += '<br><small class="text-muted">💬 ' + esc(item.commentaire) + '</small>';
+                    itemsHTML += '<tr>' +
+                        '<td>' + name + '</td>' +
+                        '<td class="text-center">' + esc(item.quantite) + '</td>' +
+                        '<td class="text-end">CHF ' + fmt(item.prix_unitaire) + '</td>' +
+                        '<td class="text-end">CHF ' + fmt(item.total_ligne) + '</td>' +
+                        '</tr>';
+                });
+            } else {
+                itemsHTML = '<tr><td colspan="4" class="text-center text-muted">Aucun article</td></tr>';
+            }
+
+            var restoNom = data.restaurant_option_nom ? esc(data.restaurant_option_nom) : "—";
+            var pdvNom = data.pdv ? esc(data.pdv) : "—";
+            var nomTicket = data.nom_ticket ? esc(data.nom_ticket) : "";
+            var description = data.description ? esc(data.description) : "";
+
+            var descBlock = description ? '<div class="mt-3 p-2 bg-light rounded"><small class="text-muted d-block">Description / Notes:</small>' + description + '</div>' : '';
+            var nomBlock = nomTicket ? '<div class="mt-2 p-2 bg-info bg-opacity-10 rounded"><small class="text-muted d-block">Nom du ticket:</small><strong>' + nomTicket + '</strong></div>' : '';
+
+            var html =
+                '<div class="receipt-detail p-2">' +
+                    '<div class="row mb-3">' +
+                        '<div class="col-md-6"><small class="text-muted">N° Reçu</small><br><strong>' + esc(recuNumero) + '</strong>' + statusBadge + '</div>' +
+                        '<div class="col-md-6 text-md-end"><small class="text-muted">Date</small><br><strong>' + esc(dateStr) + '</strong></div>' +
+                    '</div>' +
+                    '<div class="row mb-3">' +
+                        '<div class="col-md-3"><small class="text-muted">Client</small><br><strong>' + esc(clientName) + '</strong></div>' +
+                        '<div class="col-md-3"><small class="text-muted">Caissier</small><br><strong>' + esc(cashierName) + '</strong></div>' +
+                        '<div class="col-md-3"><small class="text-muted">Option</small><br><strong>' + restoNom + '</strong></div>' +
+                        '<div class="col-md-3"><small class="text-muted">PDV</small><br><strong>' + pdvNom + '</strong></div>' +
+                    '</div>' +
+                    '<hr>' +
+                    '<h6 class="mb-2"><i class="fas fa-shopping-bag me-1"></i> Articles (Prix TTC)</h6>' +
+                    '<table class="table table-sm table-bordered">' +
+                        '<thead class="table-light"><tr><th>Article</th><th class="text-center">Qté</th><th class="text-end">Prix unit.</th><th class="text-end">Total</th></tr></thead>' +
+                        '<tbody>' + itemsHTML + '</tbody>' +
+                    '</table>' +
+                    '<div class="bg-light p-3 rounded">' +
+                        '<div class="row mb-1"><div class="col-6">Chiffre d\'affaires (HT) :</div><div class="col-6 text-end">CHF ' + ventesNettesHT + '</div></div>' +
+                        '<div class="row mb-1"><div class="col-6">Réductions appliquées (HT) :</div><div class="col-6 text-end text-danger">- CHF ' + reductionHT + '</div></div>' +
+                        tvaDetailHTML +
+                        '<div class="row mb-1"><div class="col-6">Pourboires :</div><div class="col-6 text-end">CHF ' + fmt(tips) + '</div></div>' +
+                        '<hr class="my-2">' +
+                        '<div class="row fw-bold fs-5"><div class="col-6">Total Encaissé (TTC) :</div><div class="col-6 text-end text-primary">CHF ' + fmt(totalCollecte) + '</div></div>' +
+                    '</div>' +
+                    paymentsHTML +
+                    descBlock +
+                    nomBlock +
+                '</div>';
+
+            body.innerHTML = html;
+        })
+        .catch(function(error) {
+            body.innerHTML = '<div class="alert alert-danger"><i class="fas fa-exclamation-triangle me-2"></i>Erreur lors du chargement: ' + esc(error.message) + '</div>';
+        });
+});
+</script>
 {% endblock %}

@@ -11259,12 +11259,19 @@ def pos_receipts_list():
 @bp.route('/pos/receipts/<int:receipt_id>')
 @login_required
 def pos_receipt_detail(receipt_id):
-    receipt = g.models.receipt_pos_model.get_by_id(receipt_id, current_user.id)
-    if not receipt:
-        flash('Reçu non trouvé.', 'error')
-        return redirect(url_for('banking.pos_receipts_list'))
-    return render_template('pos/receipt_detail.html', receipt=receipt)
+    """Page de détail d'un reçu — tout est chargé via l'API JSON"""
+    db = g.models.receipt_pos_model.db
+    with db.get_cursor(dictionary=True) as cursor:
+        cursor.execute(
+            "SELECT id FROM pos_receipts WHERE id = %s AND utilisateur_id = %s",
+            (receipt_id, current_user.id)
+        )
+        if not cursor.fetchone():
+            flash('Reçu introuvable.', 'error')
+            return redirect(url_for('banking.pos_receipts_list'))
 
+    # ✅ On passe receipt_id au template
+    return render_template('pos/receipt_detail.html', receipt_id=receipt_id)
 
 
 @bp.route('/pos/vente/cloturer', methods=['POST'])
