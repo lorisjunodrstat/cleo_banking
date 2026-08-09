@@ -11,6 +11,13 @@
 {% endblock %}
 
 {% block content %}
+<style>
+    .kpi-card { cursor:pointer }
+    .kpi-card .stat-box { border-bottom:3px solid transparent; transition:all .15s }
+    .kpi-card.kpi-active .stat-box { border-bottom:3px solid #4CAF50; background:#fff !important }
+    .kpi-card:hover .stat-box { background:#fff !important }
+</style>
+
 <!-- Filtres -->
 <div class="card shadow-sm mb-4">
     <div class="card-body">
@@ -40,17 +47,17 @@
     </div>
 </div>
 
-<!-- Cartes KPI -->
-<div class="row g-3 mb-4">
+<!-- Cartes KPI cliquables -->
+<div class="row g-3 mb-4" id="kpiCards">
     {% set kpis = [
-        ('Ventes brutes', stats.ventes_brutes, deltas.ventes_brutes),
-        ('Remboursements', stats.remboursements, deltas.remboursements),
-        ('Réductions', stats.reductions, deltas.reductions),
-        ('Ventes nettes', stats.ventes_nettes, deltas.ventes_nettes),
-        ('Marge brute', stats.marge_brute, deltas.marge_brute)
+        ('ventes_brutes', 'Ventes brutes', stats.ventes_brutes, deltas.ventes_brutes),
+        ('remboursements', 'Remboursements', stats.remboursements, deltas.remboursements),
+        ('reductions', 'Réductions', stats.reductions, deltas.reductions),
+        ('ventes_nettes', 'Ventes nettes', stats.ventes_nettes, deltas.ventes_nettes),
+        ('marge_brute', 'Marge brute', stats.marge_brute, deltas.marge_brute)
     ] %}
-    {% for label, valeur, delta in kpis %}
-    <div class="col-md">
+    {% for key, label, valeur, delta in kpis %}
+    <div class="col-md kpi-card" data-metric="{{ key }}">
         <div class="stat-box p-3 bg-light rounded border h-100">
             <h6 class="text-muted mb-1">{{ label }}</h6>
             <h4 class="mb-1">CHF {{ "%.2f"|format(valeur) }}</h4>
@@ -66,27 +73,33 @@
     {% endfor %}
 </div>
 
-<!-- Graphique par jour -->
+<!-- Graphique interactif -->
 <div class="card shadow-sm mb-4">
-    <div class="card-header bg-light"><strong>Ventes brutes par jour</strong></div>
-    <div class="card-body">
-        <div class="d-flex align-items-end justify-content-around" style="height:260px">
-            {% for d in daily %}
-            <div class="text-center" style="width:9%">
-                <div class="text-muted small mb-1">{{ "%.0f"|format(d.ventes_brutes) }}</div>
-                <div style="background:#8BC34A; height:{{ (d.ventes_brutes / max_brutes * 200)|round(0) }}px; min-height:2px; border-radius:3px 3px 0 0;"
-                     title="{{ d.jour.strftime('%d/%m/%Y') }} : CHF {{ "%.2f"|format(d.ventes_brutes) }}"></div>
-                <div class="small mt-1">{{ d.jour.strftime('%d %b') }}</div>
-            </div>
-            {% else %}
-            <div class="text-muted text-center w-100 align-self-center">Aucune vente sur la période</div>
-            {% endfor %}
+    <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <strong id="chartTitle">Ventes brutes par jour</strong>
+        <div class="d-flex gap-2 align-items-center">
+            <small id="weekendLegend" class="text-muted me-2">🟩 semaine · 🟧 week-end</small>
+            <select id="chartType" class="form-select form-select-sm" style="width:auto">
+                <option value="column">Colonne</option>
+                <option value="line">Ligne</option>
+                <option value="area">Aire</option>
+            </select>
+            <select id="chartGroup" class="form-select form-select-sm" style="width:auto">
+                <option value="day">Jours</option>
+                <option value="week">Semaines</option>
+                <option value="month">Mois</option>
+                <option value="quarter">Trimestres</option>
+                <option value="year">Années</option>
+            </select>
         </div>
+    </div>
+    <div class="card-body">
+        <div id="chartBox"></div>
     </div>
 </div>
 
 <div class="row g-3">
-    <!-- Tableau par jour (style export Loyverse) -->
+    <!-- Tableau par jour (avec jours sans vente) -->
     <div class="col-lg-8">
         <div class="card shadow-sm">
             <div class="card-header bg-light"><strong>Détail par jour</strong></div>
@@ -107,8 +120,8 @@
                         </thead>
                         <tbody>
                             {% for d in daily|reverse %}
-                            <tr>
-                                <td>{{ d.jour.strftime('%d %b. %Y') }}</td>
+                            <tr class="{{ 'table-warning' if d.weekend else '' }}" style="{{ 'opacity:.55' if not d.ventes_brutes and not d.remboursements else '' }}">
+                                <td>{{ d.label }}{% if d.weekend %} <small class="text-muted">(we)</small>{% endif %}</td>
                                 <td class="text-end">CHF {{ "%.2f"|format(d.ventes_brutes) }}</td>
                                 <td class="text-end">CHF {{ "%.2f"|format(d.remboursements) }}</td>
                                 <td class="text-end">CHF {{ "%.2f"|format(d.reductions) }}</td>
@@ -152,4 +165,171 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var DAILY = {{ daily_json|safe }};
+
+var METRIC_LABELS = {
+    ventes_brutes: "Ventes brutes",
+    remboursements: "Remboursements",
+    reductions: "Réductions",
+    ventes_nettes: "Ventes nettes",
+    marge_brute: "Marge brute"
+};
+var GROUP_LABELS = { day: "jour", week: "semaine", month: "mois", quarter: "trimestre", year: "année" };
+var MOIS = ["janv.","févr.","mars","avr.","mai","juin","juil.","août","sept.","oct.","nov.","déc."];
+
+var metric     = localStorage.getItem("stats_metric") || "ventes_brutes";
+var chartType  = localStorage.getItem("stats_chart")  || "column";
+var chartGroup = localStorage.getItem("stats_group")  || "day";
+
+function fmtDay(key) {
+    var p = key.split("-");
+    return parseInt(p[2], 10) + " " + MOIS[parseInt(p[1], 10) - 1];
+}
+function fmtMonth(key) {
+    var p = key.split("-");
+    return MOIS[parseInt(p[1], 10) - 1] + " " + p[0];
+}
+function fmtAxis(v) {
+    if (v >= 1000) return (v / 1000).toFixed(1).replace(".", ",") + "k";
+    return String(Math.round(v));
+}
+function fmtMoney(v) { return "CHF " + v.toFixed(2); }
+
+/* ---------- Agrégation selon le regroupement ---------- */
+function aggregate() {
+    if (chartGroup === "day") {
+        return DAILY.map(function(d) {
+            return { label: fmtDay(d.date), value: d[metric], weekend: d.weekend };
+        });
+    }
+    var buckets = {};
+    var order = [];
+    DAILY.forEach(function(d) {
+        var dt = new Date(d.date + "T00:00:00");
+        var key, label;
+        if (chartGroup === "week") {
+            var mon = new Date(dt);
+            mon.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));
+            key = mon.toISOString().slice(0, 10);
+            label = "Sem. " + fmtDay(key);
+        } else if (chartGroup === "month") {
+            key = d.date.slice(0, 7);
+            label = fmtMonth(key);
+        } else if (chartGroup === "quarter") {
+            var q = Math.floor(dt.getMonth() / 3) + 1;
+            key = d.date.slice(0, 4) + "-T" + q;
+            label = "T" + q + " " + dt.getFullYear();
+        } else {
+            key = d.date.slice(0, 4);
+            label = key;
+        }
+        if (!buckets[key]) { buckets[key] = { label: label, value: 0, weekend: false }; order.push(key); }
+        buckets[key].value += d[metric];
+    });
+    order.sort();
+    return order.map(function(k) { return buckets[k]; });
+}
+
+/* ---------- Rendu SVG ---------- */
+function renderChart() {
+    var data = aggregate();
+    var box = document.getElementById("chartBox");
+    document.getElementById("chartTitle").textContent =
+        METRIC_LABELS[metric] + " par " + GROUP_LABELS[chartGroup];
+    document.getElementById("weekendLegend").style.display =
+        (chartGroup === "day") ? "inline" : "none";
+
+    if (!data.length || data.every(function(d) { return !d.value; })) {
+        box.innerHTML = '<div class="text-muted text-center py-5">Aucune vente sur la période</div>';
+        return;
+    }
+
+    var W = Math.max(box.clientWidth || 900, 320), H = 280;
+    var PL = 60, PR = 10, PT = 10, PB = 35;
+    var iw = W - PL - PR, ih = H - PT - PB;
+    var max = Math.max.apply(null, data.map(function(d) { return d.value; })) || 1;
+    var n = data.length;
+
+    function y(v) { return PT + ih - (v / max) * ih; }
+    function xc(i) { return n === 1 ? PL + iw / 2 : PL + i * (iw / (n - 1)); }
+
+    var svg = '<svg width="100%" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">';
+
+    for (var g = 0; g <= 4; g++) {
+        var val = max * g / 4, yy = y(val);
+        svg += '<line x1="' + PL + '" y1="' + yy + '" x2="' + (W - PR) + '" y2="' + yy + '" stroke="#e6e6e6"/>';
+        svg += '<text x="' + (PL - 8) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="11" fill="#888">' + fmtAxis(val) + '</text>';
+    }
+
+    var step = Math.ceil(n / 12);
+
+    if (chartType === "column") {
+        var bw = Math.max(2, (iw / n) * 0.7);
+        data.forEach(function(d, i) {
+            var cx = PL + (i + 0.5) * (iw / n);
+            var col = d.weekend ? "#FFB74D" : "#8BC34A";
+            var hBar = Math.max(2, PT + ih - y(d.value));
+            svg += '<rect x="' + (cx - bw / 2) + '" y="' + (PT + ih - hBar) + '" width="' + bw + '" height="' + hBar + '" fill="' + col + '" rx="2"><title>' + d.label + ' : ' + fmtMoney(d.value) + '</title></rect>';
+            if (i % step === 0) svg += '<text x="' + cx + '" y="' + (H - 10) + '" text-anchor="middle" font-size="10" fill="#666">' + d.label + '</text>';
+        });
+    } else {
+        var pts = data.map(function(d, i) { return xc(i) + "," + y(d.value); }).join(" ");
+        if (chartType === "area") {
+            svg += '<polygon points="' + xc(0) + ',' + (PT + ih) + ' ' + pts + ' ' + xc(n - 1) + ',' + (PT + ih) + '" fill="#8BC34A" opacity="0.25"/>';
+        }
+        svg += '<polyline points="' + pts + '" fill="none" stroke="#4CAF50" stroke-width="2"/>';
+        data.forEach(function(d, i) {
+            var col = d.weekend ? "#FF9800" : "#4CAF50";
+            svg += '<circle cx="' + xc(i) + '" cy="' + y(d.value) + '" r="3" fill="' + col + '"><title>' + d.label + ' : ' + fmtMoney(d.value) + '</title></circle>';
+            if (i % step === 0) svg += '<text x="' + xc(i) + '" y="' + (H - 10) + '" text-anchor="middle" font-size="10" fill="#666">' + d.label + '</text>';
+        });
+    }
+
+    svg += "</svg>";
+    box.innerHTML = svg;
+}
+
+/* ---------- Sélection de la métrique (cartes KPI) ---------- */
+function updateKpiActive() {
+    document.querySelectorAll(".kpi-card").forEach(function(c) {
+        c.classList.toggle("kpi-active", c.getAttribute("data-metric") === metric);
+    });
+}
+function setMetric(m) {
+    metric = m;
+    localStorage.setItem("stats_metric", m);
+    updateKpiActive();
+    renderChart();
+}
+
+/* ---------- Init ---------- */
+document.querySelectorAll(".kpi-card").forEach(function(c) {
+    c.addEventListener("click", function() { setMetric(c.getAttribute("data-metric")); });
+});
+
+var selType = document.getElementById("chartType");
+var selGroup = document.getElementById("chartGroup");
+selType.value = chartType;
+selGroup.value = chartGroup;
+
+selType.addEventListener("change", function() {
+    chartType = this.value;
+    localStorage.setItem("stats_chart", chartType);
+    renderChart();
+});
+selGroup.addEventListener("change", function() {
+    chartGroup = this.value;
+    localStorage.setItem("stats_group", chartGroup);
+    renderChart();
+});
+
+window.addEventListener("resize", renderChart);
+
+updateKpiActive();
+renderChart();
+</script>
 {% endblock %}

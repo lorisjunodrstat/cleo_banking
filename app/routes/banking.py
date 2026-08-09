@@ -12492,8 +12492,8 @@ def pos_import_payments(df):
 @bp.route('/pos/stats')
 @login_required
 def pos_stats():
-    """Récapitulatif des ventes — style Loyverse"""
-    # ✅ Accès à la base via un modèle (g.db n'existe pas dans cette app)
+    """Récapitulatif des ventes — graphique interactif multi-périodes"""
+    import json as _json
     db = g.models.receipt_pos_model.db
 
     now = datetime.now()
@@ -12501,7 +12501,6 @@ def pos_stats():
     date_to   = request.args.get('date_to') or now.strftime('%Y-%m-%d')
     employee  = request.args.get('employee', '').strip()
 
-    # Période précédente (même durée) pour les % d'évolution
     d_from = datetime.strptime(date_from, '%Y-%m-%d')
     d_to   = datetime.strptime(date_to, '%Y-%m-%d')
     nb_jours = (d_to - d_from).days + 1
@@ -12526,16 +12525,11 @@ def pos_stats():
             """
             params = [current_user.id, df, dt]
             if employee:
-                q += " AND nom_du_caissier = %s"
-                params.append(employee)
+                q += " AND nom_du_caissier = %s"; params.append(employee)
             cursor.execute(q, params)
-            row = cursor.fetchone()
-            return {
-                'ventes_brutes': float(row['ventes_brutes']), 'remboursements': float(row['remboursements']),
-                'reductions': float(row['reductions']), 'ventes_nettes': float(row['ventes_nettes']),
-                'marge_brute': float(row['marge_brute']), 'taxes': float(row['taxes']),
-                'total_collecte': float(row['total_collecte']), 'nb_ventes': int(row['nb_ventes']),
-            }
+            r = cursor.fetchone()
+            return {k: float(r[k]) for k in ('ventes_brutes','remboursements','reductions',
+                                             'ventes_nettes','marge_brute','taxes','total_collecte')}
 
     stats = agg(date_from, date_to)
     prev  = agg(prev_from.strftime('%Y-%m-%d'), prev_to.strftime('%Y-%m-%d'))
@@ -12544,9 +12538,9 @@ def pos_stats():
         return (cur - old) / old * 100 if old > 0 else None
 
     deltas = {k: delta(stats[k], prev[k])
-              for k in ('ventes_brutes', 'remboursements', 'reductions', 'ventes_nettes', 'marge_brute')}
+              for k in ('ventes_brutes','remboursements','reductions','ventes_nettes','marge_brute')}
 
-    # --- Par jour ---
+    # --- Série par jour AVEC les jours sans vente (zéros) ---
     with db.get_cursor(dictionary=True) as cursor:
         q = """
             SELECT DATE(date) AS jour,
@@ -12562,18 +12556,32 @@ def pos_stats():
         """
         params = [current_user.id, date_from, date_to]
         if employee:
-            q += " AND nom_du_caissier=%s"
-            params.append(employee)
-        q += " GROUP BY DATE(date) ORDER BY jour"
+            q += " AND nom_du_caissier=%s"; params.append(employee)
+        q += " GROUP BY DATE(date)"
         cursor.execute(q, params)
-        daily = cursor.fetchall()
+        by_date = {str(r['jour']): r for r in cursor.fetchall()}
 
-    for d in daily:
-        for k in ('ventes_brutes', 'remboursements', 'reductions', 'ventes_nettes', 'marge_brute', 'taxes'):
-            d[k] = float(d[k] or 0)
-        d['marge_pct'] = (d['marge_brute'] / d['ventes_nettes'] * 100) if d['ventes_nettes'] else 0
+    daily = []
+    cur = d_from
+    while cur <= d_to:
+        key = cur.strftime('%Y-%m-%d')
+        src = by_date.get(key)
+        e = {
+            'date': key,
+            'label': cur.strftime('%d %b. %Y'),
+            'weekend': cur.weekday() >= 5,
+            'ventes_brutes': float(src['ventes_brutes'] or 0) if src else 0.0,
+            'remboursements': float(src['remboursements'] or 0) if src else 0.0,
+            'reductions': float(src['reductions'] or 0) if src else 0.0,
+            'ventes_nettes': float(src['ventes_nettes'] or 0) if src else 0.0,
+            'marge_brute': float(src['marge_brute'] or 0) if src else 0.0,
+            'taxes': float(src['taxes'] or 0) if src else 0.0,
+        }
+        e['marge_pct'] = (e['marge_brute'] / e['ventes_nettes'] * 100) if e['ventes_nettes'] else 0
+        daily.append(e)
+        cur += timedelta(days=1)
 
-    max_brutes = max([d['ventes_brutes'] for d in daily] or [1]) or 1
+    daily_json = _json.dumps(daily)
 
     # --- Par mode de paiement ---
     with db.get_cursor(dictionary=True) as cursor:
@@ -12587,8 +12595,7 @@ def pos_stats():
         """
         params = [current_user.id, date_from, date_to]
         if employee:
-            q += " AND r.nom_du_caissier=%s"
-            params.append(employee)
+            q += " AND r.nom_du_caissier=%s"; params.append(employee)
         q += " GROUP BY mp.nom ORDER BY total DESC"
         cursor.execute(q, params)
         payments = [{'nom': r['nom'], 'nb': int(r['nb']), 'total': float(r['total'])} for r in cursor.fetchall()]
@@ -12596,12 +12603,9 @@ def pos_stats():
     employees = g.models.receipt_pos_model.get_unique_employees(current_user.id)
 
     return render_template('pos/stats.html',
-                           stats=stats, deltas=deltas, daily=daily, max_brutes=max_brutes,
+                           stats=stats, deltas=deltas, daily=daily, daily_json=daily_json,
                            payments=payments, employees=employees,
                            date_from=date_from, date_to=date_to, employee=employee)
-
-
-
 
 
 # ============================================================
