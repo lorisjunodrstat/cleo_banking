@@ -139,26 +139,29 @@ var MOIS = ["janv.","févr.","mars","avr.","mai","juin","juil.","août","sept.",
 function fmtDay(k) { var p = k.split("-"); return parseInt(p[2],10) + " " + MOIS[parseInt(p[1],10)-1]; }
 function fmtMonth(k) { var p = k.split("-"); return MOIS[parseInt(p[1],10)-1] + " " + p[0]; }
 function fmtAxis(v) { return v >= 1000 ? (v/1000).toFixed(1).replace(".",",") + "k" : String(Math.round(v)); }
+/* ✅ Clé de date locale (corrige le décalage de fuseau horaire) */
+function keyOf(d) {
+    var m = d.getMonth() + 1, dd = d.getDate();
+    return d.getFullYear() + "-" + (m < 10 ? "0" + m : m) + "-" + (dd < 10 ? "0" + dd : dd);
+}
 
-/* Index rapide des séries */
 var IDX = {};
 SERIES.forEach(function(s) {
     if (!IDX[s.date]) IDX[s.date] = {};
     IDX[s.date][s.name] = (IDX[s.date][s.name] || 0) + s.value;
 });
 
-/* Construit les buckets selon le regroupement */
 function buildBuckets() {
     var buckets = {}, order = [];
     var start = new Date(DATE_FROM + "T00:00:00"), end = new Date(DATE_TO + "T00:00:00");
     for (var d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        var key = d.toISOString().slice(0, 10);
+        var key = keyOf(d);
         var vals = IDX[key] || {};
         var bkey, label;
         if (chartGroup === "day") { bkey = key; label = fmtDay(key); }
         else if (chartGroup === "week") {
             var mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-            bkey = mon.toISOString().slice(0, 10); label = "Sem. " + fmtDay(bkey);
+            bkey = keyOf(mon); label = "Sem. " + fmtDay(bkey);
         }
         else if (chartGroup === "month") { bkey = key.slice(0, 7); label = fmtMonth(bkey); }
         else if (chartGroup === "quarter") {
@@ -222,14 +225,22 @@ function renderChart() {
             if (i % step === 0) svg += '<text x="' + cx + '" y="' + (H-12) + '" text-anchor="middle" font-size="9" fill="#666" transform="rotate(-40 ' + cx + ' ' + (H-12) + ')">' + b.label + '</text>';
         });
     } else {
+        /* ✅ LIGNE / AIRE : une courbe par article du Top 5 */
         TOP5.forEach(function(nm, ti) {
             var pts = data.map(function(b, i) { return xc(i) + "," + y(b.vals[nm] || 0); }).join(" ");
             if (chartType === "area") {
-                svg += '<polygon points="' + xc(0) + ',' + (PT+ih) + ' ' + pts + ' ' + xc(n-1) + ',' + (PT+ih) + '" fill="' + COLORS[ti] + '" opacity="0.15"/>';
+                svg += '<polygon points="' + xc(0) + ',' + (PT + ih) + ' ' + pts + ' ' + xc(n - 1) + ',' + (PT + ih) + '" fill="' + COLORS[ti] + '" opacity="0.15"/>';
             }
             svg += '<polyline points="' + pts + '" fill="none" stroke="' + COLORS[ti] + '" stroke-width="1.5"/>';
-            if (i === 0) {} // no-op
         });
+        /* points avec infobulle (seulement si assez peu de buckets) */
+        if (n <= 120) {
+            data.forEach(function(b, i) {
+                TOP5.forEach(function(nm, ti) {
+                    svg += '<circle cx="' + xc(i) + '" cy="' + y(b.vals[nm] || 0) + '" r="2.5" fill="' + COLORS[ti] + '"><title>' + b.label + ' — ' + nm + ' : CHF ' + (b.vals[nm] || 0).toFixed(2) + '</title></circle>';
+                });
+            });
+        }
         data.forEach(function(b, i) {
             if (i % step === 0) svg += '<text x="' + xc(i) + '" y="' + (H-12) + '" text-anchor="middle" font-size="9" fill="#666" transform="rotate(-40 ' + xc(i) + ' ' + (H-12) + ')">' + b.label + '</text>';
         });
