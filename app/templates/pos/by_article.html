@@ -1,141 +1,254 @@
 {% extends "pos.html" %}
 {% block title %}Ventes par article{% endblock %}
+
 {% block page_header %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Ventes par article</h2>
+    <a href="{{ url_for('banking.pos_stats') }}" class="btn btn-outline-primary">
+        <i class="bi bi-graph-up me-1"></i>Récapitulatif des ventes
+    </a>
 </div>
 {% endblock %}
 
 {% block content %}
-{% if debug_info %}
-<div class="alert alert-info">
-    <h5>🔍 Informations de diagnostic</h5>
-    <ul>
-        <li><strong>Total reçus:</strong> {{ debug_info.total_receipts }}</li>
-        <li><strong>Types de reçus:</strong>
-            <ul>
-                {% for t in debug_info.receipt_types %}
-                <li>{{ t.receipt_type or 'NULL' }} / {{ t.status or 'NULL' }} : {{ t.nb }}</li>
-                {% endfor %}
-            </ul>
-        </li>
-        <li><strong>Total items (tous reçus):</strong> {{ debug_info.total_items }}</li>
-        <li><strong>Reçus avec items:</strong> {{ debug_info.receipts_with_items }}</li>
-    </ul>
-    {% if debug_info.error %}
-    <p class="text-danger"><strong>Erreur:</strong> {{ debug_info.error }}</p>
-    {% endif %}
-</div>
-{% endif %}
-<!-- Stats globales -->
-<div class="row mb-4">
-    <div class="col-md-4">
-        <div class="stat-box p-3 bg-light rounded border">
-            <h6 class="text-muted mb-1">Chiffre d'affaires</h6>
-            <h3 class="mb-0 text-success">CHF {{ "%.2f"|format(total_revenue) }}</h3>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="stat-box p-3 bg-light rounded border">
-            <h6 class="text-muted mb-1">Quantité totale vendue</h6>
-            <h3 class="mb-0 text-primary">{{ total_qty }}</h3>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="stat-box p-3 bg-light rounded border">
-            <h6 class="text-muted mb-1">Reçus concernés</h6>
-            <h3 class="mb-0 text-info">{{ total_times }}</h3>
-        </div>
-    </div>
-</div>
-
 <!-- Filtres -->
 <div class="card shadow-sm mb-4">
     <div class="card-body">
-        <form method="GET" class="row g-3">
+        <form method="GET" class="row g-3 align-items-end">
             <div class="col-md-3">
-                <input type="text" name="search" class="form-control" 
-                       placeholder="Rechercher un article..." value="{{ search }}">
+                <label class="form-label">Du</label>
+                <input type="date" name="date_from" class="form-control" value="{{ date_from }}">
             </div>
             <div class="col-md-3">
-                <input type="date" name="date_from" class="form-control" 
-                       value="{{ date_from }}" title="Date de début">
+                <label class="form-label">Au</label>
+                <input type="date" name="date_to" class="form-control" value="{{ date_to }}">
             </div>
             <div class="col-md-3">
-                <input type="date" name="date_to" class="form-control" 
-                       value="{{ date_to }}" title="Date de fin">
+                <label class="form-label">Employé</label>
+                <select name="employee" class="form-select">
+                    <option value="">Tous les employés</option>
+                    {% for e in employees %}
+                    <option value="{{ e }}" {% if employee == e %}selected{% endif %}>{{ e }}</option>
+                    {% endfor %}
+                </select>
             </div>
             <div class="col-md-3 d-flex gap-2">
-                <button type="submit" class="btn btn-primary flex-grow-1">
-                    <i class="bi bi-filter me-1"></i>Filtrer
-                </button>
-                <a href="{{ url_for('banking.pos_stats_by_article') }}" class="btn btn-outline-secondary">
-                    <i class="bi bi-x"></i>
-                </a>
+                <button type="submit" class="btn btn-primary flex-grow-1"><i class="bi bi-filter me-1"></i>Filtrer</button>
+                <a href="{{ url_for('banking.pos_stats_by_article') }}" class="btn btn-outline-secondary"><i class="bi bi-x"></i></a>
             </div>
         </form>
     </div>
 </div>
 
-<!-- Tableau -->
+<!-- Top 5 + graphique -->
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="row">
+            <!-- Top 5 articles (légende colorée) -->
+            <div class="col-md-4 border-end">
+                <div class="d-flex justify-content-between mb-3">
+                    <strong>Top 5 articles</strong>
+                    <small class="text-muted">Ventes nettes</small>
+                </div>
+                {% set colors = ['#78909C', '#8BC34A', '#42A5F5', '#D81B60', '#FDD835'] %}
+                {% for t in top5 %}
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <div class="d-flex align-items-center">
+                        <span class="rounded-circle me-2" style="width:16px;height:16px;background:{{ colors[loop.index0] }};flex-shrink:0"></span>
+                        <span>{{ t.nom }}</span>
+                    </div>
+                    <span class="fw-bold">CHF {{ "%.2f"|format(t.total_revenue) }}</span>
+                </div>
+                {% else %}
+                <div class="text-muted">Aucune vente sur la période</div>
+                {% endfor %}
+            </div>
+
+            <!-- Graphique -->
+            <div class="col-md-8">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <strong>Tableau des ventes par article</strong>
+                    <div class="d-flex gap-2">
+                        <select id="chartType" class="form-select form-select-sm" style="width:auto">
+                            <option value="column">Diagramme à colonnes</option>
+                            <option value="line">Courbe</option>
+                            <option value="area">Aire</option>
+                        </select>
+                        <select id="chartGroup" class="form-select form-select-sm" style="width:auto">
+                            <option value="day">Jours</option>
+                            <option value="week">Semaines</option>
+                            <option value="month">Mois</option>
+                            <option value="quarter">Trimestres</option>
+                            <option value="year">Années</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="chartBox"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tableau export -->
 <div class="card shadow-sm">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <strong>EXPORTER</strong>
+        <input type="text" id="tableSearch" class="form-control form-control-sm" style="width:220px"
+               placeholder="🔍 Rechercher un article..." value="{{ search }}">
+    </div>
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th>#</th>
-                        <th>Article</th>
+                        <th>Article ↑</th>
                         <th>Catégorie</th>
+                        <th class="text-center">Articles vendus</th>
                         <th class="text-center">Fois vendu</th>
-                        <th class="text-center">Qté totale</th>
-                        <th class="text-end">Prix moyen</th>
-                        <th class="text-end">Revenu total</th>
-                        <th class="text-center">% du CA</th>
+                        <th class="text-end">Ventes nettes</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="tableBody">
                     {% for a in articles %}
-                    <tr>
-                        <td class="text-muted">{{ loop.index }}</td>
-                        <td><strong>{{ a.nom_article }}</strong></td>
-                        <td>
-                            {% if a.category %}
-                                <span class="badge bg-secondary">{{ a.category }}</span>
-                            {% else %}
-                                <span class="text-muted">—</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-center">{{ a.times_sold }}</td>
+                    <tr class="article-row">
+                        <td>{{ a.nom }}</td>
+                        <td>{{ a.category or '—' }}</td>
                         <td class="text-center">{{ a.total_qty }}</td>
-                        <td class="text-end">CHF {{ "%.2f"|format(a.prix_moyen) }}</td>
+                        <td class="text-center">{{ a.times_sold }}</td>
                         <td class="text-end fw-bold">CHF {{ "%.2f"|format(a.total_revenue) }}</td>
-                        <td class="text-center">
-                            {% if total_revenue > 0 %}
-                                {% set pct = (a.total_revenue / total_revenue) * 100 %}
-                                <div class="progress" style="height: 20px; min-width: 80px">
-                                    <div class="progress-bar bg-success" role="progressbar" 
-                                         style="width: {{ pct }}%" 
-                                         aria-valuenow="{{ pct }}" aria-valuemin="0" aria-valuemax="100">
-                                        {{ "%.1f"|format(pct) }}%
-                                    </div>
-                                </div>
-                            {% else %}
-                                —
-                            {% endif %}
-                        </td>
                     </tr>
                     {% else %}
-                    <tr>
-                        <td colspan="8" class="text-center text-muted py-4">
-                            <i class="bi bi-inbox fa-2x d-block mb-2"></i>
-                            Aucune donnée pour ces critères.
-                        </td>
-                    </tr>
+                    <tr><td colspan="5" class="text-center text-muted py-4">Aucune donnée</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var SERIES = {{ series_json|safe }};
+var TOP5 = {{ top5_json|safe }};
+var COLORS = ['#78909C', '#8BC34A', '#42A5F5', '#D81B60', '#FDD835'];
+var DATE_FROM = "{{ date_from }}", DATE_TO = "{{ date_to }}";
+var chartType = "column", chartGroup = "day";
+var MOIS = ["janv.","févr.","mars","avr.","mai","juin","juil.","août","sept.","oct.","nov.","déc."];
+
+function fmtDay(k) { var p = k.split("-"); return parseInt(p[2],10) + " " + MOIS[parseInt(p[1],10)-1]; }
+function fmtMonth(k) { var p = k.split("-"); return MOIS[parseInt(p[1],10)-1] + " " + p[0]; }
+function fmtAxis(v) { return v >= 1000 ? (v/1000).toFixed(1).replace(".",",") + "k" : String(Math.round(v)); }
+
+/* Index rapide des séries */
+var IDX = {};
+SERIES.forEach(function(s) {
+    if (!IDX[s.date]) IDX[s.date] = {};
+    IDX[s.date][s.name] = (IDX[s.date][s.name] || 0) + s.value;
+});
+
+/* Construit les buckets selon le regroupement */
+function buildBuckets() {
+    var buckets = {}, order = [];
+    var start = new Date(DATE_FROM + "T00:00:00"), end = new Date(DATE_TO + "T00:00:00");
+    for (var d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        var key = d.toISOString().slice(0, 10);
+        var vals = IDX[key] || {};
+        var bkey, label;
+        if (chartGroup === "day") { bkey = key; label = fmtDay(key); }
+        else if (chartGroup === "week") {
+            var mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+            bkey = mon.toISOString().slice(0, 10); label = "Sem. " + fmtDay(bkey);
+        }
+        else if (chartGroup === "month") { bkey = key.slice(0, 7); label = fmtMonth(bkey); }
+        else if (chartGroup === "quarter") {
+            var q = Math.floor(d.getMonth() / 3) + 1;
+            bkey = key.slice(0, 4) + "-T" + q; label = "T" + q + " " + d.getFullYear();
+        }
+        else { bkey = key.slice(0, 4); label = bkey; }
+
+        if (!buckets[bkey]) { buckets[bkey] = { label: label, vals: {} }; order.push(bkey); }
+        TOP5.forEach(function(name) {
+            if (vals[name]) buckets[bkey].vals[name] = (buckets[bkey].vals[name] || 0) + vals[name];
+        });
+    }
+    order.sort();
+    return order.map(function(k) { return buckets[k]; });
+}
+
+function renderChart() {
+    var box = document.getElementById("chartBox");
+    if (!TOP5.length) { box.innerHTML = '<div class="text-muted text-center py-5">Aucune vente sur la période</div>'; return; }
+
+    var data = buildBuckets();
+    var W = Math.max(box.clientWidth || 800, 320), H = 300;
+    var PL = 60, PR = 10, PT = 10, PB = 45;
+    var iw = W - PL - PR, ih = H - PT - PB, n = data.length;
+
+    var max;
+    if (chartType === "column") {
+        max = Math.max.apply(null, data.map(function(b) {
+            return TOP5.reduce(function(s, nm) { return s + (b.vals[nm] || 0); }, 0);
+        })) || 1;
+    } else {
+        max = Math.max.apply(null, data.map(function(b) {
+            return Math.max.apply(null, TOP5.map(function(nm) { return b.vals[nm] || 0; }));
+        })) || 1;
+    }
+
+    function y(v) { return PT + ih - (v / max) * ih; }
+    function xc(i) { return n === 1 ? PL + iw / 2 : PL + i * (iw / (n - 1)); }
+
+    var svg = '<svg width="100%" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">';
+    for (var g = 0; g <= 4; g++) {
+        var val = max * g / 4, yy = y(val);
+        svg += '<line x1="' + PL + '" y1="' + yy + '" x2="' + (W-PR) + '" y2="' + yy + '" stroke="#e6e6e6"/>';
+        svg += '<text x="' + (PL-8) + '" y="' + (yy+4) + '" text-anchor="end" font-size="11" fill="#888">' + fmtAxis(val) + '</text>';
+    }
+    var step = Math.ceil(n / 12);
+
+    if (chartType === "column") {
+        var bw = Math.max(2, (iw / n) * 0.7);
+        data.forEach(function(b, i) {
+            var cx = PL + (i + 0.5) * (iw / n);
+            var cum = 0;
+            TOP5.forEach(function(nm, ti) {
+                var v = b.vals[nm] || 0;
+                if (v <= 0) return;
+                var y1 = y(cum + v), hBar = y(cum) - y1;
+                svg += '<rect x="' + (cx - bw/2) + '" y="' + y1 + '" width="' + bw + '" height="' + Math.max(1, hBar) + '" fill="' + COLORS[ti] + '"><title>' + b.label + ' — ' + nm + ' : CHF ' + v.toFixed(2) + '</title></rect>';
+                cum += v;
+            });
+            if (i % step === 0) svg += '<text x="' + cx + '" y="' + (H-12) + '" text-anchor="middle" font-size="9" fill="#666" transform="rotate(-40 ' + cx + ' ' + (H-12) + ')">' + b.label + '</text>';
+        });
+    } else {
+        TOP5.forEach(function(nm, ti) {
+            var pts = data.map(function(b, i) { return xc(i) + "," + y(b.vals[nm] || 0); }).join(" ");
+            if (chartType === "area") {
+                svg += '<polygon points="' + xc(0) + ',' + (PT+ih) + ' ' + pts + ' ' + xc(n-1) + ',' + (PT+ih) + '" fill="' + COLORS[ti] + '" opacity="0.15"/>';
+            }
+            svg += '<polyline points="' + pts + '" fill="none" stroke="' + COLORS[ti] + '" stroke-width="1.5"/>';
+            if (i === 0) {} // no-op
+        });
+        data.forEach(function(b, i) {
+            if (i % step === 0) svg += '<text x="' + xc(i) + '" y="' + (H-12) + '" text-anchor="middle" font-size="9" fill="#666" transform="rotate(-40 ' + xc(i) + ' ' + (H-12) + ')">' + b.label + '</text>';
+        });
+    }
+    svg += "</svg>";
+    box.innerHTML = svg;
+}
+
+document.getElementById("chartType").addEventListener("change", function() { chartType = this.value; renderChart(); });
+document.getElementById("chartGroup").addEventListener("change", function() { chartGroup = this.value; renderChart(); });
+window.addEventListener("resize", renderChart);
+renderChart();
+
+/* Recherche live dans le tableau */
+document.getElementById("tableSearch").addEventListener("input", function() {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll(".article-row").forEach(function(tr) {
+        tr.style.display = tr.cells[0].textContent.toLowerCase().includes(q) ? "" : "none";
+    });
+});
+</script>
 {% endblock %}
