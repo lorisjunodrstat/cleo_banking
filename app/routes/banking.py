@@ -11924,43 +11924,82 @@ def pos_stats_by_article():
 @bp.route('/pos/stats/by-category')
 @login_required
 def pos_stats_by_category():
-    """Statistiques des ventes par catégorie"""
-    date_from = request.args.get('date_from', '')
-    date_to = request.args.get('date_to', '')
-    
-    try:
-        receipts = g.models.receipt_pos_model.get_all(
-            user_id=current_user.id,
-            date_from=date_from,
-            date_to=date_to
-        )
-        
-        category_stats = {}
-        for receipt in receipts:
-            for item in receipt.get('items', []):
-                category = item.get('nom_categorie', 'Sans catégorie')
-                if category not in category_stats:
-                    category_stats[category] = {
-                        'name': category,
-                        'times_sold': 0,
-                        'total_qty': 0,
-                        'total_revenue': 0.0
-                    }
-                
-                category_stats[category]['times_sold'] += 1
-                category_stats[category]['total_qty'] += item.get('quantite', 1)
-                category_stats[category]['total_revenue'] += float(item.get('total_ligne', 0) or 0)
-        
-        categories = sorted(category_stats.values(), key=lambda x: x['total_revenue'], reverse=True)
-    except Exception as e:
-        logger.error(f"Erreur stats par catégorie: {e}")
-        categories = []
-    
-    return render_template('pos/by_category.html',
-                         categories=categories,
-                         date_from=date_from,
-                         date_to=date_to)
+    """Ventes par catégorie — style Loyverse (Top 5 + graphique + tableau)"""
+    import json as _json
+    db = g.models.receipt_pos_model.db   # ✅ g.db n'existe pas
 
+    now = datetime.now()
+    date_from = request.args.get('date_from') or (now - timedelta(days=365)).strftime('%Y-%m-%d')
+    date_to   = request.args.get('date_to') or now.strftime('%Y-%m-%d')
+    employee  = request.args.get('employee', '').strip()
+
+    where = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente'"
+    params = [current_user.id]
+    where += " AND DATE(r.date) >= %s"; params.append(date_from)
+    where += " AND DATE(r.date) <= %s"; params.append(date_to)
+    if employee:
+        where += " AND r.nom_du_caissier=%s"; params.append(employee)
+
+    base = """
+        FROM pos_receipt_items ri
+        JOIN pos_receipts r ON r.id = ri.receipt_id
+        LEFT JOIN pos_articles a ON a.id = ri.article_id
+        LEFT JOIN pos_categories c ON c.id = a.id_categorie
+        WHERE """ + where + """
+          AND COALESCE(c.nom_categorie, 'Sans catégorie') NOT IN ('Paiement', 'Abonnement')
+    """
+
+    with db.get_cursor(dictionary=True) as cursor:
+        cursor.execute("""
+            SELECT COALESCE(c.nom_categorie, 'Sans catégorie') AS nom,
+                   COUNT(DISTINCT r.id) AS times_sold,
+                   SUM(ri.quantite) AS total_qty,
+                   SUM(ri.total_ligne) AS total_revenue
+            """ + base + """
+            GROUP BY nom
+            ORDER BY total_revenue DESC
+        """, params)
+        categories = cursor.fetchall()
+
+    for c in categories:
+        c['total_revenue'] = float(c['total_revenue'] or 0)
+        c['total_qty'] = int(c['total_qty'] or 0)
+        c['times_sold'] = int(c['times_sold'] or 0)
+
+    top5 = categories[:5]
+    top_names = [t['nom'] for t in top5]
+
+    # Série journalière du Top 5 pour le graphique
+    series = []
+    if top_names:
+        ph = ','.join(['%s'] * len(top_names))
+        sparams = [current_user.id, date_from, date_to]
+        swhere = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente' AND DATE(r.date) >= %s AND DATE(r.date) <= %s"
+        if employee:
+            swhere += " AND r.nom_du_caissier=%s"; sparams.append(employee)
+        with db.get_cursor(dictionary=True) as cursor:
+            cursor.execute(f"""
+                SELECT DATE(r.date) AS jour,
+                       COALESCE(c.nom_categorie, 'Sans catégorie') AS nom,
+                       SUM(ri.total_ligne) AS val
+                FROM pos_receipt_items ri
+                JOIN pos_receipts r ON r.id = ri.receipt_id
+                LEFT JOIN pos_articles a ON a.id = ri.article_id
+                LEFT JOIN pos_categories c ON c.id = a.id_categorie
+                WHERE {swhere} AND COALESCE(c.nom_categorie, 'Sans catégorie') IN ({ph})
+                GROUP BY DATE(r.date), nom
+            """, sparams + top_names)
+            series = [{'date': str(r['jour']), 'name': r['nom'], 'value': float(r['val'] or 0)}
+                      for r in cursor.fetchall()]
+
+    employees = g.models.receipt_pos_model.get_unique_employees(current_user.id)
+
+    return render_template('pos/by_category.html',
+                           categories=categories, top5=top5,
+                           series_json=_json.dumps(series),
+                           top5_json=_json.dumps(top_names),
+                           employees=employees,
+                           date_from=date_from, date_to=date_to, employee=employee)
 
 @bp.route('/pos/stats/by-employee')
 @login_required
