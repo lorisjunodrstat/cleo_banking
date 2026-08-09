@@ -13,6 +13,7 @@
                 <table class="table table-hover">
                     <thead class="table-light">
                         <tr>
+                            <th>ID</th>
                             <th>Nom du PDV</th>
                             <th>Magasin</th>
                             <th>Actions</th>
@@ -21,6 +22,7 @@
                     <tbody>
                         {% for pos in pos_list %}
                         <tr>
+                            <td>{{ pos.id }}</td>
                             <td>{{ pos.nom_pdv }}</td>
                             <td>{{ pos.nom_magasin if pos.nom_magasin else '-' }}</td>
                             <td>
