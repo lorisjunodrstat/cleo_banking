@@ -6630,7 +6630,7 @@ def comptabilite_tva_pdf():
         pdf = _pdf_depuis_html(html)
     except Exception as e:
         flash(f"Erreur export PDF : {e}", 'danger')
-        return redirect(url_for('comptabilite_tva', periode=f'{annee}-{trimestre}'))
+        return redirect(url_for('banking.comptabilite_tva', periode=f'{annee}-{trimestre}'))
 
     return Response(pdf, mimetype='application/pdf',
                     headers={'Content-Disposition':
@@ -6655,6 +6655,69 @@ def api_taux_by_date():
 
     return jsonify(taux_valides)
 
+
+
+def _params_compte_resultat():
+    today = date.today()
+    annee = request.args.get('annee', today.year, type=int)
+    annee_comp = request.args.get('annee_comp', annee - 1, type=int)
+    return {
+        'annee': annee, 'annee_comp': annee_comp,
+        'show_comp': request.args.get('show_comp', '1') == '1',
+        'diff_montant': request.args.get('diff_montant', '0') == '1',
+        'diff_pct': request.args.get('diff_pct', '0') == '1',
+        'show_zero': request.args.get('show_zero', '0') == '1',
+        'niveau': request.args.get('niveau', 3, type=int),
+        'date_from': f"{annee}-01-01", 'date_to': f"{annee}-12-31",
+        'comp_from': f"{annee_comp}-01-01", 'comp_to': f"{annee_comp}-12-31",
+    }
+
+@bp.route('/comptabilite/compte-resultat')
+@login_required
+def compte_resultat():
+    p = _params_compte_resultat()
+    data = g.models.rapport_model.get_compte_resultat_bexio(
+        current_user.id, p['date_from'], p['date_to'],
+        p['comp_from'] if p['show_comp'] else None,
+        p['comp_to'] if p['show_comp'] else None,
+        p['niveau'], p['show_zero'])
+    annees = sorted(set(g.models.ecriture_comptable_model.get_annees_disponibles(current_user.id))
+                    | {date.today().year, p['annee'], p['annee_comp']}, reverse=True)
+    return render_template('comptabilite/compte_resultat.html', data=data, p=p, annees=annees)
+
+@bp.route('/comptabilite/compte-resultat/pdf')
+@login_required
+def compte_resultat_pdf():
+    p = _params_compte_resultat()
+    data = g.models.rapport_model.get_compte_resultat_bexio(
+        current_user.id, p['date_from'], p['date_to'], p['comp_from'], p['comp_to'],
+        niveau=3, show_zero=True)
+    entreprise = g.models.entreprise_model.get_or_create_for_user(current_user.id)
+    html = render_template('compte_resultat_pdf.html', data=data, p=p,
+                           entreprise=entreprise, user=current_user,
+                           date_gen=datetime.now())
+    pdf = _pdf_depuis_html(html)   # même helper que pour la TVA
+    return Response(pdf, mimetype='application/pdf',
+                    headers={'Content-Disposition':
+                             f'attachment; filename=compte_resultat_{p["annee"]}.pdf'})
+
+@bp.route('/comptabilite/compte-resultat/csv')
+@login_required
+def compte_resultat_csv():
+    p = _params_compte_resultat()
+    data = g.models.rapport_model.get_compte_resultat_bexio(
+        current_user.id, p['date_from'], p['date_to'], p['comp_from'], p['comp_to'],
+        niveau=3, show_zero=True)
+    out = io.StringIO()
+    out.write('\ufeff')  # BOM UTF-8 pour Excel
+    w = csv.writer(out, delimiter=';')
+    w.writerow(['Compte', f"{p['annee']}", f"{p['annee_comp']}"])
+    for r in data['rows']:
+        w.writerow(['    ' * r['level'] + (f"{r['numero']} " if r['numero'] else '') + r['label'],
+                    f"{r['a']:.2f}", f"{r['b']:.2f}"])
+    return Response(out.getvalue(), mimetype='text/csv',
+                    headers={'Content-Disposition':
+                             f'attachment; filename=compte_resultat_{p["annee"]}.csv'})
 ##########################################
 ###### Regle Ecriture
 ##########################################

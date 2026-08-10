@@ -11110,6 +11110,149 @@ class Rapport:
             logger.error(f"Erreur génération document {type_document}: {e}")
             return {'erreur': str(e)}
 
+        # ============================================
+    # COMPTE DE RÉSULTAT (structure type bexio)
+    # ============================================
+    def _soldes_pl_periode(self, user_id: int, date_from: str, date_to: str) -> Dict:
+        """Soldes HT (recettes - dépenses) des comptes de résultat (Revenus/Charge)."""
+        with self.db.get_cursor(dictionary=True) as cursor:
+            cursor.execute("""
+                SELECT e.categorie_id,
+                    COALESCE(SUM(CASE WHEN e.type_ecriture = 'recette'
+                                        THEN e.montant_htva ELSE -e.montant_htva END), 0) AS solde
+                FROM ecritures_comptables e
+                JOIN categories_comptables c ON c.id = e.categorie_id
+                WHERE e.utilisateur_id = %s
+                AND e.date_ecriture BETWEEN %s AND %s
+                AND e.statut = 'validée'
+                AND e.type_ecriture_comptable = 'principale'
+                AND c.type_compte IN ('Revenus', 'Charge')
+                GROUP BY e.categorie_id
+            """, (user_id, date_from, date_to))
+            return {r['categorie_id']: float(r['solde'] or 0) for r in cursor.fetchall()}
+
+    def get_compte_resultat_bexio(self, user_id: int, date_from: str, date_to: str,
+                                comp_from: str = None, comp_to: str = None,
+                                niveau: int = 3, show_zero: bool = False) -> Dict:
+        """
+        Construit les lignes du compte de résultat comme bexio :
+        comptes → sous-groupes → totaux de groupes → résultats intermédiaires.
+        niveau : 1 = groupes uniquement, 2 = + sous-groupes, 3 = + comptes.
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT id, numero, nom, parent_id, type_compte
+                    FROM categories_comptables ORDER BY numero
+                """)
+                cats = cursor.fetchall()
+            bal_a = self._soldes_pl_periode(user_id, date_from, date_to)
+            bal_b = self._soldes_pl_periode(user_id, comp_from, comp_to) if comp_from and comp_to else {}
+
+            children, by_id = {}, {c['id']: c for c in cats}
+            for c in cats:
+                children.setdefault(c['parent_id'], []).append(c)
+            for v in children.values():
+                v.sort(key=lambda c: (len(c['numero']), c['numero']))
+
+            def s(cid, bal):
+                c = by_id[cid]
+                if c['type_compte'] != 'Groupe':
+                    return bal.get(cid, 0.0)
+                return sum(s(ch['id'], bal) for ch in children.get(cid, []))
+
+            r2 = lambda v: round(v, 2)
+            rows = []
+            def add(level, label, a, b, bold=False, kind='account', numero=''):
+                rows.append({'level': level, 'label': label, 'numero': numero,
+                            'a': r2(a), 'b': r2(b), 'bold': bold, 'kind': kind})
+
+            def emit_children(pid, level):
+                for ch in children.get(pid, []):
+                    va, vb = s(ch['id'], bal_a), s(ch['id'], bal_b)
+                    is_grp = ch['type_compte'] == 'Groupe'
+                    if not is_grp and not show_zero and abs(va) < 0.005 and abs(vb) < 0.005:
+                        continue
+                    if is_grp:
+                        if niveau >= 2:
+                            add(level, ch['nom'], va, vb, kind='subgroup', numero=ch['numero'])
+                            if niveau >= 3:
+                                emit_children(ch['id'], level + 1)
+                    else:
+                        if niveau >= 3:
+                            add(level, ch['nom'], va, vb, kind='account', numero=ch['numero'])
+
+            def emit_subgroup(ch, level=0):
+                """1 sous-groupe + ses comptes (utilisé pour le groupe 6)."""
+                va, vb = s(ch['id'], bal_a), s(ch['id'], bal_b)
+                if ch['type_compte'] != 'Groupe':
+                    if show_zero or abs(va) >= 0.005 or abs(vb) >= 0.005:
+                        add(level, ch['nom'], va, vb, kind='account', numero=ch['numero'])
+                    return
+                if niveau >= 2:
+                    add(level, ch['nom'], va, vb, kind='subgroup', numero=ch['numero'])
+                    if niveau >= 3:
+                        emit_children(ch['id'], level + 1)
+
+            # --- Totaux des groupes de référence ---
+            top_nums = ['3', '4', '5', '6', '7', '8']
+            tops = sorted([c for c in children.get(None, []) if c['numero'] in top_nums],
+                        key=lambda c: top_nums.index(c['numero']))
+            T = {c['numero']: (s(c['id'], bal_a), s(c['id'], bal_b)) for c in tops}
+            g = {n: next(c for c in tops if c['numero'] == n) for n in top_nums if n in T}
+
+            t3, t4, t5, t6, t7, t8 = (T.get(n, (0, 0)) for n in top_nums)
+            brut1 = (r2(t3[0] + t4[0]), r2(t3[1] + t4[1]))
+            brut2 = (r2(brut1[0] + t5[0]), r2(brut1[1] + t5[1]))
+
+            # Groupe 6 : EBITDA (sans 68/69), EBIT (sans 69), financier = 69
+            op6 = [ch for ch in children.get(g['6']['id'], []) if not ch['numero'].startswith('69')]
+            fin6 = [ch for ch in children.get(g['6']['id'], []) if ch['numero'].startswith('69')]
+            op_sans_amort = [ch for ch in op6 if not ch['numero'].startswith('68')]
+            amort = [ch for ch in op6 if ch['numero'].startswith('68')]
+            ebitda = (r2(brut2[0] + sum(s(c['id'], bal_a) for c in op_sans_amort)),
+                    r2(brut2[1] + sum(s(c['id'], bal_b) for c in op_sans_amort)))
+            ebit = (r2(ebitda[0] + sum(s(c['id'], bal_a) for c in amort)),
+                    r2(ebitda[1] + sum(s(c['id'], bal_b) for c in amort)))
+            avant_impots = (r2(brut2[0] + t6[0] + t7[0]), r2(brut2[1] + t6[1] + t7[1]))
+            final = (r2(avant_impots[0] + t8[0]), r2(avant_impots[1] + t8[1]))
+
+            # --- Construction des lignes dans l'ordre bexio ---
+            if '3' in g:
+                emit_children(g['3']['id'], 0)
+                add(0, g['3']['nom'], *t3, bold=True, kind='group', numero='3')
+            if '4' in g:
+                emit_children(g['4']['id'], 0)
+                add(0, g['4']['nom'], *t4, bold=True, kind='group', numero='4')
+            add(0, 'Résultat brut 1 (bénéfice brut)', *brut1, bold=True, kind='result')
+            if '5' in g:
+                emit_children(g['5']['id'], 0)
+                add(0, g['5']['nom'], *t5, bold=True, kind='group', numero='5')
+            add(0, 'Résultat brut 2', *brut2, bold=True, kind='result')
+            if '6' in g:
+                for ch in op6:
+                    emit_subgroup(ch)
+                add(0, 'Résultat avant intérêts et amortissements (EBITDA)', *ebitda, kind='result')
+                add(0, "Résultat d'exploitation avant intérêts (EBIT)", *ebit, kind='result')
+                for ch in fin6:
+                    emit_subgroup(ch)
+                add(0, g['6']['nom'], *t6, bold=True, kind='group', numero='6')
+            add(0, "Résultat de l'entreprise avant impôts", *avant_impots, bold=True, kind='result')
+            if '7' in g:
+                emit_children(g['7']['id'], 0)
+                add(0, g['7']['nom'], *t7, bold=True, kind='group', numero='7')
+            if '8' in g:
+                emit_children(g['8']['id'], 0)
+                add(0, g['8']['nom'], *t8, bold=True, kind='group', numero='8')
+            add(0, 'Résultat non comptabilisé', *final, bold=True, kind='result')
+
+            return {'rows': rows,
+                    'meta': {'date_from': date_from, 'date_to': date_to,
+                            'comp_from': comp_from, 'comp_to': comp_to}}
+        except Exception as e:
+            logger.error(f"Erreur compte de résultat bexio: {e}", exc_info=True)
+            return {'rows': [], 'meta': {}}
+
 class BaremeCotisation:
     def __init__(self, db):
         self.db = db
