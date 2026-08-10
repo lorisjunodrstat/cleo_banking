@@ -3,102 +3,129 @@
 <head>
 <meta charset="utf-8">
 <style>
-    @page { size: A4; margin: 1.4cm; }
-    body { font-family: Helvetica; font-size: 8.5pt; color: #000; }
-    h1 { font-size: 13pt; margin: 0; }
-    h2 { font-size: 10pt; margin: 10px 0 4px 0; }
+    @page { size: A4; margin: 1.2cm 1.2cm 1.5cm 1.2cm; }
+    body { font-family: Helvetica; font-size: 8pt; color: #000; }
+    h1 { font-size: 12pt; margin: 0; }
+    h2 { font-size: 9.5pt; margin: 10px 0 4px 0; }
     .small { font-size: 7.5pt; color: #444; }
-    .r { text-align: right; } .c { text-align: center; }
-    .num { color: #1b75bb; font-weight: bold; text-align: center; }
-    table.head { width: 100%; margin-bottom: 8px; }
+    .num { color: #1b75bb; font-weight: bold; }
     table.head td { vertical-align: top; }
-    table.tva { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
-    table.tva th, table.tva td { border: 1px solid #888; padding: 3px 5px; vertical-align: top; }
-    table.tva th { background-color: #eeeeee; text-align: left; }
+    table.tva { border-collapse: collapse; margin-bottom: 6px; }
+    table.tva th, table.tva td { border: 1px solid #888; padding: 2px 4px; vertical-align: top; font-size: 8pt; }
+    table.tva th { background-color: #eeeeee; }
     tr.total td { background-color: #f0f0f0; font-weight: bold; }
-    table.journal { width: 100%; border-collapse: collapse; }
-    table.journal th, table.journal td { border: 1px solid #888; padding: 2px 4px; font-size: 7.5pt; }
+    table.journal { border-collapse: collapse; }
+    table.journal th, table.journal td { border: 1px solid #888; padding: 2px 3px; font-size: 7pt; }
     .pagebreak { page-break-before: always; }
 </style>
 </head>
 <body>
 
-<table class="head"><tr>
-    <td>
+<!-- ================= EN-TÊTE ================= -->
+<table width="515"><tr>
+    <td width="300">
         <h1>{{ entreprise.nom }}</h1>
         <div class="small">
-            {% if entreprise.rue %}{{ entreprise.rue }}<br>{% endif %}
-            {% if entreprise.code_postal %}{{ entreprise.code_postal }} {{ entreprise.commune }}<br>{% endif %}
+            {% if entreprise.rue %}{{ entreprise.rue }}<br/>{% endif %}
+            {% if entreprise.code_postal %}{{ entreprise.code_postal }} {{ entreprise.commune }}<br/>{% endif %}
             {% if entreprise.email %}{{ entreprise.email }}{% endif %}
         </div>
     </td>
-    <td class="r">
+    <td width="215" align="right">
         <h1>Décompte TVA</h1>
         <div class="small">
-            Période : <strong>T0{{ trimestre }} / {{ annee }}</strong><br>
+            Période : <b>T0{{ trimestre }} / {{ annee }}</b><br/>
             Du {{ date_debut.strftime('%d.%m.%Y') }} au {{ date_fin.strftime('%d.%m.%Y') }}
         </div>
     </td>
 </tr></table>
 
+<!-- ================= I. CHIFFRE D'AFFAIRES ================= -->
 <h2>I. CHIFFRE D'AFFAIRES (loi sur la TVA du 12.06.2009)</h2>
-<table class="tva">
-    <tr><th width="62%">Libellé</th><th width="8%" class="c">Chiffre</th><th width="5%" class="c">Op.</th><th width="25%" class="r">CHF</th></tr>
-    <tr><td>Total des contre-prestations convenues ou reçues (art. 39)</td><td class="num">200</td><td></td><td class="r">{{ '%.2f'|format(chiffres.c200) }}</td></tr>
-    <tr><td>Contre-prestations exclues du champ de l'impôt (art. 21) avec option selon art. 22</td><td class="num">205</td><td></td><td class="r">{{ '%.2f'|format(chiffres.c205) }}</td></tr>
-    <tr><td>Déductions : prestations exonérées (art. 23), institutions et personnes bénéficiaires (art. 107 al. 1 let. a)</td><td class="num">220</td><td></td><td class="r">{{ '%.2f'|format(chiffres.c220) }}</td></tr>
-    <tr><td>Prestations fournies à l'étranger</td><td class="num">221</td><td class="c">+</td><td class="r">{{ '%.2f'|format(chiffres.c221) }}</td></tr>
-    <tr><td>Transferts avec la procédure de déclaration (art. 38)</td><td class="num">225</td><td class="c">+</td><td class="r">{{ '%.2f'|format(chiffres.c225) }}</td></tr>
-    <tr><td>Prestations exclues du champ de l'impôt (art. 21) sans option selon art. 22</td><td class="num">230</td><td class="c">+</td><td class="r">{{ '%.2f'|format(chiffres.c230) }}</td></tr>
-    <tr><td>Diminutions de la contre-prestation</td><td class="num">235</td><td class="c">+</td><td class="r">{{ '%.2f'|format(chiffres.c235) }}</td></tr>
-    <tr><td>Divers (p. ex. valeur du terrain)</td><td class="num">280</td><td class="c">+</td><td class="r">{{ '%.2f'|format(chiffres.c280) }}</td></tr>
-    <tr class="total"><td>Total ch. 220 à 280</td><td class="num">289</td><td class="c">=</td><td class="r">{{ '%.2f'|format(chiffres.c289) }}</td></tr>
-    <tr class="total"><td>Total du chiffre d'affaires imposable (ch. 200 moins ch. 289)</td><td class="num">299</td><td class="c">=</td><td class="r">{{ '%.2f'|format(chiffres.c299) }}</td></tr>
+<table class="tva" width="515">
+    <tr>
+        <th width="355" align="left">Libellé</th>
+        <th width="45" align="center">Chiffre</th>
+        <th width="20" align="center">Op.</th>
+        <th width="95" align="right">CHF</th>
+    </tr>
+    <tr><td>Total des contre-prestations convenues ou reçues (art. 39)</td><td align="center" class="num">200</td><td></td><td align="right">{{ '%.2f'|format(chiffres.c200) }}</td></tr>
+    <tr><td>Contre-prestations exclues du champ de l'impôt (art. 21) avec option selon art. 22</td><td align="center" class="num">205</td><td></td><td align="right">{{ '%.2f'|format(chiffres.c205) }}</td></tr>
+    <tr><td>Déductions : prestations exonérées (art. 23), institutions et personnes bénéficiaires (art. 107 al. 1 let. a)</td><td align="center" class="num">220</td><td></td><td align="right">{{ '%.2f'|format(chiffres.c220) }}</td></tr>
+    <tr><td>Prestations fournies à l'étranger</td><td align="center" class="num">221</td><td align="center">+</td><td align="right">{{ '%.2f'|format(chiffres.c221) }}</td></tr>
+    <tr><td>Transferts avec la procédure de déclaration (art. 38)</td><td align="center" class="num">225</td><td align="center">+</td><td align="right">{{ '%.2f'|format(chiffres.c225) }}</td></tr>
+    <tr><td>Prestations exclues du champ de l'impôt (art. 21) sans option selon art. 22</td><td align="center" class="num">230</td><td align="center">+</td><td align="right">{{ '%.2f'|format(chiffres.c230) }}</td></tr>
+    <tr><td>Diminutions de la contre-prestation</td><td align="center" class="num">235</td><td align="center">+</td><td align="right">{{ '%.2f'|format(chiffres.c235) }}</td></tr>
+    <tr><td>Divers (p. ex. valeur du terrain)</td><td align="center" class="num">280</td><td align="center">+</td><td align="right">{{ '%.2f'|format(chiffres.c280) }}</td></tr>
+    <tr class="total"><td>Total ch. 220 à 280</td><td align="center" class="num">289</td><td align="center">=</td><td align="right">{{ '%.2f'|format(chiffres.c289) }}</td></tr>
+    <tr class="total"><td>Total du chiffre d'affaires imposable (ch. 200 moins ch. 289)</td><td align="center" class="num">299</td><td align="center">=</td><td align="right">{{ '%.2f'|format(chiffres.c299) }}</td></tr>
 </table>
 
+<!-- ================= II. CALCUL DE L'IMPÔT ================= -->
 <h2>II. CALCUL DE L'IMPÔT</h2>
-<table class="tva">
-    <tr><th width="42%">Libellé</th><th width="8%" class="c">Chiffre</th><th width="20%" class="r">Prestations CHF</th><th width="20%" class="r">Impôt CHF</th><th width="10%" class="c">Taux</th></tr>
-    <tr><td>Normal</td><td class="num">303</td><td class="r">{{ '%.2f'|format(chiffres.p303) }}</td><td class="r">{{ '%.2f'|format(chiffres.i302) }}</td><td class="c">{{ donnees.taux.normal }}%</td></tr>
-    <tr><td>Réduit</td><td class="num">313</td><td class="r">{{ '%.2f'|format(chiffres.p313) }}</td><td class="r">{{ '%.2f'|format(chiffres.i312) }}</td><td class="c">{{ donnees.taux.reduit }}%</td></tr>
-    <tr><td>Spécial pour l'hébergement</td><td class="num">343</td><td class="r">{{ '%.2f'|format(chiffres.p343) }}</td><td class="r">{{ '%.2f'|format(chiffres.i342) }}</td><td class="c">{{ donnees.taux.special }}%</td></tr>
-    <tr><td>Impôt sur les acquisitions</td><td class="num">383</td><td class="r">{{ '%.2f'|format(chiffres.p383) }}</td><td class="r">{{ '%.2f'|format(chiffres.i382) }}</td><td></td></tr>
-    <tr class="total"><td>Total de l'impôt dû (ch. 302 à 383)</td><td class="num">399</td><td></td><td class="r">{{ '%.2f'|format(chiffres.c399) }}</td><td></td></tr>
-    <tr><td>Impôt préalable grevant les coûts en matériel et en prestations de services</td><td class="num">400</td><td></td><td class="r">{{ '%.2f'|format(chiffres.c400) }}</td><td></td></tr>
-    <tr><td>Impôt préalable grevant les investissements et autres charges d'exploitation</td><td class="num">405</td><td class="c">+</td><td class="r">{{ '%.2f'|format(chiffres.c405) }}</td><td></td></tr>
-    <tr><td>Dégrèvement ultérieur de l'impôt préalable (art. 32)</td><td class="num">410</td><td class="c">+</td><td class="r">{{ '%.2f'|format(chiffres.c410) }}</td><td></td></tr>
-    <tr><td>Corrections de l'impôt préalable (art. 30, 31)</td><td class="num">415</td><td class="c">-</td><td class="r">{{ '%.2f'|format(chiffres.c415) }}</td><td></td></tr>
-    <tr><td>Réductions de la déduction de l'impôt préalable (art. 33 al. 2)</td><td class="num">420</td><td class="c">-</td><td class="r">{{ '%.2f'|format(chiffres.c420) }}</td><td></td></tr>
-    <tr class="total"><td>Total ch. 400 à 420</td><td class="num">479</td><td></td><td class="r">{{ '%.2f'|format(chiffres.c479) }}</td><td></td></tr>
-    <tr class="total"><td>Montant à payer à l'Administration fédérale des contributions</td><td class="num">500</td><td></td><td class="r">{% if chiffres.c500 > 0 %}{{ '%.2f'|format(chiffres.c500) }}{% endif %}</td><td></td></tr>
-    <tr class="total"><td>Solde en faveur de l'assujetti</td><td class="num">510</td><td></td><td class="r">{% if chiffres.c510 > 0 %}{{ '%.2f'|format(chiffres.c510) }}{% endif %}</td><td></td></tr>
+<table class="tva" width="515">
+    <tr>
+        <th width="255" align="left">Libellé</th>
+        <th width="45" align="center">Chiffre</th>
+        <th width="80" align="right">Prestations CHF</th>
+        <th width="80" align="right">Impôt CHF</th>
+        <th width="55" align="center">Taux</th>
+    </tr>
+    <tr><td>Normal</td><td align="center" class="num">303</td><td align="right">{{ '%.2f'|format(chiffres.p303) }}</td><td align="right">{{ '%.2f'|format(chiffres.i302) }}</td><td align="center">{{ donnees.taux.normal }}%</td></tr>
+    <tr><td>Réduit</td><td align="center" class="num">313</td><td align="right">{{ '%.2f'|format(chiffres.p313) }}</td><td align="right">{{ '%.2f'|format(chiffres.i312) }}</td><td align="center">{{ donnees.taux.reduit }}%</td></tr>
+    <tr><td>Spécial pour l'hébergement</td><td align="center" class="num">343</td><td align="right">{{ '%.2f'|format(chiffres.p343) }}</td><td align="right">{{ '%.2f'|format(chiffres.i342) }}</td><td align="center">{{ donnees.taux.special }}%</td></tr>
+    <tr><td>Impôt sur les acquisitions</td><td align="center" class="num">383</td><td align="right">{{ '%.2f'|format(chiffres.p383) }}</td><td align="right">{{ '%.2f'|format(chiffres.i382) }}</td><td></td></tr>
+    <tr class="total"><td>Total de l'impôt dû (ch. 302 à 383)</td><td align="center" class="num">399</td><td></td><td align="right">{{ '%.2f'|format(chiffres.c399) }}</td><td></td></tr>
+    <tr><td>Impôt préalable grevant les coûts en matériel et en prestations de services</td><td align="center" class="num">400</td><td></td><td align="right">{{ '%.2f'|format(chiffres.c400) }}</td><td></td></tr>
+    <tr><td>Impôt préalable grevant les investissements et autres charges d'exploitation</td><td align="center" class="num">405</td><td align="center">+</td><td align="right">{{ '%.2f'|format(chiffres.c405) }}</td><td></td></tr>
+    <tr><td>Dégrèvement ultérieur de l'impôt préalable (art. 32)</td><td align="center" class="num">410</td><td align="center">+</td><td align="right">{{ '%.2f'|format(chiffres.c410) }}</td><td></td></tr>
+    <tr><td>Corrections de l'impôt préalable (art. 30, 31)</td><td align="center" class="num">415</td><td align="center">-</td><td align="right">{{ '%.2f'|format(chiffres.c415) }}</td><td></td></tr>
+    <tr><td>Réductions de la déduction de l'impôt préalable (art. 33 al. 2)</td><td align="center" class="num">420</td><td align="center">-</td><td align="right">{{ '%.2f'|format(chiffres.c420) }}</td><td></td></tr>
+    <tr class="total"><td>Total ch. 400 à 420</td><td align="center" class="num">479</td><td></td><td align="right">{{ '%.2f'|format(chiffres.c479) }}</td><td></td></tr>
+    <tr class="total"><td>Montant à payer à l'Administration fédérale des contributions</td><td align="center" class="num">500</td><td></td><td align="right">{% if chiffres.c500 > 0 %}{{ '%.2f'|format(chiffres.c500) }}{% endif %}</td><td></td></tr>
+    <tr class="total"><td>Solde en faveur de l'assujetti</td><td align="center" class="num">510</td><td></td><td align="right">{% if chiffres.c510 > 0 %}{{ '%.2f'|format(chiffres.c510) }}{% endif %}</td><td></td></tr>
 </table>
 
+<!-- ================= III. AUTRES MOUVEMENTS DE FONDS ================= -->
 <h2>III. AUTRES MOUVEMENTS DE FONDS (art. 18 al. 2)</h2>
-<table class="tva">
-    <tr><td width="62%">Subventions, taxes touristiques, contributions déchets/eau (let. a à c)</td><td width="8%" class="num">900</td><td width="30%" class="r">{{ '%.2f'|format(chiffres.c900) }}</td></tr>
-    <tr><td>Dons, dividendes, dédommagements, etc. (let. d à l)</td><td class="num">910</td><td class="r">{{ '%.2f'|format(chiffres.c910) }}</td></tr>
+<table class="tva" width="515">
+    <tr>
+        <th width="375" align="left">Libellé</th>
+        <th width="45" align="center">Chiffre</th>
+        <th width="95" align="right">CHF</th>
+    </tr>
+    <tr><td>Subventions, taxes touristiques, contributions déchets/eau (let. a à c)</td><td align="center" class="num">900</td><td align="right">{{ '%.2f'|format(chiffres.c900) }}</td></tr>
+    <tr><td>Dons, dividendes, dédommagements, etc. (let. d à l)</td><td align="center" class="num">910</td><td align="right">{{ '%.2f'|format(chiffres.c910) }}</td></tr>
 </table>
 
-<div class="small" style="margin-top:10px;">
-    {% if cloture %}<strong>Trimestre clôturé le {{ cloture.cloture_at.strftime('%d.%m.%Y à %H:%M') }}</strong><br>{% endif %}
+<div class="small">
+    {% if cloture %}<b>Trimestre clôturé le {{ cloture.cloture_at.strftime('%d.%m.%Y à %H:%M') }}</b><br/>{% endif %}
     Document généré le {{ date_gen.strftime('%d.%m.%Y à %H:%M') }}
 </div>
 
+<!-- ================= ANNEXE : JOURNAL ================= -->
 {% if donnees.journal %}
 <div class="pagebreak"></div>
 <h2>Annexe : Journal de TVA (T0{{ trimestre }} / {{ annee }})</h2>
-<table class="journal">
-    <tr><th>Date</th><th>Compte</th><th>Libellé</th><th>Sens</th><th class="r">Base HT</th><th class="c">Taux</th><th class="r">TVA</th></tr>
+<table class="journal" width="515">
+    <tr>
+        <th width="52" align="left">Date</th>
+        <th width="95" align="left">Compte</th>
+        <th width="163" align="left">Libellé</th>
+        <th width="70" align="left">Sens</th>
+        <th width="60" align="right">Base HT</th>
+        <th width="30" align="center">Taux</th>
+        <th width="45" align="right">TVA</th>
+    </tr>
     {% for j in donnees.journal %}
     <tr>
         <td>{{ j.date }}</td>
-        <td>{{ j.categorie }}</td>
-        <td>{{ j.description }}</td>
+        <td>{{ j.categorie|truncate(30) }}</td>
+        <td>{{ j.description|truncate(55) }}</td>
         <td>{{ j.sens }}</td>
-        <td class="r">{% if j.base is not none %}{{ '%.2f'|format(j.base) }}{% endif %}</td>
-        <td class="c">{% if j.taux is not none %}{{ j.taux }}%{% endif %}</td>
-        <td class="r">{{ '%.2f'|format(j.tva) }}</td>
+        <td align="right">{% if j.base is not none %}{{ '%.2f'|format(j.base) }}{% endif %}</td>
+        <td align="center">{% if j.taux is not none %}{{ j.taux }}%{% endif %}</td>
+        <td align="right">{{ '%.2f'|format(j.tva) }}</td>
     </tr>
     {% endfor %}
 </table>
