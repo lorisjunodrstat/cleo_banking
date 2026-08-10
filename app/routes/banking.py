@@ -1,13 +1,15 @@
 from typing import Optional
 import logging
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, current_app, g, session, abort, send_file
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, current_app, g, session, abort, send_file, Response
 from flask_login import login_required, current_user
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timedelta, date, time
 from calendar import monthrange
-from app.models import DatabaseManager, Banque, ComptePrincipal, SousCompte, TransactionFinanciere, StatistiquesBancaires, PlanComptable, EcritureComptable, HeureTravail, Salaire, SyntheseHebdomadaire, SyntheseMensuelle, Contrat, Contacts, ContactCompte, ComptePrincipalRapport, CategorieComptable, Employe, Equipe, Planning, Competence, PlanningRegles, RegleEcriture, TauxTva
+from app.models import DatabaseManager, Banque, ComptePrincipal, SousCompte, TransactionFinanciere, StatistiquesBancaires, PlanComptable, EcritureComptable, HeureTravail, Salaire, SyntheseHebdomadaire, SyntheseMensuelle, Contrat, Contacts, ContactCompte, ComptePrincipalRapport, CategorieComptable, Employe, Equipe, Planning, Competence, PlanningRegles, RegleEcriture, TauxTva, FormulaireTVA
 from io import StringIO
+import json as _json
 import os
+from xhtml2pdf import pisa
 import csv as csv_mod
 from werkzeug.utils import secure_filename
 import csv as csv_mod
@@ -6536,6 +6538,104 @@ def supprimer_taux_tva(taux_id: int):
     g.models.taux_tva_model.delete(taux_id)
     return redirect(url_for('banking.liste_taux_tva'))
 
+@bp.route('/comptabilite/tva', methods=['GET', 'POST'])
+@login_required
+def comptabilite_tva():
+    today = date.today()
+    periode = request.values.get('periode')
+    if periode and '-' in periode:
+        annee, trimestre = (int(x) for x in periode.split('-'))
+    else:
+        annee, trimestre = today.year, (today.month - 1) // 3 + 1
+
+    if request.method == 'POST' and request.form.get('action') == 'cloturer':
+        chiffres = {k: v for k, v in request.form.items() if k != 'action'}
+        g.models.formulaire_tva_model.cloturer(current_user.id, annee, trimestre, chiffres)
+        flash(f'Trimestre T0{trimestre}/{annee} marqué comme clôturé.', 'success')
+        return redirect(url_for('banking.comptabilite_tva', periode=f'{annee}-{trimestre}'))
+
+    donnees = g.models.formulaire_tva_model.get_donnees_formulaire(current_user.id, annee, trimestre)
+    cloture = g.models.formulaire_tva_model.get_cloture(current_user.id, annee, trimestre)
+    if cloture and cloture.get('donnees_json'):
+        saved = json.loads(cloture['donnees_json'])
+        for k in donnees['chiffres']:
+            if k in saved and saved[k]:
+                try: donnees['chiffres'][k] = float(str(saved[k]).replace("'", ""))
+                except ValueError: pass
+    return render_template('comptabilite/tva.html', donnees=donnees, annee=annee, trimestre=trimestre,
+                           periodes=g.models.formulaire_tva_model.get_periodes_disponibles(current_user.id),
+                           cloture=cloture)
+
+
+def _pdf_depuis_html(html: str) -> bytes:
+    
+    resultat = io.BytesIO()
+    statut = pisa.pisaDocument(io.BytesIO(html.encode('utf-8')), resultat)
+    if statut.err:
+        raise RuntimeError("Erreur lors de la génération du PDF")
+    return resultat.getvalue()
+
+def _float_form(form, cle):
+    try:
+        return round(float(str(form.get(cle, '')).replace("'", '').replace(' ', '') or 0), 2)
+    except (ValueError, TypeError):
+        return 0.0
+
+@bp.route('/comptabilite/tva/pdf', methods=['GET', 'POST'])
+@login_required
+def comptabilite_tva_pdf():
+    today = date.today()
+    periode = request.values.get('periode')
+    if periode and '-' in periode:
+        annee, trimestre = (int(x) for x in periode.split('-'))
+    else:
+        annee, trimestre = today.year, (today.month - 1) // 3 + 1
+
+    donnees = g.models.formulaire_tva_model.get_donnees_formulaire(current_user.id, annee, trimestre)
+    chiffres = donnees['chiffres']
+
+    # Si clôturé → valeurs sauvegardées ; si POST → valeurs de l'écran
+    cloture = g.models.formulaire_tva_model.get_cloture(current_user.id, annee, trimestre)
+    if cloture and cloture.get('donnees_json'):
+        saved = json.loads(cloture['donnees_json'])
+        for k in chiffres:
+            if k in saved and saved[k]:
+                try: chiffres[k] = float(str(saved[k]).replace("'", ''))
+                except ValueError: pass
+    if request.method == 'POST':
+        for k in list(chiffres.keys()):
+            if k in request.form:
+                chiffres[k] = _float_form(request.form, k)
+
+    # Totaux dérivés (mêmes formules que le JS)
+    chiffres['c289'] = round(sum(chiffres[k] for k in ('c220','c221','c225','c230','c235','c280')), 2)
+    chiffres['c299'] = round(chiffres['c200'] - chiffres['c289'], 2)
+    chiffres['c399'] = round(sum(chiffres[k] for k in ('i302','i312','i342','i382')), 2)
+    chiffres['c479'] = round(chiffres['c400'] + chiffres['c405'] + chiffres['c410']
+                            - chiffres['c415'] - chiffres['c420'], 2)
+    solde = round(chiffres['c399'] - chiffres['c479'], 2)
+    chiffres['c500'] = solde if solde > 0 else 0.0
+    chiffres['c510'] = -solde if solde < 0 else 0.0
+
+    date_debut, date_fin = g.models.formulaire_tva_model.dates_trimestre(annee, trimestre)
+    entreprise = g.models.entreprise_model.get_or_create_for_user(current_user.id)
+
+    html = render_template('comptabilite/tva_pdf.html',
+                           donnees=donnees, chiffres=chiffres,
+                           annee=annee, trimestre=trimestre,
+                           date_debut=date_debut, date_fin=date_fin,
+                           cloture=cloture, entreprise=entreprise,
+                           date_gen=datetime.now())
+    try:
+        pdf = _pdf_depuis_html(html)
+    except Exception as e:
+        flash(f"Erreur export PDF : {e}", 'danger')
+        return redirect(url_for('comptabilite_tva', periode=f'{annee}-{trimestre}'))
+
+    return Response(pdf, mimetype='application/pdf',
+                    headers={'Content-Disposition':
+                             f'attachment; filename=TVA_T0{trimestre}_{annee}.pdf'})
+
 # --- ROUTE API POUR LE FILTRAGE DYNAMIQUE DANS LES ÉCRITURES ---
 @bp.route('/api/by-date', methods=['GET'])
 @login_required
@@ -11846,7 +11946,6 @@ def pos_commandes_en_cours():
 @login_required
 def pos_stats_by_article():
     """Ventes par article — style Loyverse (Top 5 + graphique + tableau)"""
-    import json as _json
     db = g.models.receipt_pos_model.db   # ✅ g.db n'existe pas
 
     now = datetime.now()
@@ -11925,7 +12024,6 @@ def pos_stats_by_article():
 @login_required
 def pos_stats_by_category():
     """Ventes par catégorie — style Loyverse (Top 5 + graphique + tableau)"""
-    import json as _json
     db = g.models.receipt_pos_model.db   # ✅ g.db n'existe pas
 
     now = datetime.now()
@@ -12506,7 +12604,6 @@ def pos_import_payments(df):
 @login_required
 def pos_stats():
     """Récapitulatif des ventes — graphique interactif multi-périodes"""
-    import json as _json
     db = g.models.receipt_pos_model.db
 
     now = datetime.now()

@@ -24,3 +24,5 @@ flask-session
 openpyxl
 pandas
 report
+xhtml2pdf
+json

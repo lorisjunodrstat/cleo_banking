@@ -9551,6 +9551,9 @@ class RegleEcriture:
             return []
 
 
+
+
+
 class TauxTva:
     def __init__(self, db):
         self.db = db
@@ -9657,7 +9660,197 @@ class TauxTva:
         except Exception as e:
             logger.error(f"Erreur get_taux_for_select: {e}")
             return []
-    
+
+class FormulaireTVA:
+    """Données du formulaire officiel de décompte TVA suisse + clôture des trimestres."""
+
+    def __init__(self, db):
+        self.db = db
+        self._ensure_table()
+
+    def _ensure_table(self):
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS tva_clotures (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        utilisateur_id INT NOT NULL,
+                        annee INT NOT NULL,
+                        trimestre INT NOT NULL,
+                        donnees_json TEXT,
+                        cloture_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE KEY uq_tva_cloture (utilisateur_id, annee, trimestre),
+                        FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                    )
+                """)
+        except Exception as e:
+            logger.error(f"Erreur création table tva_clotures: {e}")
+
+    @staticmethod
+    def dates_trimestre(annee: int, trimestre: int):
+        mois_debut = (trimestre - 1) * 3 + 1
+        mois_fin = trimestre * 3
+        date_debut = date(annee, mois_debut, 1)
+        date_fin = date(annee, 12, 31) if mois_fin == 12 else date(annee, mois_fin + 1, 1) - timedelta(days=1)
+        return date_debut, date_fin
+
+    @staticmethod
+    def taux_selon_annee(annee: int) -> Dict:
+        if annee >= 2024:
+            return {'normal': 8.1, 'reduit': 2.6, 'special': 3.8}
+        return {'normal': 7.7, 'reduit': 2.5, 'special': 3.7}
+
+    @staticmethod
+    def _classer_taux(taux) -> str:
+        t = float(taux or 0)
+        if t in (7.7, 8.1): return 'normal'
+        if t in (2.5, 2.6): return 'reduit'
+        if t in (3.7, 3.8): return 'special'
+        return 'autre'
+
+    def get_periodes_disponibles(self, user_id: int) -> List[Dict]:
+        annee_courante = date.today().year
+        annees = set(range(annee_courante - 2, annee_courante + 1))
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT DISTINCT YEAR(date_ecriture) AS annee
+                    FROM ecritures_comptables WHERE utilisateur_id = %s
+                """, (user_id,))
+                annees |= {r['annee'] for r in cursor.fetchall() if r['annee']}
+        except Exception as e:
+            logger.error(f"Erreur périodes TVA: {e}")
+        return [{'annee': a, 'trimestre': t} for a in sorted(annees, reverse=True) for t in (4, 3, 2, 1)]
+
+    def get_donnees_formulaire(self, user_id: int, annee: int, trimestre: int) -> Dict:
+        date_debut, date_fin = self.dates_trimestre(annee, trimestre)
+        chiffres = {
+            'c200': 0.0, 'c205': 0.0, 'c220': 0.0, 'c221': 0.0, 'c225': 0.0,
+            'c230': 0.0, 'c235': 0.0, 'c280': 0.0,
+            'p303': 0.0, 'i302': 0.0, 'p313': 0.0, 'i312': 0.0,
+            'p343': 0.0, 'i342': 0.0, 'p383': 0.0, 'i382': 0.0,
+            'c400': 0.0, 'c405': 0.0, 'c410': 0.0, 'c415': 0.0, 'c420': 0.0,
+            'c900': 0.0, 'c910': 0.0,
+        }
+        journal = []
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                # --- Ch. 200 : total contre-prestations HT ---
+                cursor.execute("""
+                    SELECT COALESCE(SUM(e.montant_htva), 0) AS ca_ht
+                    FROM ecritures_comptables e
+                    JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.utilisateur_id = %s AND e.date_ecriture BETWEEN %s AND %s
+                      AND e.statut = 'validée' AND e.type_ecriture = 'recette'
+                      AND e.type_ecriture_comptable = 'principale'
+                      AND c.type_compte IN ('Revenus', 'Produits')
+                """, (user_id, date_debut, date_fin))
+                row = cursor.fetchone()
+                chiffres['c200'] = round(float(row['ca_ht'] or 0), 2)
+
+                # --- Prestations HT + impôt dû, par taux ---
+                cursor.execute("""
+                    SELECT e.tva_taux,
+                           COALESCE(SUM(e.montant_htva), 0) AS base_ht,
+                           COALESCE(SUM(e.tva_montant), 0) AS tva
+                    FROM ecritures_comptables e
+                    JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.utilisateur_id = %s AND e.date_ecriture BETWEEN %s AND %s
+                      AND e.statut = 'validée' AND e.type_ecriture = 'recette'
+                      AND e.type_ecriture_comptable = 'principale'
+                      AND c.type_compte IN ('Revenus', 'Produits')
+                    GROUP BY e.tva_taux
+                """, (user_id, date_debut, date_fin))
+                for row in cursor.fetchall():
+                    cle = self._classer_taux(row['tva_taux'])
+                    base, tva = float(row['base_ht'] or 0), float(row['tva'] or 0)
+                    if cle == 'normal':   chiffres['p303'] += base; chiffres['i302'] += tva
+                    elif cle == 'reduit': chiffres['p313'] += base; chiffres['i312'] += tva
+                    elif cle == 'special':chiffres['p343'] += base; chiffres['i342'] += tva
+
+                # --- Impôt préalable (via compte_systeme) ---
+                cursor.execute("""
+                    SELECT c.compte_systeme, COALESCE(SUM(e.montant), 0) AS total
+                    FROM ecritures_comptables e
+                    JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.utilisateur_id = %s AND e.date_ecriture BETWEEN %s AND %s
+                      AND e.statut = 'validée'
+                      AND c.compte_systeme IN ('TAX_PRE_MATERIAL','TAX_PRE_INVESTMENT',
+                                               'TAX_PRE_TAX_CORRECTION','TAX_PRE_TAX_CUTS')
+                    GROUP BY c.compte_systeme
+                """, (user_id, date_debut, date_fin))
+                map_pre = {'TAX_PRE_MATERIAL': 'c400', 'TAX_PRE_INVESTMENT': 'c405',
+                           'TAX_PRE_TAX_CORRECTION': 'c415', 'TAX_PRE_TAX_CUTS': 'c420'}
+                for row in cursor.fetchall():
+                    cle = map_pre.get(row['compte_systeme'])
+                    if cle:
+                        chiffres[cle] += float(row['total'] or 0)
+                for k in chiffres: chiffres[k] = round(chiffres[k], 2)
+
+                # --- Journal de TVA ---
+                cursor.execute("""
+                    SELECT e.id, e.date_ecriture, e.description, e.reference,
+                           e.type_ecriture, e.montant, e.montant_htva, e.tva_taux, e.tva_montant,
+                           c.numero AS categorie_numero, c.nom AS categorie_nom, c.compte_systeme
+                    FROM ecritures_comptables e
+                    JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.utilisateur_id = %s AND e.date_ecriture BETWEEN %s AND %s
+                      AND e.statut = 'validée'
+                      AND (
+                           (e.type_ecriture_comptable = 'principale' AND COALESCE(e.tva_taux,0) > 0
+                            AND e.type_ecriture = 'recette')
+                           OR c.compte_systeme IN ('TAX_PRE_MATERIAL','TAX_PRE_INVESTMENT',
+                                                   'TAX_PRE_TAX_CORRECTION','TAX_PRE_TAX_CUTS')
+                      )
+                    ORDER BY e.date_ecriture, e.id
+                """, (user_id, date_debut, date_fin))
+                for row in cursor.fetchall():
+                    cs = row['compte_systeme'] or ''
+                    if cs.startswith('TAX_PRE'):
+                        sens, base, taux = 'Impôt préalable', None, None
+                        tva = float(row['montant'] or 0)
+                    else:
+                        sens = 'TVA due'
+                        base = float(row['montant_htva'] or 0)
+                        taux = float(row['tva_taux'] or 0)
+                        tva = float(row['tva_montant'] or 0)
+                    journal.append({
+                        'date': row['date_ecriture'].strftime('%d.%m.%Y'),
+                        'categorie': f"{row['categorie_numero']} {row['categorie_nom']}",
+                        'description': row['description'] or '',
+                        'sens': sens, 'base': base, 'taux': taux, 'tva': round(tva, 2),
+                    })
+        except Exception as e:
+            logger.error(f"Erreur get_donnees_formulaire TVA: {e}", exc_info=True)
+        return {'annee': annee, 'trimestre': trimestre, 'taux': self.taux_selon_annee(annee),
+                'chiffres': chiffres, 'journal': journal}
+
+    def get_cloture(self, user_id: int, annee: int, trimestre: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM tva_clotures
+                    WHERE utilisateur_id = %s AND annee = %s AND trimestre = %s
+                """, (user_id, annee, trimestre))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur get_cloture TVA: {e}")
+            return None
+
+    def cloturer(self, user_id: int, annee: int, trimestre: int, chiffres: Dict) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO tva_clotures (utilisateur_id, annee, trimestre, donnees_json)
+                    VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE donnees_json = VALUES(donnees_json), cloture_at = NOW()
+                """, (user_id, annee, trimestre, json.dumps(chiffres)))
+                return True
+        except Exception as e:
+            logger.error(f"Erreur clôture TVA: {e}")
+            return False
+
+
 class ContactPlan:
     def __init__(self, db):
         self.db = db
@@ -18462,6 +18655,9 @@ class ModelManager:
     @property
     def taux_tva_model(self):
         return self._get_model('taux_tva', TauxTva)
+    @property
+    def formulaire_tva_model(self):
+        return self._get_model('formulaire_tva', FormulaireTVA)
     @property
     def contact_model(self):
         return self._get_model('contact', Contacts)

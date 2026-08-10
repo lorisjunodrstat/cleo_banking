@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block content %}
+{% macro inp(id, val, ro=false) -%}
+<input type="text" class="montant{% if ro %} calc{% endif %}" id="{{ id }}" name="{{ id }}"
+       value="{{ '%.2f'|format(val) }}" {% if ro %}readonly tabindex="-1"{% endif %}>
+{%- endmacro %}
+
+<style>
+.tva-page{background:#e9e9e9;padding:15px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#222}
+.tva-card{background:#f4f4f4;border:1px solid #d5d5d5;border-radius:4px;padding:15px 20px;max-width:1150px;margin:0 auto}
+.tva-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.periode-form label{color:#888;margin-right:8px}
+.periode-form select{padding:4px 8px;border:1px solid #bbb;border-radius:3px}
+.tva-tabs{border-bottom:1px solid #ccc;margin-bottom:15px}
+.tva-tabs .tab{background:none;border:none;padding:10px 14px;cursor:pointer;color:#555;font-size:13px}
+.tva-tabs .tab.active{color:#1b75bb;border-bottom:2px solid #1b75bb;font-weight:bold}
+.tab-content{display:none}.tab-content.active{display:block}
+.tva-form-wrap{background:#fff;border:1px solid #ddd;padding:25px 30px;max-width:980px;margin:0 auto}
+table.tva{width:100%;border-collapse:collapse;margin-bottom:25px}
+table.tva td,table.tva th{border:1px solid #ccc;padding:8px 10px;vertical-align:middle}
+table.tva th{background:#fafafa;text-align:left}
+td.lbl{font-size:12px}
+td.num{color:#1b75bb;font-weight:bold;text-align:center;width:55px}
+td.op{text-align:center;width:22px;color:#333}
+td.totlbl{font-size:12px;width:150px}
+input.montant{width:110px;text-align:right;padding:4px 6px;border:1px solid #bbb;border-radius:2px}
+input.montant.calc{background:#e8e8e8;color:#555}
+.taux-badge{display:inline-block;background:#e8e8e8;border:1px solid #ccc;padding:3px 6px;border-radius:2px;color:#555;margin-left:4px}
+.col-old input.montant{background:#f2f2f2;color:#aaa}
+.tva-footer{display:flex;align-items:center;gap:10px;max-width:980px;margin:12px auto 0}
+.tva-footer p{flex:1;font-size:12px}
+.tva-footer button{padding:6px 14px;border:1px solid #bbb;border-radius:3px;background:#fff;cursor:pointer}
+.tva-footer button:disabled{color:#aaa;cursor:not-allowed}
+.badge-cloture{background:#dff0d8;color:#3c763d;border:1px solid #d6e9c6;padding:4px 10px;border-radius:3px;font-size:12px}
+table.journal{width:100%;border-collapse:collapse;background:#fff}
+table.journal th,table.journal td{border:1px solid #ccc;padding:6px 8px;font-size:12px}
+.r{text-align:right}
+@media print{.no-print{display:none !important}.tva-page{background:#fff}.tva-form-wrap{border:none}}
+</style>
+
+<div class="tva-page">
+  <h3 style="margin:0 0 12px 5px;">TVA</h3>
+  <div class="tva-card">
+    <div class="tva-card-header">
+      <strong>TVA T0{{ trimestre }} / {{ annee }}</strong>
+      <form method="get" class="periode-form no-print">
+        <label>Période de décompte</label>
+        <select name="periode" onchange="this.form.submit()">
+          {% for p in periodes %}
+          <option value="{{ p.annee }}-{{ p.trimestre }}"
+                  {% if p.annee == annee and p.trimestre == trimestre %}selected{% endif %}>
+            T0{{ p.trimestre }} / {{ p.annee }}</option>
+          {% endfor %}
+        </select>
+      </form>
+    </div>
+
+    <div class="tva-tabs no-print">
+      <button type="button" class="tab active" data-tab="formulaire">Formulaire TVA</button>
+      <button type="button" class="tab" data-tab="journal">Journal de TVA</button>
+    </div>
+
+    <form id="tvaForm" method="post">
+      <input type="hidden" name="periode" value="{{ annee }}-{{ trimestre }}">
+      <input type="hidden" name="action" id="formAction" value="">
+
+      <div id="tab-formulaire" class="tab-content active">
+        <div class="tva-form-wrap">
+          <!-- ============ I. CHIFFRE D'AFFAIRES ============ -->
+          <table class="tva">
+            <tr>
+              <th class="lbl"><strong>I. CHIFFRE D'AFFAIRES</strong> <small>(les articles cités se réfèrent à la loi sur la TVA du 12.06.2009)</small></th>
+              <th class="num">Chiffre</th><th class="op"></th><th>Chiffre d'affaires CHF</th><th class="totlbl"></th>
+            </tr>
+            <tr><td class="lbl">Total des contre-prestations convenues ou reçues (art. 39), y compris celles provenant de transferts avec la procédure de déclaration et de prestations fournies à l'étranger</td>
+                <td class="num">200</td><td class="op"></td><td>{{ inp('c200', donnees.chiffres.c200) }}</td><td></td></tr>
+            <tr><td class="lbl">Contre-prestations déclarées sous ch. 200 provenant de prestations exclues du champ de l'impôt (art. 21) pour lesquelles il a été opté en vertu de l'art. 22</td>
+                <td class="num">205</td><td class="op"></td><td>{{ inp('c205', donnees.chiffres.c205) }}</td><td></td></tr>
+            <tr><td class="lbl"><strong>Déductions:</strong> Prestations exonérées (p. ex. exportations, art. 23), prestations exonérées fournies à des institutions et à des personnes bénéficiaires (art. 107, al. 1, let. a)</td>
+                <td class="num">220</td><td class="op"></td><td>{{ inp('c220', donnees.chiffres.c220) }}</td><td class="totlbl" rowspan="4">Total ch. 220 à 280</td></tr>
+            <tr><td class="lbl">Prestations fournies à l'étranger</td><td class="num">221</td><td class="op">+</td><td>{{ inp('c221', donnees.chiffres.c221) }}</td></tr>
+            <tr><td class="lbl">Transferts avec la procédure de déclaration (art. 38, veuillez, s.v.p., joindre le formulaire n° 764)</td><td class="num">225</td><td class="op">+</td><td>{{ inp('c225', donnees.chiffres.c225) }}</td></tr>
+            <tr><td class="lbl">Prestations exclues du champ de l'impôt (art. 21) pour lesquelles il n'a pas été opté selon l'art. 22</td><td class="num">230</td><td class="op">+</td><td>{{ inp('c230', donnees.chiffres.c230) }}</td></tr>
+            <tr><td class="lbl">Diminutions de la contre-prestation</td><td class="num">235</td><td class="op">+</td><td>{{ inp('c235', donnees.chiffres.c235) }}</td><td class="totlbl">-</td></tr>
+            <tr><td class="lbl">Divers (p. ex. valeur du terrain)</td><td class="num">280</td><td class="op">+</td><td>{{ inp('c280', donnees.chiffres.c280) }}</td>
+                <td>= {{ inp('c289', 0, true) }} <span class="num">289</span></td></tr>
+            <tr><td class="lbl"><strong>Total du chiffre d'affaires imposable</strong> (ch. 200 moins ch. 289)</td>
+                <td class="num">299</td><td class="op"></td><td colspan="2">= {{ inp('c299', 0, true) }}</td></tr>
+          </table>
+
+          <!-- ============ II. CALCUL DE L'IMPÔT ============ -->
+          <table class="tva">
+            <tr>
+              <th class="lbl" colspan="2"><strong>II. Calcul de l'impôt</strong></th>
+              <th>Prestations CHF<br>dès le 01.01.2024</th><th class="op"></th>
+              <th>Impôt CHF / ct.<br>dès le 01.01.2024</th><th></th>
+              <th class="col-old">Prestations CHF<br>jusqu'au 31.12.2023</th><th class="col-old">Impôt CHF / ct.<br>jusqu'au 31.12.2023</th><th></th>
+            </tr>
+            <tr><td class="lbl">Normal</td><td class="num">303</td>
+                <td>{{ inp('p303', donnees.chiffres.p303) }}</td><td class="op">+</td>
+                <td>{{ inp('i302', donnees.chiffres.i302) }}</td><td><span class="taux-badge">{{ donnees.taux.normal }}%</span></td>
+                <td class="col-old">{{ inp('p302o', 0, true) }}</td><td class="col-old">{{ inp('i302o', 0, true) }}</td><td><span class="taux-badge">7.7%</span></td></tr>
+            <tr><td class="lbl">Réduit</td><td class="num">313</td>
+                <td>{{ inp('p313', donnees.chiffres.p313) }}</td><td class="op">+</td>
+                <td>{{ inp('i312', donnees.chiffres.i312) }}</td><td><span class="taux-badge">{{ donnees.taux.reduit }}%</span></td>
+                <td class="col-old">{{ inp('p312o', 0, true) }}</td><td class="col-old">{{ inp('i312o', 0, true) }}</td><td><span class="taux-badge">2.5%</span></td></tr>
+            <tr><td class="lbl">Spécial pour l'hébergement</td><td class="num">343</td>
+                <td>{{ inp('p343', donnees.chiffres.p343) }}</td><td class="op">+</td>
+                <td>{{ inp('i342', donnees.chiffres.i342) }}</td><td><span class="taux-badge">{{ donnees.taux.special }}%</span></td>
+                <td class="col-old">{{ inp('p342o', 0, true) }}</td><td class="col-old">{{ inp('i342o', 0, true) }}</td><td><span class="taux-badge">3.7%</span></td></tr>
+            <tr><td class="lbl">Impôt sur les acquisitions</td><td class="num">383</td>
+                <td>{{ inp('p383', donnees.chiffres.p383) }}</td><td class="op">+</td>
+                <td>{{ inp('i382', donnees.chiffres.i382) }}</td><td></td>
+                <td class="col-old">{{ inp('p382o', 0, true) }}</td><td class="col-old">{{ inp('i382o', 0, true) }}</td><td></td></tr>
+            <tr><td class="lbl" colspan="4"><strong>Total de l'impôt dû</strong> (ch. 302 à 383)</td>
+                <td colspan="2">= {{ inp('c399', 0, true) }} <span class="num">399</span></td>
+                <td colspan="3"></td></tr>
+            <tr><td class="lbl" colspan="2">Impôt préalable grevant les coûts en matériel et en prestations de services</td>
+                <td class="num">400</td><td class="op"></td><td colspan="2">{{ inp('c400', donnees.chiffres.c400) }}</td><td colspan="3" rowspan="4" class="totlbl">Total ch. 400 à 420</td></tr>
+            <tr><td class="lbl" colspan="2">Impôt préalable grevant les investissements et autres charges d'exploitation</td>
+                <td class="num">405</td><td class="op">+</td><td colspan="2">{{ inp('c405', donnees.chiffres.c405) }}</td></tr>
+            <tr><td class="lbl" colspan="2">Dégrèvement ultérieur de l'impôt préalable (art. 32, veuillez, s.v.p., joindre un relevé détaillé)</td>
+                <td class="num">410</td><td class="op">+</td><td colspan="2">{{ inp('c410', donnees.chiffres.c410) }}</td></tr>
+            <tr><td class="lbl" colspan="2">Corrections de l'impôt préalable: double affectation (art. 30), prestations à soi-même (art. 31)</td>
+                <td class="num">415</td><td class="op">-</td><td colspan="2">{{ inp('c415', donnees.chiffres.c415) }}</td></tr>
+            <tr><td class="lbl" colspan="2">Réductions de la déduction de l'impôt préalable: prestations n'étant pas considérées comme des contre-prestations, telles subventions, taxes touristiques (art. 33, al. 2)</td>
+                <td class="num">420</td><td class="op">-</td><td colspan="2">{{ inp('c420', donnees.chiffres.c420) }}</td>
+                <td colspan="3">- {{ inp('c479', 0, true) }} <span class="num">479</span></td></tr>
+            <tr><td class="lbl" colspan="2"><strong>Montant à payer à l'Administration fédérale des contributions</strong></td>
+                <td class="num">500</td><td class="op"></td><td colspan="2">= {{ inp('c500', 0, true) }}</td><td colspan="3"></td></tr>
+            <tr><td class="lbl" colspan="2"><strong>Solde en faveur de l'assujetti</strong></td>
+                <td class="num">510</td><td class="op"></td><td colspan="2">= {{ inp('c510', 0, true) }}</td><td colspan="3"></td></tr>
+          </table>
+
+          <!-- ============ III. AUTRES MOUVEMENTS DE FONDS ============ -->
+          <table class="tva">
+            <tr><th class="lbl" colspan="3"><strong>III. Autres mouvements de fonds (art. 18, al. 2)</strong></th></tr>
+            <tr><td class="lbl">Subventions, taxes touristiques encaissées par les offices du tourisme, contributions versées aux établissements chargés de l'élimination des déchets et de l'approvisionnement en eau (let. a à c)</td>
+                <td class="num">900</td><td>{{ inp('c900', donnees.chiffres.c900) }}</td></tr>
+            <tr><td class="lbl">Les dons, les dividendes, les dédommagements, etc. (let. d à l)</td>
+                <td class="num">910</td><td>{{ inp('c910', donnees.chiffres.c910) }}</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <div id="tab-journal" class="tab-content">
+        <table class="journal">
+          <thead><tr><th>Date</th><th>Compte</th><th>Libellé</th><th>Sens</th><th class="r">Base HT</th><th>Taux</th><th class="r">TVA</th></tr></thead>
+          <tbody>
+          {% for j in donnees.journal %}
+            <tr><td>{{ j.date }}</td><td>{{ j.categorie }}</td><td>{{ j.description }}</td><td>{{ j.sens }}</td>
+                <td class="r">{% if j.base is not none %}{{ '%.2f'|format(j.base) }}{% endif %}</td>
+                <td>{% if j.taux is not none %}{{ j.taux }}%{% endif %}</td>
+                <td class="r">{{ '%.2f'|format(j.tva) }}</td></tr>
+          {% else %}
+            <tr><td colspan="7">Aucune écriture TVA pour cette période.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="tva-footer no-print">
+        <p>Si vous avez soumis votre décompte de la TVA pour un trimestre, vous pouvez marquer ce trimestre comme clôturé.</p>
+        {% if cloture %}<span class="badge-cloture">Clôturé le {{ cloture.cloture_at.strftime('%d.%m.%Y %H:%M') }}</span>{% endif %}
+        <button type="button" onclick="window.print()">Imprimer</button>
+        <button type="button" id="btnPdf">Export PDF</button>
+        <button type="button" id="btnCloture" {% if cloture %}disabled{% endif %}>Marquer le trimestre comme clôturé</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+var TAUX = {{ donnees.taux | tojson }};
+var CLOTURE = {{ 'true' if cloture else 'false' }};
+
+function arrondi(v){ return (Math.round((v + Number.EPSILON) * 100) / 100).toFixed(2); }
+function num(id){
+  var el = document.getElementById(id);
+  if(!el) return 0;
+  var v = parseFloat(el.value.replace(/'/g, '').replace(/\s/g, ''));
+  return isNaN(v) ? 0 : v;
+}
+function set(id, v){ var el = document.getElementById(id); if(el) el.value = arrondi(v); }
+
+function recalculer(){
+  // I. Chiffre d'affaires : 289 = somme des déductions, 299 = 200 - 289
+  var tot289 = num('c220') + num('c221') + num('c225') + num('c230') + num('c235') + num('c280');
+  set('c289', tot289);
+  set('c299', num('c200') - tot289);
+  // II. Impôt dû : 399 = 302 + 312 + 342 + 382
+  var impot = num('i302') + num('i312') + num('i342') + num('i382');
+  set('c399', impot);
+  // Impôt préalable : 479 = 400 + 405 + 410 - 415 - 420
+  var pre = num('c400') + num('c405') + num('c410') - num('c415') - num('c420');
+  set('c479', pre);
+  // Solde : 500 (à payer) ou 510 (en faveur de l'assujetti)
+  var solde = impot - pre;
+  var e500 = document.getElementById('c500'), e510 = document.getElementById('c510');
+  if (solde > 0){ e500.value = arrondi(solde); e510.value = ''; }
+  else if (solde < 0){ e510.value = arrondi(-solde); e500.value = ''; }
+  else { e500.value = ''; e510.value = ''; }
+}
+
+// Calcul auto de l'impôt quand on modifie les prestations
+[['p303','i302','normal'], ['p313','i312','reduit'], ['p343','i342','special']].forEach(function(cfg){
+  document.getElementById(cfg[0]).addEventListener('input', function(){
+    set(cfg[1], num(cfg[0]) * TAUX[cfg[2]] / 100);
+    recalculer();
+  });
+});
+document.querySelectorAll('input.montant').forEach(function(el){
+  el.addEventListener('input', recalculer);
+});
+
+// Onglets
+document.querySelectorAll('.tva-tabs .tab').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    document.querySelectorAll('.tva-tabs .tab').forEach(function(b){ b.classList.remove('active'); });
+    document.querySelectorAll('.tab-content').forEach(function(c){ c.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// Clôture du trimestre
+document.getElementById('btnCloture').addEventListener('click', function(){
+  if (confirm('Marquer le trimestre T0{{ trimestre }} / {{ annee }} comme clôturé ?')){
+    document.getElementById('formAction').value = 'cloturer';
+    document.getElementById('tvaForm').submit();
+  }
+});
+
+// Verrouillage si clôturé
+if (CLOTURE){
+  document.querySelectorAll('input.montant').forEach(function(el){ el.disabled = true; });
+}
+recalculer();
+// Export PDF : poste les valeurs de l'écran vers la route PDF (nouvel onglet)
+document.getElementById('btnPdf').addEventListener('click', function(){
+    var form = document.getElementById('tvaForm');
+    var oldAction = form.getAttribute('action');
+    var oldTarget = form.getAttribute('target');
+    form.action = "{{ url_for('comptabilite_tva_pdf', periode=annee ~ '-' ~ trimestre) }}";
+    form.target = '_blank';
+    form.submit();
+    // Restaure le comportement normal (bouton "clôturer")
+    if (oldAction) { form.action = oldAction; } else { form.removeAttribute('action'); }
+    if (oldTarget) { form.target = oldTarget; } else { form.removeAttribute('target'); }
+});
+</script>
+{% endblock %}
