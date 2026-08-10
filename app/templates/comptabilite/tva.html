@@ -241,7 +241,7 @@ document.getElementById('btnPdf').addEventListener('click', function(){
     var form = document.getElementById('tvaForm');
     var oldAction = form.getAttribute('action');
     var oldTarget = form.getAttribute('target');
-    form.action = "{{ url_for('comptabilite_tva_pdf', periode=annee ~ '-' ~ trimestre) }}";
+    form.action = "{{ url_for('banking.comptabilite_tva_pdf', periode=annee ~ '-' ~ trimestre) }}";
     form.target = '_blank';
     form.submit();
     // Restaure le comportement normal (bouton "clôturer")
