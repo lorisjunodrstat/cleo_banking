@@ -12304,20 +12304,82 @@ def pos_create_payment_method():
 @bp.route('/pos/payment-methods/<int:mode_id>/edit', methods=['GET', 'POST'])
 @login_required
 def pos_edit_payment_method(mode_id):
-    mode = g.models.mode_paiement_pos_model.get_by_id(mode_id, current_user.id)
+    user_id = current_user.id
+    
+    # Récupérer le mode de paiement
+    mode = g.models.mode_paiement_pos_model.get_by_id(mode_id, user_id)
     if not mode:
-        flash('Mode introuvable.', 'error')
+        flash('❌ Mode de paiement non trouvé', 'error')
         return redirect(url_for('banking.pos_payment_methods_list'))
-
+    
+    
+    comptes_tresorerie = g.models.categorie_comptable_model.get_by_type('Actif', user_id)
+    comptes_charges = g.models.categorie_comptable_model.get_by_type('Charge', user_id)
+    
     if request.method == 'POST':
-        g.models.mode_paiement_pos_model.update(mode_id, current_user.id, {
-            'nom':        request.form.get('nom', '').strip(),
-            'description': request.form.get('description', ''),
-            'est_actif':  'est_actif' in request.form,
+        nom = request.form.get('nom', '').strip()
+        description = request.form.get('description', '').strip()
+        est_actif = request.form.get('est_actif') == 'on'
+        
+        # Nouveaux champs comptables
+        compte_tresorerie_id = request.form.get('compte_tresorerie_id')
+        compte_frais_service_id = request.form.get('compte_frais_service_id')
+        frais_pourcentage = float(request.form.get('frais_pourcentage', 0) or 0)
+        frais_fixe = float(request.form.get('frais_fixe', 0) or 0)
+        
+        # Convertir les IDs vides en None
+        compte_tresorerie_id = int(compte_tresorerie_id) if compte_tresorerie_id else None
+        compte_frais_service_id = int(compte_frais_service_id) if compte_frais_service_id else None
+        
+        if not nom:
+            flash('❌ Le nom est obligatoire', 'error')
+            return render_template(
+                'pos/edit_payment_method.html',
+                payment_method=mode,
+                comptes_tresorerie=comptes_tresorerie,
+                comptes_charges=comptes_charges
+            )
+        
+        # 1. Mise à jour des champs de base (nom, description, actif)
+        succes_base = g.models.mode_paiement_pos_model.update(mode_id, user_id, {
+            'nom': nom,
+            'description': description,
+            'est_actif': est_actif
         })
-        flash('Mode mis à jour !', 'success')
-        return redirect(url_for('banking.pos_payment_methods_list'))
-    return render_template('pos/edit_payment_method.html', mode=mode)
+        
+        # 2. Mise à jour des champs comptables via la nouvelle méthode
+        succes_compta = g.models.mode_paiement_pos_model.update_compta_settings(
+            mode_id=mode_id,
+            user_id=user_id,
+            compte_tresorerie_id=compte_tresorerie_id,
+            compte_frais_service_id=compte_frais_service_id,
+            frais_pourcentage=frais_pourcentage,
+            frais_fixe=frais_fixe
+        )
+        
+        if succes_base and succes_compta:
+            flash('✅ Mode de paiement mis à jour avec succès', 'success')
+            return redirect(url_for('banking.pos_payment_methods_list'))
+        elif succes_base:
+            flash('⚠️ Informations de base mises à jour, mais erreur sur les paramètres comptables', 'warning')
+        else:
+            flash('❌ Erreur lors de la mise à jour', 'error')
+        
+        # En cas d'erreur, on réaffiche le formulaire avec les données actuelles
+        return render_template(
+            'pos/edit_payment_method.html',
+            payment_method=mode,
+            comptes_tresorerie=comptes_tresorerie,
+            comptes_charges=comptes_charges
+        )
+    
+    # GET : afficher le formulaire
+    return render_template(
+        'pos/edit_payment_method.html',
+        payment_method=mode,
+        comptes_tresorerie=comptes_tresorerie,
+        comptes_charges=comptes_charges
+    )
 
 
 @bp.route('/pos/payment-methods/<int:mode_id>/delete', methods=['POST'])

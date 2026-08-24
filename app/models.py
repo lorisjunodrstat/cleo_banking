@@ -16587,8 +16587,58 @@ class ModePaiementPOS:
         except:
             return None
 
-
-
+    def update_compta_settings(self, mode_id: int, user_id: int, 
+                               compte_tresorerie_id: Optional[int], 
+                               compte_frais_service_id: Optional[int],
+                               frais_pourcentage: float, 
+                               frais_fixe: float) -> bool:
+        """
+        Met à jour les paramètres comptables d'un mode de paiement :
+        - Compte de trésorerie (où l'argent arrive)
+        - Compte de frais de service (commissions)
+        - Frais en pourcentage
+        - Frais fixes
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_modes_paiement 
+                    SET compte_tresorerie_id = %s,
+                        compte_frais_service_id = %s,
+                        frais_pourcentage = %s,
+                        frais_fixe = %s
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (
+                    compte_tresorerie_id,
+                    compte_frais_service_id,
+                    float(frais_pourcentage),
+                    float(frais_fixe),
+                    mode_id,
+                    user_id
+                ))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur mise à jour champs comptables mode paiement {mode_id}: {e}")
+            return False
+    def get_compta_settings(self, mode_id: int, user_id: int) -> Optional[Dict]:
+        """
+        Récupère les paramètres comptables d'un mode de paiement.
+        Retourne un dictionnaire avec les comptes et frais configurés.
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT compte_tresorerie_id, 
+                           compte_frais_service_id,
+                           frais_pourcentage,
+                           frais_fixe
+                    FROM pos_modes_paiement 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (mode_id, user_id))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur récupération params comptables mode paiement {mode_id}: {e}")
+            return None
 
 class RestaurantOptionPOS:
     """Options de restauration (Sur place, À emporter, Livré)"""
