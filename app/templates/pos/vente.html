@@ -100,6 +100,104 @@ button{cursor:pointer; border:none; background:none}
 .success-box .ok{font-size:52px; color:var(--green)}
 .parked-item{display:flex; justify-content:space-between; align-items:center; background:#f7f7f7; border-radius:6px; padding:10px; margin:6px 0}
 @media (max-width:900px){ .main{flex-direction:column} .right{min-width:0; flex:1} }
+
+/* Styles pour mobile */
+@media (max-width: 900px) {
+  .main {
+    flex-direction: column;
+  }
+  
+  .left {
+    flex: 1;
+    border-right: none;
+    border-bottom: 1px solid #ddd;
+  }
+  
+  .right {
+    flex: none;
+    min-width: 0;
+    max-height: 40vh;
+    position: relative;
+  }
+  
+  /* Barre d'actions mobile fixe en bas */
+  .mobile-actions {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #fff;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+    z-index: 100;
+    display: flex;
+    padding: 8px;
+    gap: 8px;
+  }
+  
+  .mobile-actions button {
+    flex: 1;
+    padding: 14px 8px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+  }
+  
+  .mobile-actions button:first-child {
+    background: #66BB6A;
+    color: #fff;
+  }
+  
+  .mobile-actions button:nth-child(2) {
+    background: #8BC34A;
+    color: #fff;
+  }
+  
+  .mobile-actions button:last-child {
+    background: var(--green);
+    color: #fff;
+    flex: 1.5;
+  }
+  
+  /* Cacher la bottombar classique sur mobile */
+  .bottombar {
+    display: none;
+  }
+  
+  /* Espacement pour le contenu */
+  .right {
+    padding-bottom: 80px;
+  }
+  
+  /* Topbar mobile améliorée */
+  .topbar .title {
+    font-size: 16px;
+  }
+  
+  .mobile-menu-btn {
+    display: block;
+    background: var(--green);
+    color: #fff;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    margin: 8px;
+    cursor: pointer;
+  }
+}
+
+/* Sur desktop, cacher les éléments mobiles */
+@media (min-width: 901px) {
+  .mobile-actions {
+    display: none !important;
+  }
+  .mobile-menu-btn {
+    display: none !important;
+  }
+}
 </style>
 </head>
 <body>
@@ -165,11 +263,32 @@ button{cursor:pointer; border:none; background:none}
 {% else %}
 <header class="topbar">
   <button class="iconbtn" id="btnDrawer">☰</button>
-  <div class="title"><span id="ticketNomDisplay">Ticket</span> <span class="badge" id="ticketCount">0</span></div>
+  
+  {# --- AJOUT : onclick et cursor:pointer pour rendre la zone cliquable --- #}
+  <div class="title" onclick="showTicket()" style="cursor: pointer;" title="Afficher le ticket">
+    <span id="ticketNomDisplay">Ticket</span> <span class="badge" id="ticketCount">0</span>
+  </div>
+  
   <button class="iconbtn" id="btnClient" title="Attribuer le ticket">👤+</button>
   <button class="iconbtn" id="btnMenu">⋮</button>
 </header>
+{# Bouton menu mobile (visible uniquement sur mobile) #}
+<button class="mobile-menu-btn" onclick="toggleMobileMenu()">
+  ☰ Menu / Options
+</button>
 
+{# Menu mobile déroulant #}
+<div id="mobileMenu" style="display:none; background:#fff; padding:8px; border-bottom:1px solid #ddd;">
+  <button onclick="openParkedModal(); toggleMobileMenu()" style="display:block; width:100%; padding:12px; text-align:left; background:none; border:none; border-bottom:1px solid #eee;">
+    📋 Tickets ouverts
+  </button>
+  <button onclick="saveOpenTicket(); toggleMobileMenu()" style="display:block; width:100%; padding:12px; text-align:left; background:none; border:none; border-bottom:1px solid #eee;">
+    💾 Enregistrer le ticket
+  </button>
+  <button onclick="openClientModal(); toggleMobileMenu()" style="display:block; width:100%; padding:12px; text-align:left; background:none; border:none;">
+    👤 Client
+  </button>
+</div>
 <nav id="drawer">
   <div class="drawer-head">
     <div class="u">{{ current_user.nom_utilisateur if current_user.nom_utilisateur else 'Caissier' }}</div>
@@ -226,6 +345,14 @@ button{cursor:pointer; border:none; background:none}
       <div class="row" id="tReductionRow" style="display:none; color:#e53935"><span>Réduction</span><span id="tReduction">- CHF 0.00</span></div>
       <div class="row grand" style="margin-top:8px"><span>TOTAL</span><span id="tTotal">CHF 0.00</span></div>
     </div>
+    {# Barre d'actions pour mobile (fixe en bas) #}
+    <div class="mobile-actions">
+      <button onclick="openParkedModal()">📋 OUVERTS</button>
+      <button onclick="saveOpenTicket()"> ENREG.</button>
+      <button onclick="openPayModal()">💰 PAYER <span id="payTotalMobile">CHF 0.00</span></button>
+    </div>
+
+    {# Barre classique pour desktop #}
     <div class="bottombar">
       <button onclick="openParkedModal()">TICKETS OUVERTS</button>
       <button onclick="saveOpenTicket()" style="background:#8BC34A">ENREGISTRER</button>
@@ -543,7 +670,41 @@ button{cursor:pointer; border:none; background:none}
     closeModal('modalArticle');
   }
 
+
+function toggleMobileMenu() {
+  const menu = document.getElementById('mobileMenu');
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+
+// Mettre à jour le total mobile
+function updateMobileTotal() {
+  const { totalTTC } = calculTVA();
+  const reduction = calcReduction();
+  const tips = parseFloat($('tips').value) || 0;
+  const total = Math.max(0, totalTTC - reduction) + tips;
+  const mobileTotal = document.getElementById('payTotalMobile');
+  if (mobileTotal) {
+    mobileTotal.textContent = fmt(total);
+  }
+}
+
+// Modifier renderTicket pour mettre à jour le total mobile
+function renderTicket(){
+  // ... votre code existant ...
+  
+  // Ajouter à la fin de renderTicket :
+  updateMobileTotal();
+}
+
   /* ---------- Ticket ---------- */
+
+function scrollToTicket() {
+  const rightPanel = document.querySelector('.right');
+  if (rightPanel) {
+    rightPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
  function renderTicket(){
   $('ticketLines').innerHTML = ticket.lines.map((l,i) => `
     <div class="line">
@@ -650,11 +811,12 @@ button{cursor:pointer; border:none; background:none}
     
     const payload = {
       items: ticket.lines.map(l => ({ 
-        article_id:l.article_id, 
-        variante_id:l.variante_id, 
-        quantite:l.qty, 
-        prix_unitaire:l.prix,
-        commentaire:l.commentaire || ''
+        article_id: l.article_id, 
+        variante_id: l.variante_id, 
+        quantite: l.qty, 
+        prix_unitaire: l.prix,
+        commentaire: l.commentaire || '',
+        modificateurs: l.extras || '' // <-- AJOUT : on envoie la chaîne des modificateurs
       })),
       nom_ticket: ticket.nom,
       commentaire: ticket.commentaire || '',
@@ -879,11 +1041,12 @@ button{cursor:pointer; border:none; background:none}
     
     const payload = {
       items: ticket.lines.map(l => ({ 
-        article_id:l.article_id, 
-        variante_id:l.variante_id, 
-        quantite:l.qty, 
-        prix_unitaire:l.prix,
-        commentaire:l.commentaire || ''
+        article_id: l.article_id, 
+        variante_id: l.variante_id, 
+        quantite: l.qty, 
+        prix_unitaire: l.prix,
+        commentaire: l.commentaire || '',
+        modificateurs: l.extras || '' // <-- AJOUT : on envoie la chaîne des modificateurs
       })),
       payments: pays,
       tips: parseFloat($('tips').value)||0,
@@ -996,7 +1159,23 @@ button{cursor:pointer; border:none; background:none}
   function closeModal(id){ 
     $(id).classList.remove('show'); 
   }
-
+  /* ---------- Afficher / Scroller vers le ticket ---------- */
+  function showTicket() {
+    const rightPanel = document.querySelector('.right');
+    if (rightPanel) {
+      // Fait défiler la page pour amener le panneau du ticket en vue
+      rightPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      
+      // Petit effet visuel (halo vert) pour confirmer que le ticket est atteint
+      rightPanel.style.transition = 'box-shadow 0.3s ease';
+      rightPanel.style.boxShadow = '0 0 25px rgba(76, 175, 80, 0.6)';
+      
+      // Retire l'effet après 800ms
+      setTimeout(() => {
+        rightPanel.style.boxShadow = 'none';
+      }, 800);
+    }
+  }
   /* ---------- Événements UI ---------- */
   $('btnDrawer').onclick = () => { 
     $('drawer').classList.add('open'); 

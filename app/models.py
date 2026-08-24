@@ -17532,6 +17532,13 @@ class ReceiptPOS:
                     if not article:
                         return False, f"Article {item['article_id']} introuvable", None
                     
+                    # --- NOUVEAU : Gestion des modificateurs ---
+                    modificateurs = str(item.get('modificateurs', '')).strip()
+                    nom_article_final = article['nom_article']
+                    if modificateurs:
+                        nom_article_final = f"{nom_article_final} ({modificateurs})"
+                    # -------------------------------------------
+                    
                     # Le prix saisi est TTC
                     prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
                     qte = int(item.get('quantite', 1))
@@ -17555,7 +17562,7 @@ class ReceiptPOS:
                     
                     items_data.append({
                         'article_id': item['article_id'],
-                        'nom_article': article['nom_article'],
+                        'nom_article': nom_article_final,  # <-- Utilise le nom enrichi
                         'variante_id': item.get('variante_id'),
                         'quantite': qte,
                         'prix_ttc': prix_ttc,
@@ -17632,7 +17639,7 @@ class ReceiptPOS:
                     data.get('restaurant_option_id'), data.get('pdv'), data.get('magasin'),
                     data.get('nom_du_caissier'), data.get('nom_du_client'),
                     data.get('numero_client'), data.get('id_client'),
-                    data.get('discount_id'), float(reduction_ttc), # discount_amount affiché en TTC
+                    data.get('discount_id'), float(reduction_ttc),
                     compte_bancaire_id
                 ))
                 receipt_id = cursor.lastrowid
@@ -17646,10 +17653,10 @@ class ReceiptPOS:
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         receipt_id, item['article_id'], item['nom_article'], item['variante_id'],
-                        item['quantite'], float(item['prix_ttc']), # Prix TTC pour traçabilité
-                        float(item['total_ligne_ttc']),            # Total TTC pour stats clients
-                        float(item['taux_taxe']),                   # Taux de taxe appliqué
-                        item.get('commentaire')                     # Commentaire sur l'article
+                        item['quantite'], float(item['prix_ttc']),
+                        float(item['total_ligne_ttc']),
+                        float(item['taux_taxe']),
+                        item.get('commentaire')
                     ))
                     
                     cursor.execute("""
@@ -17657,7 +17664,6 @@ class ReceiptPOS:
                     """, (item['quantite'], item['article_id']))
                 
                 # 6. Insertion des paiements
-
                 nb_paiements = 0
                 for payment in data.get('payments', []):
                     montant_pay = float(payment.get('montant', 0))
@@ -17684,6 +17690,7 @@ class ReceiptPOS:
                             VALUES (%s, %s, %s)
                         """, (receipt_id, mode_defaut['id'], float(total_collecte)))
                         logger.warning(f"Reçu {receipt_id}: aucun paiement fourni, paiement par défaut créé")
+                
                 # 7. Lien avec la transaction financière
                 success, msg, transaction_id = self.transaction_model._inserer_transaction_with_cursor(
                     cursor=cursor,
@@ -17708,6 +17715,7 @@ class ReceiptPOS:
         except Exception as e:
             logger.error(f"Erreur création vente POS: {e}", exc_info=True)
             return False, f"Erreur: {str(e)}", None
+
     def creer_ticket_ouvert(self, user_id: int, data: Dict) -> Tuple[bool, str, Optional[int]]:
         """Enregistre un ticket sans paiement (status 'Ouvert'), sans transaction bancaire."""
         try:
@@ -17721,6 +17729,13 @@ class ReceiptPOS:
                     article = cursor.fetchone()
                     if not article:
                         return False, f"Article {item['article_id']} introuvable", None
+                    
+                    # --- NOUVEAU : Gestion des modificateurs ---
+                    modificateurs = str(item.get('modificateurs', '')).strip()
+                    nom_article_final = article['nom_article']
+                    if modificateurs:
+                        nom_article_final = f"{nom_article_final} ({modificateurs})"
+                    # -------------------------------------------
                     
                     prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
                     qte = int(item.get('quantite', 1))
@@ -17744,7 +17759,7 @@ class ReceiptPOS:
                     
                     items_data.append({
                         'article_id': item['article_id'],
-                        'nom_article': article['nom_article'],
+                        'nom_article': nom_article_final,  # <-- Utilise le nom enrichi
                         'variante_id': item.get('variante_id'),
                         'quantite': qte,
                         'prix_ttc': prix_ttc,
@@ -17775,7 +17790,6 @@ class ReceiptPOS:
                         else:
                             reduction_ht = reduction_ttc
 
-                # --- CORRECTION 1 : Désindentation pour que le ticket s'enregistre même avec des taxes ---
                 cursor.execute("""
                     INSERT INTO pos_receipts 
                     (utilisateur_id, date, recu_numero, nom_ticket, description, receipt_type,
@@ -17785,10 +17799,10 @@ class ReceiptPOS:
                     VALUES (%s, NOW(), %s, %s, %s, 'Vente', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Ouvert')
                 """, (
                     user_id, recu_numero,
-                    data.get('nom_ticket', ''), data.get('commentaire', ''),
+                    data.get('nom_ticket', ''), data.get('description', '') or data.get('commentaire', ''),
                     float(ventes_brutes_ht), float(reduction_ht), 
                     float(ventes_brutes_ht - reduction_ht), float(total_taxes), 
-                    float(total_collecte - reduction_ttc),  # Fix Decimal vs float
+                    float(total_collecte - reduction_ttc),
                     data.get('restaurant_option_id'), data.get('pdv'), data.get('magasin'),
                     data.get('nom_du_caissier'), data.get('nom_du_client'), data.get('id_client'),
                     data.get('discount_id'), float(reduction_ttc)
@@ -17796,7 +17810,6 @@ class ReceiptPOS:
                 receipt_id = cursor.lastrowid
                 
                 for item in items_data:
-                    # --- CORRECTION 2 : Ajout de item['commentaire'] (il y avait 9 %s mais seulement 8 valeurs) ---
                     cursor.execute("""
                         INSERT INTO pos_receipt_items 
                         (receipt_id, article_id, nom_article, variante_id, quantite, prix_unitaire, 
@@ -17806,15 +17819,15 @@ class ReceiptPOS:
                         receipt_id, item['article_id'], item['nom_article'], item['variante_id'],
                         item['quantite'], float(item['prix_ttc']),
                         float(item['total_ligne_ttc']), float(item['taux_taxe']),
-                        item['commentaire']  # <--- AJOUT ICI
+                        item['commentaire']
                     ))
                 
                 return True, "Ticket enregistré", receipt_id
                 
         except Exception as e:
             logger.error(f"Erreur ticket ouvert: {e}")
-            return False, f"Erreur: {str(e)}", None
-            
+            return False, f"Erreur: {str(e)}", None    
+
     def _get_taxe_active(self, cursor, article_id: int) -> Optional[Dict]:
         date_ref = date.today()
         cursor.execute("""
