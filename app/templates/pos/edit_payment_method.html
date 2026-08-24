@@ -11,10 +11,74 @@
                     {% if payment_method %}
                         <input type="hidden" name="payment_method_id" value="{{ payment_method.id }}">
                     {% endif %}
+                    
+                    <!-- Champs de base -->
                     <div class="mb-3">
                         <label class="form-label">Nom de la méthode de paiement</label>
-                        <input type="text" name="nom_payment_method" class="form-control" value="{{ payment_method.nom_payment_method }}" required>
+                        <input type="text" name="nom" class="form-control" value="{{ payment_method.nom }}" required>
                     </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea name="description" class="form-control" rows="3">{{ payment_method.description }}</textarea>
+                    </div>
+                    
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" name="est_actif" class="form-check-input" id="est_actif" 
+                               {% if payment_method.est_actif %}checked{% endif %}>
+                        <label class="form-check-label" for="est_actif">Actif</label>
+                    </div>
+                    
+                    <hr>
+                    
+                    <!-- Section Comptabilité -->
+                    <h5 class="mb-3">⚙️ Paramètres comptables</h5>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Compte de trésorerie (où l'argent arrive)</label>
+                        <select name="compte_tresorerie_id" class="form-select">
+                            <option value="">-- Aucun --</option>
+                            {% for c in comptes_tresorerie %}
+                            <option value="{{ c.id }}" 
+                                {% if payment_method.compte_tresorerie_id == c.id %}selected{% endif %}>
+                                {{ c.numero }} - {{ c.nom }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Ex: 1000 Caisse, 1020 Banque Postale, 4000 Créances Eat</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Compte de frais de service (commissions)</label>
+                        <select name="compte_frais_service_id" class="form-select">
+                            <option value="">-- Aucun --</option>
+                            {% for c in comptes_charges %}
+                            <option value="{{ c.id }}"
+                                {% if payment_method.compte_frais_service_id == c.id %}selected{% endif %}>
+                                {{ c.numero }} - {{ c.nom }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Ex: 6000 Frais bancaires, 6005 Commissions plateformes</small>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Frais en pourcentage (%)</label>
+                            <input type="number" step="0.01" min="0" max="100" 
+                                   name="frais_pourcentage" class="form-control"
+                                   value="{{ payment_method.frais_pourcentage or 0 }}">
+                            <small class="text-muted">Ex: 2.5 pour 2.5% de commission</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Frais fixes (CHF)</label>
+                            <input type="number" step="0.05" min="0" 
+                                   name="frais_fixe" class="form-control"
+                                   value="{{ payment_method.frais_fixe or 0 }}">
+                            <small class="text-muted">Ex: 0.30 pour 30 centimes fixes par transaction</small>
+                        </div>
+                    </div>
+                    
                     <button type="submit" class="btn btn-success w-100">Enregistrer la méthode de paiement</button>
                 </form>
             </div>

@@ -12301,6 +12301,8 @@ def pos_create_payment_method():
     return render_template('pos/create_payment_method.html')
 
 
+
+
 @bp.route('/pos/payment-methods/<int:mode_id>/edit', methods=['GET', 'POST'])
 @login_required
 def pos_edit_payment_method(mode_id):
@@ -12312,9 +12314,9 @@ def pos_edit_payment_method(mode_id):
         flash('❌ Mode de paiement non trouvé', 'error')
         return redirect(url_for('banking.pos_payment_methods_list'))
     
-    
-    comptes_tresorerie = g.models.categorie_comptable_model.get_by_type('Actif', user_id)
-    comptes_charges = g.models.categorie_comptable_model.get_by_type('Charge', user_id)
+    # Récupérer toutes les catégories et filtrer par type
+    comptes_tresorerie = g.models.categorie_comptable_model.get_by_type_for_pos('Actif', user_id)
+    comptes_charges = g.models.categorie_comptable_model.get_by_type_for_pos('Charge', user_id)
     
     if request.method == 'POST':
         nom = request.form.get('nom', '').strip()
@@ -12340,14 +12342,14 @@ def pos_edit_payment_method(mode_id):
                 comptes_charges=comptes_charges
             )
         
-        # 1. Mise à jour des champs de base (nom, description, actif)
+        # 1. Mise à jour des champs de base
         succes_base = g.models.mode_paiement_pos_model.update(mode_id, user_id, {
             'nom': nom,
             'description': description,
             'est_actif': est_actif
         })
         
-        # 2. Mise à jour des champs comptables via la nouvelle méthode
+        # 2. Mise à jour des champs comptables
         succes_compta = g.models.mode_paiement_pos_model.update_compta_settings(
             mode_id=mode_id,
             user_id=user_id,
@@ -12361,11 +12363,10 @@ def pos_edit_payment_method(mode_id):
             flash('✅ Mode de paiement mis à jour avec succès', 'success')
             return redirect(url_for('banking.pos_payment_methods_list'))
         elif succes_base:
-            flash('⚠️ Informations de base mises à jour, mais erreur sur les paramètres comptables', 'warning')
+            flash('️ Informations de base mises à jour, mais erreur sur les paramètres comptables', 'warning')
         else:
             flash('❌ Erreur lors de la mise à jour', 'error')
         
-        # En cas d'erreur, on réaffiche le formulaire avec les données actuelles
         return render_template(
             'pos/edit_payment_method.html',
             payment_method=mode,
@@ -12380,7 +12381,6 @@ def pos_edit_payment_method(mode_id):
         comptes_tresorerie=comptes_tresorerie,
         comptes_charges=comptes_charges
     )
-
 
 @bp.route('/pos/payment-methods/<int:mode_id>/delete', methods=['POST'])
 @login_required

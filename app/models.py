@@ -1188,9 +1188,17 @@ class DatabaseManager:
                     couleur VARCHAR(7) DEFAULT '#28a745',
                     est_actif BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    categorie_comptable_tresorerie_id INT NULL,
+                    
+                    --  Champs pour la liaison comptable et les commissions
+                    compte_tresorerie_id INT NULL COMMENT 'Compte de trésorerie (ex: 1000 Caisse, 4000 Créances Eat)',
+                    compte_frais_service_id INT NULL COMMENT 'Compte de charge pour les commissions (ex: 6000 Frais de service)',
+                    frais_pourcentage DECIMAL(5,2) DEFAULT 0.00 COMMENT 'Pourcentage de commission prélevé',
+                    frais_fixe DECIMAL(10,2) DEFAULT 0.00 COMMENT 'Montant fixe de commission prélevé',
+                    
+                    -- ⭐ Contraintes (sans le mot "ADD")
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                    ADD FOREIGN KEY (categorie_comptable_tresorerie_id) REFERENCES categories_comptables(id),
+                    FOREIGN KEY (compte_tresorerie_id) REFERENCES categories_comptables(id) ON DELETE SET NULL,
+                    FOREIGN KEY (compte_frais_service_id) REFERENCES categories_comptables(id) ON DELETE SET NULL,
                     UNIQUE KEY unique_mode_user (utilisateur_id, nom)
                 );
                 """
@@ -7173,6 +7181,29 @@ class CategorieComptable:
             return categories
         except Error as e:
             logger.error(f"Erreur lors de la récupération des catégories comptables: {e}")
+            return []
+    def get_by_type_for_pos(self, type_compte: str, utilisateur_id: int) -> List[Dict]:
+        """
+        Récupère les catégories par type de compte, filtrées par le plan comptable de l'utilisateur.
+        Version spécifique pour le POS (fait les jointures avec plan_categorie et plans_comptables).
+        Ne modifie pas get_by_type() qui est utilisé ailleurs.
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                query = """
+                SELECT DISTINCT c.*
+                FROM categories_comptables c
+                INNER JOIN plan_categorie pc ON c.id = pc.categorie_id
+                INNER JOIN plans_comptables p ON pc.plan_id = p.id
+                WHERE p.utilisateur_id = %s 
+                  AND c.type_compte = %s 
+                  AND c.actif = TRUE
+                ORDER BY c.numero
+                """
+                cursor.execute(query, (utilisateur_id, type_compte))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur get_by_type_for_pos: {e}")
             return []
 
     def get_categories_avec_complementaires(self, utilisateur_id: int) -> List[Dict]:
