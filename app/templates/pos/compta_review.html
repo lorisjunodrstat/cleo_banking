@@ -1,89 +1,169 @@
-<!-- Extrait de compta_review.html -->
-<div class="card">
-    <h2>📋 Revue de Comptabilisation POS (Mode: {{ mode|upper }})</h2>
-    
-    <form id="formCompta">
-        <table class="table-compta">
-            <thead>
-                <tr>
-                    <th><input type="checkbox" id="selectAll"></th>
-                    <th>Date / Période</th>
-                    <th>Mode de Paiement</th>
-                    <th>Nb Tickets</th>
-                    <th>Total TTC</th>
-                    <th>Frais Estimés</th>
-                    <th>Compte de Destination</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in a_comptabiliser %}
-                <tr>
-                    <td>
-                        <input type="checkbox" name="selection" class="item-check" 
-                               value='{{ item | tojson | safe }}'>
-                    </td>
-                    <td>{{ item.date_jour or item.date.strftime('%d.%m.%Y') }}</td>
-                    <td>{{ item.mode_paiement_nom }}</td>
-                    <td>{{ item.nb_tickets or 1 }}</td>
-                    <td>CHF {{ "%.2f"|format(item.total_ttc) }}</td>
-                    <td style="color: #e53935;">
-                        {% set frais = (item.total_ttc * (item.frais_pourcentage or 0) / 100) + (item.frais_fixe or 0) %}
-                        {% if frais > 0 %}CHF {{ "%.2f"|format(frais) }}{% else %}-{% endif %}
-                    </td>
-                    <td>
-                        {% set mp = modes_paiement | selectattr("id", "equalto", item.mode_paiement_id) | first %}
-                        {{ mp.compte_tresorerie_nom if mp and mp.compte_tresorerie_nom else '⚠️ Non configuré' }}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        
-        <div class="actions-bar">
-            <button type="button" class="btn btn-secondary" onclick="window.history.back()">Annuler</button>
-            <button type="button" class="btn btn-primary" onclick="comptabiliserSelection()">
-                ✅ Comptabiliser la sélection (<span id="countSelected">0</span>)
-            </button>
-        </div>
-    </form>
+{% extends 'pos.html' %}
+
+{% block title %}Revue de Comptabilisation POS{% endblock %}
+
+{% block page_header %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">📋 Revue de Comptabilisation POS</h2>
+    <span class="badge bg-primary fs-6">Mode : {{ mode|upper }}</span>
 </div>
+{% endblock %}
 
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form id="formCompta">
+            <div class="table-responsive">
+                <table class="table table-hover table-compta align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 40px;">
+                                <input type="checkbox" id="selectAll" class="form-check-input" title="Tout sélectionner">
+                            </th>
+                            <th>Date / Période</th>
+                            <th>Mode de Paiement</th>
+                            <th class="text-center">Nb Tickets</th>
+                            <th class="text-end">Total TTC</th>
+                            <th class="text-end">Frais Estimés</th>
+                            <th>Compte de Destination</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in a_comptabiliser %}
+                        <tr>
+                            <td>
+                                <input type="checkbox" name="selection" class="item-check form-check-input" 
+                                       value='{{ item | tojson | safe }}'>
+                            </td>
+                            <td class="fw-medium">{{ item.date_jour or item.date.strftime('%d.%m.%Y') }}</td>
+                            <td><span class="badge bg-secondary">{{ item.mode_paiement_nom }}</span></td>
+                            <td class="text-center">{{ item.nb_tickets or 1 }}</td>
+                            <td class="text-end fw-bold">CHF {{ "%.2f"|format(item.total_ttc) }}</td>
+                            <td class="text-end" style="color: #e53935;">
+                                {% set frais = (item.total_ttc * (item.frais_pourcentage or 0) / 100) + (item.frais_fixe or 0) %}
+                                {% if frais > 0 %}CHF {{ "%.2f"|format(frais) }}{% else %}-{% endif %}
+                            </td>
+                            <td>
+                                {# Logique d'affichage du compte de destination utilisant cat_dict #}
+                                {% set mp = modes_paiement | selectattr("id", "equalto", item.mode_paiement_id) | first %}
+                                {% if mp and mp.compte_tresorerie_id and mp.compte_tresorerie_id in cat_dict %}
+                                    <span class="badge bg-info text-dark">{{ cat_dict[mp.compte_tresorerie_id].numero }}</span> 
+                                    {{ cat_dict[mp.compte_tresorerie_id].nom }}
+                                {% else %}
+                                    <span class="text-danger fw-bold">⚠️ Non configuré</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-5">
+                                <i class="bi bi-check-circle fs-1 d-block mb-3 text-success"></i>
+                                <h5>Tout est à jour !</h5>
+                                <p class="mb-0">Aucune écriture en attente de comptabilisation pour ce mode.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+                <button type="button" class="btn btn-outline-secondary" onclick="window.history.back()">
+                    <i class="bi bi-arrow-left me-1"></i> Annuler
+                </button>
+                <button type="button" class="btn btn-success btn-lg" onclick="comptabiliserSelection()" id="btnCompta">
+                    <i class="bi bi-check-lg me-1"></i> Comptabiliser la sélection (<span id="countSelected" class="fw-bold">0</span>)
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
 <script>
-// Logique JS pour gérer la sélection et l'envoi AJAX
-document.getElementById('selectAll').addEventListener('change', function(e) {
-    document.querySelectorAll('.item-check').forEach(cb => cb.checked = e.target.checked);
-    updateCount();
-});
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAll = document.getElementById('selectAll');
+    const countEl = document.getElementById('countSelected');
+    const btnCompta = document.getElementById('btnCompta');
 
-document.querySelectorAll('.item-check').forEach(cb => {
-    cb.addEventListener('change', updateCount);
-});
-
-function updateCount() {
-    document.getElementById('countSelected').textContent = document.querySelectorAll('.item-check:checked').length;
-}
-
-async function comptabiliserSelection() {
-    const checkedBoxes = document.querySelectorAll('.item-check:checked');
-    if (checkedBoxes.length === 0) {
-        alert("Veuillez sélectionner au moins un élément.");
-        return;
+    // Gestion de la sélection globale
+    if (selectAll) {
+        selectAll.addEventListener('change', function(e) {
+            document.querySelectorAll('.item-check').forEach(cb => cb.checked = e.target.checked);
+            updateCount();
+        });
     }
 
-    const selection = Array.from(checkedBoxes).map(cb => JSON.parse(cb.value));
-    
-    const response = await fetch(window.location.href, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ selection: selection })
+    // Gestion de la sélection individuelle
+    document.querySelectorAll('.item-check').forEach(cb => {
+        cb.addEventListener('change', function() {
+            // Désélectionner "Tout sélectionner" si un élément est décoché
+            if (!this.checked && selectAll) {
+                selectAll.checked = false;
+            }
+            updateCount();
+        });
     });
-    
-    const data = await response.json();
-    if (data.success) {
-        alert(data.message);
-        window.location.reload(); // Recharger pour voir les éléments retirés
-    } else {
-        alert("Erreur: " + data.message);
+
+    function updateCount() {
+        const count = document.querySelectorAll('.item-check:checked').length;
+        if (countEl) {
+            countEl.textContent = count;
+        }
+        // Désactiver le bouton si rien n'est sélectionné
+        if (btnCompta) {
+            btnCompta.disabled = (count === 0);
+        }
     }
-}
+
+    // Initialiser l'état du bouton au chargement
+    updateCount();
+
+    // Fonction globale pour l'appel AJAX
+    window.comptabiliserSelection = async function() {
+        const checkedBoxes = document.querySelectorAll('.item-check:checked');
+        if (checkedBoxes.length === 0) {
+            alert("Veuillez sélectionner au moins un élément.");
+            return;
+        }
+
+        if (!confirm(`Êtes-vous sûr de vouloir comptabiliser ${checkedBoxes.length} élément(s) ?\n\nCette action générera les écritures comptables et ne pourra pas être annulée automatiquement.`)) {
+            return;
+        }
+
+        const selection = Array.from(checkedBoxes).map(cb => JSON.parse(cb.value));
+        
+        // Afficher un indicateur de chargement
+        const originalText = btnCompta.innerHTML;
+        btnCompta.disabled = true;
+        btnCompta.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Traitement en cours...';
+
+        try {
+            const response = await fetch(window.location.href, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ selection: selection })
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                alert("✅ " + data.message);
+                window.location.reload(); // Recharger pour voir les éléments retirés
+            } else {
+                alert("❌ Erreur: " + data.message);
+                btnCompta.disabled = false;
+                btnCompta.innerHTML = originalText;
+                updateCount(); // Restaurer l'état du bouton
+            }
+        } catch (error) {
+            console.error("Erreur réseau:", error);
+            alert("❌ Erreur réseau lors de la comptabilisation. Vérifiez votre connexion.");
+            btnCompta.disabled = false;
+            btnCompta.innerHTML = originalText;
+            updateCount();
+        }
+    }
+});
 </script>
+{% endblock %}
