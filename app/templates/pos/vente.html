@@ -521,22 +521,50 @@ button{cursor:pointer; border:none; background:none}
   const save = () => localStorage.setItem('pos_current_ticket', JSON.stringify(ticket));
 
   /* ---------- Utilitaires TVA ---------- */
-  function calculTVA() {
+/* ---------- Utilitaires TVA ---------- */
+function calculTVA() {
     let totalTTC = 0;
     const tvaParTaux = {};
+    
     ticket.lines.forEach(l => {
-      const ligneTTC = l.prix * l.qty;
-      totalTTC += ligneTTC;
-      const taux = l.taux || 0;
-      if (!tvaParTaux[taux]) tvaParTaux[taux] = { ttc: 0, tva: 0 };
-      tvaParTaux[taux].ttc += ligneTTC;
-      if (taux > 0) {
-        const ligneHT = ligneTTC / (1 + taux / 100);
-        tvaParTaux[taux].tva += (ligneTTC - ligneHT);
-      }
+        const ligneTTC = l.prix * l.qty;
+        totalTTC += ligneTTC;
+        
+        // ✅ NOUVEAU : Utiliser le tva_breakdown s'il existe
+        if (l.tva_breakdown && l.tva_breakdown.length > 0) {
+            // Calculer la TVA pour chaque composante du breakdown
+            l.tva_breakdown.forEach(breakdown => {
+                const montantTTC = breakdown.montant_ttc * l.qty;
+                const taux = breakdown.taux || 0;
+                
+                if (!tvaParTaux[taux]) {
+                    tvaParTaux[taux] = { ttc: 0, tva: 0 };
+                }
+                
+                tvaParTaux[taux].ttc += montantTTC;
+                
+                if (taux > 0) {
+                    const montantHT = montantTTC / (1 + taux / 100);
+                    tvaParTaux[taux].tva += (montantTTC - montantHT);
+                }
+            });
+        } else {
+            // Ancienne logique (fallback si pas de breakdown)
+            const taux = l.taux || 0;
+            if (!tvaParTaux[taux]) {
+                tvaParTaux[taux] = { ttc: 0, tva: 0 };
+            }
+            tvaParTaux[taux].ttc += ligneTTC;
+            
+            if (taux > 0) {
+                const ligneHT = ligneTTC / (1 + taux / 100);
+                tvaParTaux[taux].tva += (ligneTTC - ligneHT);
+            }
+        }
     });
+    
     return { totalTTC, tvaParTaux };
-  }
+}
 
   function tvaHTMLDetail(tvaParTaux) {
     const tauxTries = Object.keys(tvaParTaux).map(Number).filter(t => t > 0).sort((a, b) => a - b);
