@@ -16620,7 +16620,7 @@ class ModePaiementPOS:
         except Exception as e:
             logger.error(f"Erreur récupération modes paiement avec comptes: {e}")
             return []
-            
+        
     def update(self, mode_id: int, user_id: int, data: Dict) -> bool:
         """Met à jour un mode de paiement"""
         try:

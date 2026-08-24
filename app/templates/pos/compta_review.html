@@ -43,12 +43,30 @@
                                 {% set frais = (item.total_ttc * (item.frais_pourcentage or 0) / 100) + (item.frais_fixe or 0) %}
                                 {% if frais > 0 %}CHF {{ "%.2f"|format(frais) }}{% else %}-{% endif %}
                             </td>
-                            <td>
-                                {% if mp.compte_tresorerie_numero %}
-                                    <span class="badge bg-info text-dark">{{ mp.compte_tresorerie_numero }}</span> 
-                                    {{ mp.compte_tresorerie_nom }}
+                                                        <td>
+                                {# 1. Trouver le mode de paiement correspondant à l'élément en cours #}
+                                {% set mp = modes_paiement | selectattr("id", "equalto", item.mode_paiement_id) | first %}
+                                
+                                {# 2. Afficher le compte si le mode est trouvé et configuré #}
+                                {% if mp %}
+                                    {% if mp.compte_tresorerie_numero %}
+                                        {# Cas où la route utilise get_all_with_comptes #}
+                                        <span class="badge bg-info text-dark">{{ mp.compte_tresorerie_numero }}</span> 
+                                        {{ mp.compte_tresorerie_nom }}
+                                    {% elif mp.compte_tresorerie_id and cat_dict and mp.compte_tresorerie_id in cat_dict %}
+                                        {# Cas où la route construit cat_dict #}
+                                        <span class="badge bg-info text-dark">{{ cat_dict[mp.compte_tresorerie_id].numero }}</span> 
+                                        {{ cat_dict[mp.compte_tresorerie_id].nom }}
+                                    {% else %}
+                                        <span class="text-warning">
+                                            <i class="bi bi-exclamation-triangle"></i> Non configuré
+                                        </span>
+                                    {% endif %}
                                 {% else %}
-                                    <span class="text-danger fw-bold">️ Non configuré</span>
+                                    {# Cas où le mode de paiement a été supprimé ou est introuvable #}
+                                    <span class="text-muted">
+                                        <i class="bi bi-question-circle"></i> Mode inconnu
+                                    </span>
                                 {% endif %}
                             </td>
                         </tr>

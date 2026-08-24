@@ -13139,14 +13139,10 @@ def pos_vente_delete_open_ticket(receipt_id):
 def pos_compta_review():
     user_id = current_user.id
     pdv_id = request.args.get('pdv_id', type=int)
-    mode = request.args.get('mode', 'jour') # 'jour' ou 'ticket'
-    
+    mode = request.args.get('mode', 'jour')
     
     if request.method == 'POST':
-        # Récupérer la sélection depuis le formulaire (ex: liste des IDs ou des index)
-        # Pour simplifier, supposons que le frontend envoie un JSON des items sélectionnés
         selection = request.json.get('selection', [])
-        
         succes, message = g.models.pos_comptabilisation_model.comptabiliser_selection(user_id, selection)
         if succes:
             return jsonify({'success': True, 'message': message})
@@ -13156,8 +13152,8 @@ def pos_compta_review():
     # GET : Afficher la page de revue
     a_comptabiliser = g.models.pos_comptabilisation_model.get_a_comptabiliser(user_id, pdv_id, mode=mode)
     
-    # Récupérer la liste des modes de paiement pour l'affichage
-    modes_paiement = g.models.mode_paiement_pos_model.get_all(user_id) # Votre fonction existante
+    # ✅ Utiliser get_all_with_comptes qui inclut déjà les noms des comptes
+    modes_paiement = g.models.mode_paiement_pos_model.get_all_with_comptes(user_id, actif_only=False)
     
     return render_template('pos/compta_review.html', 
                            a_comptabiliser=a_comptabiliser, 
