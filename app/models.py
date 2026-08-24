@@ -18324,7 +18324,7 @@ class ReceiptPOS:
         except Exception as e:
             logger.error(f"Erreur supprimer_ticket_ouvert: {e}")
             return False
-        def get_compta_settings(self, user_id: int) -> Dict:
+    def get_compta_settings(self, user_id: int) -> Dict:
         """Récupère les préférences de comptabilisation de l'utilisateur"""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
