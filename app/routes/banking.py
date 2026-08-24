@@ -12907,38 +12907,41 @@ def pos_vente_caisse():
 @login_required
 def pos_vente_articles_json():
     user_id = current_user.id
-    
     try:
         articles = g.models.article_pos_model.get_all(user_id)
         categories = g.models.categorie_pos_model.get_all(user_id)
         
-        # ✅ ENRICHIR chaque article avec ses modificateurs et options
         for article in articles:
-            # Récupérer les modificateurs liés à cet article
-            modificateurs = g.models.modificateur_pos_model.get_all(user_id)
+            # ✅ 1. Récupérer UNIQUEMENT les modificateurs liés à cet article spécifique
+            with g.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT m.id, m.nom_modificateur, m.taux_tva, m.prix_modificateur
+                    FROM pos_modificateurs m
+                    JOIN pos_article_modificateurs am ON m.id = am.modificateur_id
+                    WHERE am.article_id = %s AND m.utilisateur_id = %s
+                """, (article['id'], user_id))
+                modificateurs = cursor.fetchall()
             
-            # Pour chaque modificateur, récupérer ses options AVEC taux_tva
+            # ✅ 2. Pour chaque modificateur pertinent, récupérer ses options
             for mod in modificateurs:
                 options = g.models.option_modificateur_pos_model.get_by_modifier(mod['id'])
                 
-                # ✅ CRÉER la liste des options avec TOUS les champs nécessaires
                 mod['options'] = [
                     {
                         'id': o['id'],
                         'nom_option': o['nom_option'],
                         'prix_supplement': float(o.get('prix_supplement', 0)),
-                        'taux_tva': float(o['taux_tva']) if o.get('taux_tva') is not None else None,  # ✅ IMPORTANT : préserver NULL
+                        # ✅ Gestion stricte : si NULL en base, on envoie None (pour hériter du parent)
+                        'taux_tva': float(o['taux_tva']) if o.get('taux_tva') is not None else None,
                         'description': o.get('description', '')
                     }
                     for o in options
                 ]
-                
-                # ✅ Ajouter le taux parent du modificateur
                 mod['taux_tva'] = float(mod.get('taux_tva', 0))
             
             article['modificateurs'] = modificateurs
             
-            # Récupérer la taxe active de l'article pour le taux de base
+            # ✅ 3. Récupérer la taxe de base de l'article
             taxe = g.models.taxe_pos_model.get_taxe_active_for_article(article['id'])
             article['taux_taxe'] = float(taxe['taux']) if taxe else 0.0
         
@@ -12948,9 +12951,8 @@ def pos_vente_articles_json():
         })
         
     except Exception as e:
-        logger.error(f"Erreur articles-json: {e}")
-        return jsonify({'articles': [], 'categories': []})
-
+        logger.error(f"ERREUR CRITIQUE dans articles-json: {e}", exc_info=True)
+        return jsonify({'articles': [], 'categories': [], 'error': str(e)}), 500
 
 @bp.route('/pos/vente/clients.json')
 @login_required
