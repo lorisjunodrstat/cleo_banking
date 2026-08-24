@@ -1131,16 +1131,14 @@ class DatabaseManager:
                     utilisateur_id INT NOT NULL,
                     nom_categorie VARCHAR(100) NOT NULL,
                     description TEXT,
-                    couleur VARCHAR(7) DEFAULT '#3498db',
-                    icone VARCHAR(50) DEFAULT 'tag',
-                    ordre INT DEFAULT 0,
-                    actif BOOLEAN DEFAULT TRUE,
+                    couleur VARCHAR(7) DEFAULT '#28a745',
+                    icone VARCHAR(50) DEFAULT 'folder',
+                    ordre_affichage INT DEFAULT 0,
+                    est_actif BOOLEAN DEFAULT TRUE,
+                    categorie_comptable_vente_id INT NULL COMMENT 'Compte de classe 3 pour les ventes (ex: 3000)',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    categorie_comptable_vente_id INT NULL,
-                    categorie_comptable_tva_id INT NULL,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                    ADD FOREIGN KEY (categorie_comptable_vente_id) REFERENCES categories_comptables(id),
-                    ADD FOREIGN KEY (categorie_comptable_tva_id) REFERENCES categories_comptables(id),
+                    FOREIGN KEY (categorie_comptable_vente_id) REFERENCES categories_comptables(id) ON DELETE SET NULL,
                     UNIQUE KEY unique_categorie_user (utilisateur_id, nom_categorie)
                 );
                 """
