@@ -1,179 +1,128 @@
 {% extends "pos.html" %}
-{% block title %}Détail du modificateur{% endblock %}
+{% block title %}Options : {{ modifier.nom_modificateur }}{% endblock %}
 
 {% block page_header %}
-<h2 class="mb-4">{{ modifier.nom_modificateur }}</h2>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">
+        <a href="{{ url_for('banking.pos_modifiers_list') }}" class="btn btn-sm btn-outline-secondary me-2">
+            <i class="bi bi-arrow-left"></i>
+        </a>
+        <i class="bi bi-sliders me-2"></i>Options pour : <strong>{{ modifier.nom_modificateur }}</strong>
+        <span class="badge bg-primary ms-2">{{ options|length }}</span>
+    </h2>
+</div>
 {% endblock %}
 
 {% block content %}
-<div class="container">
-    <!-- Édition du modificateur -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">Informations du modificateur</h5>
-        </div>
-        <div class="card-body">
-            <form method="POST">
-                <input type="hidden" name="action" value="update_modifier">
-                
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label">Nom du modificateur *</label>
-                        <input type="text" name="nom_modificateur" class="form-control" 
-                               value="{{ modifier.nom_modificateur }}" required>
-                    </div>
+<div class="row">
+    <!-- Formulaire d'ajout rapide d'option -->
+    <div class="col-md-4 mb-4">
+        <div class="card shadow-sm border-primary">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-plus-circle me-2"></i>Ajouter une option
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="action" value="add_option">
                     
-                    <div class="col-md-3">
-                        <label class="form-label">Prix de base (CHF)</label>
-                        <div class="input-group">
-                            <span class="input-group-text">CHF</span>
-                            <input type="number" step="0.01" name="prix_modificateur" class="form-control" 
-                                   value="{{ modifier.prix_modificateur or 0 }}">
-                        </div>
-                    </div>
-                    
-                    <div class="col-md-3">
-                        <label class="form-label">TVA (%)</label>
-                        <div class="input-group">
-                            <input type="number" step="0.01" name="taux_tva" class="form-control" 
-                                   value="{{ modifier.taux_tva or 0.00 }}" min="0" max="100">
-                            <span class="input-group-text">%</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="mb-3 mt-3">
-                    <label class="form-label">Description</label>
-                    <textarea name="description" class="form-control" rows="2">{{ modifier.description or '' }}</textarea>
-                </div>
-                
-                <button type="submit" class="btn btn-success">
-                    <i class="bi bi-check-circle me-2"></i>Mettre à jour le modificateur
-                </button>
-            </form>
-        </div>
-    </div>
-
-    <!-- Ajout d'option -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-success text-white">
-            <h5 class="mb-0">Ajouter une option</h5>
-        </div>
-        <div class="card-body">
-            <form method="POST">
-                <input type="hidden" name="action" value="add_option">
-                
-                <div class="row g-3">
-                    <div class="col-md-4">
+                    <div class="mb-3">
                         <label class="form-label">Nom de l'option *</label>
-                        <input type="text" name="nom_option" class="form-control" required>
+                        <input type="text" name="nom_option" class="form-control" required placeholder="Ex: Bien cuit, Grande taille...">
                     </div>
                     
-                    <div class="col-md-2">
-                        <label class="form-label">Prix HT (CHF)</label>
-                        <div class="input-group">
-                            <span class="input-group-text">+CHF</span>
-                            <input type="number" step="0.01" name="prix_supplement" class="form-control" value="0">
-                        </div>
-                        <div class="form-text">Prix hors taxe</div>
+                    <div class="mb-3">
+                        <label class="form-label">Prix supplément (CHF)</label>
+                        <input type="number" step="0.01" name="prix_supplement" class="form-control" value="0.00">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Taux de TVA (%)</label>
+                        <input type="number" step="0.01" name="taux_tva_option" class="form-control" placeholder="Auto ({{ modifier.taux_tva or 0 }}%)">
+                        <div class="form-text">Laisser vide pour hériter du taux du modificateur ({{ modifier.taux_tva or 0 }}%).</div>
                     </div>
                     
-                    <div class="col-md-2">
-                        <label class="form-label">TVA (%)</label>
-                        <div class="input-group">
-                            <input type="number" step="0.01" name="taux_tva_option" class="form-control" 
-                                   value="" placeholder="Auto" min="0" max="100">
-                            <span class="input-group-text">%</span>
-                        </div>
-                        <div class="form-text">Vide = {{ modifier.taux_tva or 0 }}%</div>
-                    </div>
-                    
-                    <div class="col-md-4">
-                        <label class="form-label">Article lié</label>
+                    <div class="mb-3">
+                        <label class="form-label">Lier à un article (optionnel)</label>
                         <select name="id_article" class="form-select">
-                            <option value="">Aucun article lié</option>
+                            <option value="">Aucun</option>
                             {% for article in articles %}
                                 <option value="{{ article.id }}">{{ article.nom_article }}</option>
                             {% endfor %}
                         </select>
                     </div>
-                </div>
-                
-                <div class="mb-3 mt-3">
-                    <label class="form-label">Description</label>
-                    <textarea name="description" class="form-control" rows="2"></textarea>
-                </div>
-                
-                <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-plus-circle me-2"></i>Ajouter l'option
-                </button>
-            </form>
+
+                    <button type="submit" class="btn btn-success w-100">Ajouter l'option</button>
+                </form>
+            </div>
         </div>
     </div>
 
-    <!-- Liste des options -->
-    <div class="card shadow-sm">
-        <div class="card-header bg-info text-white">
-            <h5 class="mb-0">Options ({{ total_options }})</h5>
-        </div>
-        <div class="card-body">
-            {% if options %}
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>Nom</th>
-                            <th>Prix HT</th>
-                            <th>TVA</th>
-                            <th>Prix TTC</th>
-                            <th>Article lié</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for opt in options %}
-                        <tr>
-                            <td>{{ opt.nom_option }}</td>
-                            <td>{{ "%.2f"|format(opt.prix_supplement or 0) }} CHF</td>
-                            <td>
-                                {% if opt.taux_tva is not none %}
-                                    {{ "%.2f"|format(opt.taux_tva) }}%
-                                {% else %}
-                                    <span class="text-muted">Hérite ({{ "%.2f"|format(modifier.taux_tva or 0) }}%)</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% set tva = opt.taux_tva if opt.taux_tva is not none else (modifier.taux_tva or 0) %}
-                                {% set prix_ttc = (opt.prix_supplement or 0) * (1 + tva / 100) %}
-                                {{ "%.2f"|format(prix_ttc) }} CHF
-                            </td>
-                            <td>
-                                {% if opt.id_article %}
-                                    <span class="badge bg-secondary">{{ articles_by_id[opt.id_article].nom_article }}</span>
-                                {% else %}
-                                    <span class="text-muted">-</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <a href="{{ url_for('banking.pos_edit_modifier_option', opt_id=opt.id) }}" 
-                                   class="btn btn-sm btn-warning">
-                                    <i class="bi bi-pencil"></i>
-                                </a>
-                                <form method="POST" action="{{ url_for('banking.pos_delete_modifier_option', opt_id=opt.id) }}" 
-                                      style="display:inline;" onsubmit="return confirm('Supprimer cette option ?');">
-                                    <button type="submit" class="btn btn-sm btn-danger">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </form>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+    <!-- Liste des options existantes -->
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-body p-0">
+                {% if options %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Nom de l'option</th>
+                                <th class="text-end">Prix HT</th>
+                                <th class="text-end">TVA</th>
+                                <th>Article lié</th>
+                                <th class="text-end" style="width: 100px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for option in options %}
+                            <tr>
+                                <td><strong>{{ option.nom_option }}</strong></td>
+                                <td class="text-end">
+                                    {% if option.prix_supplement and option.prix_supplement > 0 %}
+                                        +{{ "%.2f"|format(option.prix_supplement) }} CHF
+                                    {% else %}
+                                        <span class="text-muted">Inclus</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    {% if option.taux_tva is not none %}
+                                        <span class="badge bg-warning text-dark">{{ "%.2f"|format(option.taux_tva) }}%</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Hérité ({{ "%.2f"|format(modifier.taux_tva or 0) }}%)</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if option.id_article %}
+                                        <span class="badge bg-info text-dark">#{{ option.id_article }}</span>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    <a href="{{ url_for('banking.pos_edit_modifier_option', opt_id=option.id) }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <form method="POST" action="{{ url_for('banking.pos_modifier_detail', mod_id=modifier.id) }}" style="display: inline;" onsubmit="return confirm('Supprimer cette option ?')">
+                                        <input type="hidden" name="action" value="delete_option">
+                                        <input type="hidden" name="option_id" value="{{ option.id }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-inbox fs-1"></i>
+                    <h4 class="mt-3">Aucune option définie</h4>
+                    <p>Utilisez le formulaire à gauche pour ajouter des options à ce modificateur.</p>
+                </div>
+                {% endif %}
             </div>
-            {% else %}
-            <p class="text-muted text-center">Aucune option pour ce modificateur.</p>
-            {% endif %}
         </div>
     </div>
 </div>

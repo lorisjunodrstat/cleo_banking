@@ -17663,7 +17663,8 @@ class ReceiptPOS:
 
     def creer_vente(self, user_id: int, data: Dict, compte_bancaire_id: int) -> Tuple[bool, str, Optional[int]]:
         """
-        ⭐ MÉTHODE PRINCIPALE : Crée une vente POS avec extraction de TVA depuis un prix TTC.
+        ⭐ MÉTHODE PRINCIPALE : Crée une vente POS avec gestion avancée de la TVA (paniers mixtes) 
+        et extraction de TVA depuis un prix TTC.
         """
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
@@ -17671,49 +17672,85 @@ class ReceiptPOS:
                 cout_marchandises = Decimal('0')
                 items_data = []
                 
+                # 1. TRAITEMENT DES ARTICLES ET CALCUL TVA DÉTAILLÉ
                 for item in data.get('items', []):
                     cursor.execute("SELECT * FROM pos_articles WHERE id = %s", (item['article_id'],))
                     article = cursor.fetchone()
                     if not article:
                         return False, f"Article {item['article_id']} introuvable", None
                     
-                    # ✅ On garde le nom de l'article TEL QUEL (court et propre)
                     nom_article_final = str(article['nom_article'])
-                    # ✅ On récupère les modificateurs SANS les concaténer au nom
                     modificateurs = str(item.get('modificateurs', '')).strip()
-                    
-                    prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
                     qte = int(item.get('quantite', 1))
-                    total_ligne_ttc = prix_ttc * qte
+                    commentaire = item.get('commentaire', '') or ''
+                    
+                    # Mise à jour du stock (une seule fois par article, peu importe le breakdown)
+                    cursor.execute("UPDATE pos_articles SET stock = stock - %s WHERE id = %s", 
+                                   (qte, item['article_id']))
                     cout_marchandises += Decimal(str(article['cout_unitaire'] or 0)) * qte
-                    
-                    taxe = self._get_taxe_active(cursor, item['article_id'])
-                    taux_taxe = Decimal('0')
-                    if taxe:
-                        taux_taxe = Decimal(str(taxe['taux']))
-                        
-                    if taux_taxe > Decimal('0'):
-                        diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
-                        ligne_ht_brut = (total_ligne_ttc / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+                    # ✅ NOUVEAU : Gestion du tva_breakdown (paniers mixtes avec taux différents)
+                    if 'tva_breakdown' in item and item['tva_breakdown']:
+                        for breakdown in item['tva_breakdown']:
+                            # Le frontend envoie le prix unitaire de la composante, on multiplie par la quantité
+                            montant_ttc_comp = Decimal(str(breakdown['montant_ttc'])) * qte
+                            taux_taxe_comp = Decimal(str(breakdown['taux']))
+                            
+                            # Calcul HT et TVA pour cette composante spécifique
+                            if taux_taxe_comp > Decimal('0'):
+                                diviseur = Decimal('1') + (taux_taxe_comp / Decimal('100'))
+                                ligne_ht = (montant_ttc_comp / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                                ligne_taxe = (montant_ttc_comp - ligne_ht).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                            else:
+                                ligne_ht = montant_ttc_comp.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                                ligne_taxe = Decimal('0')
+                            
+                            ventes_brutes_ht += ligne_ht
+                            
+                            items_data.append({
+                                'article_id': item['article_id'],
+                                'nom_article': f"{nom_article_final} - {breakdown['description']}",
+                                'modificateurs': modificateurs,
+                                'variante_id': item.get('variante_id'),
+                                'quantite': qte,
+                                'prix_ttc': montant_ttc_comp, # Prix TTC de la composante
+                                'total_ligne_ttc': montant_ttc_comp,
+                                'ligne_ht_brut': ligne_ht,
+                                'taux_taxe': taux_taxe_comp,
+                                'commentaire': commentaire,
+                            })
                     else:
-                        ligne_ht_brut = total_ligne_ttc.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                        # FALLBACK : Logique classique (un seul taux de TVA pour tout l'article)
+                        prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
+                        total_ligne_ttc = prix_ttc * qte
                         
-                    ventes_brutes_ht += ligne_ht_brut
-                    
-                    items_data.append({
-                        'article_id': item['article_id'],
-                        'nom_article': nom_article_final,
-                        'modificateurs': modificateurs, # ✅ Stocké séparément
-                        'variante_id': item.get('variante_id'),
-                        'quantite': qte,
-                        'prix_ttc': prix_ttc,
-                        'total_ligne_ttc': total_ligne_ttc,
-                        'ligne_ht_brut': ligne_ht_brut,
-                        'taux_taxe': taux_taxe,
-                        'commentaire': item.get('commentaire', '') or '',
-                    })
+                        taxe = self._get_taxe_active(cursor, item['article_id'])
+                        taux_taxe = Decimal('0')
+                        if taxe:
+                            taux_taxe = Decimal(str(taxe['taux']))
+                            
+                        if taux_taxe > Decimal('0'):
+                            diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
+                            ligne_ht_brut = (total_ligne_ttc / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                        else:
+                            ligne_ht_brut = total_ligne_ttc.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                            
+                        ventes_brutes_ht += ligne_ht_brut
+                        
+                        items_data.append({
+                            'article_id': item['article_id'],
+                            'nom_article': nom_article_final,
+                            'modificateurs': modificateurs,
+                            'variante_id': item.get('variante_id'),
+                            'quantite': qte,
+                            'prix_ttc': prix_ttc,
+                            'total_ligne_ttc': total_ligne_ttc,
+                            'ligne_ht_brut': ligne_ht_brut,
+                            'taux_taxe': taux_taxe,
+                            'commentaire': commentaire,
+                        })
                 
-                # --- (Le calcul des réductions et TVA reste identique) ---
+                # 2. CALCUL DES RÉDUCTIONS GLOBALES
                 reduction_ttc = Decimal('0')
                 if data.get('discount_id'):
                     cursor.execute("SELECT * FROM pos_discounts WHERE id = %s", (data['discount_id'],))
@@ -17730,6 +17767,7 @@ class ReceiptPOS:
                 if total_ttc_global > Decimal('0'):
                     reduction_ratio = reduction_ttc / total_ttc_global
                     
+                # 3. CALCUL DES MONTANTS NETS (après répartition proportionnelle de la réduction)
                 ventes_nettes_ht = Decimal('0')
                 total_taxes = Decimal('0')
                 reduction_ht_total = Decimal('0')
@@ -17737,6 +17775,8 @@ class ReceiptPOS:
                 for item_data in items_data:
                     total_ligne_ttc = item_data['total_ligne_ttc']
                     taux_taxe = item_data['taux_taxe']
+                    
+                    # Répartition proportionnelle de la réduction sur le TTC de la composante
                     ligne_ttc_net = total_ligne_ttc - (total_ligne_ttc * reduction_ratio)
                     
                     if taux_taxe > Decimal('0'):
@@ -17752,12 +17792,13 @@ class ReceiptPOS:
                     total_taxes += ligne_taxe
                     reduction_ht_total += ligne_reduction_ht
                 
+                # 4. TOTAUX GLOBAUX
                 tips = Decimal(str(data.get('tips', 0)))
                 total_collecte = ventes_nettes_ht + total_taxes + tips
                 marge_brute = ventes_nettes_ht - cout_marchandises
-                
                 recu_numero = f"V-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
                 
+                # 5. INSERTION DU REÇU (EN-TÊTE)
                 cursor.execute("""
                     INSERT INTO pos_receipts 
                     (utilisateur_id, date, recu_numero, nom_ticket, description, receipt_type, ventes_brutes, reduction, 
@@ -17765,7 +17806,7 @@ class ReceiptPOS:
                      restaurant_option_id, pdv, magasin, nom_du_caissier,
                      nom_du_client, numero_client, id_client, discount_id, discount_amount,
                      status, compte_bancaire_id)
-                    VALUES (%s, NOW(), %s,%s, %s, 'Vente', %s, %s, %s, %s, %s, %s, %s, %s,
+                    VALUES (%s, NOW(), %s, %s, %s, 'Vente', %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Fermé', %s)
                 """, (
                     user_id, recu_numero, data.get('nom_ticket'), data.get('description'), 
@@ -17780,7 +17821,7 @@ class ReceiptPOS:
                 ))
                 receipt_id = cursor.lastrowid
                 
-                # ✅ INSERTION DES ITEMS AVEC LA COLONNE MODIFICATEURS
+                # 6. INSERTION DES LIGNES DU REÇU
                 for item in items_data:
                     cursor.execute("""
                         INSERT INTO pos_receipt_items 
@@ -17792,46 +17833,60 @@ class ReceiptPOS:
                         item['quantite'], float(item['prix_ttc']),
                         float(item['total_ligne_ttc']),
                         float(item['taux_taxe']),
-                        item.get('commentaire'),
-                        item['modificateurs'] # ✅ Envoi dans la nouvelle colonne
+                        item['commentaire'],
+                        item['modificateurs']
                     ))
-                    
-                    cursor.execute("UPDATE pos_articles SET stock = stock - %s WHERE id = %s", (item['quantite'], item['article_id']))
                 
-                # --- (Gestion des paiements et transaction financière identique) ---
+                # 7. GESTION DES PAIEMENTS
                 nb_paiements = 0
                 for payment in data.get('payments', []):
                     montant_pay = float(payment.get('montant', 0))
-                    if montant_pay <= 0: continue
-                    cursor.execute("INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant) VALUES (%s, %s, %s)", (receipt_id, payment['mode_paiement_id'], montant_pay))
+                    if montant_pay <= 0: 
+                        continue
+                    cursor.execute("""
+                        INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant) 
+                        VALUES (%s, %s, %s)
+                    """, (receipt_id, payment['mode_paiement_id'], montant_pay))
                     nb_paiements += 1
 
+                # Paiement par défaut si aucun mode n'est spécifié mais qu'il y a un montant
                 if nb_paiements == 0 and float(total_collecte) > 0:
-                    cursor.execute("SELECT id FROM pos_modes_paiement WHERE utilisateur_id = %s ORDER BY (nom LIKE '%%spè%%' OR nom LIKE '%%cash%%') DESC, id LIMIT 1", (user_id,))
+                    cursor.execute("""
+                        SELECT id FROM pos_modes_paiement 
+                        WHERE utilisateur_id = %s 
+                        ORDER BY (nom LIKE '%%spè%%' OR nom LIKE '%%cash%%') DESC, id LIMIT 1
+                    """, (user_id,))
                     mode_defaut = cursor.fetchone()
                     if mode_defaut:
-                        cursor.execute("INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant) VALUES (%s, %s, %s)", (receipt_id, mode_defaut['id'], float(total_collecte)))
+                        cursor.execute("""
+                            INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant) 
+                            VALUES (%s, %s, %s)
+                        """, (receipt_id, mode_defaut['id'], float(total_collecte)))
                 
+                # 8. LIEN AVEC LA TRANSACTION FINANCIÈRE
                 success, msg, transaction_id = self.transaction_model._inserer_transaction_with_cursor(
-                    cursor=cursor, compte_type='compte_principal', compte_id=compte_bancaire_id,
-                    type_transaction='depot', montant=total_collecte,
+                    cursor=cursor, 
+                    compte_type='compte_principal', 
+                    compte_id=compte_bancaire_id,
+                    type_transaction='depot', 
+                    montant=total_collecte,
                     description=f"Vente POS {recu_numero} - {data.get('nom_du_caissier', '')}",
-                    user_id=user_id, date_transaction=datetime.now(), validate_balance=False
+                    user_id=user_id, 
+                    date_transaction=datetime.now(), 
+                    validate_balance=False
                 )
                 
                 if success and transaction_id:
-
                     cursor.execute("UPDATE pos_receipts SET transaction_id = %s WHERE id = %s", (transaction_id, receipt_id))
                     logger.info(f"✅ Vente {receipt_id} liée à transaction {transaction_id}")
                 
-                # 8. ✅ GESTION DE LA COMPTABILISATION SELON LES PRÉFÉRENCES
+                # 9. GESTION DE LA COMPTABILISATION SELON LES PRÉFÉRENCES
                 settings = self.get_compta_settings(user_id)
-                mode = settings.get('mode_comptabilisation', 'par_jour')
+                mode_compta = settings.get('mode_comptabilisation', 'par_jour')
                 generation = settings.get('generation_ecritures', 'manuel')
                 
                 if generation == 'automatique':
-                    if mode == 'par_ticket':
-                        # Comptabilisation immédiate, ticket par ticket
+                    if mode_compta == 'par_ticket':
                         from app.models import POSComptabilisation
                         compta_engine = POSComptabilisation(self.db)
                         succes_compta, msg_compta = compta_engine.comptabiliser_ticket(receipt_id, user_id)
@@ -17840,19 +17895,17 @@ class ReceiptPOS:
                         else:
                             logger.warning(f"⚠️ Échec comptabilisation auto ticket {receipt_id}: {msg_compta}")
                     else:
-                        # Mode 'par_jour' : on marque juste le ticket comme prêt à être agrégé
-                        # La comptabilisation se fera via une route dédiée (journal de caisse)
                         logger.info(f"ℹ️ Ticket {receipt_id} prêt pour agrégation journalière")
                 else:
-                    # Mode 'manuel' : on ne fait rien, l'utilisateur devra passer par la page de revue
                     logger.info(f"ℹ️ Ticket {receipt_id} en attente de comptabilisation manuelle")
 
-                
                 return True, "Vente créée avec succès", receipt_id
                 
         except Exception as e:
             logger.error(f"Erreur création vente POS: {e}", exc_info=True)
             return False, f"Erreur: {str(e)}", None
+
+
 
     def creer_ticket_ouvert(self, user_id: int, data: Dict) -> Tuple[bool, str, Optional[int]]:
         """Enregistre un ticket sans paiement (status 'Ouvert'), sans transaction bancaire."""

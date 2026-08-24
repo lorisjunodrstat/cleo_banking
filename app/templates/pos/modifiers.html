@@ -5,40 +5,54 @@
 {% block content %}
 <div class="card shadow-sm">
     <div class="card-body">
-        <form method="GET" class="mb-4">
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <input type="text" name="search" class="form-control" placeholder="Rechercher un modificateur..." value="{{ search }}">
-                </div>
-                <div class="col-md-2">
-                    <button type="submit" class="btn btn-success w-100">Rechercher</button>
-                </div>
-            </div>
-        </form>
-        <table class="table table-hover">
-            <thead class="table-light">
-                <tr>
-                    <th>Nom du modificateur</th>
-                    <th>Description</th>
-                    <th>Actions</th>                
-                </tr>
-            </thead>
-            <tbody>
-                {% for mod in modifiers %}
-                <tr>
-                    <td><strong>{{ mod.nom_modificateur }}</strong></td>
-                    <td class="text-muted">{{ mod.description or '-' }}</td>
-                    <td>
-                        <a href="{{ url_for('banking.pos_modifier_detail', mod_id=mod.id) }}"  class="btn btn-sm btn-outline-primary" title="Voir les détails"><i class="bi bi-eye"></i></a>
-                        <a href="{{ url_for('banking.pos_edit_modifier', mod_id=mod.id) }}" class="btn btn-primary btn-sm">Modifier</a>
-                        <a href="{{ url_for('banking.pos_delete_modifier', mod_id=mod.id) }}" class="btn btn-danger btn-sm" onclick="return confirm('Êtes-vous sûr de vouloir supprimer ce modificateur ?')">Supprimer</a>
-                    </td>
-                </tr>
-                {% else %}
-                <tr><td colspan="2" class="text-center text-muted py-4">Aucun modificateur</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <form method="GET" class="d-flex gap-2" style="max-width: 400px;">
+                <input type="text" name="search" class="form-control" placeholder="Rechercher..." value="{{ search }}">
+                <button type="submit" class="btn btn-success"><i class="bi bi-search"></i></button>
+            </form>
+            <a href="{{ url_for('banking.pos_create_modifier') }}" class="btn btn-primary">
+                <i class="bi bi-plus-circle me-1"></i> Nouveau modificateur
+            </a>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Nom du modificateur</th>
+                        <th class="text-end">TVA par défaut</th>
+                        <th>Description</th>
+                        <th class="text-end" style="width: 200px;">Actions</th>                
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mod in modifiers %}
+                    <tr>
+                        <td><strong>{{ mod.nom_modificateur }}</strong></td>
+                        <td class="text-end">
+                            <span class="badge bg-info text-dark">{{ "%.2f"|format(mod.taux_tva or 0) }}%</span>
+                        </td>
+                        <td class="text-muted">{{ mod.description or '-' }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('banking.pos_modifier_detail', mod_id=mod.id) }}" class="btn btn-sm btn-outline-primary" title="Gérer les options">
+                                <i class="bi bi-list-ul"></i> Options
+                            </a>
+                            <a href="{{ url_for('banking.pos_edit_modifier', mod_id=mod.id) }}" class="btn btn-sm btn-outline-secondary" title="Modifier">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <form method="POST" action="{{ url_for('banking.pos_delete_modifier', mod_id=mod.id) }}" style="display: inline;" onsubmit="return confirm('Supprimer ce modificateur et toutes ses options ?')">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Supprimer">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center text-muted py-4">Aucun modificateur trouvé.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 {% endblock %}
