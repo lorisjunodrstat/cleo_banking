@@ -17708,7 +17708,6 @@ class ReceiptPOS:
         except Exception as e:
             logger.error(f"Erreur création vente POS: {e}", exc_info=True)
             return False, f"Erreur: {str(e)}", None
-
     def creer_ticket_ouvert(self, user_id: int, data: Dict) -> Tuple[bool, str, Optional[int]]:
         """Enregistre un ticket sans paiement (status 'Ouvert'), sans transaction bancaire."""
         try:
@@ -17758,6 +17757,7 @@ class ReceiptPOS:
                 recu_numero = f"O-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
                 reduction_ttc = Decimal('0')
                 reduction_ht = Decimal('0')
+                
                 if data.get('discount_id'):
                     cursor.execute("SELECT * FROM pos_discounts WHERE id = %s", (data['discount_id'],))
                     discount = cursor.fetchone()
@@ -17767,32 +17767,36 @@ class ReceiptPOS:
                             reduction_ttc = total_ttc_global * (Decimal(str(discount['valeur'])) / Decimal('100'))
                         else:
                             reduction_ttc = Decimal(str(discount['valeur']))
+                        
                         # HT de la réduction
                         if total_taxes > 0 and ventes_brutes_ht > 0:
                             taux_moyen = (total_taxes / ventes_brutes_ht) * 100
                             reduction_ht = reduction_ttc / (Decimal('1') + taux_moyen/Decimal('100'))
                         else:
                             reduction_ht = reduction_ttc
-                            cursor.execute("""
-                                INSERT INTO pos_receipts 
-                                (utilisateur_id, date, recu_numero, nom_ticket, description, receipt_type,
-                                ventes_brutes, reduction, ventes_nettes, taxes, total_collecte,
-                                restaurant_option_id, pdv, magasin, nom_du_caissier,
-                                nom_du_client, id_client, discount_id, discount_amount, status)
-                                VALUES (%s, NOW(), %s, %s, %s, 'Vente', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Ouvert')
-                                """, (
-                        user_id, recu_numero,
-                        data.get('nom_ticket', ''), data.get('commentaire', ''),
-                        float(ventes_brutes_ht), float(reduction_ht), 
-                        float(ventes_brutes_ht - reduction_ht), float(total_taxes), 
-                        float(total_collecte - reduction_ttc),  # <--- CORRECTION ICI
-                        data.get('restaurant_option_id'), data.get('pdv'), data.get('magasin'),
-                        data.get('nom_du_caissier'), data.get('nom_du_client'), data.get('id_client'),
-                        data.get('discount_id'), float(reduction_ttc)
-                    ))
+
+                # --- CORRECTION 1 : Désindentation pour que le ticket s'enregistre même avec des taxes ---
+                cursor.execute("""
+                    INSERT INTO pos_receipts 
+                    (utilisateur_id, date, recu_numero, nom_ticket, description, receipt_type,
+                    ventes_brutes, reduction, ventes_nettes, taxes, total_collecte,
+                    restaurant_option_id, pdv, magasin, nom_du_caissier,
+                    nom_du_client, id_client, discount_id, discount_amount, status)
+                    VALUES (%s, NOW(), %s, %s, %s, 'Vente', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Ouvert')
+                """, (
+                    user_id, recu_numero,
+                    data.get('nom_ticket', ''), data.get('commentaire', ''),
+                    float(ventes_brutes_ht), float(reduction_ht), 
+                    float(ventes_brutes_ht - reduction_ht), float(total_taxes), 
+                    float(total_collecte - reduction_ttc),  # Fix Decimal vs float
+                    data.get('restaurant_option_id'), data.get('pdv'), data.get('magasin'),
+                    data.get('nom_du_caissier'), data.get('nom_du_client'), data.get('id_client'),
+                    data.get('discount_id'), float(reduction_ttc)
+                ))
                 receipt_id = cursor.lastrowid
                 
                 for item in items_data:
+                    # --- CORRECTION 2 : Ajout de item['commentaire'] (il y avait 9 %s mais seulement 8 valeurs) ---
                     cursor.execute("""
                         INSERT INTO pos_receipt_items 
                         (receipt_id, article_id, nom_article, variante_id, quantite, prix_unitaire, 
@@ -17801,7 +17805,8 @@ class ReceiptPOS:
                     """, (
                         receipt_id, item['article_id'], item['nom_article'], item['variante_id'],
                         item['quantite'], float(item['prix_ttc']),
-                        float(item['total_ligne_ttc']), float(item['taux_taxe'])
+                        float(item['total_ligne_ttc']), float(item['taux_taxe']),
+                        item['commentaire']  # <--- AJOUT ICI
                     ))
                 
                 return True, "Ticket enregistré", receipt_id
@@ -17809,7 +17814,7 @@ class ReceiptPOS:
         except Exception as e:
             logger.error(f"Erreur ticket ouvert: {e}")
             return False, f"Erreur: {str(e)}", None
-
+            
     def _get_taxe_active(self, cursor, article_id: int) -> Optional[Dict]:
         date_ref = date.today()
         cursor.execute("""
