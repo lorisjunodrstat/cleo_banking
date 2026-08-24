@@ -654,6 +654,8 @@ button{cursor:pointer; border:none; background:none}
     });
     const qty = parseInt($('maQty').value||1);
     const commentaire = $('maCommentaire').value.trim();
+    const modificateurs = extras.join(', '); // 
+    
     const key = a.id + '_' + (varianteId||0) + '_' + extras.join('+');
     const existing = ticket.lines.find(l => l.key === key);
     if (existing) {
@@ -709,9 +711,10 @@ function scrollToTicket() {
   $('ticketLines').innerHTML = ticket.lines.map((l,i) => `
     <div class="line">
       <div class="l1">
-        <span class="lname">${l.nom}${l.extras?` <span class="meta">(${l.extras})</span>`:''}</span>
+        <span class="lname">${l.nom}</span>
         <span class="lprice">${fmt(l.prix*l.qty)}</span>
       </div>
+      ${l.modificateurs ? `<div class="meta" style="margin:2px 0; color:#43A047; font-size:12px; font-style:italic">📝 ${l.modificateurs}</div>` : ''}
       ${l.commentaire ? `<div class="meta" style="margin:2px 0">💬 ${l.commentaire}</div>` : ''}
       <div class="l2">
         <button class="qtybtn" onclick="chgQty(${i},-1)">−</button>
@@ -721,7 +724,7 @@ function scrollToTicket() {
         <button class="del" onclick="delLine(${i})">✕</button>
       </div>
     </div>`).join('') || '<p style="padding:20px;color:#888;text-align:center">Ticket vide</p>';
-  
+    
   const { totalTTC, tvaParTaux } = calculTVA();
   const reduction = calcReduction();
   const tips = parseFloat($('tips').value) || 0;

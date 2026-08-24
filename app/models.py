@@ -1106,13 +1106,14 @@ class DatabaseManager:
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     receipt_id INT NOT NULL,
                     article_id INT NOT NULL,
-                    nom_article VARCHAR(200) NOT NULL,
+                    nom_article VARCHAR(255) NOT NULL,
                     variante_id INT NULL,
                     quantite INT DEFAULT 1,
                     prix_unitaire DECIMAL(10,2) DEFAULT 0,
                     total_ligne DECIMAL(10,2) DEFAULT 0,
                     taux_taxe_applique DECIMAL(5,2) DEFAULT 0,
                     commentaire VARCHAR(255) NULL,
+                    modificateurs TEXT NULL
                     FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE,
                     FOREIGN KEY (article_id) REFERENCES pos_articles(id),
                     FOREIGN KEY (variante_id) REFERENCES pos_variantes(id) ON DELETE SET NULL,
@@ -1249,7 +1250,7 @@ class DatabaseManager:
                     utilisateur_id INT NOT NULL,
                     id_categorie INT NOT NULL,
                     id_sous_categorie INT NULL,
-                    nom_article VARCHAR(200) NOT NULL,
+                    nom_article VARCHAR(255) NOT NULL,
                     description TEXT,
                     vendu_type VARCHAR(50) DEFAULT 'piece',
                     prix_unitaire DECIMAL(10,2) DEFAULT 0,
@@ -1263,6 +1264,7 @@ class DatabaseManager:
                     couleur VARCHAR(7) DEFAULT '#6c757d',
                     actif BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    modificateurs TEXT NULL,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
                     FOREIGN KEY (id_categorie) REFERENCES pos_categories(id),
                     FOREIGN KEY (id_sous_categorie) REFERENCES pos_sous_categories(id) ON DELETE SET NULL,
@@ -17730,12 +17732,11 @@ class ReceiptPOS:
                     if not article:
                         return False, f"Article {item['article_id']} introuvable", None
                     
-                    # --- NOUVEAU : Gestion des modificateurs ---
+                    # ✅ On garde le nom de l'article TEL QUEL (court et propre)
+                    nom_article_final = str(article['nom_article'])
+                    
+                    # ✅ On récupère les modificateurs SANS les concaténer au nom
                     modificateurs = str(item.get('modificateurs', '')).strip()
-                    nom_article_final = article['nom_article']
-                    if modificateurs:
-                        nom_article_final = f"{nom_article_final} ({modificateurs})"
-                    # -------------------------------------------
                     
                     prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
                     qte = int(item.get('quantite', 1))
@@ -17759,7 +17760,8 @@ class ReceiptPOS:
                     
                     items_data.append({
                         'article_id': item['article_id'],
-                        'nom_article': nom_article_final,  # <-- Utilise le nom enrichi
+                        'nom_article': nom_article_final,  # Nom court
+                        'modificateurs': modificateurs,    # Liste complète séparée
                         'variante_id': item.get('variante_id'),
                         'quantite': qte,
                         'prix_ttc': prix_ttc,
@@ -17813,13 +17815,14 @@ class ReceiptPOS:
                     cursor.execute("""
                         INSERT INTO pos_receipt_items 
                         (receipt_id, article_id, nom_article, variante_id, quantite, prix_unitaire, 
-                        total_ligne, taux_taxe_applique, commentaire)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                         total_ligne, taux_taxe_applique, commentaire, modificateurs)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         receipt_id, item['article_id'], item['nom_article'], item['variante_id'],
                         item['quantite'], float(item['prix_ttc']),
                         float(item['total_ligne_ttc']), float(item['taux_taxe']),
-                        item['commentaire']
+                        item['commentaire'],
+                        item['modificateurs']  # ✅ Nouvelle colonne
                     ))
                 
                 return True, "Ticket enregistré", receipt_id
