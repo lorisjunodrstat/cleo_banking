@@ -13113,7 +13113,7 @@ def pos_compta_settings():
         if generation not in ['automatique', 'manuel']:
             generation = 'manuel'
         
-        succes = g.receipt_pos_model.save_compta_settings(user_id, mode, generation)
+        succes = g.models.receipt_pos_model.save_compta_settings(user_id, mode, generation)
         
         if succes:
             flash('✅ Paramètres de comptabilisation enregistrés', 'success')
