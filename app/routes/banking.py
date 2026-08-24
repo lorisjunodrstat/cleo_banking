@@ -12903,37 +12903,53 @@ def pos_vente_caisse():
     )
 
 
-@bp.route('/pos/vente/articles.json')
+@bp.route('/pos/vente/articles-json')
 @login_required
 def pos_vente_articles_json():
-    def f(x):
-        try: return float(x)
-        except Exception: return 0.0
-
-    articles = g.models.article_pos_model.get_all(current_user.id)
-    for a in articles:
-        taxe = g.models.taxe_pos_model.get_taxe_active_for_article(a['id'])
-        a['taux_taxe'] = f(taxe['taux']) if taxe else 0.0
-        a['prix_unitaire'] = f(a.get('prix_unitaire'))
-        variantes = g.models.variante_pos_model.get_by_article(a['id'])
-        for v in variantes:
-            v['prix'] = f(v.get('prix'))
-        a['variantes'] = variantes
-        mods = g.models.article_pos_model.get_linked_modifiers(a['id'])
-        for m in mods:
-            m['prix_modificateur'] = f(m.get('prix_modificateur'))
-            # ✅ OPTIONS du modificateur
-            opts = g.models.option_modificateur_pos_model.get_by_modifier(m['id'])
-            m['options'] = [
-                {'id': o['id'], 'nom_option': o['nom_option'], 'prix_supplement': f(o.get('prix_supplement'))}
-                for o in opts
-            ]
-        a['modificateurs'] = mods
-
-    return jsonify({
-        'articles': articles,
-        'categories': g.models.categorie_pos_model.get_all(current_user.id),
-    })
+    user_id = current_user.id
+    
+    try:
+        articles = g.models.article_pos_model.get_all(user_id)
+        categories = g.models.categorie_pos_model.get_all(user_id)
+        
+        # ✅ ENRICHIR chaque article avec ses modificateurs et options
+        for article in articles:
+            # Récupérer les modificateurs liés à cet article
+            modificateurs = g.models.modificateur_pos_model.get_all(user_id)
+            
+            # Pour chaque modificateur, récupérer ses options AVEC taux_tva
+            for mod in modificateurs:
+                options = g.models.option_modificateur_pos_model.get_by_modifier(mod['id'])
+                
+                # ✅ CRÉER la liste des options avec TOUS les champs nécessaires
+                mod['options'] = [
+                    {
+                        'id': o['id'],
+                        'nom_option': o['nom_option'],
+                        'prix_supplement': float(o.get('prix_supplement', 0)),
+                        'taux_tva': float(o['taux_tva']) if o.get('taux_tva') is not None else None,  # ✅ IMPORTANT : préserver NULL
+                        'description': o.get('description', '')
+                    }
+                    for o in options
+                ]
+                
+                # ✅ Ajouter le taux parent du modificateur
+                mod['taux_tva'] = float(mod.get('taux_tva', 0))
+            
+            article['modificateurs'] = modificateurs
+            
+            # Récupérer la taxe active de l'article pour le taux de base
+            taxe = g.models.taxe_pos_model.get_taxe_active_for_article(article['id'])
+            article['taux_taxe'] = float(taxe['taux']) if taxe else 0.0
+        
+        return jsonify({
+            'articles': articles,
+            'categories': categories
+        })
+        
+    except Exception as e:
+        logger.error(f"Erreur articles-json: {e}")
+        return jsonify({'articles': [], 'categories': []})
 
 
 @bp.route('/pos/vente/clients.json')
