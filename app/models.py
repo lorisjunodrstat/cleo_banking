@@ -18490,6 +18490,7 @@ class ReceiptPOS:
         except Exception as e:
             logger.error(f"Erreur supprimer_ticket_ouvert: {e}")
             return False
+
     def get_compta_settings(self, user_id: int) -> Dict:
         """Récupère les préférences de comptabilisation de l'utilisateur"""
         try:
@@ -18615,6 +18616,390 @@ class ReceiptPOS:
         except Exception as e:
             logger.error(f"Erreur comptabilisation ticket {receipt_id}: {e}", exc_info=True)
             return False, f"Erreur système: {str(e)}"
+
+
+    def save_open_ticket(self, user_id: int, pdv_id: int, data: Dict) -> Tuple[bool, str, Optional[int]]:
+        """
+        Sauvegarde un ticket ouvert avec ses items (incluant tva_breakdown).
+        Retourne (succes, message, receipt_id)
+        """
+        import json
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                recu_numero = f"OPEN-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
+                
+                cursor.execute("""
+                    INSERT INTO pos_receipts 
+                    (utilisateur_id, date, recu_numero, nom_ticket, description, receipt_type, 
+                     status, pdv, id_client, nom_du_client, restaurant_option_id, discount_id)
+                    VALUES (%s, NOW(), %s, %s, %s, 'Ouvert', 'open', %s, %s, %s, %s, %s)
+                """, (
+                    user_id, recu_numero,
+                    data.get('nom_ticket'),
+                    data.get('commentaire', ''),
+                    pdv_id,
+                    data.get('id_client'),
+                    data.get('nom_du_client'),
+                    data.get('restaurant_option_id'),
+                    data.get('discount_id')
+                ))
+                receipt_id = cursor.lastrowid
+                
+                for item in data.get('items', []):
+                    cursor.execute("""
+                        INSERT INTO pos_receipt_items 
+                        (receipt_id, article_id, nom_article, variante_id, quantite, prix_unitaire, 
+                         total_ligne, taux_taxe_applique, commentaire, modificateurs, tva_breakdown_json)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        receipt_id,
+                        item['article_id'],
+                        item.get('nom', ''),
+                        item.get('variante_id'),
+                        item.get('quantite', 1),
+                        item.get('prix_unitaire', 0),
+                        float(item.get('prix_unitaire', 0)) * item.get('quantite', 1),
+                        item.get('taux', 0),
+                        item.get('commentaire', ''),
+                        item.get('modificateurs', ''),
+                        json.dumps(item.get('tva_breakdown', []))
+                    ))
+                
+                return True, "Ticket enregistré", receipt_id
+                
+        except Exception as e:
+            logger.error(f"Erreur save_open_ticket: {e}")
+            return False, str(e), None
+
+    def get_open_tickets(self, user_id: int) -> List[Dict]:
+        """Récupère tous les tickets ouverts avec leurs items (incluant tva_breakdown)"""
+        import json
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT r.*, c.nom_client
+                    FROM pos_receipts r
+                    LEFT JOIN pos_clients c ON r.id_client = c.id
+                    WHERE r.utilisateur_id = %s AND r.status = 'open'
+                    ORDER BY r.date DESC
+                """, (user_id,))
+                receipts = cursor.fetchall()
+                
+                tickets = []
+                for r in receipts:
+                    cursor.execute("""
+                        SELECT * FROM pos_receipt_items WHERE receipt_id = %s
+                    """, (r['id'],))
+                    items = cursor.fetchall()
+                    
+                    lines = []
+                    for item in items:
+                        tva_breakdown = []
+                        if item.get('tva_breakdown_json'):
+                            try:
+                                tva_breakdown = json.loads(item['tva_breakdown_json'])
+                            except:
+                                tva_breakdown = []
+                        
+                        lines.append({
+                            'article_id': item['article_id'],
+                            'variante_id': item.get('variante_id'),
+                            'nom': item['nom_article'],
+                            'modificateurs': item.get('modificateurs', ''),
+                            'prix': float(item['prix_unitaire']),
+                            'qty': item['quantite'],
+                            'taux': float(item.get('taux_taxe_applique', 0)),
+                            'commentaire': item.get('commentaire', ''),
+                            'tva_breakdown': tva_breakdown,
+                            'key': f"{item['article_id']}_{item.get('variante_id') or 0}_{item.get('modificateurs', '')}"
+                        })
+                    
+                    tickets.append({
+                        'id': r['id'],
+                        'nom': r.get('nom_ticket', ''),
+                        'commentaire': r.get('description', ''),
+                        'lines': lines,
+                        'client': {'id': r.get('id_client'), 'nom_client': r.get('nom_client')} if r.get('id_client') else None,
+                        'restaurant_option_id': r.get('restaurant_option_id'),
+                        'total': sum(l['prix'] * l['qty'] for l in lines)
+                    })
+                
+                return tickets
+                
+        except Exception as e:
+            logger.error(f"Erreur get_open_tickets: {e}")
+            return []
+
+    def receipt_exists(self, receipt_id: int, user_id: int) -> bool:
+        """Vérifie qu'un reçu existe et appartient à l'utilisateur"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute(
+                    "SELECT id FROM pos_receipts WHERE id = %s AND utilisateur_id = %s",
+                    (receipt_id, user_id)
+                )
+                return cursor.fetchone() is not None
+        except Exception as e:
+            logger.error(f"Erreur receipt_exists: {e}")
+            return False
+
+    def get_client_receipts(self, client_id: int, user_id: int, 
+                            date_from: str = None, date_to: str = None, limit: int = 500) -> List[Dict]:
+        """Récupère les reçus d'un client avec filtres de date"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                q = "SELECT * FROM pos_receipts WHERE id_client = %s AND status != 'Annulé'"
+                params = [client_id]
+                if date_from:
+                    q += " AND DATE(date) >= %s"; params.append(date_from)
+                if date_to:
+                    q += " AND DATE(date) <= %s"; params.append(date_to)
+                q += " ORDER BY date DESC LIMIT %s"
+                params.append(limit)
+                cursor.execute(q, params)
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur get_client_receipts: {e}")
+            return []
+
+    def get_client_stats(self, client_id: int) -> Dict:
+        """Récupère les statistiques d'un client (visites, dépenses, etc.)"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT COUNT(*) AS nb_visites,
+                           COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN total_collecte ELSE 0 END),0) AS total_depense,
+                           MIN(date) AS premiere_visite,
+                           MAX(date) AS derniere_visite
+                    FROM pos_receipts
+                    WHERE id_client = %s AND status != 'Annulé'
+                """, (client_id,))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur get_client_stats: {e}")
+            return {}
+
+    # ============================================================
+    # 🆕 NOUVELLES MÉTHODES POUR STATISTIQUES
+    # ============================================================
+
+    def get_stats_by_article(self, user_id: int, date_from: str, date_to: str, 
+                             employee: str = None, search: str = None) -> List[Dict]:
+        """Ventes par article avec filtres"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                where = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente'"
+                params = [user_id]
+                where += " AND DATE(r.date) >= %s"; params.append(date_from)
+                where += " AND DATE(r.date) <= %s"; params.append(date_to)
+                if employee:
+                    where += " AND r.nom_du_caissier=%s"; params.append(employee)
+                if search:
+                    where += " AND ri.nom_article LIKE %s"; params.append(f"%{search}%")
+
+                cursor.execute(f"""
+                    SELECT ri.nom_article AS nom,
+                           MAX(c.nom_categorie) AS category,
+                           COUNT(DISTINCT r.id) AS times_sold,
+                           SUM(ri.quantite) AS total_qty,
+                           SUM(ri.total_ligne) AS total_revenue
+                    FROM pos_receipt_items ri
+                    JOIN pos_receipts r ON r.id = ri.receipt_id
+                    LEFT JOIN pos_articles a ON a.id = ri.article_id
+                    LEFT JOIN pos_categories c ON c.id = a.id_categorie
+                    WHERE {where}
+                    GROUP BY ri.nom_article
+                    ORDER BY total_revenue DESC
+                """, params)
+                
+                articles = cursor.fetchall()
+                for a in articles:
+                    a['total_revenue'] = float(a['total_revenue'] or 0)
+                    a['total_qty'] = int(a['total_qty'] or 0)
+                    a['times_sold'] = int(a['times_sold'] or 0)
+                return articles
+        except Exception as e:
+            logger.error(f"Erreur get_stats_by_article: {e}")
+            return []
+
+    def get_article_series(self, user_id: int, date_from: str, date_to: str, 
+                           article_names: List[str], employee: str = None) -> List[Dict]:
+        """Série journalière pour les articles du top 5"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                if not article_names:
+                    return []
+                
+                ph = ','.join(['%s'] * len(article_names))
+                swhere = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente' AND DATE(r.date) >= %s AND DATE(r.date) <= %s"
+                sparams = [user_id, date_from, date_to]
+                if employee:
+                    swhere += " AND r.nom_du_caissier=%s"; sparams.append(employee)
+                
+                cursor.execute(f"""
+                    SELECT DATE(r.date) AS jour, ri.nom_article AS nom, SUM(ri.total_ligne) AS val
+                    FROM pos_receipt_items ri
+                    JOIN pos_receipts r ON r.id = ri.receipt_id
+                    WHERE {swhere} AND ri.nom_article IN ({ph})
+                    GROUP BY DATE(r.date), ri.nom_article
+                """, sparams + article_names)
+                
+                return [{'date': str(r['jour']), 'name': r['nom'], 'value': float(r['val'] or 0)}
+                        for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Erreur get_article_series: {e}")
+            return []
+
+    def get_stats_by_category(self, user_id: int, date_from: str, date_to: str, 
+                              employee: str = None) -> List[Dict]:
+        """Ventes par catégorie"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                where = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente'"
+                params = [user_id]
+                where += " AND DATE(r.date) >= %s"; params.append(date_from)
+                where += " AND DATE(r.date) <= %s"; params.append(date_to)
+                if employee:
+                    where += " AND r.nom_du_caissier=%s"; params.append(employee)
+
+                cursor.execute(f"""
+                    SELECT COALESCE(c.nom_categorie, 'Sans catégorie') AS nom,
+                           COUNT(DISTINCT r.id) AS times_sold,
+                           SUM(ri.quantite) AS total_qty,
+                           SUM(ri.total_ligne) AS total_revenue
+                    FROM pos_receipt_items ri
+                    JOIN pos_receipts r ON r.id = ri.receipt_id
+                    LEFT JOIN pos_articles a ON a.id = ri.article_id
+                    LEFT JOIN pos_categories c ON c.id = a.id_categorie
+                    WHERE {where}
+                      AND COALESCE(c.nom_categorie, 'Sans catégorie') NOT IN ('Paiement', 'Abonnement')
+                    GROUP BY nom
+                    ORDER BY total_revenue DESC
+                """, params)
+                
+                categories = cursor.fetchall()
+                for c in categories:
+                    c['total_revenue'] = float(c['total_revenue'] or 0)
+                    c['total_qty'] = int(c['total_qty'] or 0)
+                    c['times_sold'] = int(c['times_sold'] or 0)
+                return categories
+        except Exception as e:
+            logger.error(f"Erreur get_stats_by_category: {e}")
+            return []
+
+    def get_category_series(self, user_id: int, date_from: str, date_to: str, 
+                            category_names: List[str], employee: str = None) -> List[Dict]:
+        """Série journalière pour les catégories du top 5"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                if not category_names:
+                    return []
+                
+                ph = ','.join(['%s'] * len(category_names))
+                swhere = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente' AND DATE(r.date) >= %s AND DATE(r.date) <= %s"
+                sparams = [user_id, date_from, date_to]
+                if employee:
+                    swhere += " AND r.nom_du_caissier=%s"; sparams.append(employee)
+                
+                cursor.execute(f"""
+                    SELECT DATE(r.date) AS jour,
+                           COALESCE(c.nom_categorie, 'Sans catégorie') AS nom,
+                           SUM(ri.total_ligne) AS val
+                    FROM pos_receipt_items ri
+                    JOIN pos_receipts r ON r.id = ri.receipt_id
+                    LEFT JOIN pos_articles a ON a.id = ri.article_id
+                    LEFT JOIN pos_categories c ON c.id = a.id_categorie
+                    WHERE {swhere} AND COALESCE(c.nom_categorie, 'Sans catégorie') IN ({ph})
+                    GROUP BY DATE(r.date), nom
+                """, sparams + category_names)
+                
+                return [{'date': str(r['jour']), 'name': r['nom'], 'value': float(r['val'] or 0)}
+                        for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Erreur get_category_series: {e}")
+            return []
+
+    def get_stats_summary(self, user_id: int, date_from: str, date_to: str, 
+                          employee: str = None) -> Dict:
+        """Récupère les stats agrégées pour une période"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                q = """
+                    SELECT
+                      COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END),0) AS ventes_brutes,
+                      COALESCE(SUM(CASE WHEN receipt_type='Remboursement' THEN ABS(ventes_brutes) ELSE 0 END),0) AS remboursements,
+                      COALESCE(SUM(reduction),0) AS reductions,
+                      COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END),0) AS ventes_nettes,
+                      COALESCE(SUM(marge_brute),0) AS marge_brute,
+                      COALESCE(SUM(taxes),0) AS taxes,
+                      COALESCE(SUM(total_collecte),0) AS total_collecte,
+                      COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN 1 ELSE 0 END),0) AS nb_ventes
+                    FROM pos_receipts
+                    WHERE utilisateur_id=%s AND status!='Annulé'
+                      AND DATE(date) >= %s AND DATE(date) <= %s
+                """
+                params = [user_id, date_from, date_to]
+                if employee:
+                    q += " AND nom_du_caissier = %s"; params.append(employee)
+                cursor.execute(q, params)
+                r = cursor.fetchone()
+                return {k: float(r[k]) for k in ('ventes_brutes','remboursements','reductions',
+                                                 'ventes_nettes','marge_brute','taxes','total_collecte')}
+        except Exception as e:
+            logger.error(f"Erreur get_stats_summary: {e}")
+            return {}
+
+    def get_daily_stats(self, user_id: int, date_from: str, date_to: str, 
+                        employee: str = None) -> List[Dict]:
+        """Stats journalières avec tous les jours (même ceux sans vente)"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                q = """
+                    SELECT DATE(date) AS jour,
+                      SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END) AS ventes_brutes,
+                      SUM(CASE WHEN receipt_type='Remboursement' THEN ABS(ventes_brutes) ELSE 0 END) AS remboursements,
+                      SUM(reduction) AS reductions,
+                      SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END) AS ventes_nettes,
+                      SUM(marge_brute) AS marge_brute,
+                      SUM(taxes) AS taxes
+                    FROM pos_receipts
+                    WHERE utilisateur_id=%s AND status!='Annulé'
+                      AND DATE(date) >= %s AND DATE(date) <= %s
+                """
+                params = [user_id, date_from, date_to]
+                if employee:
+                    q += " AND nom_du_caissier=%s"; params.append(employee)
+                q += " GROUP BY DATE(date)"
+                cursor.execute(q, params)
+                return {str(r['jour']): r for r in cursor.fetchall()}
+        except Exception as e:
+            logger.error(f"Erreur get_daily_stats: {e}")
+            return {}
+
+    def get_stats_by_payment_mode(self, user_id: int, date_from: str, date_to: str, 
+                                   employee: str = None) -> List[Dict]:
+        """Stats par mode de paiement"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                q = """
+                    SELECT COALESCE(mp.nom,'Inconnu') AS nom, COUNT(*) AS nb, SUM(p.montant) AS total
+                    FROM pos_payments p
+                    JOIN pos_receipts r ON r.id = p.receipt_id
+                    LEFT JOIN pos_modes_paiement mp ON mp.id = p.mode_paiement_id
+                    WHERE r.utilisateur_id=%s AND r.status!='Annulé'
+                      AND DATE(r.date) >= %s AND DATE(r.date) <= %s
+                """
+                params = [user_id, date_from, date_to]
+                if employee:
+                    q += " AND r.nom_du_caissier=%s"; params.append(employee)
+                q += " GROUP BY mp.nom ORDER BY total DESC"
+                cursor.execute(q, params)
+                return [{'nom': r['nom'], 'nb': int(r['nb']), 'total': float(r['total'])} 
+                        for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Erreur get_stats_by_payment_mode: {e}")
+            return []
+
 
 class POSComptaMapping:
     """Gère le lien entre les taxes POS et les comptes comptables de vente (Classe 3)"""

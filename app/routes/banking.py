@@ -11497,18 +11497,10 @@ def pos_receipts_list():
 @bp.route('/pos/receipts/<int:receipt_id>')
 @login_required
 def pos_receipt_detail(receipt_id):
-    """Page de détail d'un reçu — tout est chargé via l'API JSON"""
-    db = g.models.receipt_pos_model.db
-    with g.db.get_cursor(dictionary=True) as cursor:
-        cursor.execute(
-            "SELECT id FROM pos_receipts WHERE id = %s AND utilisateur_id = %s",
-            (receipt_id, current_user.id)
-        )
-        if not cursor.fetchone():
-            flash('Reçu introuvable.', 'error')
-            return redirect(url_for('banking.pos_receipts_list'))
-
-    # ✅ On passe receipt_id au template
+    if not g.models.receipt_pos_model.receipt_exists(receipt_id, current_user.id):
+        flash('Reçu introuvable.', 'error')
+        return redirect(url_for('banking.pos_receipts_list'))
+    
     return render_template('pos/receipt_detail.html', receipt_id=receipt_id)
 
 
@@ -12027,7 +12019,6 @@ def pos_client_detail(client_id):
 @bp.route('/pos/clients/<int:client_id>/recus')
 @login_required
 def pos_client_receipts(client_id):
-    """Page 'Reçus du client' — style Loyverse"""
     client = g.models.client_pos_model.get_by_id(client_id, current_user.id)
     if not client:
         flash('Client introuvable.', 'error')
@@ -12036,18 +12027,15 @@ def pos_client_receipts(client_id):
     date_from = request.args.get('date_from', '')
     date_to = request.args.get('date_to', '')
 
-    db = g.models.receipt_pos_model.db
-    with g.db.get_cursor(dictionary=True) as cursor:
-        q = "SELECT * FROM pos_receipts WHERE id_client = %s AND status != 'Annulé'"
-        params = [client_id]
-        if date_from:
-            q += " AND DATE(date) >= %s"; params.append(date_from)
-        if date_to:
-            q += " AND DATE(date) <= %s"; params.append(date_to)
-        q += " ORDER BY date DESC LIMIT 500"
-        cursor.execute(q, params)
-        recus = cursor.fetchall()
-
+    recus = g.models.receipt_pos_model.get_client_receipts(
+        client_id, current_user.id, date_from, date_to
+    )
+    
+    # Stats du client
+    stats = g.models.receipt_pos_model.get_client_stats(client_id)
+    nb_visites = int(stats.get('nb_visites', 0) or 0)
+    total_depense = float(stats.get('total_depense', 0) or 0)
+    
     nb_ventes = sum(1 for r in recus if r['receipt_type'] == 'Vente')
     nb_remb = sum(1 for r in recus if r['receipt_type'] == 'Remboursement')
 
@@ -12055,7 +12043,6 @@ def pos_client_receipts(client_id):
                            client=client, recus=recus,
                            nb_total=len(recus), nb_ventes=nb_ventes, nb_remb=nb_remb,
                            date_from=date_from, date_to=date_to)
-
 @bp.route('/pos/commandes-en-cours')
 @login_required
 def pos_commandes_en_cours():
@@ -12083,159 +12070,63 @@ def pos_commandes_en_cours():
 @bp.route('/pos/stats/by-article')
 @login_required
 def pos_stats_by_article():
-    """Ventes par article — style Loyverse (Top 5 + graphique + tableau)"""
-    db = g.models.receipt_pos_model.db   # ✅ g.db n'existe pas
-
     now = datetime.now()
     date_from = request.args.get('date_from') or (now - timedelta(days=365)).strftime('%Y-%m-%d')
-    date_to   = request.args.get('date_to') or now.strftime('%Y-%m-%d')
-    employee  = request.args.get('employee', '').strip()
-    search    = request.args.get('search', '').strip()
+    date_to = request.args.get('date_to') or now.strftime('%Y-%m-%d')
+    employee = request.args.get('employee', '').strip()
+    search = request.args.get('search', '').strip()
 
-    where = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente'"
-    params = [current_user.id]
-    where += " AND DATE(r.date) >= %s"; params.append(date_from)
-    where += " AND DATE(r.date) <= %s"; params.append(date_to)
-    if employee:
-        where += " AND r.nom_du_caissier=%s"; params.append(employee)
-    if search:
-        where += " AND ri.nom_article LIKE %s"; params.append(f"%{search}%")
-
-    base = """
-        FROM pos_receipt_items ri
-        JOIN pos_receipts r ON r.id = ri.receipt_id
-        LEFT JOIN pos_articles a ON a.id = ri.article_id
-        LEFT JOIN pos_categories c ON c.id = a.id_categorie
-        WHERE """ + where
-
-    with g.db.get_cursor(dictionary=True) as cursor:
-        cursor.execute("""
-            SELECT ri.nom_article AS nom,
-                   MAX(c.nom_categorie) AS category,
-                   COUNT(DISTINCT r.id) AS times_sold,
-                   SUM(ri.quantite) AS total_qty,
-                   SUM(ri.total_ligne) AS total_revenue
-            """ + base + """
-            GROUP BY ri.nom_article
-            ORDER BY total_revenue DESC
-        """, params)
-        articles = cursor.fetchall()
-
-    for a in articles:
-        a['total_revenue'] = float(a['total_revenue'] or 0)
-        a['total_qty'] = int(a['total_qty'] or 0)
-        a['times_sold'] = int(a['times_sold'] or 0)
-
+    articles = g.models.receipt_pos_model.get_stats_by_article(
+        current_user.id, date_from, date_to, employee, search
+    )
+    
     top5 = articles[:5]
     top_names = [t['nom'] for t in top5]
-
-    # Série journalière du Top 5 pour le graphique
-    series = []
-    if top_names:
-        ph = ','.join(['%s'] * len(top_names))
-        sparams = [current_user.id, date_from, date_to]
-        swhere = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente' AND DATE(r.date) >= %s AND DATE(r.date) <= %s"
-        if employee:
-            swhere += " AND r.nom_du_caissier=%s"; sparams.append(employee)
-        with g.db.get_cursor(dictionary=True) as cursor:
-            cursor.execute(f"""
-                SELECT DATE(r.date) AS jour, ri.nom_article AS nom, SUM(ri.total_ligne) AS val
-                FROM pos_receipt_items ri
-                JOIN pos_receipts r ON r.id = ri.receipt_id
-                WHERE {swhere} AND ri.nom_article IN ({ph})
-                GROUP BY DATE(r.date), ri.nom_article
-            """, sparams + top_names)
-            series = [{'date': str(r['jour']), 'name': r['nom'], 'value': float(r['val'] or 0)}
-                      for r in cursor.fetchall()]
-
+    
+    series = g.models.receipt_pos_model.get_article_series(
+        current_user.id, date_from, date_to, top_names, employee
+    )
+    
     employees = g.models.receipt_pos_model.get_unique_employees(current_user.id)
 
     return render_template('pos/by_article.html',
                            articles=articles, top5=top5,
-                           series_json=_json.dumps(series),
-                           top5_json=_json.dumps(top_names),
+                           series_json=json.dumps(series),
+                           top5_json=json.dumps(top_names),
                            employees=employees,
                            date_from=date_from, date_to=date_to,
                            employee=employee, search=search)
 
+
+
 @bp.route('/pos/stats/by-category')
 @login_required
 def pos_stats_by_category():
-    """Ventes par catégorie — style Loyverse (Top 5 + graphique + tableau)"""
-    db = g.models.receipt_pos_model.db   # ✅ g.db n'existe pas
-
     now = datetime.now()
     date_from = request.args.get('date_from') or (now - timedelta(days=365)).strftime('%Y-%m-%d')
-    date_to   = request.args.get('date_to') or now.strftime('%Y-%m-%d')
-    employee  = request.args.get('employee', '').strip()
+    date_to = request.args.get('date_to') or now.strftime('%Y-%m-%d')
+    employee = request.args.get('employee', '').strip()
 
-    where = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente'"
-    params = [current_user.id]
-    where += " AND DATE(r.date) >= %s"; params.append(date_from)
-    where += " AND DATE(r.date) <= %s"; params.append(date_to)
-    if employee:
-        where += " AND r.nom_du_caissier=%s"; params.append(employee)
-
-    base = """
-        FROM pos_receipt_items ri
-        JOIN pos_receipts r ON r.id = ri.receipt_id
-        LEFT JOIN pos_articles a ON a.id = ri.article_id
-        LEFT JOIN pos_categories c ON c.id = a.id_categorie
-        WHERE """ + where + """
-          AND COALESCE(c.nom_categorie, 'Sans catégorie') NOT IN ('Paiement', 'Abonnement')
-    """
-
-    with g.db.get_cursor(dictionary=True) as cursor:
-        cursor.execute("""
-            SELECT COALESCE(c.nom_categorie, 'Sans catégorie') AS nom,
-                   COUNT(DISTINCT r.id) AS times_sold,
-                   SUM(ri.quantite) AS total_qty,
-                   SUM(ri.total_ligne) AS total_revenue
-            """ + base + """
-            GROUP BY nom
-            ORDER BY total_revenue DESC
-        """, params)
-        categories = cursor.fetchall()
-
-    for c in categories:
-        c['total_revenue'] = float(c['total_revenue'] or 0)
-        c['total_qty'] = int(c['total_qty'] or 0)
-        c['times_sold'] = int(c['times_sold'] or 0)
-
+    categories = g.models.receipt_pos_model.get_stats_by_category(
+        current_user.id, date_from, date_to, employee
+    )
+    
     top5 = categories[:5]
     top_names = [t['nom'] for t in top5]
-
-    # Série journalière du Top 5 pour le graphique
-    series = []
-    if top_names:
-        ph = ','.join(['%s'] * len(top_names))
-        sparams = [current_user.id, date_from, date_to]
-        swhere = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente' AND DATE(r.date) >= %s AND DATE(r.date) <= %s"
-        if employee:
-            swhere += " AND r.nom_du_caissier=%s"; sparams.append(employee)
-        with g.db.get_cursor(dictionary=True) as cursor:
-            cursor.execute(f"""
-                SELECT DATE(r.date) AS jour,
-                       COALESCE(c.nom_categorie, 'Sans catégorie') AS nom,
-                       SUM(ri.total_ligne) AS val
-                FROM pos_receipt_items ri
-                JOIN pos_receipts r ON r.id = ri.receipt_id
-                LEFT JOIN pos_articles a ON a.id = ri.article_id
-                LEFT JOIN pos_categories c ON c.id = a.id_categorie
-                WHERE {swhere} AND COALESCE(c.nom_categorie, 'Sans catégorie') IN ({ph})
-                GROUP BY DATE(r.date), nom
-            """, sparams + top_names)
-            series = [{'date': str(r['jour']), 'name': r['nom'], 'value': float(r['val'] or 0)}
-                      for r in cursor.fetchall()]
-
+    
+    series = g.models.receipt_pos_model.get_category_series(
+        current_user.id, date_from, date_to, top_names, employee
+    )
+    
     employees = g.models.receipt_pos_model.get_unique_employees(current_user.id)
 
     return render_template('pos/by_category.html',
                            categories=categories, top5=top5,
-                           series_json=_json.dumps(series),
-                           top5_json=_json.dumps(top_names),
+                           series_json=json.dumps(series),
+                           top5_json=json.dumps(top_names),
                            employees=employees,
-                           date_from=date_from, date_to=date_to, employee=employee)
+                           date_from=date_from, date_to=date_to, 
+                           employee=employee)
 
 @bp.route('/pos/stats/by-employee')
 @login_required
@@ -12807,46 +12698,26 @@ def pos_import_payments(df):
 @bp.route('/pos/stats')
 @login_required
 def pos_stats():
-    """Récapitulatif des ventes — graphique interactif multi-périodes"""
-    db = g.models.receipt_pos_model.db
-
     now = datetime.now()
     date_from = request.args.get('date_from') or now.replace(day=1).strftime('%Y-%m-%d')
-    date_to   = request.args.get('date_to') or now.strftime('%Y-%m-%d')
-    employee  = request.args.get('employee', '').strip()
+    date_to = request.args.get('date_to') or now.strftime('%Y-%m-%d')
+    employee = request.args.get('employee', '').strip()
 
     d_from = datetime.strptime(date_from, '%Y-%m-%d')
-    d_to   = datetime.strptime(date_to, '%Y-%m-%d')
+    d_to = datetime.strptime(date_to, '%Y-%m-%d')
     nb_jours = (d_to - d_from).days + 1
-    prev_to   = d_from - timedelta(days=1)
+    prev_to = d_from - timedelta(days=1)
     prev_from = prev_to - timedelta(days=nb_jours - 1)
 
-    def agg(df, dt):
-        with g.db.get_cursor(dictionary=True) as cursor:
-            q = """
-                SELECT
-                  COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END),0) AS ventes_brutes,
-                  COALESCE(SUM(CASE WHEN receipt_type='Remboursement' THEN ABS(ventes_brutes) ELSE 0 END),0) AS remboursements,
-                  COALESCE(SUM(reduction),0) AS reductions,
-                  COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END),0) AS ventes_nettes,
-                  COALESCE(SUM(marge_brute),0) AS marge_brute,
-                  COALESCE(SUM(taxes),0) AS taxes,
-                  COALESCE(SUM(total_collecte),0) AS total_collecte,
-                  COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN 1 ELSE 0 END),0) AS nb_ventes
-                FROM pos_receipts
-                WHERE utilisateur_id=%s AND status!='Annulé'
-                  AND DATE(date) >= %s AND DATE(date) <= %s
-            """
-            params = [current_user.id, df, dt]
-            if employee:
-                q += " AND nom_du_caissier = %s"; params.append(employee)
-            cursor.execute(q, params)
-            r = cursor.fetchone()
-            return {k: float(r[k]) for k in ('ventes_brutes','remboursements','reductions',
-                                             'ventes_nettes','marge_brute','taxes','total_collecte')}
-
-    stats = agg(date_from, date_to)
-    prev  = agg(prev_from.strftime('%Y-%m-%d'), prev_to.strftime('%Y-%m-%d'))
+    stats = g.models.receipt_pos_model.get_stats_summary(
+        current_user.id, date_from, date_to, employee
+    )
+    prev = g.models.receipt_pos_model.get_stats_summary(
+        current_user.id, 
+        prev_from.strftime('%Y-%m-%d'), 
+        prev_to.strftime('%Y-%m-%d'), 
+        employee
+    )
 
     def delta(cur, old):
         return (cur - old) / old * 100 if old > 0 else None
@@ -12854,27 +12725,11 @@ def pos_stats():
     deltas = {k: delta(stats[k], prev[k])
               for k in ('ventes_brutes','remboursements','reductions','ventes_nettes','marge_brute')}
 
-    # --- Série par jour AVEC les jours sans vente (zéros) ---
-    with g.db.get_cursor(dictionary=True) as cursor:
-        q = """
-            SELECT DATE(date) AS jour,
-              SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END) AS ventes_brutes,
-              SUM(CASE WHEN receipt_type='Remboursement' THEN ABS(ventes_brutes) ELSE 0 END) AS remboursements,
-              SUM(reduction) AS reductions,
-              SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END) AS ventes_nettes,
-              SUM(marge_brute) AS marge_brute,
-              SUM(taxes) AS taxes
-            FROM pos_receipts
-            WHERE utilisateur_id=%s AND status!='Annulé'
-              AND DATE(date) >= %s AND DATE(date) <= %s
-        """
-        params = [current_user.id, date_from, date_to]
-        if employee:
-            q += " AND nom_du_caissier=%s"; params.append(employee)
-        q += " GROUP BY DATE(date)"
-        cursor.execute(q, params)
-        by_date = {str(r['jour']): r for r in cursor.fetchall()}
-
+    # Série journalière
+    by_date = g.models.receipt_pos_model.get_daily_stats(
+        current_user.id, date_from, date_to, employee
+    )
+    
     daily = []
     cur = d_from
     while cur <= d_to:
@@ -12895,32 +12750,18 @@ def pos_stats():
         daily.append(e)
         cur += timedelta(days=1)
 
-    daily_json = _json.dumps(daily)
-
-    # --- Par mode de paiement ---
-    with g.db.get_cursor(dictionary=True) as cursor:
-        q = """
-            SELECT COALESCE(mp.nom,'Inconnu') AS nom, COUNT(*) AS nb, SUM(p.montant) AS total
-            FROM pos_payments p
-            JOIN pos_receipts r ON r.id = p.receipt_id
-            LEFT JOIN pos_modes_paiement mp ON mp.id = p.mode_paiement_id
-            WHERE r.utilisateur_id=%s AND r.status!='Annulé'
-              AND DATE(r.date) >= %s AND DATE(r.date) <= %s
-        """
-        params = [current_user.id, date_from, date_to]
-        if employee:
-            q += " AND r.nom_du_caissier=%s"; params.append(employee)
-        q += " GROUP BY mp.nom ORDER BY total DESC"
-        cursor.execute(q, params)
-        payments = [{'nom': r['nom'], 'nb': int(r['nb']), 'total': float(r['total'])} for r in cursor.fetchall()]
-
+    payments = g.models.receipt_pos_model.get_stats_by_payment_mode(
+        current_user.id, date_from, date_to, employee
+    )
+    
     employees = g.models.receipt_pos_model.get_unique_employees(current_user.id)
 
     return render_template('pos/stats.html',
-                           stats=stats, deltas=deltas, daily=daily, daily_json=daily_json,
+                           stats=stats, deltas=deltas, daily=daily, 
+                           daily_json=json.dumps(daily),
                            payments=payments, employees=employees,
-                           date_from=date_from, date_to=date_to, employee=employee)
-
+                           date_from=date_from, date_to=date_to, 
+                           employee=employee)
 
 # ============================================================
 # MODE CAISSE (TABLETTE DÉDIÉE)
@@ -13154,121 +12995,23 @@ def pos_vente_save_open():
     user_id = current_user.id
     pdv_id = session.get('pdv_id')
     
-    try:
-        with g.db.get_cursor(dictionary=True) as cursor:
-            # 1. Créer le receipt avec status='open'
-            recu_numero = f"OPEN-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
-            
-            cursor.execute("""
-                INSERT INTO pos_receipts 
-                (utilisateur_id, date, recu_numero, nom_ticket, description, receipt_type, 
-                 status, pdv, id_client, nom_du_client, restaurant_option_id, discount_id)
-                VALUES (%s, NOW(), %s, %s, %s, 'Ouvert', 'open', %s, %s, %s, %s, %s)
-            """, (
-                user_id,
-                recu_numero,
-                data.get('nom_ticket'),
-                data.get('commentaire', ''),
-                pdv_id,
-                data.get('id_client'),
-                data.get('nom_du_client'),
-                data.get('restaurant_option_id'),
-                data.get('discount_id')
-            ))
-            receipt_id = cursor.lastrowid
-            
-            # 2. Sauvegarder les items AVEC le tva_breakdown
-            for item in data.get('items', []):
-                cursor.execute("""
-                    INSERT INTO pos_receipt_items 
-                    (receipt_id, article_id, nom_article, variante_id, quantite, prix_unitaire, 
-                     total_ligne, taux_taxe_applique, commentaire, modificateurs, tva_breakdown_json)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    receipt_id,
-                    item['article_id'],
-                    item.get('nom', ''),
-                    item.get('variante_id'),
-                    item.get('quantite', 1),
-                    item.get('prix_unitaire', 0),
-                    item.get('prix_unitaire', 0) * item.get('quantite', 1),
-                    item.get('taux', 0),
-                    item.get('commentaire', ''),
-                    item.get('modificateurs', ''),
-                    json.dumps(item.get('tva_breakdown', []))  # ✅ NOUVEAU
-                ))
-            
-            return jsonify({'success': True, 'message': 'Ticket enregistré'})
-            
-    except Exception as e:
-        logger.error(f"Erreur sauvegarde ticket ouvert: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
+    succes, message, receipt_id = g.models.receipt_pos_model.save_open_ticket(
+        user_id, pdv_id, data
+    )
+    
+    if succes:
+        return jsonify({'success': True, 'message': message})
+    else:
+        return jsonify({'success': False, 'message': message}), 500
+
+
 
 @bp.route('/pos/vente/open-tickets-json')
 @login_required
 def pos_vente_open_tickets_json():
-    user_id = current_user.id
-    pdv_id = session.get('pdv_id')
-    
-    try:
-        with g.db.get_cursor(dictionary=True) as cursor:
-            # Récupérer les receipts ouverts
-            cursor.execute("""
-                SELECT r.*, c.nom_client
-                FROM pos_receipts r
-                LEFT JOIN pos_clients c ON r.id_client = c.id
-                WHERE r.utilisateur_id = %s AND r.status = 'open'
-                ORDER BY r.date DESC
-            """, (user_id,))
-            receipts = cursor.fetchall()
-            
-            tickets = []
-            for r in receipts:
-                # Récupérer les items de ce receipt
-                cursor.execute("""
-                    SELECT * FROM pos_receipt_items 
-                    WHERE receipt_id = %s
-                """, (r['id'],))
-                items = cursor.fetchall()
-                
-                # ✅ Reconstruire les lignes avec tva_breakdown
-                lines = []
-                for item in items:
-                    tva_breakdown = []
-                    if item.get('tva_breakdown_json'):
-                        try:
-                            tva_breakdown = json.loads(item['tva_breakdown_json'])
-                        except:
-                            tva_breakdown = []
-                    
-                    lines.append({
-                        'article_id': item['article_id'],
-                        'variante_id': item.get('variante_id'),
-                        'nom': item['nom_article'],
-                        'modificateurs': item.get('modificateurs', ''),
-                        'prix': float(item['prix_unitaire']),
-                        'qty': item['quantite'],
-                        'taux': float(item.get('taux_taxe_applique', 0)),
-                        'commentaire': item.get('commentaire', ''),
-                        'tva_breakdown': tva_breakdown,  # ✅ NOUVEAU
-                        'key': f"{item['article_id']}_{item.get('variante_id') or 0}_{item.get('modificateurs', '')}"
-                    })
-                
-                tickets.append({
-                    'id': r['id'],
-                    'nom': r.get('nom_ticket', ''),
-                    'commentaire': r.get('description', ''),
-                    'lines': lines,
-                    'client': {'id': r.get('id_client'), 'nom_client': r.get('nom_client')} if r.get('id_client') else None,
-                    'restaurant_option_id': r.get('restaurant_option_id'),
-                    'total': sum(l['prix'] * l['qty'] for l in lines)
-                })
-            
-            return jsonify(tickets)
-            
-    except Exception as e:
-        logger.error(f"Erreur récupération tickets ouverts: {e}")
-        return jsonify([])
+    tickets = g.models.receipt_pos_model.get_open_tickets(current_user.id)
+    return jsonify(tickets)
+
 
 @bp.route('/pos/vente/open-ticket/<int:receipt_id>/delete', methods=['POST'])
 @login_required
