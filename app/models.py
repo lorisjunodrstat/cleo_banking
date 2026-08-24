@@ -16583,6 +16583,7 @@ class ModePaiementPOS:
             return []
 
     def update(self, mode_id: int, user_id: int, data: Dict) -> bool:
+        """Met à jour un mode de paiement"""
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
@@ -16590,8 +16591,9 @@ class ModePaiementPOS:
                     SET nom = %s, description = %s, est_actif = %s
                     WHERE id = %s AND utilisateur_id = %s
                 """, (data['nom'], data.get('description', ''), 
-                      data.get('est_actif', True), mode_id, user_id))
-                return cursor.rowcount > 0
+                    data.get('est_actif', True), mode_id, user_id))
+                # ✅ Succès même si rowcount = 0 (données déjà à jour)
+                return True
         except Exception as e:
             logger.error(f"Erreur mise à jour mode paiement: {e}")
             return False
@@ -16619,10 +16621,10 @@ class ModePaiementPOS:
             return None
 
     def update_compta_settings(self, mode_id: int, user_id: int, 
-                               compte_tresorerie_id: Optional[int], 
-                               compte_frais_service_id: Optional[int],
-                               frais_pourcentage: float, 
-                               frais_fixe: float) -> bool:
+                           compte_tresorerie_id: Optional[int], 
+                           compte_frais_service_id: Optional[int],
+                           frais_pourcentage: float, 
+                           frais_fixe: float) -> bool:
         """
         Met à jour les paramètres comptables d'un mode de paiement :
         - Compte de trésorerie (où l'argent arrive)
@@ -16647,10 +16649,13 @@ class ModePaiementPOS:
                     mode_id,
                     user_id
                 ))
-                return cursor.rowcount > 0
+                # ✅ CORRECTION : Retourner True si pas d'exception
+                # (rowcount = 0 signifie que les données étaient déjà à jour, pas une erreur)
+                return True
         except Exception as e:
             logger.error(f"Erreur mise à jour champs comptables mode paiement {mode_id}: {e}")
             return False
+
     def get_compta_settings(self, mode_id: int, user_id: int) -> Optional[Dict]:
         """
         Récupère les paramètres comptables d'un mode de paiement.

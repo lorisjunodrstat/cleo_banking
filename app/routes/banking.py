@@ -12339,7 +12339,7 @@ def pos_edit_payment_method(mode_id):
         
         # 1. Mise à jour des champs de base
         try:
-            succes_base = g.models.mode_paiement_pos_model.update(mode_id, user_id, {
+            succes_base = g.models..update(mode_id, user_id, {
                 'nom': nom, 'description': description, 'est_actif': est_actif
             })
             print(f" DEBUG: succes_base = {succes_base}")
