@@ -17684,19 +17684,17 @@ class ReceiptPOS:
                     qte = int(item.get('quantite', 1))
                     commentaire = item.get('commentaire', '') or ''
                     
-                    # Mise à jour du stock (une seule fois par article, peu importe le breakdown)
+                    # Mise à jour du stock (une seule fois par article)
                     cursor.execute("UPDATE pos_articles SET stock = stock - %s WHERE id = %s", 
                                    (qte, item['article_id']))
                     cout_marchandises += Decimal(str(article['cout_unitaire'] or 0)) * qte
 
-                    # ✅ NOUVEAU : Gestion du tva_breakdown (paniers mixtes avec taux différents)
+                    # ✅ GESTION DU TVA_BREAKDOWN (paniers mixtes avec taux différents)
                     if 'tva_breakdown' in item and item['tva_breakdown']:
                         for breakdown in item['tva_breakdown']:
-                            # Le frontend envoie le prix unitaire de la composante, on multiplie par la quantité
                             montant_ttc_comp = Decimal(str(breakdown['montant_ttc'])) * qte
                             taux_taxe_comp = Decimal(str(breakdown['taux']))
                             
-                            # Calcul HT et TVA pour cette composante spécifique
                             if taux_taxe_comp > Decimal('0'):
                                 diviseur = Decimal('1') + (taux_taxe_comp / Decimal('100'))
                                 ligne_ht = (montant_ttc_comp / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
@@ -17713,14 +17711,14 @@ class ReceiptPOS:
                                 'modificateurs': modificateurs,
                                 'variante_id': item.get('variante_id'),
                                 'quantite': qte,
-                                'prix_ttc': montant_ttc_comp, # Prix TTC de la composante
+                                'prix_ttc': montant_ttc_comp,
                                 'total_ligne_ttc': montant_ttc_comp,
                                 'ligne_ht_brut': ligne_ht,
                                 'taux_taxe': taux_taxe_comp,
                                 'commentaire': commentaire,
                             })
                     else:
-                        # FALLBACK : Logique classique (un seul taux de TVA pour tout l'article)
+                        # FALLBACK : Logique classique (un seul taux de TVA)
                         prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
                         total_ligne_ttc = prix_ttc * qte
                         
@@ -17767,7 +17765,7 @@ class ReceiptPOS:
                 if total_ttc_global > Decimal('0'):
                     reduction_ratio = reduction_ttc / total_ttc_global
                     
-                # 3. CALCUL DES MONTANTS NETS (après répartition proportionnelle de la réduction)
+                # 3. CALCUL DES MONTANTS NETS
                 ventes_nettes_ht = Decimal('0')
                 total_taxes = Decimal('0')
                 reduction_ht_total = Decimal('0')
@@ -17775,8 +17773,6 @@ class ReceiptPOS:
                 for item_data in items_data:
                     total_ligne_ttc = item_data['total_ligne_ttc']
                     taux_taxe = item_data['taux_taxe']
-                    
-                    # Répartition proportionnelle de la réduction sur le TTC de la composante
                     ligne_ttc_net = total_ligne_ttc - (total_ligne_ttc * reduction_ratio)
                     
                     if taux_taxe > Decimal('0'):
@@ -17798,7 +17794,7 @@ class ReceiptPOS:
                 marge_brute = ventes_nettes_ht - cout_marchandises
                 recu_numero = f"V-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
                 
-                # 5. INSERTION DU REÇU (EN-TÊTE)
+                # 5. INSERTION DU REÇU
                 cursor.execute("""
                     INSERT INTO pos_receipts 
                     (utilisateur_id, date, recu_numero, nom_ticket, description, receipt_type, ventes_brutes, reduction, 
@@ -17849,7 +17845,6 @@ class ReceiptPOS:
                     """, (receipt_id, payment['mode_paiement_id'], montant_pay))
                     nb_paiements += 1
 
-                # Paiement par défaut si aucun mode n'est spécifié mais qu'il y a un montant
                 if nb_paiements == 0 and float(total_collecte) > 0:
                     cursor.execute("""
                         SELECT id FROM pos_modes_paiement 
@@ -17880,7 +17875,7 @@ class ReceiptPOS:
                     cursor.execute("UPDATE pos_receipts SET transaction_id = %s WHERE id = %s", (transaction_id, receipt_id))
                     logger.info(f"✅ Vente {receipt_id} liée à transaction {transaction_id}")
                 
-                # 9. GESTION DE LA COMPTABILISATION SELON LES PRÉFÉRENCES
+                # 9. GESTION DE LA COMPTABILISATION
                 settings = self.get_compta_settings(user_id)
                 mode_compta = settings.get('mode_comptabilisation', 'par_jour')
                 generation = settings.get('generation_ecritures', 'manuel')
@@ -17904,8 +17899,6 @@ class ReceiptPOS:
         except Exception as e:
             logger.error(f"Erreur création vente POS: {e}", exc_info=True)
             return False, f"Erreur: {str(e)}", None
-
-
 
     def creer_ticket_ouvert(self, user_id: int, data: Dict) -> Tuple[bool, str, Optional[int]]:
         """Enregistre un ticket sans paiement (status 'Ouvert'), sans transaction bancaire."""
