@@ -136,6 +136,40 @@
                         </ul>
                     </li>
 
+                    <!-- 🆕 Dropdown Comptabilité POS (NOUVEAU) -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle {% if 'pos_compta' in request.endpoint %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-file-invoice-dollar me-1"></i> Comptabilité
+                            <span class="badge-new">Nouveau</span>
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><h6 class="dropdown-header">Validation des écritures</h6></li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('banking.pos_compta_review', mode='jour') }}">
+                                    <i class="bi bi-journal-text me-2"></i>Revue journalière (Recommandé)
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('banking.pos_compta_review', mode='ticket') }}">
+                                    <i class="bi bi-receipt me-2"></i>Revue détaillée par ticket
+                                </a>
+                            </li>
+                            
+                            <li><hr class="dropdown-divider"></li>
+                            <li><h6 class="dropdown-header">Configuration</h6></li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('banking.pos_compta_settings') }}">
+                                    <i class="bi bi-gear me-2"></i>Paramètres de comptabilisation
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('banking.pos_payment_methods_list') }}">
+                                    <i class="bi bi-credit-card me-2"></i>Mapping des comptes (Modes de paiement)
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+
                     <!-- Dropdown Catalogue -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle {% if 'pos_article' in request.endpoint or 'pos_modifier' in request.endpoint or 'pos_categor' in request.endpoint or 'pos_subcategor' in request.endpoint %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">

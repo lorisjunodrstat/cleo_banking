@@ -1082,6 +1082,8 @@ class DatabaseManager:
                     -- 🔗 LIENS VERS VOTRE SYSTÈME FINANCIER EXISTANT
                     transaction_id INT NULL COMMENT 'Lien vers la transaction financière créée',
                     compte_bancaire_id INT NULL COMMENT 'Compte bancaire où l''argent est encaissé',
+                    comptabilise BOOLEAN DEFAULT FALSE,
+                    date_comptabilisation DATE NULL,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
                     FOREIGN KEY (porte_monnaie_id) REFERENCES pos_porte_monnaie(id) ON DELETE SET NULL,
                     FOREIGN KEY (restaurant_option_id) REFERENCES pos_restaurant_options(id) ON DELETE SET NULL,
@@ -1134,7 +1136,11 @@ class DatabaseManager:
                     ordre INT DEFAULT 0,
                     actif BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    categorie_comptable_vente_id INT NULL,
+                    categorie_comptable_tva_id INT NULL,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    ADD FOREIGN KEY (categorie_comptable_vente_id) REFERENCES categories_comptables(id),
+                    ADD FOREIGN KEY (categorie_comptable_tva_id) REFERENCES categories_comptables(id),
                     UNIQUE KEY unique_categorie_user (utilisateur_id, nom_categorie)
                 );
                 """
@@ -1182,7 +1188,9 @@ class DatabaseManager:
                     couleur VARCHAR(7) DEFAULT '#28a745',
                     est_actif BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    categorie_comptable_tresorerie_id INT NULL,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    ADD FOREIGN KEY (categorie_comptable_tresorerie_id) REFERENCES categories_comptables(id),
                     UNIQUE KEY unique_mode_user (utilisateur_id, nom)
                 );
                 """
@@ -1432,6 +1440,21 @@ class DatabaseManager:
                 );
                 """
                 cursor.execute(create_pos_depots_table_query)
+
+                # Table des préférences de comptabilités
+                cursor_pos_compta_setting_query = """
+                CREATE TABLE pos_compta_settings (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
+                    mode_comptabilisation ENUM('par_ticket', 'par_jour') DEFAULT 'par_jour',
+                    generation_ecritures ENUM('automatique', 'manuel') DEFAULT 'manuel',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY unique_user (utilisateur_id),
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                );
+                """
+                cursor.execute(cursor_pos_compta_setting_query)
 
                 # ============================================================
                 # TABLES HISTORIQUE POS
@@ -17523,7 +17546,6 @@ class ReceiptPOS:
         """
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                # 1. Calculer les totaux (Le prix en base est TTC)
                 ventes_brutes_ht = Decimal('0')
                 cout_marchandises = Decimal('0')
                 items_data = []
@@ -17534,26 +17556,21 @@ class ReceiptPOS:
                     if not article:
                         return False, f"Article {item['article_id']} introuvable", None
                     
-                    # --- NOUVEAU : Gestion des modificateurs ---
+                    # ✅ On garde le nom de l'article TEL QUEL (court et propre)
+                    nom_article_final = str(article['nom_article'])
+                    # ✅ On récupère les modificateurs SANS les concaténer au nom
                     modificateurs = str(item.get('modificateurs', '')).strip()
-                    nom_article_final = article['nom_article']
-                    if modificateurs:
-                        nom_article_final = f"{nom_article_final} ({modificateurs})"
-                    # -------------------------------------------
                     
-                    # Le prix saisi est TTC
                     prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
                     qte = int(item.get('quantite', 1))
                     total_ligne_ttc = prix_ttc * qte
                     cout_marchandises += Decimal(str(article['cout_unitaire'] or 0)) * qte
                     
-                    # Récupération du taux
                     taxe = self._get_taxe_active(cursor, item['article_id'])
                     taux_taxe = Decimal('0')
                     if taxe:
                         taux_taxe = Decimal(str(taxe['taux']))
                         
-                    # Extraction du HT brut (avant réduction)
                     if taux_taxe > Decimal('0'):
                         diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
                         ligne_ht_brut = (total_ligne_ttc / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
@@ -17564,7 +17581,8 @@ class ReceiptPOS:
                     
                     items_data.append({
                         'article_id': item['article_id'],
-                        'nom_article': nom_article_final,  # <-- Utilise le nom enrichi
+                        'nom_article': nom_article_final,
+                        'modificateurs': modificateurs, # ✅ Stocké séparément
                         'variante_id': item.get('variante_id'),
                         'quantite': qte,
                         'prix_ttc': prix_ttc,
@@ -17574,7 +17592,7 @@ class ReceiptPOS:
                         'commentaire': item.get('commentaire', '') or '',
                     })
                 
-                # 2. Calcul de la réduction (Appliquée sur le montant TTC global)
+                # --- (Le calcul des réductions et TVA reste identique) ---
                 reduction_ttc = Decimal('0')
                 if data.get('discount_id'):
                     cursor.execute("SELECT * FROM pos_discounts WHERE id = %s", (data['discount_id'],))
@@ -17586,7 +17604,6 @@ class ReceiptPOS:
                         else:
                             reduction_ttc = Decimal(str(discount['valeur']))
                 
-                # 3. Répartition proportionnelle et extraction finale de la TVA
                 total_ttc_global = sum(i['total_ligne_ttc'] for i in items_data)
                 reduction_ratio = Decimal('0')
                 if total_ttc_global > Decimal('0'):
@@ -17599,11 +17616,8 @@ class ReceiptPOS:
                 for item_data in items_data:
                     total_ligne_ttc = item_data['total_ligne_ttc']
                     taux_taxe = item_data['taux_taxe']
-                    
-                    # Montant TTC net après réduction
                     ligne_ttc_net = total_ligne_ttc - (total_ligne_ttc * reduction_ratio)
                     
-                    # Extraction finale HT et TVA
                     if taux_taxe > Decimal('0'):
                         diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
                         ligne_ht_net = (ligne_ttc_net / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
@@ -17621,7 +17635,6 @@ class ReceiptPOS:
                 total_collecte = ventes_nettes_ht + total_taxes + tips
                 marge_brute = ventes_nettes_ht - cout_marchandises
                 
-                # 4. Génération et insertion du reçu
                 recu_numero = f"V-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
                 
                 cursor.execute("""
@@ -17646,71 +17659,73 @@ class ReceiptPOS:
                 ))
                 receipt_id = cursor.lastrowid
                 
-                # 5. Insertion des items (Stockage du TTC pour la lisibilité)
+                # ✅ INSERTION DES ITEMS AVEC LA COLONNE MODIFICATEURS
                 for item in items_data:
                     cursor.execute("""
                         INSERT INTO pos_receipt_items 
                         (receipt_id, article_id, nom_article, variante_id, quantite, prix_unitaire, 
-                         total_ligne, taux_taxe_applique, commentaire)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                         total_ligne, taux_taxe_applique, commentaire, modificateurs)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         receipt_id, item['article_id'], item['nom_article'], item['variante_id'],
                         item['quantite'], float(item['prix_ttc']),
                         float(item['total_ligne_ttc']),
                         float(item['taux_taxe']),
-                        item.get('commentaire')
+                        item.get('commentaire'),
+                        item['modificateurs'] # ✅ Envoi dans la nouvelle colonne
                     ))
                     
-                    cursor.execute("""
-                        UPDATE pos_articles SET stock = stock - %s WHERE id = %s
-                    """, (item['quantite'], item['article_id']))
+                    cursor.execute("UPDATE pos_articles SET stock = stock - %s WHERE id = %s", (item['quantite'], item['article_id']))
                 
-                # 6. Insertion des paiements
+                # --- (Gestion des paiements et transaction financière identique) ---
                 nb_paiements = 0
                 for payment in data.get('payments', []):
                     montant_pay = float(payment.get('montant', 0))
-                    if montant_pay <= 0:
-                        continue
-                    cursor.execute("""
-                        INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant)
-                        VALUES (%s, %s, %s)
-                    """, (receipt_id, payment['mode_paiement_id'], montant_pay))
+                    if montant_pay <= 0: continue
+                    cursor.execute("INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant) VALUES (%s, %s, %s)", (receipt_id, payment['mode_paiement_id'], montant_pay))
                     nb_paiements += 1
 
-                # ✅ GARDE-FOU : si aucun paiement fourni, en enregistrer un par défaut (espèces)
                 if nb_paiements == 0 and float(total_collecte) > 0:
-                    cursor.execute("""
-                        SELECT id FROM pos_modes_paiement 
-                        WHERE utilisateur_id = %s 
-                        ORDER BY (nom LIKE '%%spè%%' OR nom LIKE '%%cash%%') DESC, id 
-                        LIMIT 1
-                    """, (user_id,))
+                    cursor.execute("SELECT id FROM pos_modes_paiement WHERE utilisateur_id = %s ORDER BY (nom LIKE '%%spè%%' OR nom LIKE '%%cash%%') DESC, id LIMIT 1", (user_id,))
                     mode_defaut = cursor.fetchone()
                     if mode_defaut:
-                        cursor.execute("""
-                            INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant)
-                            VALUES (%s, %s, %s)
-                        """, (receipt_id, mode_defaut['id'], float(total_collecte)))
-                        logger.warning(f"Reçu {receipt_id}: aucun paiement fourni, paiement par défaut créé")
+                        cursor.execute("INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant) VALUES (%s, %s, %s)", (receipt_id, mode_defaut['id'], float(total_collecte)))
                 
-                # 7. Lien avec la transaction financière
                 success, msg, transaction_id = self.transaction_model._inserer_transaction_with_cursor(
-                    cursor=cursor,
-                    compte_type='compte_principal',
-                    compte_id=compte_bancaire_id,
-                    type_transaction='depot',
-                    montant=total_collecte,
+                    cursor=cursor, compte_type='compte_principal', compte_id=compte_bancaire_id,
+                    type_transaction='depot', montant=total_collecte,
                     description=f"Vente POS {recu_numero} - {data.get('nom_du_caissier', '')}",
-                    user_id=user_id,
-                    date_transaction=datetime.now(),
-                    validate_balance=False
+                    user_id=user_id, date_transaction=datetime.now(), validate_balance=False
                 )
                 
                 if success and transaction_id:
-                    cursor.execute("""
-                        UPDATE pos_receipts SET transaction_id = %s WHERE id = %s
-                    """, (transaction_id, receipt_id))
+
+                    cursor.execute("UPDATE pos_receipts SET transaction_id = %s WHERE id = %s", (transaction_id, receipt_id))
                     logger.info(f"✅ Vente {receipt_id} liée à transaction {transaction_id}")
+                
+                # 8. ✅ GESTION DE LA COMPTABILISATION SELON LES PRÉFÉRENCES
+                settings = self.get_compta_settings(user_id)
+                mode = settings.get('mode_comptabilisation', 'par_jour')
+                generation = settings.get('generation_ecritures', 'manuel')
+                
+                if generation == 'automatique':
+                    if mode == 'par_ticket':
+                        # Comptabilisation immédiate, ticket par ticket
+                        from app.models import POSComptabilisation
+                        compta_engine = POSComptabilisation(self.db)
+                        succes_compta, msg_compta = compta_engine.comptabiliser_ticket(receipt_id, user_id)
+                        if succes_compta:
+                            logger.info(f"✅ Ticket {receipt_id} comptabilisé automatiquement")
+                        else:
+                            logger.warning(f"⚠️ Échec comptabilisation auto ticket {receipt_id}: {msg_compta}")
+                    else:
+                        # Mode 'par_jour' : on marque juste le ticket comme prêt à être agrégé
+                        # La comptabilisation se fera via une route dédiée (journal de caisse)
+                        logger.info(f"ℹ️ Ticket {receipt_id} prêt pour agrégation journalière")
+                else:
+                    # Mode 'manuel' : on ne fait rien, l'utilisateur devra passer par la page de revue
+                    logger.info(f"ℹ️ Ticket {receipt_id} en attente de comptabilisation manuelle")
+
                 
                 return True, "Vente créée avec succès", receipt_id
                 
@@ -17732,10 +17747,7 @@ class ReceiptPOS:
                     if not article:
                         return False, f"Article {item['article_id']} introuvable", None
                     
-                    # ✅ On garde le nom de l'article TEL QUEL (court et propre)
                     nom_article_final = str(article['nom_article'])
-                    
-                    # ✅ On récupère les modificateurs SANS les concaténer au nom
                     modificateurs = str(item.get('modificateurs', '')).strip()
                     
                     prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
@@ -17744,8 +17756,7 @@ class ReceiptPOS:
                     
                     taxe = self._get_taxe_active(cursor, item['article_id'])
                     taux_taxe = Decimal('0')
-                    if taxe:
-                        taux_taxe = Decimal(str(taxe['taux']))
+                    if taxe: taux_taxe = Decimal(str(taxe['taux']))
                         
                     if taux_taxe > Decimal('0'):
                         diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
@@ -17754,14 +17765,13 @@ class ReceiptPOS:
                         ligne_ht = total_ligne_ttc.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                         
                     ligne_taxe = (total_ligne_ttc - ligne_ht).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                    
                     ventes_brutes_ht += ligne_ht
                     total_taxes += ligne_taxe
                     
                     items_data.append({
                         'article_id': item['article_id'],
-                        'nom_article': nom_article_final,  # Nom court
-                        'modificateurs': modificateurs,    # Liste complète séparée
+                        'nom_article': nom_article_final,
+                        'modificateurs': modificateurs,
                         'variante_id': item.get('variante_id'),
                         'quantite': qte,
                         'prix_ttc': prix_ttc,
@@ -17784,8 +17794,6 @@ class ReceiptPOS:
                             reduction_ttc = total_ttc_global * (Decimal(str(discount['valeur'])) / Decimal('100'))
                         else:
                             reduction_ttc = Decimal(str(discount['valeur']))
-                        
-                        # HT de la réduction
                         if total_taxes > 0 and ventes_brutes_ht > 0:
                             taux_moyen = (total_taxes / ventes_brutes_ht) * 100
                             reduction_ht = reduction_ttc / (Decimal('1') + taux_moyen/Decimal('100'))
@@ -17811,25 +17819,25 @@ class ReceiptPOS:
                 ))
                 receipt_id = cursor.lastrowid
                 
+                # ✅ INSERTION AVEC LA COLONNE MODIFICATEURS
                 for item in items_data:
                     cursor.execute("""
                         INSERT INTO pos_receipt_items 
                         (receipt_id, article_id, nom_article, variante_id, quantite, prix_unitaire, 
-                         total_ligne, taux_taxe_applique, commentaire, modificateurs)
+                        total_ligne, taux_taxe_applique, commentaire, modificateurs)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         receipt_id, item['article_id'], item['nom_article'], item['variante_id'],
                         item['quantite'], float(item['prix_ttc']),
                         float(item['total_ligne_ttc']), float(item['taux_taxe']),
-                        item['commentaire'],
-                        item['modificateurs']  # ✅ Nouvelle colonne
+                        item['commentaire'], item['modificateurs']
                     ))
                 
                 return True, "Ticket enregistré", receipt_id
                 
         except Exception as e:
             logger.error(f"Erreur ticket ouvert: {e}")
-            return False, f"Erreur: {str(e)}", None    
+            return False, f"Erreur: {str(e)}", None
 
     def _get_taxe_active(self, cursor, article_id: int) -> Optional[Dict]:
         date_ref = date.today()
@@ -18296,6 +18304,7 @@ class ReceiptPOS:
                 return cursor.fetchall()
         except:
             return []
+
     def supprimer_ticket_ouvert(self, receipt_id: int, user_id: int) -> bool:
         """Supprime un ticket 'Ouvert' (jamais payé, sans transaction bancaire)"""
         try:
@@ -18315,6 +18324,315 @@ class ReceiptPOS:
         except Exception as e:
             logger.error(f"Erreur supprimer_ticket_ouvert: {e}")
             return False
+        def get_compta_settings(self, user_id: int) -> Dict:
+        """Récupère les préférences de comptabilisation de l'utilisateur"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT mode_comptabilisation, generation_ecritures
+                    FROM pos_compta_settings
+                    WHERE utilisateur_id = %s
+                """, (user_id,))
+                settings = cursor.fetchone()
+                
+                # Valeurs par défaut si non configuré
+                if not settings:
+                    return {
+                        'mode_comptabilisation': 'par_jour',
+                        'generation_ecritures': 'manuel'
+                    }
+                
+                return settings
+        except Exception as e:
+            logger.error(f"Erreur récupération settings compta: {e}")
+            return {
+                'mode_comptabilisation': 'par_jour',
+                'generation_ecritures': 'manuel'
+            }
+
+    def save_compta_settings(self, user_id: int, mode: str, generation: str) -> bool:
+        """Sauvegarde les préférences de comptabilisation"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pos_compta_settings (utilisateur_id, mode_comptabilisation, generation_ecritures)
+                    VALUES (%s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        mode_comptabilisation = VALUES(mode_comptabilisation),
+                        generation_ecritures = VALUES(generation_ecritures)
+                """, (user_id, mode, generation))
+                return True
+        except Exception as e:
+            logger.error(f"Erreur sauvegarde settings compta: {e}")
+            return False
+
+    def comptabiliser_ticket(self, receipt_id: int, user_id: int) -> Tuple[bool, str]:
+        """
+        Génère les écritures comptables pour un ticket POS.
+        S'appuie sur le modèle EcritureComptable existant pour gérer la TVA en cascade.
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                # 1. Récupérer le ticket et ses infos
+                cursor.execute("""
+                    SELECT r.*, p.categorie_comptable_tresorerie_id as mode_tresorerie_cat_id
+                    FROM pos_receipts r
+                    JOIN pos_modes_paiement p ON r.mode_paiement_principal_id = p.id -- (à adapter selon votre schéma de paiement)
+                    WHERE r.id = %s AND r.utilisateur_id = %s
+                """, (receipt_id, user_id))
+                receipt = cursor.fetchone()
+                
+                if not receipt:
+                    return False, "Ticket non trouvé"
+                if receipt['comptabilise']:
+                    return True, "Déjà comptabilisé"
+
+                # 2. Récupérer la catégorie comptable de vente (basée sur le 1er article ou une catégorie par défaut du PDV)
+                cursor.execute("""
+                    SELECT pc.categorie_comptable_vente_id, pc.categorie_comptable_tva_id
+                    FROM pos_receipt_items ri
+                    JOIN pos_articles a ON ri.article_id = a.id
+                    JOIN pos_categories pc ON a.categorie_id = pc.id
+                    WHERE ri.receipt_id = %s
+                    LIMIT 1
+                """, (receipt_id,))
+                cat_mapping = cursor.fetchone()
+                
+                if not cat_mapping or not cat_mapping['categorie_comptable_vente_id']:
+                    return False, "Aucune catégorie comptable de vente configurée pour les articles de ce ticket."
+
+                categorie_vente_id = cat_mapping['categorie_comptable_vente_id']
+                categorie_tva_id = cat_mapping['categorie_comptable_tva_id']
+                compte_bancaire_id = receipt['compte_bancaire_id'] # Le compte de caisse du PDV
+
+                # 3. Préparer les données pour le modèle EcritureComptable
+                # On crée une écriture de "Recette" (Produit) pour le montant HT
+                data_ecriture = {
+                    'date_ecriture': receipt['date'].date(),
+                    'compte_bancaire_id': compte_bancaire_id,
+                    'categorie_id': categorie_vente_id,
+                    'montant': float(receipt['ventes_nettes']), # Montant HT
+                    'montant_htva': float(receipt['ventes_nettes']),
+                    'devise': 'CHF',
+                    'description': f"Vente POS {receipt['recu_numero']}",
+                    'reference': receipt['recu_numero'],
+                    'type_ecriture': 'recette',  # Argent qui entre / Produit
+                    'tva_taux': float(receipt['taux_moyen_tva'] or 0), # À calculer ou stocker dans le receipt
+                    'tva_montant': float(receipt['taxes']),
+                    'utilisateur_id': user_id,
+                    'statut': 'validée',
+                    'type_ecriture_comptable': 'pos_vente'
+                }
+
+                # 4. Utiliser le modèle EcritureComptable existant
+                # (Il faudra injecter une instance de ce modèle dans ReceiptPOS ou l'importer)
+                from app.models import EcritureComptable # Ajustez le chemin d'import
+                modele_ecriture = EcritureComptable(self.db)
+                
+                # On a besoin du modèle de catégorie pour la vérification de la TVA en cascade
+                from app.models import CategorieComptable
+                modele_categorie = CategorieComptable(self.db)
+
+                succes, msg = modele_ecriture.create(modele_categorie, data_ecriture)
+                
+                if succes:
+                    # Marquer le ticket comme comptabilisé
+                    cursor.execute("""
+                        UPDATE pos_receipts 
+                        SET comptabilise = TRUE, date_comptabilisation = CURDATE() 
+                        WHERE id = %s
+                    """, (receipt_id,))
+                    return True, "Écritures comptables générées avec succès"
+                else:
+                    return False, f"Échec de la génération des écritures : {msg}"
+
+        except Exception as e:
+            logger.error(f"Erreur comptabilisation ticket {receipt_id}: {e}", exc_info=True)
+            return False, f"Erreur système: {str(e)}"
+
+class POSComptabilisation:
+    def __init__(self, db):
+        self.db = db
+        from app.models import EcritureComptable, CategorieComptable
+        self.modele_ecriture = EcritureComptable(db)
+        self.modele_categorie = CategorieComptable(db)
+
+    def get_a_comptabiliser(self, user_id: int, pdv_id: int = None, date_from: str = None, date_to: str = None, mode: str = 'jour') -> List[Dict]:
+        """
+        Récupère les données à comptabiliser, agrégées par jour (mode='jour') 
+        ou liste détaillée des tickets (mode='ticket').
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                if mode == 'jour':
+                    # Agrégation par jour et par mode de paiement
+                    query = """
+                        SELECT 
+                            DATE(r.date) as date_jour,
+                            pm.id as mode_paiement_id,
+                            pm.nom as mode_paiement_nom,
+                            pm.compte_tresorerie_id,
+                            pm.compte_frais_service_id,
+                            pm.frais_pourcentage,
+                            pm.frais_fixe,
+                            COUNT(r.id) as nb_tickets,
+                            SUM(r.ventes_nettes) as total_ht,
+                            SUM(r.taxes) as total_tva,
+                            SUM(r.total_collecte) as total_ttc
+                        FROM pos_receipts r
+                        JOIN pos_payments p ON r.id = p.receipt_id
+                        JOIN pos_modes_paiement pm ON p.mode_paiement_id = pm.id
+                        WHERE r.utilisateur_id = %s 
+                          AND r.etat_comptable = 'non_comptabilise'
+                          AND r.status = 'Fermé'
+                    """
+                    params = [user_id]
+                    if pdv_id:
+                        query += " AND r.pdv = %s"
+                        params.append(pdv_id)
+                    if date_from:
+                        query += " AND DATE(r.date) >= %s"
+                        params.append(date_from)
+                    if date_to:
+                        query += " AND DATE(r.date) <= %s"
+                        params.append(date_to)
+                    
+                    query += " GROUP BY DATE(r.date), pm.id ORDER BY date_jour DESC, pm.nom"
+                    cursor.execute(query, params)
+                    return cursor.fetchall()
+                else:
+                    # Mode détaillé par ticket
+                    query = """
+                        SELECT r.id, r.recu_numero, r.date, r.total_collecte as total_ttc, 
+                               r.ventes_nettes as total_ht, r.taxes as total_tva,
+                               pm.nom as mode_paiement_nom, pm.compte_tresorerie_id, 
+                               pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe
+                        FROM pos_receipts r
+                        JOIN pos_payments p ON r.id = p.receipt_id
+                        JOIN pos_modes_paiement pm ON p.mode_paiement_id = pm.id
+                        WHERE r.utilisateur_id = %s AND r.etat_comptable = 'non_comptabilise'
+                        AND r.status = 'Fermé'
+                        ORDER BY r.date DESC
+                    """
+                    cursor.execute(query, (user_id,))
+                    return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération données à comptabiliser: {e}")
+            return []
+
+    def comptabiliser_selection(self, user_id: int, items_a_comptabiliser: List[Dict]) -> Tuple[bool, str]:
+        """
+        Génère les écritures comptables pour une sélection de tickets ou d'agrégats journaliers.
+        items_a_comptabiliser: Liste de dictionnaires contenant les IDs ou les données agrégées.
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                nb_ecritures_creees = 0
+
+                for item in items_a_comptabiliser:
+                    # Déterminer si c'est un agrégat journalier ou un ticket unique
+                    est_agregat = 'date_jour' in item and 'nb_tickets' in item
+                    
+                    date_ecriture = item.get('date_jour') or item.get('date').date()
+                    total_ht = float(item['total_ht'])
+                    total_tva = float(item['total_tva'])
+                    total_ttc = float(item['total_ttc'])
+                    compte_tresorerie_id = item.get('compte_tresorerie_id')
+                    compte_frais_id = item.get('compte_frais_service_id')
+                    frais_pct = float(item.get('frais_pourcentage', 0) or 0)
+                    frais_fixe = float(item.get('frais_fixe', 0) or 0)
+                    
+                    reference = f"JOURNAL-{date_ecriture}" if est_agregat else item.get('recu_numero')
+                    description = f"Ventes POS {item.get('mode_paiement_nom')} - {date_ecriture}" if est_agregat else f"Vente POS {item.get('recu_numero')}"
+
+                    if not compte_tresorerie_id:
+                        logger.warning(f"Mode de paiement sans compte de trésorerie configuré pour {reference}")
+                        continue
+
+                    # 1. ÉCRITURE PRINCIPALE : La Vente (Recette)
+                    # On débit le compte de trésorerie (ex: Créances Eat) du montant TTC total
+                    data_vente = {
+                        'date_ecriture': date_ecriture,
+                        'compte_bancaire_id': compte_tresorerie_id,
+                        'categorie_id': self._get_compte_vente_defaut(cursor, user_id), # À implémenter ou passer en paramètre
+                        'montant': total_ttc,
+                        'montant_htva': total_ht,
+                        'devise': 'CHF',
+                        'description': description,
+                        'reference': reference,
+                        'type_ecriture': 'recette',
+                        'tva_taux': (total_tva / total_ht * 100) if total_ht > 0 else 0,
+                        'tva_montant': total_tva,
+                        'utilisateur_id': user_id,
+                        'statut': 'validée',
+                        'type_ecriture_comptable': 'principale'
+                    }
+                    
+                    succes, msg = self.modele_ecriture.create(self.modele_categorie, data_vente)
+                    if not succes:
+                        raise Exception(f"Échec création écriture vente {reference}: {msg}")
+                    nb_ecritures_creees += 1
+
+                    # 2. ÉCRITURE SECONDAIRE : Les Frais de Service (si applicables)
+                    montant_frais = (total_ttc * (frais_pct / 100)) + frais_fixe
+                    
+                    if montant_frais > 0.01 and compte_frais_id:
+                        data_frais = {
+                            'date_ecriture': date_ecriture,
+                            'compte_bancaire_id': compte_tresorerie_id, # On crédite le même compte pour réduire la créance
+                            'categorie_id': compte_frais_id,
+                            'montant': montant_frais,
+                            'montant_htva': montant_frais,
+                            'devise': 'CHF',
+                            'description': f"Frais de service sur {description}",
+                            'reference': f"{reference}-FRAIS",
+                            'type_ecriture': 'depense', # C'est une charge
+                            'tva_taux': 0, # Simplifié, à adapter si les frais sont soumis à TVA
+                            'tva_montant': 0,
+                            'utilisateur_id': user_id,
+                            'statut': 'validée',
+                            'type_ecriture_comptable': 'principale'
+                        }
+                        succes_frais, msg_frais = self.modele_ecriture.create(self.modele_categorie, data_frais)
+                        if not succes_frais:
+                            logger.error(f"Échec création écriture frais {reference}: {msg_frais}")
+                        else:
+                            nb_ecritures_creees += 1
+
+                    # 3. Marquer comme comptabilisé en base
+                    if est_agregat:
+                        cursor.execute("""
+                            UPDATE pos_receipts r
+                            JOIN pos_payments p ON r.id = p.receipt_id
+                            SET r.etat_comptable = 'comptabilise', r.date_comptabilisation = %s
+                            WHERE DATE(r.date) = %s 
+                              AND p.mode_paiement_id = %s 
+                              AND r.utilisateur_id = %s 
+                              AND r.etat_comptable = 'non_comptabilise'
+                        """, (date_ecriture, date_ecriture, item['mode_paiement_id'], user_id))
+                    else:
+                        cursor.execute("""
+                            UPDATE pos_receipts 
+                            SET etat_comptable = 'comptabilise', date_comptabilisation = %s 
+                            WHERE id = %s
+                        """, (date_ecriture, item['id']))
+
+                return True, f"{nb_ecritures_creees} écriture(s) générée(s) avec succès."
+
+        except Exception as e:
+            logger.error(f"Erreur comptabilisation sélection: {e}", exc_info=True)
+            return False, f"Erreur système: {str(e)}"
+
+    def _get_compte_vente_defaut(self, cursor, user_id: int) -> int:
+        """Récupère un compte de vente par défaut (ex: 3000) si non spécifié"""
+        cursor.execute("""
+            SELECT id FROM categories_comptables 
+            WHERE utilisateur_id = %s AND numero LIKE '3%%' AND actif = TRUE 
+            ORDER BY numero LIMIT 1
+        """, (user_id,))
+        res = cursor.fetchone()
+        return res['id'] if res else None
+
 
 class PeriodeTravailPOS:
     """
@@ -18940,7 +19258,10 @@ class ModelManager:
     @property
     def receipt_pos_model(self):
         return self._get_model('receipt_pos', ReceiptPOS)
-    
+    @property
+    def pos_comptabilisation_model(self):
+        return self._get_model('pos_comptabilisation', POSComptabilisation)
+
     @property
     def periode_travail_pos_model(self):
         return self._get_model('periode_travail_pos', PeriodeTravailPOS)

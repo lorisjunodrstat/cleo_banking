@@ -632,7 +632,7 @@ button{cursor:pointer; border:none; background:none}
     $('modalArticle').classList.add('show');
   }
 
-  function confirmAddArticle(){
+    function confirmAddArticle(){
     const a = pendingArticle; 
     if(!a) return;
     let prix = a.is_variable_price ? parseFloat($('maPrix').value||0) : parseFloat(a.prix_unitaire||0);
@@ -647,24 +647,31 @@ button{cursor:pointer; border:none; background:none}
       prix += parseFloat(m.dataset.prix); 
       extras.push(m.value); 
     });
-    // ✅ Options choisies dans les modificateurs
     document.querySelectorAll('.maModOpt:checked').forEach(o => { 
       prix += parseFloat(o.dataset.prix||0); 
       extras.push(o.value); 
     });
+    
     const qty = parseInt($('maQty').value||1);
     const commentaire = $('maCommentaire').value.trim();
-    const modificateurs = extras.join(', '); // 
+    const modificateurs = extras.join(', '); // ✅ Chaîne propre
     
-    const key = a.id + '_' + (varianteId||0) + '_' + extras.join('+');
+    const key = a.id + '_' + (varianteId||0) + '_' + modificateurs;
     const existing = ticket.lines.find(l => l.key === key);
+    
     if (existing) {
       existing.qty += qty;
       if (commentaire) existing.commentaire = commentaire;
     } else {
       ticket.lines.push({ 
-        key, article_id:a.id, variante_id:varianteId, nom:a.nom_article,
-        extras:extras.join(', '), prix, qty, taux:a.taux_taxe||0, commentaire
+        key, 
+        article_id: a.id, 
+        variante_id: varianteId, 
+        nom: a.nom_article,           // Nom court (ex: Menu Kobe)
+        modificateurs: modificateurs, // Liste complète (ex: Maki..., Nigiri...)
+        prix, qty, 
+        taux: a.taux_taxe||0, 
+        commentaire
       });
     }
     save(); 
@@ -679,24 +686,18 @@ function toggleMobileMenu() {
 }
 
 // Mettre à jour le total mobile
-function updateMobileTotal() {
-  const { totalTTC } = calculTVA();
-  const reduction = calcReduction();
-  const tips = parseFloat($('tips').value) || 0;
-  const total = Math.max(0, totalTTC - reduction) + tips;
-  const mobileTotal = document.getElementById('payTotalMobile');
-  if (mobileTotal) {
-    mobileTotal.textContent = fmt(total);
+  function updateMobileTotal() {
+    const { totalTTC } = calculTVA();
+    const reduction = calcReduction();
+    const tips = parseFloat($('tips').value) || 0;
+    const total = Math.max(0, totalTTC - reduction) + tips;
+    
+    const mobileTotal = document.getElementById('payTotalMobile');
+    if (mobileTotal) {
+      mobileTotal.textContent = fmt(total);
+    }
   }
-}
 
-// Modifier renderTicket pour mettre à jour le total mobile
-function renderTicket(){
-  // ... votre code existant ...
-  
-  // Ajouter à la fin de renderTicket :
-  updateMobileTotal();
-}
 
   /* ---------- Ticket ---------- */
 
@@ -707,53 +708,62 @@ function scrollToTicket() {
   }
 }
 
- function renderTicket(){
-  $('ticketLines').innerHTML = ticket.lines.map((l,i) => `
-    <div class="line">
-      <div class="l1">
-        <span class="lname">${l.nom}</span>
-        <span class="lprice">${fmt(l.prix*l.qty)}</span>
+  function renderTicket(){
+    // 1. Affichage des lignes du ticket
+    $('ticketLines').innerHTML = ticket.lines.map((l,i) => `
+      <div class="line">
+        <div class="l1">
+          <span class="lname">${l.nom}</span>
+          <span class="lprice">${fmt(l.prix*l.qty)}</span>
+        </div>
+        ${l.modificateurs ? `<div style="margin:4px 0; color:#43A047; font-size:12px; font-style:italic; word-wrap: break-word; white-space: normal;">📝 ${l.modificateurs}</div>` : ''}
+        ${l.commentaire ? `<div class="meta" style="margin:2px 0">💬 ${l.commentaire}</div>` : ''}
+        <div class="l2">
+          <button class="qtybtn" onclick="chgQty(${i},-1)">−</button>
+          <span>${l.qty}</span>
+          <button class="qtybtn" onclick="chgQty(${i},1)">+</button>
+          <span class="meta">${fmt(l.prix)} / unité (TTC)</span>
+          <button class="del" onclick="delLine(${i})">✕</button>
+        </div>
       </div>
-      ${l.modificateurs ? `<div class="meta" style="margin:2px 0; color:#43A047; font-size:12px; font-style:italic">📝 ${l.modificateurs}</div>` : ''}
-      ${l.commentaire ? `<div class="meta" style="margin:2px 0">💬 ${l.commentaire}</div>` : ''}
-      <div class="l2">
-        <button class="qtybtn" onclick="chgQty(${i},-1)">−</button>
-        <span>${l.qty}</span>
-        <button class="qtybtn" onclick="chgQty(${i},1)">+</button>
-        <span class="meta">${fmt(l.prix)} / unité (TTC)</span>
-        <button class="del" onclick="delLine(${i})">✕</button>
-      </div>
-    </div>`).join('') || '<p style="padding:20px;color:#888;text-align:center">Ticket vide</p>';
+    `).join('') || '<p style="padding:20px;color:#888;text-align:center">Ticket vide</p>';
     
-  const { totalTTC, tvaParTaux } = calculTVA();
-  const reduction = calcReduction();
-  const tips = parseFloat($('tips').value) || 0;
-  const total = Math.max(0, totalTTC - reduction) + tips;
-  
-  $('ticketNomDisplay').textContent = ticket.nom || 'Ticket';
-  $('tSousTotal').textContent = fmt(totalTTC);
-  $('tTaxesDetail').innerHTML = tvaHTMLDetail(tvaParTaux);
-  $('tReductionRow').style.display = reduction > 0 ? 'flex' : 'none';
-  $('tReduction').textContent = '- ' + fmt(reduction);
-  $('tTotal').textContent = fmt(total);
-  $('payTotal').textContent = fmt(total);
-  $('ticketCount').textContent = ticket.lines.reduce((s,l)=>s+l.qty,0);
-  
-  // ✅ Restaurer l'option de restauration dans le select
-  if (ticket.restaurant_option_id) {
-    $('restoOption').value = ticket.restaurant_option_id;
+    // 2. Calculs des totaux
+    const { totalTTC, tvaParTaux } = calculTVA();
+    const reduction = calcReduction();
+    const tips = parseFloat($('tips').value) || 0;
+    const total = Math.max(0, totalTTC - reduction) + tips;
+    
+    // 3. Mise à jour de l'affichage des totaux et du header
+    $('ticketNomDisplay').textContent = ticket.nom || 'Ticket';
+    $('tSousTotal').textContent = fmt(totalTTC);
+    $('tTaxesDetail').innerHTML = tvaHTMLDetail(tvaParTaux);
+    $('tReductionRow').style.display = reduction > 0 ? 'flex' : 'none';
+    $('tReduction').textContent = '- ' + fmt(reduction);
+    $('tTotal').textContent = fmt(total);
+    $('payTotal').textContent = fmt(total);
+    $('ticketCount').textContent = ticket.lines.reduce((s,l)=>s+l.qty,0);
+    
+    // 4. Restaurer l'option de restauration dans le select
+    if (ticket.restaurant_option_id) {
+      $('restoOption').value = ticket.restaurant_option_id;
+    }
+    
+    // 5. Gestion de l'affichage du client
+    const chip = $('clientChip');
+    if (ticket.client){ 
+      chip.style.display = 'inline-flex'; 
+      chip.innerHTML = `👤 ${ticket.client.nom_client} ✕`; 
+      chip.onclick = removeClient; 
+    } else {
+      chip.style.display = 'none';
+    }
+
+    // 6. Mise à jour du total pour la barre d'actions mobile
+    updateMobileTotal();
   }
-  
-  const chip = $('clientChip');
-  if (ticket.client){ 
-    chip.style.display='inline-flex'; 
-    chip.innerHTML = `👤 ${ticket.client.nom_client} ✕`; 
-    chip.onclick = removeClient; 
-  } else {
-    chip.style.display='none';
-  }
-}
-  function chgQty(i,d){ 
+
+function chgQty(i,d){ 
     ticket.lines[i].qty += d; 
     if(ticket.lines[i].qty<=0) ticket.lines.splice(i,1); 
     save(); 

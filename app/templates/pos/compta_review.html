@@ -1,0 +1,89 @@
+<!-- Extrait de compta_review.html -->
+<div class="card">
+    <h2>📋 Revue de Comptabilisation POS (Mode: {{ mode|upper }})</h2>
+    
+    <form id="formCompta">
+        <table class="table-compta">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="selectAll"></th>
+                    <th>Date / Période</th>
+                    <th>Mode de Paiement</th>
+                    <th>Nb Tickets</th>
+                    <th>Total TTC</th>
+                    <th>Frais Estimés</th>
+                    <th>Compte de Destination</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in a_comptabiliser %}
+                <tr>
+                    <td>
+                        <input type="checkbox" name="selection" class="item-check" 
+                               value='{{ item | tojson | safe }}'>
+                    </td>
+                    <td>{{ item.date_jour or item.date.strftime('%d.%m.%Y') }}</td>
+                    <td>{{ item.mode_paiement_nom }}</td>
+                    <td>{{ item.nb_tickets or 1 }}</td>
+                    <td>CHF {{ "%.2f"|format(item.total_ttc) }}</td>
+                    <td style="color: #e53935;">
+                        {% set frais = (item.total_ttc * (item.frais_pourcentage or 0) / 100) + (item.frais_fixe or 0) %}
+                        {% if frais > 0 %}CHF {{ "%.2f"|format(frais) }}{% else %}-{% endif %}
+                    </td>
+                    <td>
+                        {% set mp = modes_paiement | selectattr("id", "equalto", item.mode_paiement_id) | first %}
+                        {{ mp.compte_tresorerie_nom if mp and mp.compte_tresorerie_nom else '⚠️ Non configuré' }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <div class="actions-bar">
+            <button type="button" class="btn btn-secondary" onclick="window.history.back()">Annuler</button>
+            <button type="button" class="btn btn-primary" onclick="comptabiliserSelection()">
+                ✅ Comptabiliser la sélection (<span id="countSelected">0</span>)
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+// Logique JS pour gérer la sélection et l'envoi AJAX
+document.getElementById('selectAll').addEventListener('change', function(e) {
+    document.querySelectorAll('.item-check').forEach(cb => cb.checked = e.target.checked);
+    updateCount();
+});
+
+document.querySelectorAll('.item-check').forEach(cb => {
+    cb.addEventListener('change', updateCount);
+});
+
+function updateCount() {
+    document.getElementById('countSelected').textContent = document.querySelectorAll('.item-check:checked').length;
+}
+
+async function comptabiliserSelection() {
+    const checkedBoxes = document.querySelectorAll('.item-check:checked');
+    if (checkedBoxes.length === 0) {
+        alert("Veuillez sélectionner au moins un élément.");
+        return;
+    }
+
+    const selection = Array.from(checkedBoxes).map(cb => JSON.parse(cb.value));
+    
+    const response = await fetch(window.location.href, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ selection: selection })
+    });
+    
+    const data = await response.json();
+    if (data.success) {
+        alert(data.message);
+        window.location.reload(); // Recharger pour voir les éléments retirés
+    } else {
+        alert("Erreur: " + data.message);
+    }
+}
+</script>

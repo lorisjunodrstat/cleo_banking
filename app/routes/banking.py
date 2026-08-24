@@ -13067,3 +13067,91 @@ def pos_vente_delete_open_ticket(receipt_id):
     """Supprime un ticket enregistré (utilisé quand on le reprend ou l'annule)"""
     success = g.models.receipt_pos_model.supprimer_ticket_ouvert(receipt_id, current_user.id)
     return jsonify({'success': success})
+
+@bp.route('/pos/compta-review', methods=['GET', 'POST'])
+@login_required
+def pos_compta_review():
+    user_id = current_user.id
+    pdv_id = request.args.get('pdv_id', type=int)
+    mode = request.args.get('mode', 'jour') # 'jour' ou 'ticket'
+    
+    
+    if request.method == 'POST':
+        # Récupérer la sélection depuis le formulaire (ex: liste des IDs ou des index)
+        # Pour simplifier, supposons que le frontend envoie un JSON des items sélectionnés
+        selection = request.json.get('selection', [])
+        
+        succes, message = g.models.pos_comptabilisation_model.comptabiliser_selection(user_id, selection)
+        if succes:
+            return jsonify({'success': True, 'message': message})
+        else:
+            return jsonify({'success': False, 'message': message}), 400
+
+    # GET : Afficher la page de revue
+    a_comptabiliser = g.models.pos_comptabilisation_model.get_a_comptabiliser(user_id, pdv_id, mode=mode)
+    
+    # Récupérer la liste des modes de paiement pour l'affichage
+    modes_paiement = g.models.mode_paiement_pos_model.get_all(user_id) # Votre fonction existante
+    
+    return render_template('pos/compta_review.html', 
+                           a_comptabiliser=a_comptabiliser, 
+                           mode=mode,
+                           modes_paiement=modes_paiement)
+
+@bp.route('/pos/compta-settings', methods=['GET', 'POST'])
+@login_required
+def pos_compta_settings():
+    """Page de paramétrage de la comptabilisation POS"""
+    user_id = current_user.id
+    
+    if request.method == 'POST':
+        mode = request.form.get('mode_comptabilisation', 'par_jour')
+        generation = request.form.get('generation_ecritures', 'manuel')
+        
+        if mode not in ['par_ticket', 'par_jour']:
+            mode = 'par_jour'
+        if generation not in ['automatique', 'manuel']:
+            generation = 'manuel'
+        
+        succes = g.receipt_pos_model.save_compta_settings(user_id, mode, generation)
+        
+        if succes:
+            flash('✅ Paramètres de comptabilisation enregistrés', 'success')
+        else:
+            flash('❌ Erreur lors de l\'enregistrement', 'error')
+        
+        return redirect(url_for('banking.pos_compta_settings'))
+    
+    # GET : afficher la page
+    settings = g.models.receipt_pos_model.get_compta_settings(user_id)
+    
+    return render_template('pos/compta_settings.html', settings=settings)
+
+@bp.route('/pos/compta-journal', methods=['GET', 'POST'])
+@login_required
+def pos_compta_journal():
+    """Comptabilisation manuelle du journal de caisse (par jour)"""
+    user_id = current_user.id
+    
+    if request.method == 'POST':
+        date_jour = request.form.get('date_jour')
+        pdv_id = request.form.get('pdv_id', type=int)
+        
+        if not date_jour:
+            flash('❌ Date requise', 'error')
+            return redirect(url_for('banking.pos_compta_journal'))
+        
+        from app.models import POSComptabilisation
+        compta_engine = POSComptabilisation(db)
+        
+        succes, message = compta_engine.comptabiliser_journal_journee(pdv_id, user_id, date_jour)
+        
+        if succes:
+            flash(f'✅ {message}', 'success')
+        else:
+            flash(f'❌ {message}', 'error')
+        
+        return redirect(url_for('banking.pos_compta_journal'))
+    
+    # GET : afficher la page de sélection
+    return render_template('pos/compta_journal.html')
