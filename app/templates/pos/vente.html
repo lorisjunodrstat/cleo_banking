@@ -610,25 +610,29 @@ button{cursor:pointer; border:none; background:none}
       ? '<label style="font-size:13px;color:#888">Modificateurs</label>' +
         a.modificateurs.map(m => {
           if ((m.options||[]).length) {
-            // ✅ Modificateur avec options : cases à cocher
             return `<div style="margin:6px 0;border:1px solid #eee;border-radius:8px;padding:10px">
               <div style="font-weight:600;font-size:14px;margin-bottom:4px">${m.nom_modificateur}</div>
-              ${m.options.map(o => `
-                <label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;padding:8px 10px;border:1px solid #e8e8e8;border-radius:6px;cursor:pointer">
+              ${m.options.map(o => {
+                // Si null/undefined, on met '' pour indiquer "hérite du parent"
+                const tauxTva = (o.taux_tva !== null && o.taux_tva !== undefined) ? o.taux_tva : '';
+                const tauxParent = (m.taux_tva !== null && m.taux_tva !== undefined) ? m.taux_tva : 0;
+                return `<label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;padding:8px 10px;border:1px solid #e8e8e8;border-radius:6px;cursor:pointer">
                   <span>
                     <input type="checkbox" class="maModOpt" 
                            data-prix="${o.prix_supplement}" 
-                           data-taux-tva="${o.taux_tva || ''}" 
-                           data-taux-parent="${m.taux_tva || 0}"
+                           data-taux-tva="${tauxTva}" 
+                           data-taux-parent="${tauxParent}"
                            value="${o.nom_option}"> ${o.nom_option}
                   </span>
                   <span style="color:#888;font-size:13px">${o.prix_supplement > 0 ? '+' + fmt(o.prix_supplement) : ''}</span>
-                </label>`).join('')}
+                </label>`;
+              }).join('')}
             </div>`;
           }
           // Modificateur simple sans options
+          const tauxMod = (m.taux_tva !== null && m.taux_tva !== undefined) ? m.taux_tva : '';
           return `<label style="display:block;margin:4px 0">
-            <input type="checkbox" class="maMod" data-prix="${m.prix_modificateur}" data-taux-tva="${m.taux_tva || 0}" value="${m.nom_modificateur}"> 
+            <input type="checkbox" class="maMod" data-prix="${m.prix_modificateur}" data-taux-tva="${tauxMod}" value="${m.nom_modificateur}"> 
             ${m.nom_modificateur} (+${fmt(m.prix_modificateur)})
           </label>`;
         }).join('')
@@ -641,68 +645,108 @@ button{cursor:pointer; border:none; background:none}
     $('modalArticle').classList.add('show');
   }
 
-    function confirmAddArticle(){
+      function confirmAddArticle(){
     const a = pendingArticle; 
     if(!a) return;
     
-    let prix = a.is_variable_price ? parseFloat($('maPrix').value||0) : parseFloat(a.prix_unitaire||0);
-    let varianteId = null, extras = [];
+    let prixBase = a.is_variable_price ? parseFloat($('maPrix').value||0) : parseFloat(a.prix_unitaire||0);
+    let varianteId = null;
+    let extras = [];
+    let tauxArticle = a.taux_taxe || 0;
     
     // 1. Gestion des variantes
     const sel = $('maVar');
     if (sel){ 
       varianteId = parseInt(sel.value); 
-      prix = parseFloat(sel.selectedOptions[0].dataset.prix||prix); 
-      extras.push(sel.selectedOptions[0].textContent); 
+      prixBase = parseFloat(sel.selectedOptions[0].dataset.prix || prixBase); 
+      extras.push(sel.selectedOptions[0].textContent.trim()); 
     }
     
+    let modsSameTva = [];
+    let modsDiffTva = []; // {nom, prix, taux}
+
     // 2. Gestion des modificateurs simples
     document.querySelectorAll('.maMod:checked').forEach(m => { 
-      prix += parseFloat(m.dataset.prix); 
-      extras.push(m.value); 
+      let prixMod = parseFloat(m.dataset.prix || 0);
+      let tauxModStr = m.dataset.tauxTva;
+      let tauxMod = parseFloat(tauxModStr);
+      // Si vide, hérite de l'article
+      let tauxFinal = (!isNaN(tauxMod) && tauxModStr !== '') ? tauxMod : tauxArticle;
+      
+      if (tauxFinal === tauxArticle) {
+        prixBase += prixMod;
+        modsSameTva.push(m.value);
+      } else {
+        modsDiffTva.push({ nom: m.value, prix: prixMod, taux: tauxFinal });
+      }
     });
     
-    // 3. ✅ Gestion des options de modificateurs avec logique de priorité TVA
+    // 3. Gestion des options de modificateurs
     document.querySelectorAll('.maModOpt:checked').forEach(o => { 
       let prixOption = parseFloat(o.dataset.prix || 0);
-      let tauxOption = parseFloat(o.dataset.tauxTva);
-      let tauxParent = parseFloat(o.dataset.tauxParent);
+      let tauxOptionStr = o.dataset.tauxTva;
+      let tauxParent = parseFloat(o.dataset.tauxParent || 0);
       
-      // Règle de priorité : Taux Option > Taux Parent
-      let tauxFinal = (tauxOption > 0) ? tauxOption : tauxParent;
+      let tauxOption = parseFloat(tauxOptionStr);
+      // Règle : Si taux spécifique défini (pas vide), on le prend. Sinon, on hérite du parent.
+      let tauxFinal = (!isNaN(tauxOption) && tauxOptionStr !== '') ? tauxOption : tauxParent;
       
-      extras.push(`${o.value} (+${fmt(prixOption)}, TVA ${tauxFinal}%)`);
-      prix += prixOption; 
+      if (tauxFinal === tauxArticle) {
+        prixBase += prixOption;
+        modsSameTva.push(o.value);
+      } else {
+        modsDiffTva.push({ nom: o.value, prix: prixOption, taux: tauxFinal });
+      }
     });
-    
+
     const qty = parseInt($('maQty').value||1);
     const commentaire = $('maCommentaire').value.trim();
-    const modificateurs = extras.join(', '); // Chaîne pour l'affichage
+    const modificateursStr = extras.concat(modsSameTva).join(', ');
+
+    // --- AJOUT AU TICKET ---
+    // 1. Ligne principale (article + variantes + modificateurs/options avec la MÊME TVA)
+    const keyMain = a.id + '_' + (varianteId||0) + '_' + modificateursStr;
+    const existingMain = ticket.lines.find(l => l.key === keyMain && l.taux === tauxArticle);
     
-    const key = a.id + '_' + (varianteId||0) + '_' + modificateurs;
-    const existing = ticket.lines.find(l => l.key === key);
-    
-    if (existing) {
-      existing.qty += qty;
-      if (commentaire) existing.commentaire = commentaire;
+    if (existingMain) {
+      existingMain.qty += qty;
+      if (commentaire) existingMain.commentaire = commentaire;
+      existingMain.prix = prixBase; 
     } else {
       ticket.lines.push({ 
-        key, 
+        key: keyMain, 
         article_id: a.id, 
         variante_id: varianteId, 
         nom: a.nom_article,
-        modificateurs: modificateurs, // Pour l'affichage
-        prix, qty, 
-        taux: a.taux_taxe||0, // Note: Pour une comptabilité parfaite, les modifiers avec TVA différente devraient idéalement être des lignes séparées, mais cette méthode fonctionne pour l'affichage et le total.
+        modificateurs: modificateursStr,
+        prix: prixBase, 
+        qty, 
+        taux: tauxArticle,
         commentaire
       });
     }
+
+    // 2. Lignes séparées pour les modificateurs/options avec TVA DIFFÉRENTE
+    // Indispensable pour une comptabilité TVA fiscalement correcte.
+    modsDiffTva.forEach((mod, index) => {
+      const keyMod = a.id + '_mod_' + index + '_' + mod.nom;
+      ticket.lines.push({
+        key: keyMod,
+        article_id: a.id, 
+        variante_id: null,
+        nom: `[MOD] ${mod.nom}`,
+        modificateurs: `Option de ${a.nom_article}`,
+        prix: mod.prix,
+        qty: qty,
+        taux: mod.taux,
+        commentaire: ''
+      });
+    });
     
     save(); 
     renderTicket(); 
     closeModal('modalArticle');
   }
-
 function toggleMobileMenu() {
   const menu = document.getElementById('mobileMenu');
   menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
@@ -852,7 +896,7 @@ function chgQty(i,d){
         quantite: l.qty, 
         prix_unitaire: l.prix,
         commentaire: l.commentaire || '',
-        modificateurs: l.extras || '' // <-- AJOUT : on envoie la chaîne des modificateurs
+        modificateurs: l.modificateurs || '' // <-- AJOUT : on envoie la chaîne des modificateurs
       })),
       nom_ticket: ticket.nom,
       commentaire: ticket.commentaire || '',
@@ -1082,7 +1126,7 @@ function chgQty(i,d){
         quantite: l.qty, 
         prix_unitaire: l.prix,
         commentaire: l.commentaire || '',
-        modificateurs: l.extras || '' // <-- AJOUT : on envoie la chaîne des modificateurs
+        modificateurs: l.modificateurs || '' // <-- AJOUT : on envoie la chaîne des modificateurs
       })),
       payments: pays,
       tips: parseFloat($('tips').value)||0,
