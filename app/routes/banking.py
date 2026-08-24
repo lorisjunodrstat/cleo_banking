@@ -12908,12 +12908,16 @@ def pos_vente_caisse():
 def pos_vente_articles_json():
     user_id = current_user.id
     try:
+        # 1. Utiliser les modèles existants (garanti de fonctionner)
         articles = g.models.article_pos_model.get_all(user_id)
         categories = g.models.categorie_pos_model.get_all(user_id)
         
+        # Récupérer l'instance db depuis un modèle existant pour éviter l'erreur g.db
+        db_instance = g.models.article_pos_model.db
+        
         for article in articles:
-            # ✅ 1. Récupérer UNIQUEMENT les modificateurs liés à cet article spécifique
-            with g.db.get_cursor(dictionary=True) as cursor:
+            # 2. Récupérer UNIQUEMENT les modificateurs liés à cet article spécifique
+            with db_instance.get_cursor(dictionary=True) as cursor:
                 cursor.execute("""
                     SELECT m.id, m.nom_modificateur, m.taux_tva, m.prix_modificateur
                     FROM pos_modificateurs m
@@ -12922,10 +12926,9 @@ def pos_vente_articles_json():
                 """, (article['id'], user_id))
                 modificateurs = cursor.fetchall()
             
-            # ✅ 2. Pour chaque modificateur pertinent, récupérer ses options
+            # 3. Enrichir chaque modificateur avec ses options
             for mod in modificateurs:
                 options = g.models.option_modificateur_pos_model.get_by_modifier(mod['id'])
-                
                 mod['options'] = [
                     {
                         'id': o['id'],
@@ -12941,7 +12944,7 @@ def pos_vente_articles_json():
             
             article['modificateurs'] = modificateurs
             
-            # ✅ 3. Récupérer la taxe de base de l'article
+            # 4. Récupérer la taxe active de l'article
             taxe = g.models.taxe_pos_model.get_taxe_active_for_article(article['id'])
             article['taux_taxe'] = float(taxe['taux']) if taxe else 0.0
         
@@ -12951,8 +12954,10 @@ def pos_vente_articles_json():
         })
         
     except Exception as e:
+        # Cela affichera l'erreur exacte dans votre terminal Flask
         logger.error(f"ERREUR CRITIQUE dans articles-json: {e}", exc_info=True)
         return jsonify({'articles': [], 'categories': [], 'error': str(e)}), 500
+    
 
 @bp.route('/pos/vente/clients.json')
 @login_required

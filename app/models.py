@@ -1418,7 +1418,7 @@ class DatabaseManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
                     FOREIGN KEY (porte_monnaie_id) REFERENCES pos_porte_monnaie(id) ON DELETE SET NULL,
-                    FOREIGN KEY (pdv_id) REFERENCES pos_points_de_vente(id) ON DELETE RESTRICT;
+                    FOREIGN KEY (pdv_id) REFERENCES pos_points_de_vente(id) ON DELETE RESTRICT,
                     INDEX idx_utilisateur_date (utilisateur_id, date_debut)
                 );
                 """
