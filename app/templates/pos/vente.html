@@ -198,6 +198,15 @@ button{cursor:pointer; border:none; background:none}
     display: none !important;
   }
 }
+.line .l2 button[title="Modifier les modificateurs"] {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    color: #856404;
+}
+.line .l2 button[title="Modifier les modificateurs"]:hover {
+    background: #ffc107;
+    color: #fff;
+}
 </style>
 </head>
 <body>
@@ -530,9 +539,7 @@ function calculTVA() {
         const ligneTTC = l.prix * l.qty;
         totalTTC += ligneTTC;
         
-        // ✅ NOUVEAU : Utiliser le tva_breakdown s'il existe
         if (l.tva_breakdown && l.tva_breakdown.length > 0) {
-            // Calculer la TVA pour chaque composante du breakdown
             l.tva_breakdown.forEach(breakdown => {
                 const montantTTC = breakdown.montant_ttc * l.qty;
                 const taux = breakdown.taux || 0;
@@ -549,7 +556,6 @@ function calculTVA() {
                 }
             });
         } else {
-            // Ancienne logique (fallback si pas de breakdown)
             const taux = l.taux || 0;
             if (!tvaParTaux[taux]) {
                 tvaParTaux[taux] = { ttc: 0, tva: 0 };
@@ -673,9 +679,13 @@ function calculTVA() {
     $('modalArticle').classList.add('show');
   }
 
-  function confirmAddArticle(){
+function confirmAddArticle(){
     const a = pendingArticle; 
     if(!a) return;
+    
+    // 1. Vérifier si on est en mode édition
+    const editIndex = $('modalArticle').dataset.editIndex;
+    const isEditing = editIndex !== undefined && editIndex !== '';
     
     let prixBase = a.is_variable_price ? parseFloat($('maPrix').value||0) : parseFloat(a.prix_unitaire||0);
     let varianteId = null;
@@ -689,16 +699,15 @@ function calculTVA() {
     const commentaire = $('maCommentaire').value.trim();
     const tauxArticleBase = parseFloat(a.taux_taxe || 0);
     
-    // ✅ Collecter les modificateurs et options
-    let modsSimples = [];         // Même taux que l'article
-    let optionsTauxDifferents = []; // Taux différent → ligne séparée
-    let modsAffichage = [];       // Pour l'affichage
+    // 2. Collecter les modificateurs
+    let modsSimples = [];
+    let optionsTauxDifferents = [];
+    let modsAffichage = [];
     
     if (varianteId && sel) {
         modsAffichage.push(sel.selectedOptions[0].textContent.trim());
     }
     
-    // 1. Modificateurs simples (cases à cocher simples)
     document.querySelectorAll('.maMod:checked').forEach(m => {
         let prixMod = parseFloat(m.dataset.prix || 0);
         let tauxMod = parseFloat(m.dataset.tauxTva || tauxArticleBase);
@@ -706,82 +715,90 @@ function calculTVA() {
         modsAffichage.push(m.value);
     });
     
-    // 2. Options de modificateurs (cases à cocher avec options)
     document.querySelectorAll('.maModOpt:checked').forEach(o => {
         let prixOption = parseFloat(o.dataset.prix || 0);
         let tauxOption = parseFloat(o.dataset.tauxTva) || 0;
         let tauxParent = parseFloat(o.dataset.tauxParent) || 0;
-        
-        // Règle de priorité : Taux Option > Taux Parent
         let tauxFinal = (tauxOption > 0) ? tauxOption : tauxParent;
         
         modsAffichage.push(o.value);
         
         if (tauxFinal !== tauxArticleBase) {
-            // ✅ Taux DIFFÉRENT : on le sépare dans le breakdown
-            optionsTauxDifferents.push({
-                nom: o.value,
-                prix: prixOption,
-                taux: tauxFinal
-            });
+            optionsTauxDifferents.push({ nom: o.value, prix: prixOption, taux: tauxFinal });
         } else {
-            // Même taux : on l'ajoute au prix de base
             prixBase += prixOption;
         }
     });
     
-    // ✅ Ajouter les modificateurs simples au prix de base
     let totalModsSimples = modsSimples.reduce((sum, mod) => sum + mod.prix, 0);
     prixBase += totalModsSimples;
     
-    // ✅ Construire le tva_breakdown
+    // 3. Construire le tva_breakdown
     let tva_breakdown = [];
-    
-    // 1. Prix de l'article de base (incluant les mods simples)
     if (prixBase > 0) {
-        tva_breakdown.push({
-            description: a.nom_article,
-            montant_ttc: prixBase,
-            taux: tauxArticleBase
-        });
+        tva_breakdown.push({ description: a.nom_article, montant_ttc: prixBase, taux: tauxArticleBase });
     }
-    
-    // 2. Chaque option à taux différent = une entrée séparée
     optionsTauxDifferents.forEach(opt => {
-        tva_breakdown.push({
-            description: opt.nom,
-            montant_ttc: opt.prix,
-            taux: opt.taux
-        });
+        tva_breakdown.push({ description: opt.nom, montant_ttc: opt.prix, taux: opt.taux });
     });
     
     const modificateursStr = modsAffichage.join(', ');
-    const key = a.id + '_' + (varianteId||0) + '_' + modificateursStr;
-    const existing = ticket.lines.find(l => l.key === key);
+    const modificateursData = {
+        varianteId: varianteId,
+        modsSimples: modsSimples,
+        optionsTauxDifferents: optionsTauxDifferents
+    };
     
-    if (existing) {
-        existing.qty += qty;
-        if (commentaire) existing.commentaire = commentaire;
-    } else {
-        ticket.lines.push({ 
+    const key = a.id + '_' + (varianteId||0) + '_' + modificateursStr;
+    
+    // 4. ✅ LOGIQUE D'ÉDITION vs AJOUT
+    if (isEditing) {
+        // Mode édition : on remplace la ligne à l'index donné
+        const idx = parseInt(editIndex);
+        ticket.lines[idx] = { 
             key, 
             article_id: a.id, 
             variante_id: varianteId, 
             nom: a.nom_article,
             modificateurs: modificateursStr,
-            prix: prixBase, // Prix total TTC pour l'affichage
-            qty, 
+            modificateursData: modificateursData,
+            prix: prixBase,
+            qty: qty, 
             taux: tauxArticleBase, 
-            commentaire,
-            tva_breakdown: tva_breakdown // ✅ NOUVEAU : détail du calcul TVA
-        });
+            commentaire: commentaire,
+            tva_breakdown: tva_breakdown
+        };
+        // Nettoyer l'attribut pour que le prochain clic sur "Ajouter" ne soit pas en mode édition
+        delete $('modalArticle').dataset.editIndex;
+    } else {
+        // Mode ajout normal
+        const existing = ticket.lines.find(l => l.key === key);
+        if (existing) {
+            existing.qty += qty;
+            if (commentaire) existing.commentaire = commentaire;
+        } else {
+            ticket.lines.push({ 
+                key, 
+                article_id: a.id, 
+                variante_id: varianteId, 
+                nom: a.nom_article,
+                modificateurs: modificateursStr,
+                modificateursData: modificateursData,
+                prix: prixBase,
+                qty: qty, 
+                taux: tauxArticleBase, 
+                commentaire: commentaire,
+                tva_breakdown: tva_breakdown
+            });
+        }
     }
     
     save(); 
     renderTicket(); 
     closeModal('modalArticle');
 }
-  
+
+
 function toggleMobileMenu() {
   const menu = document.getElementById('mobileMenu');
   menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
@@ -810,33 +827,31 @@ function scrollToTicket() {
   }
 }
 
-  function renderTicket(){
-    // 1. Affichage des lignes du ticket
+function renderTicket(){
     $('ticketLines').innerHTML = ticket.lines.map((l,i) => `
-      <div class="line">
-        <div class="l1">
-          <span class="lname">${l.nom}</span>
-          <span class="lprice">${fmt(l.prix*l.qty)}</span>
+        <div class="line">
+            <div class="l1">
+                <span class="lname">${l.nom}</span>
+                <span class="lprice">${fmt(l.prix*l.qty)}</span>
+            </div>
+            ${l.modificateurs ? `<div style="margin:4px 0; color:#43A047; font-size:12px; font-style:italic; word-wrap: break-word; white-space: normal;">📝 ${l.modificateurs}</div>` : ''}
+            ${l.commentaire ? `<div class="meta" style="margin:2px 0">💬 ${l.commentaire}</div>` : ''}
+            <div class="l2">
+                <button class="qtybtn" onclick="chgQty(${i},-1)">−</button>
+                <span>${l.qty}</span>
+                <button class="qtybtn" onclick="chgQty(${i},1)">+</button>
+                <span class="meta">${fmt(l.prix)} / unité (TTC)</span>
+                <button class="qtybtn" onclick="editLine(${i})" title="Modifier les modificateurs" style="margin-left:auto">✏️</button>
+                <button class="del" onclick="delLine(${i})">✕</button>
+            </div>
         </div>
-        ${l.modificateurs ? `<div style="margin:4px 0; color:#43A047; font-size:12px; font-style:italic; word-wrap: break-word; white-space: normal;">📝 ${l.modificateurs}</div>` : ''}
-        ${l.commentaire ? `<div class="meta" style="margin:2px 0">💬 ${l.commentaire}</div>` : ''}
-        <div class="l2">
-          <button class="qtybtn" onclick="chgQty(${i},-1)">−</button>
-          <span>${l.qty}</span>
-          <button class="qtybtn" onclick="chgQty(${i},1)">+</button>
-          <span class="meta">${fmt(l.prix)} / unité (TTC)</span>
-          <button class="del" onclick="delLine(${i})">✕</button>
-        </div>
-      </div>
     `).join('') || '<p style="padding:20px;color:#888;text-align:center">Ticket vide</p>';
     
-    // 2. Calculs des totaux
     const { totalTTC, tvaParTaux } = calculTVA();
     const reduction = calcReduction();
     const tips = parseFloat($('tips').value) || 0;
     const total = Math.max(0, totalTTC - reduction) + tips;
     
-    // 3. Mise à jour de l'affichage des totaux et du header
     $('ticketNomDisplay').textContent = ticket.nom || 'Ticket';
     $('tSousTotal').textContent = fmt(totalTTC);
     $('tTaxesDetail').innerHTML = tvaHTMLDetail(tvaParTaux);
@@ -846,24 +861,87 @@ function scrollToTicket() {
     $('payTotal').textContent = fmt(total);
     $('ticketCount').textContent = ticket.lines.reduce((s,l)=>s+l.qty,0);
     
-    // 4. Restaurer l'option de restauration dans le select
     if (ticket.restaurant_option_id) {
-      $('restoOption').value = ticket.restaurant_option_id;
+        $('restoOption').value = ticket.restaurant_option_id;
     }
     
-    // 5. Gestion de l'affichage du client
     const chip = $('clientChip');
     if (ticket.client){ 
-      chip.style.display = 'inline-flex'; 
-      chip.innerHTML = `👤 ${ticket.client.nom_client} ✕`; 
-      chip.onclick = removeClient; 
+        chip.style.display = 'inline-flex'; 
+        chip.innerHTML = `👤 ${ticket.client.nom_client} ✕`; 
+        chip.onclick = removeClient; 
     } else {
-      chip.style.display = 'none';
+        chip.style.display = 'none';
     }
 
-    // 6. Mise à jour du total pour la barre d'actions mobile
     updateMobileTotal();
-  }
+}
+
+function editLine(index){
+    const line = ticket.lines[index];
+    if (!line) return;
+    
+    const a = ARTICLES.find(x => x.id === line.article_id);
+    if (!a) return;
+    
+    pendingArticle = a;
+    $('maNom').textContent = a.nom_article;
+    
+    // Restaurer la variante
+    if (line.variante_id && a.variantes) {
+        $('maVariantes').innerHTML = '<label style="font-size:13px;color:#888">Variante</label><select id="maVar">' +
+            a.variantes.map(v => `<option value="${v.id}" data-prix="${v.prix}" ${v.id === line.variante_id ? 'selected' : ''}>${v.option_name||''} ${v.nom} (${fmt(v.prix)})</option>`).join('') + '</select>';
+    } else {
+        $('maVariantes').innerHTML = '';
+    }
+    
+    // Restaurer les modificateurs cochés
+    $('maMods').innerHTML = (a.modificateurs||[]).length
+        ? '<label style="font-size:13px;color:#888">Modificateurs</label>' +
+            a.modificateurs.map(m => {
+                if ((m.options||[]).length) {
+                    return `<div style="margin:6px 0;border:1px solid #eee;border-radius:8px;padding:10px">
+                        <div style="font-weight:600;font-size:14px;margin-bottom:4px">${m.nom_modificateur}</div>
+                        ${m.options.map(o => {
+                            let isChecked = false;
+                            if (line.modificateursData) {
+                                isChecked = line.modificateursData.optionsTauxDifferents.some(opt => opt.nom === o.nom_option) ||
+                                           line.modificateursData.modsSimples.some(mod => mod.nom === o.nom_option);
+                            }
+                            return `<label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;padding:8px 10px;border:1px solid #e8e8e8;border-radius:6px;cursor:pointer">
+                                <span>
+                                    <input type="checkbox" class="maModOpt" 
+                                           data-prix="${o.prix_supplement}" 
+                                           data-taux-tva="${o.taux_tva || ''}" 
+                                           data-taux-parent="${m.taux_tva || 0}"
+                                           value="${o.nom_option}" ${isChecked ? 'checked' : ''}> ${o.nom_option}
+                                </span>
+                                <span style="color:#888;font-size:13px">${o.prix_supplement > 0 ? '+' + fmt(o.prix_supplement) : ''}</span>
+                            </label>`;
+                        }).join('')}
+                    </div>`;
+                }
+                let isChecked = false;
+                if (line.modificateursData) {
+                    isChecked = line.modificateursData.modsSimples.some(mod => mod.nom === m.nom_modificateur);
+                }
+                return `<label style="display:block;margin:4px 0">
+                    <input type="checkbox" class="maMod" data-prix="${m.prix_modificateur}" data-taux-tva="${m.taux_tva || 0}" value="${m.nom_modificateur}" ${isChecked ? 'checked' : ''}> 
+                    ${m.nom_modificateur} (+${fmt(m.prix_modificateur)})
+                </label>`;
+            }).join('')
+        : '';
+    
+    $('maPrixWrap').style.display = a.is_variable_price ? 'block' : 'none';
+    $('maPrix').value = line.prix;
+    $('maQty').value = line.qty;
+    $('maCommentaire').value = line.commentaire || '';
+    
+    // Stocker l'index pour la mise à jour
+    $('modalArticle').dataset.editIndex = index;
+    
+    $('modalArticle').classList.add('show');
+}
 
 function chgQty(i,d){ 
     ticket.lines[i].qty += d; 
