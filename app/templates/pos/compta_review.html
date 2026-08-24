@@ -44,13 +44,11 @@
                                 {% if frais > 0 %}CHF {{ "%.2f"|format(frais) }}{% else %}-{% endif %}
                             </td>
                             <td>
-                                {# Logique d'affichage du compte de destination utilisant cat_dict #}
-                                {% set mp = modes_paiement | selectattr("id", "equalto", item.mode_paiement_id) | first %}
-                                {% if mp and mp.compte_tresorerie_id and mp.compte_tresorerie_id in cat_dict %}
-                                    <span class="badge bg-info text-dark">{{ cat_dict[mp.compte_tresorerie_id].numero }}</span> 
-                                    {{ cat_dict[mp.compte_tresorerie_id].nom }}
+                                {% if mp.compte_tresorerie_numero %}
+                                    <span class="badge bg-info text-dark">{{ mp.compte_tresorerie_numero }}</span> 
+                                    {{ mp.compte_tresorerie_nom }}
                                 {% else %}
-                                    <span class="text-danger fw-bold">⚠️ Non configuré</span>
+                                    <span class="text-danger fw-bold">️ Non configuré</span>
                                 {% endif %}
                             </td>
                         </tr>

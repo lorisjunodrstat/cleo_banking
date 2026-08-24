@@ -16581,7 +16581,46 @@ class ModePaiementPOS:
         except Exception as e:
             logger.error(f"Erreur récupération modes paiement: {e}")
             return []
-
+    def get_all_with_comptes(self, user_id: int, actif_only: bool = True) -> List[Dict]:
+        """
+        Récupère tous les modes de paiement avec les noms des comptes comptables affiliés.
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                query = """
+                SELECT 
+                    m.id,
+                    m.nom,
+                    m.description,
+                    m.icone,
+                    m.couleur,
+                    m.est_actif,
+                    m.frais_pourcentage,
+                    m.frais_fixe,
+                    m.compte_tresorerie_id,
+                    m.compte_frais_service_id,
+                    ct.numero AS compte_tresorerie_numero,
+                    ct.nom AS compte_tresorerie_nom,
+                    cf.numero AS compte_frais_numero,
+                    cf.nom AS compte_frais_nom
+                FROM pos_modes_paiement m
+                LEFT JOIN categories_comptables ct ON m.compte_tresorerie_id = ct.id
+                LEFT JOIN categories_comptables cf ON m.compte_frais_service_id = cf.id
+                WHERE m.utilisateur_id = %s
+                """
+                params = [user_id]
+                
+                if actif_only:
+                    query += " AND m.est_actif = TRUE"
+                
+                query += " ORDER BY m.nom"
+                
+                cursor.execute(query, params)
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération modes paiement avec comptes: {e}")
+            return []
+            
     def update(self, mode_id: int, user_id: int, data: Dict) -> bool:
         """Met à jour un mode de paiement"""
         try:
