@@ -11005,7 +11005,7 @@ def pos_modifiers_list():
 def pos_create_modifier():
     # Récupérer les taux de TVA du système
 
-    taux_disponibles =  g.models.taux_tva_model.get_all(current_user.id, actif_only=True)
+    taux_disponibles =  g.models.taxe_pos_model.get_all(current_user.id, actif_only=True)
     
     if request.method == 'POST':
         g.models.modificateur_pos_model.create(current_user.id, {
@@ -11030,7 +11030,7 @@ def pos_edit_modifier(mod_id):
         return redirect(url_for('banking.pos_modifiers_list'))
 
     # ✅ Récupérer les taux de TVA du système
-    taux_disponibles =  g.models.taux_tva_model.get_all(current_user.id, actif_only=True)
+    taux_disponibles =  g.models.taxe_pos_model.get_all(current_user.id, actif_only=True)
 
     if request.method == 'POST':
         g.models.modificateur_pos_model.update(mod_id, current_user.id, {
@@ -11066,7 +11066,7 @@ def pos_modifier_detail(mod_id):
         return redirect(url_for('banking.pos_modifiers_list'))
 
     # ✅ Récupérer les taux de TVA du système
-    taux_disponibles =  g.models.taux_tva_model.get_all(current_user.id, actif_only=True)
+    taux_disponibles =  g.models.taxe_pos_model.get_all(current_user.id, actif_only=True)
 
     if request.method == 'POST':
         action = request.form.get('action')
@@ -11149,7 +11149,7 @@ def pos_edit_modifier_option(opt_id):
 
     # ✅ Récupérer les taux de TVA du système
 
-    taux_disponibles =  g.models.taux_tva_model.get_all(current_user.id, actif_only=True)
+    taux_disponibles =  g.models.taxe_pos_model.get_all(current_user.id, actif_only=True)
 
     if request.method == 'POST':
         # ✅ Gestion de la TVA : vide = hérite du parent, sinon valeur spécifique
