@@ -5,7 +5,20 @@ from flask_login import login_required, current_user
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timedelta, date, time
 from calendar import monthrange
-from app.models import DatabaseManager, Banque, ComptePrincipal, SousCompte, TransactionFinanciere, StatistiquesBancaires, PlanComptable, EcritureComptable, HeureTravail, Salaire, SyntheseHebdomadaire, SyntheseMensuelle, Contrat, Contacts, ContactCompte, ComptePrincipalRapport, CategorieComptable, Employe, Equipe, Planning, Competence, PlanningRegles, RegleEcriture, TauxTva, FormulaireTVA
+from app.models import (
+    DatabaseManager, Banque, ComptePrincipal, SousCompte, TransactionFinanciere, 
+    StatistiquesBancaires, PlanComptable, EcritureComptable, HeureTravail, Salaire, 
+    SyntheseHebdomadaire, SyntheseMensuelle, Contrat, Contacts, ContactCompte, 
+    ComptePrincipalRapport, CategorieComptable, Employe, Equipe, Planning, 
+    Competence, PlanningRegles, RegleEcriture, TauxTva, FormulaireTVA, TaxePOS,
+    Utilisateur, PeriodeFavorite, CategorieTransaction, ContactPlan, Rapport,
+    Entreprise, ParametreUtilisateur, BaremeIndemnite, BaremeCotisation,
+    TypeCotisation, TypeIndemnite, CotisationContrat, IndemniteContrat,
+    MagasinPOS, PointDeVentePOS, CategoriePOS, SousCategoriePOS, ModePaiementPOS,
+    RestaurantOptionPOS, DiscountPOS, ArticlePOS, VariantePOS, ModificateurPOS,
+    OptionModificateurPOS, ClientPOS, ReceiptPOS, POSComptabilisation,
+    PeriodeTravailPOS, MouvementCaissePOS
+)
 from io import StringIO
 import json as _json
 import os
@@ -11135,8 +11148,8 @@ def pos_edit_modifier_option(opt_id):
         parent_modifier = g.models.modificateur_pos_model.get_by_id(option['id_modificateur'], current_user.id)
 
     # ✅ Récupérer les taux de TVA du système
-    taxe_model = TaxePOS(db)
-    taux_disponibles = taxe_model.get_all(current_user.id, actif_only=True)
+
+    taux_disponibles =  g.models.taux_tva_model.get_all(current_user.id, actif_only=True)
 
     if request.method == 'POST':
         # ✅ Gestion de la TVA : vide = hérite du parent, sinon valeur spécifique
