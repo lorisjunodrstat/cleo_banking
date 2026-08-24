@@ -630,7 +630,7 @@ function calculTVA() {
   }
 
   /* ---------- Ajout au ticket ---------- */
-  function clickArticle(id){
+function clickArticle(id){
     const a = ARTICLES.find(x => x.id === id); 
     pendingArticle = a;
     $('maNom').textContent = a.nom_article;
@@ -639,35 +639,46 @@ function calculTVA() {
         a.variantes.map(v => `<option value="${v.id}" data-prix="${v.prix}">${v.option_name||''} ${v.nom} (${fmt(v.prix)})</option>`).join('') + '</select>'
       : '';
     
-    // ✅ MODIFICATEURS AVEC OPTIONS (style Loyverse)
+    // MODIFICATEURS AVEC OPTIONS - Affichage des taux TVA
     $('maMods').innerHTML = (a.modificateurs||[]).length
       ? '<label style="font-size:13px;color:#888">Modificateurs</label>' +
         a.modificateurs.map(m => {
+          const tauxParent = m.taux_tva || 0;
+          
           if ((m.options||[]).length) {
+            // Modificateur avec options : cases à cocher avec affichage TVA
             return `<div style="margin:6px 0;border:1px solid #eee;border-radius:8px;padding:10px">
-              <div style="font-weight:600;font-size:14px;margin-bottom:4px">${m.nom_modificateur}</div>
+              <div style="font-weight:600;font-size:14px;margin-bottom:4px">
+                ${m.nom_modificateur} 
+                <span style="font-weight:400;font-size:12px;color:#666">(TVA parent: ${tauxParent}%)</span>
+              </div>
               ${m.options.map(o => {
-                // Si null/undefined, on met '' pour indiquer "hérite du parent"
-                const tauxTva = (o.taux_tva !== null && o.taux_tva !== undefined) ? o.taux_tva : '';
-                const tauxParent = (m.taux_tva !== null && m.taux_tva !== undefined) ? m.taux_tva : 0;
-                return `<label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;padding:8px 10px;border:1px solid #e8e8e8;border-radius:6px;cursor:pointer">
+                const tauxOption = o.taux_tva || 0;
+                const tauxFinal = (tauxOption > 0) ? tauxOption : tauxParent;
+                const differentTVA = tauxOption > 0 && tauxOption !== tauxParent;
+                
+                return `<label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;padding:8px 10px;border:1px solid #e8e8e8;border-radius:6px;cursor:pointer;background:${differentTVA ? '#fff3cd' : '#fff'}">
                   <span>
                     <input type="checkbox" class="maModOpt" 
                            data-prix="${o.prix_supplement}" 
-                           data-taux-tva="${tauxTva}" 
+                           data-taux-tva="${tauxOption || ''}" 
                            data-taux-parent="${tauxParent}"
                            value="${o.nom_option}"> ${o.nom_option}
                   </span>
-                  <span style="color:#888;font-size:13px">${o.prix_supplement > 0 ? '+' + fmt(o.prix_supplement) : ''}</span>
+                  <span style="font-size:12px;color:${differentTVA ? '#e53935' : '#888'}">
+                    ${differentTVA ? '⚠️ ' : ''}TVA: ${tauxFinal}%${differentTVA ? ' (différent)' : ''}
+                    ${o.prix_supplement > 0 ? ' | +' + fmt(o.prix_supplement) : ''}
+                  </span>
                 </label>`;
               }).join('')}
             </div>`;
           }
+          
           // Modificateur simple sans options
-          const tauxMod = (m.taux_tva !== null && m.taux_tva !== undefined) ? m.taux_tva : '';
-          return `<label style="display:block;margin:4px 0">
-            <input type="checkbox" class="maMod" data-prix="${m.prix_modificateur}" data-taux-tva="${tauxMod}" value="${m.nom_modificateur}"> 
-            ${m.nom_modificateur} (+${fmt(m.prix_modificateur)})
+          return `<label style="display:block;margin:4px 0;padding:8px;border:1px solid #e8e8e8;border-radius:6px">
+            <input type="checkbox" class="maMod" data-prix="${m.prix_modificateur}" data-taux-tva="${m.taux_tva || 0}" value="${m.nom_modificateur}"> 
+            ${m.nom_modificateur} 
+            <span style="font-size:12px;color:#888">(+${fmt(m.prix_modificateur)} | TVA: ${m.taux_tva || 0}%)</span>
           </label>`;
         }).join('')
       : '';
@@ -677,7 +688,7 @@ function calculTVA() {
     $('maQty').value = 1;
     $('maCommentaire').value = '';
     $('modalArticle').classList.add('show');
-  }
+}
 
 function confirmAddArticle(){
     const a = pendingArticle; 
