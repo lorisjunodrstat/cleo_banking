@@ -17773,23 +17773,23 @@ class ReceiptPOS:
                             reduction_ht = reduction_ttc / (Decimal('1') + taux_moyen/Decimal('100'))
                         else:
                             reduction_ht = reduction_ttc
-                cursor.execute("""
-                    INSERT INTO pos_receipts 
-                    (utilisateur_id, date, recu_numero, nom_ticket, description, receipt_type,
-                    ventes_brutes, reduction, ventes_nettes, taxes, total_collecte,
-                    restaurant_option_id, pdv, magasin, nom_du_caissier,
-                    nom_du_client, id_client, discount_id, discount_amount, status)
-                    VALUES (%s, NOW(), %s, %s, %s, 'Vente', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Ouvert')
-                """, (
-                    user_id, recu_numero,
-                    data.get('nom_ticket', ''), data.get('commentaire', ''),
-                    float(ventes_brutes_ht), float(reduction_ht), 
-                    float(ventes_brutes_ht - reduction_ht), float(total_taxes), 
-                    float(total_collecte - float(reduction_ttc)),
-                    data.get('restaurant_option_id'), data.get('pdv'), data.get('magasin'),
-                    data.get('nom_du_caissier'), data.get('nom_du_client'), data.get('id_client'),
-                    data.get('discount_id'), float(reduction_ttc)
-                ))
+                            cursor.execute("""
+                                INSERT INTO pos_receipts 
+                                (utilisateur_id, date, recu_numero, nom_ticket, description, receipt_type,
+                                ventes_brutes, reduction, ventes_nettes, taxes, total_collecte,
+                                restaurant_option_id, pdv, magasin, nom_du_caissier,
+                                nom_du_client, id_client, discount_id, discount_amount, status)
+                                VALUES (%s, NOW(), %s, %s, %s, 'Vente', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Ouvert')
+                                """, (
+                        user_id, recu_numero,
+                        data.get('nom_ticket', ''), data.get('commentaire', ''),
+                        float(ventes_brutes_ht), float(reduction_ht), 
+                        float(ventes_brutes_ht - reduction_ht), float(total_taxes), 
+                        float(total_collecte - reduction_ttc),  # <--- CORRECTION ICI
+                        data.get('restaurant_option_id'), data.get('pdv'), data.get('magasin'),
+                        data.get('nom_du_caissier'), data.get('nom_du_client'), data.get('id_client'),
+                        data.get('discount_id'), float(reduction_ttc)
+                    ))
                 receipt_id = cursor.lastrowid
                 
                 for item in items_data:
