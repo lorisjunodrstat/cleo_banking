@@ -694,23 +694,22 @@ function confirmAddArticle(){
     const a = pendingArticle; 
     if(!a) return;
     
-    // 1. Vérifier si on est en mode édition
     const editIndex = $('modalArticle').dataset.editIndex;
     const isEditing = editIndex !== undefined && editIndex !== '';
     
-    let prixBase = a.is_variable_price ? parseFloat($('maPrix').value||0) : parseFloat(a.prix_unitaire||0);
+    // 1. Prix total de la ligne (ce que le client paie réellement, ex: 22 CHF)
+    let totalLinePrice = a.is_variable_price ? parseFloat($('maPrix').value||0) : parseFloat(a.prix_unitaire||0);
     let varianteId = null;
     const sel = $('maVar');
     if (sel){ 
         varianteId = parseInt(sel.value); 
-        prixBase = parseFloat(sel.selectedOptions[0].dataset.prix||prixBase); 
+        totalLinePrice = parseFloat(sel.selectedOptions[0].dataset.prix||totalLinePrice); 
     }
     
     const qty = parseInt($('maQty').value||1);
     const commentaire = $('maCommentaire').value.trim();
     const tauxArticleBase = parseFloat(a.taux_taxe || 0);
     
-    // 2. Collecter les modificateurs
     let modsSimples = [];
     let optionsTauxDifferents = [];
     let modsAffichage = [];
@@ -719,87 +718,80 @@ function confirmAddArticle(){
         modsAffichage.push(sel.selectedOptions[0].textContent.trim());
     }
     
+    // Modificateurs simples (suppléments réels qui augmentent le prix total)
     document.querySelectorAll('.maMod:checked').forEach(m => {
         let prixMod = parseFloat(m.dataset.prix || 0);
-        let tauxMod = parseFloat(m.dataset.tauxTva || tauxArticleBase);
+        let tauxMod = parseFloat(m.dataset.tauxTva) || tauxArticleBase;
         modsSimples.push({ nom: m.value, prix: prixMod, taux: tauxMod });
         modsAffichage.push(m.value);
     });
     
+    // Options de modificateurs (valeurs théoriques pour ventiler la TVA)
     document.querySelectorAll('.maModOpt:checked').forEach(o => {
         let prixOption = parseFloat(o.dataset.prix || 0);
-        let tauxOption = parseFloat(o.dataset.tauxTva) || 0;
+        let tauxOptionStr = o.dataset.tauxTva;
+        let tauxOption = (tauxOptionStr !== '' && tauxOptionStr !== undefined) ? parseFloat(tauxOptionStr) : 0;
         let tauxParent = parseFloat(o.dataset.tauxParent) || 0;
-        let tauxFinal = (tauxOption > 0) ? tauxOption : tauxParent;
         
+        let tauxFinal = (tauxOption > 0) ? tauxOption : tauxParent;
         modsAffichage.push(o.value);
         
         if (tauxFinal !== tauxArticleBase) {
+            // ✅ LOGIQUE CLÉ : On SOUSTRAIT le prix de l'option du prix du menu
+            // car cette option est déjà incluse dans le forfait de 22 CHF.
+            totalLinePrice -= prixOption; 
             optionsTauxDifferents.push({ nom: o.value, prix: prixOption, taux: tauxFinal });
-        } else {
-            prixBase += prixOption;
         }
     });
     
+    // Les modificateurs simples (ex: supplément fromage) augmentent le prix total
     let totalModsSimples = modsSimples.reduce((sum, mod) => sum + mod.prix, 0);
-    prixBase += totalModsSimples;
+    totalLinePrice += totalModsSimples;
     
-    // 3. Construire le tva_breakdown
+    // 2. Construction du breakdown TVA
     let tva_breakdown = [];
-    if (prixBase > 0) {
-        tva_breakdown.push({ description: a.nom_article, montant_ttc: prixBase, taux: tauxArticleBase });
+    
+    // La part "Nourriture" (Menu - Options à taux différent + Mods simples)
+    if (totalLinePrice > 0) {
+        tva_breakdown.push({ description: a.nom_article, montant_ttc: totalLinePrice, taux: tauxArticleBase });
     }
+    
+    // Les parts "Boissons/Options" à taux différent
     optionsTauxDifferents.forEach(opt => {
         tva_breakdown.push({ description: opt.nom, montant_ttc: opt.prix, taux: opt.taux });
     });
     
-    const modificateursStr = modsAffichage.join(', ');
-    const modificateursData = {
-        varianteId: varianteId,
-        modsSimples: modsSimples,
-        optionsTauxDifferents: optionsTauxDifferents
-    };
+    // 3. Prix final pour l'affichage sur le ticket
+    // On remet les options à taux différent pour que le total affiché soit bien 22 CHF (et non 17 CHF)
+    let finalDisplayPrice = totalLinePrice + optionsTauxDifferents.reduce((sum, opt) => sum + opt.prix, 0);
     
+    const modificateursStr = modsAffichage.join(', ');
+    const modificateursData = { varianteId, modsSimples, optionsTauxDifferents };
     const key = a.id + '_' + (varianteId||0) + '_' + modificateursStr;
     
-    // 4. ✅ LOGIQUE D'ÉDITION vs AJOUT
+    // 4. Mise à jour ou ajout dans le ticket
     if (isEditing) {
-        // Mode édition : on remplace la ligne à l'index donné
         const idx = parseInt(editIndex);
         ticket.lines[idx] = { 
-            key, 
-            article_id: a.id, 
-            variante_id: varianteId, 
-            nom: a.nom_article,
-            modificateurs: modificateursStr,
-            modificateursData: modificateursData,
-            prix: prixBase,
-            qty: qty, 
-            taux: tauxArticleBase, 
-            commentaire: commentaire,
-            tva_breakdown: tva_breakdown
+            key, article_id: a.id, variante_id: varianteId, nom: a.nom_article, 
+            modificateurs: modificateursStr, modificateursData, 
+            prix: finalDisplayPrice, // ✅ Affiche 22.00 CHF
+            qty, taux: tauxArticleBase, commentaire, 
+            tva_breakdown: tva_breakdown // ✅ Calcule 17 à 2.5% et 5 à 7.7%
         };
-        // Nettoyer l'attribut pour que le prochain clic sur "Ajouter" ne soit pas en mode édition
         delete $('modalArticle').dataset.editIndex;
     } else {
-        // Mode ajout normal
         const existing = ticket.lines.find(l => l.key === key);
         if (existing) {
             existing.qty += qty;
             if (commentaire) existing.commentaire = commentaire;
         } else {
             ticket.lines.push({ 
-                key, 
-                article_id: a.id, 
-                variante_id: varianteId, 
-                nom: a.nom_article,
-                modificateurs: modificateursStr,
-                modificateursData: modificateursData,
-                prix: prixBase,
-                qty: qty, 
-                taux: tauxArticleBase, 
-                commentaire: commentaire,
-                tva_breakdown: tva_breakdown
+                key, article_id: a.id, variante_id: varianteId, nom: a.nom_article, 
+                modificateurs: modificateursStr, modificateursData, 
+                prix: finalDisplayPrice, // ✅ Affiche 22.00 CHF
+                qty, taux: tauxArticleBase, commentaire, 
+                tva_breakdown: tva_breakdown // ✅ Calcule 17 à 2.5% et 5 à 7.7%
             });
         }
     }
@@ -808,8 +800,6 @@ function confirmAddArticle(){
     renderTicket(); 
     closeModal('modalArticle');
 }
-
-
 function toggleMobileMenu() {
   const menu = document.getElementById('mobileMenu');
   menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
