@@ -13203,10 +13203,8 @@ def pos_compta_journal():
             flash('❌ Date requise', 'error')
             return redirect(url_for('banking.pos_compta_journal'))
         
-        from app.models import POSComptabilisation
-        compta_engine = POSComptabilisation(db)
         
-        succes, message = compta_engine.comptabiliser_journal_journee(pdv_id, user_id, date_jour)
+        succes, message = g.models.pos_comptabilisation_model.comptabiliser_journal_journee(pdv_id, user_id, date_jour)
         
         if succes:
             flash(f'✅ {message}', 'success')
