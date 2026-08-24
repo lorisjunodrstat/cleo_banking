@@ -645,70 +645,75 @@ button{cursor:pointer; border:none; background:none}
     $('modalArticle').classList.add('show');
   }
 
-  function confirmAddArticle() {
-    const a = pendingArticle;
-    if (!a) return;
+  function confirmAddArticle(){
+    const a = pendingArticle; 
+    if(!a) return;
     
-    let prixBase = a.is_variable_price ? parseFloat($('maPrix').value || 0) : parseFloat(a.prix_unitaire || 0);
+    let prixBase = a.is_variable_price ? parseFloat($('maPrix').value||0) : parseFloat(a.prix_unitaire||0);
     let varianteId = null;
     const sel = $('maVar');
-    if (sel) {
-        varianteId = parseInt(sel.value);
-        prixBase = parseFloat(sel.selectedOptions[0].dataset.prix || prixBase);
+    if (sel){ 
+        varianteId = parseInt(sel.value); 
+        prixBase = parseFloat(sel.selectedOptions[0].dataset.prix||prixBase); 
     }
     
-    const qty = parseInt($('maQty').value || 1);
+    const qty = parseInt($('maQty').value||1);
     const commentaire = $('maCommentaire').value.trim();
-    let tauxArticleBase = parseFloat(a.taux_taxe || 0);
+    const tauxArticleBase = parseFloat(a.taux_taxe || 0);
     
-    // Collecter les modificateurs et options
-    let modsSimples = []; // Même taux que l'article
-    let optionsTauxDifferents = []; // Taux différent de l'article
+    // ✅ Collecter les modificateurs et options
+    let modsSimples = [];         // Même taux que l'article
+    let optionsTauxDifferents = []; // Taux différent → ligne séparée
+    let modsAffichage = [];       // Pour l'affichage
     
-    // Modificateurs simples
+    if (varianteId && sel) {
+        modsAffichage.push(sel.selectedOptions[0].textContent.trim());
+    }
+    
+    // 1. Modificateurs simples (cases à cocher simples)
     document.querySelectorAll('.maMod:checked').forEach(m => {
+        let prixMod = parseFloat(m.dataset.prix || 0);
         let tauxMod = parseFloat(m.dataset.tauxTva || tauxArticleBase);
-        modsSimples.push({
-            nom: m.value,
-            prix: parseFloat(m.dataset.prix || 0),
-            taux: tauxMod
-        });
+        modsSimples.push({ nom: m.value, prix: prixMod, taux: tauxMod });
+        modsAffichage.push(m.value);
     });
     
-    // Options de modificateurs
+    // 2. Options de modificateurs (cases à cocher avec options)
     document.querySelectorAll('.maModOpt:checked').forEach(o => {
-        let tauxOption = parseFloat(o.dataset.tauxTva);
-        let tauxParent = parseFloat(o.dataset.tauxParent);
+        let prixOption = parseFloat(o.dataset.prix || 0);
+        let tauxOption = parseFloat(o.dataset.tauxTva) || 0;
+        let tauxParent = parseFloat(o.dataset.tauxParent) || 0;
+        
+        // Règle de priorité : Taux Option > Taux Parent
         let tauxFinal = (tauxOption > 0) ? tauxOption : tauxParent;
         
+        modsAffichage.push(o.value);
+        
         if (tauxFinal !== tauxArticleBase) {
-            // Taux DIFFÉRENT : on le sépare
+            // ✅ Taux DIFFÉRENT : on le sépare dans le breakdown
             optionsTauxDifferents.push({
                 nom: o.value,
-                prix: parseFloat(o.dataset.prix || 0),
+                prix: prixOption,
                 taux: tauxFinal
             });
         } else {
             // Même taux : on l'ajoute au prix de base
-            prixBase += parseFloat(o.dataset.prix || 0);
+            prixBase += prixOption;
         }
     });
     
-    // Construire le tva_breakdown
+    // ✅ Ajouter les modificateurs simples au prix de base
+    let totalModsSimples = modsSimples.reduce((sum, mod) => sum + mod.prix, 0);
+    prixBase += totalModsSimples;
+    
+    // ✅ Construire le tva_breakdown
     let tva_breakdown = [];
     
-    // 1. Prix de l'article de base (réduit des options à taux différent)
-    let totalOptionsTauxDifferents = optionsTauxDifferents.reduce((sum, opt) => sum + opt.prix, 0);
-    let prixArticleBase = prixBase - totalOptionsTauxDifferents;
-    
-    // Ajouter les modificateurs simples au prix de base
-    let totalModsSimples = modsSimples.reduce((sum, mod) => sum + mod.prix, 0);
-    prixArticleBase += totalModsSimples;
-    
-    if (prixArticleBase > 0) {
+    // 1. Prix de l'article de base (incluant les mods simples)
+    if (prixBase > 0) {
         tva_breakdown.push({
             description: a.nom_article,
-            montant_ttc: prixArticleBase,
+            montant_ttc: prixBase,
             taux: tauxArticleBase
         });
     }
@@ -722,42 +727,34 @@ button{cursor:pointer; border:none; background:none}
         });
     });
     
-    // Construire l'affichage des modificateurs
-    let modsAffichage = [];
-    if (varianteId && sel) {
-        modsAffichage.push(sel.selectedOptions[0].textContent);
-    }
-    modsSimples.forEach(m => modsAffichage.push(m.nom));
-    optionsTauxDifferents.forEach(o => modsAffichage.push(o.nom));
-    let modificateursStr = modsAffichage.join(', ');
-    
-    const key = a.id + '_' + (varianteId || 0) + '_' + modificateursStr;
+    const modificateursStr = modsAffichage.join(', ');
+    const key = a.id + '_' + (varianteId||0) + '_' + modificateursStr;
     const existing = ticket.lines.find(l => l.key === key);
     
     if (existing) {
         existing.qty += qty;
         if (commentaire) existing.commentaire = commentaire;
     } else {
-        ticket.lines.push({
-            key,
-            article_id: a.id,
-            variante_id: varianteId,
+        ticket.lines.push({ 
+            key, 
+            article_id: a.id, 
+            variante_id: varianteId, 
             nom: a.nom_article,
             modificateurs: modificateursStr,
-            prix: prixBase + totalModsSimples, // Prix total pour l'affichage
-            qty,
-            taux: tauxArticleBase,
+            prix: prixBase, // Prix total TTC pour l'affichage
+            qty, 
+            taux: tauxArticleBase, 
             commentaire,
-            tva_breakdown: tva_breakdown // ✅ NOUVEAU : Détail du calcul TVA
+            tva_breakdown: tva_breakdown // ✅ NOUVEAU : détail du calcul TVA
         });
     }
     
-    save();
-    renderTicket();
+    save(); 
+    renderTicket(); 
     closeModal('modalArticle');
 }
   
-  function toggleMobileMenu() {
+function toggleMobileMenu() {
   const menu = document.getElementById('mobileMenu');
   menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
 }
@@ -892,47 +889,51 @@ function chgQty(i,d){
     if(!ticket.lines.length) return;
     
     if(!ticket.nom) {
-      const nom = prompt('Nom du ticket (ex: Table 5, Précommande…)');
-      if(!nom || !nom.trim()) return;
-      ticket.nom = nom.trim();
-      save();
-      renderTicket();
+        const nom = prompt('Nom du ticket (ex: Table 5, Précommande…)');
+        if(!nom || !nom.trim()) return;
+        ticket.nom = nom.trim();
+        save();
+        renderTicket();
     }
     
     const payload = {
-      items: ticket.lines.map(l => ({ 
-        article_id: l.article_id, 
-        variante_id: l.variante_id, 
-        quantite: l.qty, 
-        prix_unitaire: l.prix,
-        commentaire: l.commentaire || '',
-        modificateurs: l.modificateurs || '' // <-- AJOUT : on envoie la chaîne des modificateurs
-      })),
-      nom_ticket: ticket.nom,
-      commentaire: ticket.commentaire || '',
-      restaurant_option_id: parseInt($('restoOption').value) || null,
-      discount_id: parseInt($('discountSelect').value) || null,
-      id_client: ticket.client ? ticket.client.id : null,
-      nom_du_client: ticket.client ? ticket.client.nom_client : '',
+        items: ticket.lines.map(l => ({ 
+            article_id: l.article_id, 
+            variante_id: l.variante_id, 
+            quantite: l.qty, 
+            prix_unitaire: l.prix,
+            commentaire: l.commentaire || '',
+            modificateurs: l.modificateurs || '',
+            tva_breakdown: l.tva_breakdown || [] // ✅ NOUVEAU : sauvegarde du breakdown
+        })),
+        nom_ticket: ticket.nom,
+        commentaire: ticket.commentaire || '',
+        restaurant_option_id: parseInt($('restoOption').value) || null,
+        discount_id: parseInt($('discountSelect').value) || null,
+        id_client: ticket.client ? ticket.client.id : null,
+        nom_du_client: ticket.client ? ticket.client.nom_client : '',
     };
     
     try {
-      const r = await fetch(URL_SAVE_OPEN, { 
-        method:'POST', 
-        headers:{'Content-Type':'application/json'}, 
-        body:JSON.stringify(payload) 
-      });
-      const d = await r.json();
-      if (d.success){ 
-        newTicket(); 
-        alert('✅ Ticket enregistré : ' + ticket.nom); 
-      } else {
-        alert(d.message || 'Erreur.');
-      }
+        const r = await fetch(URL_SAVE_OPEN, { 
+            method:'POST', 
+            headers:{'Content-Type':'application/json'}, 
+            body:JSON.stringify(payload) 
+        });
+        const d = await r.json();
+        if (d.success){ 
+            newTicket(); 
+            alert('✅ Ticket enregistré : ' + ticket.nom); 
+        } else {
+            alert(d.message || 'Erreur.');
+        }
     } catch(e) {
-      alert('Erreur réseau: ' + e.message);
+        alert('Erreur réseau: ' + e.message);
     }
-  }
+}
+
+
+
 
   /* ---------- Tickets ouverts ---------- */
   function parkTicket(){
@@ -975,7 +976,7 @@ function chgQty(i,d){
     $('modalParked').classList.add('show');
   }
 
-  async function resumeDbTicket(id){
+async function resumeDbTicket(id){
     const r = await fetch(URL_OPEN_TICKETS);
     const list = await r.json();
     const t = list.find(x => x.id === id);
@@ -983,19 +984,21 @@ function chgQty(i,d){
     
     if(ticket.lines.length) parkTicket();
     
+    // ✅ Restaurer le ticket avec tva_breakdown
     ticket = { 
-      lines: t.lines, 
-      client: t.client, 
-      nom: t.nom, 
-      commentaire: t.commentaire,
-      restaurant_option_id: t.restaurant_option_id || null  // ✅ Restaurer l'option
+        lines: t.lines,  // Contient déjà tva_breakdown depuis le backend
+        client: t.client, 
+        nom: t.nom, 
+        commentaire: t.commentaire,
+        restaurant_option_id: t.restaurant_option_id || null
     };
     save(); 
-    renderTicket();  // ✅ renderTicket va restaurer l'option dans le select
+    renderTicket();
     closeModal('modalParked');
     
     await fetch(`/pos/vente/open-ticket/${id}/delete`, { method:'POST' });
-  }
+}
+
 
   async function deleteDbTicket(id){
     if(!confirm('Supprimer ce ticket enregistré ?')) return;
@@ -1114,11 +1117,11 @@ function chgQty(i,d){
 
   async function submitPay(){
     if(!ticket.nom) {
-      const nom = prompt('Nom du ticket (ex: Table 5, Commande Jean…)');
-      if(!nom || !nom.trim()) return;
-      ticket.nom = nom.trim();
-      save();
-      renderTicket();
+        const nom = prompt('Nom du ticket (ex: Table 5, Commande Jean…)');
+        if(!nom || !nom.trim()) return;
+        ticket.nom = nom.trim();
+        save();
+        renderTicket();
     }
     
     const due = totalDue();
@@ -1130,42 +1133,44 @@ function chgQty(i,d){
     if (paid + 0.001 < due) { alert('Montant payé insuffisant.'); return; }
     
     const payload = {
-      items: ticket.lines.map(l => ({ 
-        article_id: l.article_id, 
-        variante_id: l.variante_id, 
-        quantite: l.qty, 
-        prix_unitaire: l.prix,
-        commentaire: l.commentaire || '',
-        modificateurs: l.modificateurs || '' // <-- AJOUT : on envoie la chaîne des modificateurs
-      })),
-      payments: pays,
-      tips: parseFloat($('tips').value)||0,
-      nom_ticket: ticket.nom,
-      commentaire: ticket.commentaire || '',
-      restaurant_option_id: parseInt($('restoOption').value) || null,
-      discount_id: parseInt($('discountSelect').value) || null,
-      id_client: ticket.client ? ticket.client.id : null,
-      nom_du_client: ticket.client ? ticket.client.nom_client : '',
+        items: ticket.lines.map(l => ({ 
+            article_id: l.article_id, 
+            variante_id: l.variante_id, 
+            quantite: l.qty, 
+            prix_unitaire: l.prix,
+            commentaire: l.commentaire || '',
+            modificateurs: l.modificateurs || '',
+            tva_breakdown: l.tva_breakdown || [] // ✅ NOUVEAU
+        })),
+        payments: pays,
+        tips: parseFloat($('tips').value)||0,
+        nom_ticket: ticket.nom,
+        commentaire: ticket.commentaire || '',
+        restaurant_option_id: parseInt($('restoOption').value) || null,
+        discount_id: parseInt($('discountSelect').value) || null,
+        id_client: ticket.client ? ticket.client.id : null,
+        nom_du_client: ticket.client ? ticket.client.nom_client : '',
     };
     
     try {
-      const r = await fetch(URL_PAY, { 
-        method:'POST', 
-        headers:{'Content-Type':'application/json'}, 
-        body:JSON.stringify(payload) 
-      });
-      const d = await r.json();
-      if (d.success){
-        closeModal('modalPay');
-        $('successMsg').textContent = 'Vente encaissée — ' + (d.recu_numero || '');
-        $('modalSuccess').classList.add('show');
-      } else { 
-        alert(d.message || 'Erreur lors de l\'encaissement.'); 
-      }
+        const r = await fetch(URL_PAY, { 
+            method:'POST', 
+            headers:{'Content-Type':'application/json'}, 
+            body:JSON.stringify(payload) 
+        });
+        const d = await r.json();
+        if (d.success){
+            closeModal('modalPay');
+            $('successMsg').textContent = 'Vente encaissée — ' + (d.recu_numero || '');
+            $('modalSuccess').classList.add('show');
+        } else { 
+            alert(d.message || 'Erreur lors de l\'encaissement.'); 
+        }
     } catch(e) {
-      alert('Erreur réseau: ' + e.message);
+        alert('Erreur réseau: ' + e.message);
     }
-  }
+}
+
 
   /* ---------- Fermeture de caisse ---------- */
   async function openClosePeriodModal(){

@@ -1116,6 +1116,7 @@ class DatabaseManager:
                     taux_taxe_applique DECIMAL(5,2) DEFAULT 0,
                     commentaire VARCHAR(255) NULL,
                     modificateurs TEXT NULL,
+                    tva_breakdown_json JSON NULL,
                     FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE,
                     FOREIGN KEY (article_id) REFERENCES pos_articles(id),
                     FOREIGN KEY (variante_id) REFERENCES pos_variantes(id) ON DELETE SET NULL,

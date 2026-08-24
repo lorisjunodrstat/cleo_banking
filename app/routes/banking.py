@@ -11499,7 +11499,7 @@ def pos_receipts_list():
 def pos_receipt_detail(receipt_id):
     """Page de détail d'un reçu — tout est chargé via l'API JSON"""
     db = g.models.receipt_pos_model.db
-    with db.get_cursor(dictionary=True) as cursor:
+    with g.db.get_cursor(dictionary=True) as cursor:
         cursor.execute(
             "SELECT id FROM pos_receipts WHERE id = %s AND utilisateur_id = %s",
             (receipt_id, current_user.id)
@@ -11991,7 +11991,7 @@ def pos_client_detail(client_id):
 
     # ✅ Stats recalculées depuis les reçus (toujours à jour)
     db = g.models.receipt_pos_model.db
-    with db.get_cursor(dictionary=True) as cursor:
+    with g.db.get_cursor(dictionary=True) as cursor:
         cursor.execute("""
             SELECT COUNT(*) AS nb_visites,
                    COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN total_collecte ELSE 0 END),0) AS total_depense,
@@ -12037,7 +12037,7 @@ def pos_client_receipts(client_id):
     date_to = request.args.get('date_to', '')
 
     db = g.models.receipt_pos_model.db
-    with db.get_cursor(dictionary=True) as cursor:
+    with g.db.get_cursor(dictionary=True) as cursor:
         q = "SELECT * FROM pos_receipts WHERE id_client = %s AND status != 'Annulé'"
         params = [client_id]
         if date_from:
@@ -12108,7 +12108,7 @@ def pos_stats_by_article():
         LEFT JOIN pos_categories c ON c.id = a.id_categorie
         WHERE """ + where
 
-    with db.get_cursor(dictionary=True) as cursor:
+    with g.db.get_cursor(dictionary=True) as cursor:
         cursor.execute("""
             SELECT ri.nom_article AS nom,
                    MAX(c.nom_categorie) AS category,
@@ -12137,7 +12137,7 @@ def pos_stats_by_article():
         swhere = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente' AND DATE(r.date) >= %s AND DATE(r.date) <= %s"
         if employee:
             swhere += " AND r.nom_du_caissier=%s"; sparams.append(employee)
-        with db.get_cursor(dictionary=True) as cursor:
+        with g.db.get_cursor(dictionary=True) as cursor:
             cursor.execute(f"""
                 SELECT DATE(r.date) AS jour, ri.nom_article AS nom, SUM(ri.total_ligne) AS val
                 FROM pos_receipt_items ri
@@ -12185,7 +12185,7 @@ def pos_stats_by_category():
           AND COALESCE(c.nom_categorie, 'Sans catégorie') NOT IN ('Paiement', 'Abonnement')
     """
 
-    with db.get_cursor(dictionary=True) as cursor:
+    with g.db.get_cursor(dictionary=True) as cursor:
         cursor.execute("""
             SELECT COALESCE(c.nom_categorie, 'Sans catégorie') AS nom,
                    COUNT(DISTINCT r.id) AS times_sold,
@@ -12213,7 +12213,7 @@ def pos_stats_by_category():
         swhere = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente' AND DATE(r.date) >= %s AND DATE(r.date) <= %s"
         if employee:
             swhere += " AND r.nom_du_caissier=%s"; sparams.append(employee)
-        with db.get_cursor(dictionary=True) as cursor:
+        with g.db.get_cursor(dictionary=True) as cursor:
             cursor.execute(f"""
                 SELECT DATE(r.date) AS jour,
                        COALESCE(c.nom_categorie, 'Sans catégorie') AS nom,
@@ -12822,7 +12822,7 @@ def pos_stats():
     prev_from = prev_to - timedelta(days=nb_jours - 1)
 
     def agg(df, dt):
-        with db.get_cursor(dictionary=True) as cursor:
+        with g.db.get_cursor(dictionary=True) as cursor:
             q = """
                 SELECT
                   COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END),0) AS ventes_brutes,
@@ -12855,7 +12855,7 @@ def pos_stats():
               for k in ('ventes_brutes','remboursements','reductions','ventes_nettes','marge_brute')}
 
     # --- Série par jour AVEC les jours sans vente (zéros) ---
-    with db.get_cursor(dictionary=True) as cursor:
+    with g.db.get_cursor(dictionary=True) as cursor:
         q = """
             SELECT DATE(date) AS jour,
               SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END) AS ventes_brutes,
@@ -12898,7 +12898,7 @@ def pos_stats():
     daily_json = _json.dumps(daily)
 
     # --- Par mode de paiement ---
-    with db.get_cursor(dictionary=True) as cursor:
+    with g.db.get_cursor(dictionary=True) as cursor:
         q = """
             SELECT COALESCE(mp.nom,'Inconnu') AS nom, COUNT(*) AS nb, SUM(p.montant) AS total
             FROM pos_payments p
@@ -13150,57 +13150,125 @@ def pos_vente_quit():
 @bp.route('/pos/vente/save-open', methods=['POST'])
 @login_required
 def pos_vente_save_open():
-    data = request.get_json(silent=True) or {}
-    if not data.get('items'):
-        return jsonify({'success': False, 'message': 'Ticket vide.'}), 400
+    data = request.json
+    user_id = current_user.id
+    pdv_id = session.get('pdv_id')
     
-    data['nom_du_caissier'] = getattr(current_user, 'nom_utilisateur', '') or ''
-    
-    success, msg, receipt_id = g.models.receipt_pos_model.creer_ticket_ouvert(current_user.id, data)
-    if success:
-        receipt = g.models.receipt_pos_model.get_by_id(receipt_id, current_user.id)
-        return jsonify({'success': True, 'receipt_id': receipt_id, 
-                        'recu_numero': receipt.get('recu_numero') if receipt else None})
-    return jsonify({'success': False, 'message': msg}), 400
+    try:
+        with g.db.get_cursor(dictionary=True) as cursor:
+            # 1. Créer le receipt avec status='open'
+            recu_numero = f"OPEN-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
+            
+            cursor.execute("""
+                INSERT INTO pos_receipts 
+                (utilisateur_id, date, recu_numero, nom_ticket, description, receipt_type, 
+                 status, pdv, id_client, nom_du_client, restaurant_option_id, discount_id)
+                VALUES (%s, NOW(), %s, %s, %s, 'Ouvert', 'open', %s, %s, %s, %s, %s)
+            """, (
+                user_id,
+                recu_numero,
+                data.get('nom_ticket'),
+                data.get('commentaire', ''),
+                pdv_id,
+                data.get('id_client'),
+                data.get('nom_du_client'),
+                data.get('restaurant_option_id'),
+                data.get('discount_id')
+            ))
+            receipt_id = cursor.lastrowid
+            
+            # 2. Sauvegarder les items AVEC le tva_breakdown
+            for item in data.get('items', []):
+                cursor.execute("""
+                    INSERT INTO pos_receipt_items 
+                    (receipt_id, article_id, nom_article, variante_id, quantite, prix_unitaire, 
+                     total_ligne, taux_taxe_applique, commentaire, modificateurs, tva_breakdown_json)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    receipt_id,
+                    item['article_id'],
+                    item.get('nom', ''),
+                    item.get('variante_id'),
+                    item.get('quantite', 1),
+                    item.get('prix_unitaire', 0),
+                    item.get('prix_unitaire', 0) * item.get('quantite', 1),
+                    item.get('taux', 0),
+                    item.get('commentaire', ''),
+                    item.get('modificateurs', ''),
+                    json.dumps(item.get('tva_breakdown', []))  # ✅ NOUVEAU
+                ))
+            
+            return jsonify({'success': True, 'message': 'Ticket enregistré'})
+            
+    except Exception as e:
+        logger.error(f"Erreur sauvegarde ticket ouvert: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
-@bp.route('/pos/vente/open-tickets.json')
+@bp.route('/pos/vente/open-tickets-json')
 @login_required
 def pos_vente_open_tickets_json():
-    """Retourne les tickets enregistrés (status Ouvert) avec leurs lignes"""
-    all_receipts = g.models.receipt_pos_model.get_all(user_id=current_user.id, limit=200)
-    commandes = [r for r in all_receipts if r.get('status') in ('Ouvert', 'En cours', 'En attente')]
+    user_id = current_user.id
+    pdv_id = session.get('pdv_id')
     
-    result = []
-    for c in commandes:
-        # ✅ get_by_id ouvre son propre curseur et retourne le reçu AVEC items
-        receipt = g.models.receipt_pos_model.get_by_id(c['id'], current_user.id)
-        
-        lines = []
-        if receipt:
-            for item in receipt.get('items', []):
-                lines.append({
-                    'key': f"{item['article_id']}_{item.get('variante_id') or 0}",
-                    'article_id': item['article_id'],
-                    'variante_id': item.get('variante_id'),
-                    'nom': item['nom_article'],
-                    'extras': '',
-                    'prix': float(item['prix_unitaire'] or 0),
-                    'qty': int(item['quantite'] or 1),
-                    'taux': float(item.get('taux_taxe_applique') or 0),
-                    'commentaire': item.get('commentaire') or ''
+    try:
+        with g.db.get_cursor(dictionary=True) as cursor:
+            # Récupérer les receipts ouverts
+            cursor.execute("""
+                SELECT r.*, c.nom_client
+                FROM pos_receipts r
+                LEFT JOIN pos_clients c ON r.id_client = c.id
+                WHERE r.utilisateur_id = %s AND r.status = 'open'
+                ORDER BY r.date DESC
+            """, (user_id,))
+            receipts = cursor.fetchall()
+            
+            tickets = []
+            for r in receipts:
+                # Récupérer les items de ce receipt
+                cursor.execute("""
+                    SELECT * FROM pos_receipt_items 
+                    WHERE receipt_id = %s
+                """, (r['id'],))
+                items = cursor.fetchall()
+                
+                # ✅ Reconstruire les lignes avec tva_breakdown
+                lines = []
+                for item in items:
+                    tva_breakdown = []
+                    if item.get('tva_breakdown_json'):
+                        try:
+                            tva_breakdown = json.loads(item['tva_breakdown_json'])
+                        except:
+                            tva_breakdown = []
+                    
+                    lines.append({
+                        'article_id': item['article_id'],
+                        'variante_id': item.get('variante_id'),
+                        'nom': item['nom_article'],
+                        'modificateurs': item.get('modificateurs', ''),
+                        'prix': float(item['prix_unitaire']),
+                        'qty': item['quantite'],
+                        'taux': float(item.get('taux_taxe_applique', 0)),
+                        'commentaire': item.get('commentaire', ''),
+                        'tva_breakdown': tva_breakdown,  # ✅ NOUVEAU
+                        'key': f"{item['article_id']}_{item.get('variante_id') or 0}_{item.get('modificateurs', '')}"
+                    })
+                
+                tickets.append({
+                    'id': r['id'],
+                    'nom': r.get('nom_ticket', ''),
+                    'commentaire': r.get('description', ''),
+                    'lines': lines,
+                    'client': {'id': r.get('id_client'), 'nom_client': r.get('nom_client')} if r.get('id_client') else None,
+                    'restaurant_option_id': r.get('restaurant_option_id'),
+                    'total': sum(l['prix'] * l['qty'] for l in lines)
                 })
-        
-        result.append({
-            'id': c['id'],
-            'nom': c.get('nom_ticket') or c.get('recu_numero'),
-            'commentaire': c.get('description') or '',
-            'restaurant_option_id': c.get('restaurant_option_id'),
-            'lines': lines,
-            'client': None,
-            'total': float(c.get('total_collecte') or 0)
-        })
-    
-    return jsonify(result)
+            
+            return jsonify(tickets)
+            
+    except Exception as e:
+        logger.error(f"Erreur récupération tickets ouverts: {e}")
+        return jsonify([])
 
 @bp.route('/pos/vente/open-ticket/<int:receipt_id>/delete', methods=['POST'])
 @login_required
