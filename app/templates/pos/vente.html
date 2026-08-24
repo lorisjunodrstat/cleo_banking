@@ -645,109 +645,119 @@ button{cursor:pointer; border:none; background:none}
     $('modalArticle').classList.add('show');
   }
 
-      function confirmAddArticle(){
-    const a = pendingArticle; 
-    if(!a) return;
+  function confirmAddArticle() {
+    const a = pendingArticle;
+    if (!a) return;
     
-    let prixBase = a.is_variable_price ? parseFloat($('maPrix').value||0) : parseFloat(a.prix_unitaire||0);
+    let prixBase = a.is_variable_price ? parseFloat($('maPrix').value || 0) : parseFloat(a.prix_unitaire || 0);
     let varianteId = null;
-    let extras = [];
-    let tauxArticle = a.taux_taxe || 0;
-    
-    // 1. Gestion des variantes
     const sel = $('maVar');
-    if (sel){ 
-      varianteId = parseInt(sel.value); 
-      prixBase = parseFloat(sel.selectedOptions[0].dataset.prix || prixBase); 
-      extras.push(sel.selectedOptions[0].textContent.trim()); 
+    if (sel) {
+        varianteId = parseInt(sel.value);
+        prixBase = parseFloat(sel.selectedOptions[0].dataset.prix || prixBase);
     }
     
-    let modsSameTva = [];
-    let modsDiffTva = []; // {nom, prix, taux}
-
-    // 2. Gestion des modificateurs simples
-    document.querySelectorAll('.maMod:checked').forEach(m => { 
-      let prixMod = parseFloat(m.dataset.prix || 0);
-      let tauxModStr = m.dataset.tauxTva;
-      let tauxMod = parseFloat(tauxModStr);
-      // Si vide, hérite de l'article
-      let tauxFinal = (!isNaN(tauxMod) && tauxModStr !== '') ? tauxMod : tauxArticle;
-      
-      if (tauxFinal === tauxArticle) {
-        prixBase += prixMod;
-        modsSameTva.push(m.value);
-      } else {
-        modsDiffTva.push({ nom: m.value, prix: prixMod, taux: tauxFinal });
-      }
-    });
-    
-    // 3. Gestion des options de modificateurs
-    document.querySelectorAll('.maModOpt:checked').forEach(o => { 
-      let prixOption = parseFloat(o.dataset.prix || 0);
-      let tauxOptionStr = o.dataset.tauxTva;
-      let tauxParent = parseFloat(o.dataset.tauxParent || 0);
-      
-      let tauxOption = parseFloat(tauxOptionStr);
-      // Règle : Si taux spécifique défini (pas vide), on le prend. Sinon, on hérite du parent.
-      let tauxFinal = (!isNaN(tauxOption) && tauxOptionStr !== '') ? tauxOption : tauxParent;
-      
-      if (tauxFinal === tauxArticle) {
-        prixBase += prixOption;
-        modsSameTva.push(o.value);
-      } else {
-        modsDiffTva.push({ nom: o.value, prix: prixOption, taux: tauxFinal });
-      }
-    });
-
-    const qty = parseInt($('maQty').value||1);
+    const qty = parseInt($('maQty').value || 1);
     const commentaire = $('maCommentaire').value.trim();
-    const modificateursStr = extras.concat(modsSameTva).join(', ');
-
-    // --- AJOUT AU TICKET ---
-    // 1. Ligne principale (article + variantes + modificateurs/options avec la MÊME TVA)
-    const keyMain = a.id + '_' + (varianteId||0) + '_' + modificateursStr;
-    const existingMain = ticket.lines.find(l => l.key === keyMain && l.taux === tauxArticle);
+    let tauxArticleBase = parseFloat(a.taux_taxe || 0);
     
-    if (existingMain) {
-      existingMain.qty += qty;
-      if (commentaire) existingMain.commentaire = commentaire;
-      existingMain.prix = prixBase; 
-    } else {
-      ticket.lines.push({ 
-        key: keyMain, 
-        article_id: a.id, 
-        variante_id: varianteId, 
-        nom: a.nom_article,
-        modificateurs: modificateursStr,
-        prix: prixBase, 
-        qty, 
-        taux: tauxArticle,
-        commentaire
-      });
-    }
-
-    // 2. Lignes séparées pour les modificateurs/options avec TVA DIFFÉRENTE
-    // Indispensable pour une comptabilité TVA fiscalement correcte.
-    modsDiffTva.forEach((mod, index) => {
-      const keyMod = a.id + '_mod_' + index + '_' + mod.nom;
-      ticket.lines.push({
-        key: keyMod,
-        article_id: a.id, 
-        variante_id: null,
-        nom: `[MOD] ${mod.nom}`,
-        modificateurs: `Option de ${a.nom_article}`,
-        prix: mod.prix,
-        qty: qty,
-        taux: mod.taux,
-        commentaire: ''
-      });
+    // Collecter les modificateurs et options
+    let modsSimples = []; // Même taux que l'article
+    let optionsTauxDifferents = []; // Taux différent de l'article
+    
+    // Modificateurs simples
+    document.querySelectorAll('.maMod:checked').forEach(m => {
+        let tauxMod = parseFloat(m.dataset.tauxTva || tauxArticleBase);
+        modsSimples.push({
+            nom: m.value,
+            prix: parseFloat(m.dataset.prix || 0),
+            taux: tauxMod
+        });
     });
     
-    save(); 
-    renderTicket(); 
+    // Options de modificateurs
+    document.querySelectorAll('.maModOpt:checked').forEach(o => {
+        let tauxOption = parseFloat(o.dataset.tauxTva);
+        let tauxParent = parseFloat(o.dataset.tauxParent);
+        let tauxFinal = (tauxOption > 0) ? tauxOption : tauxParent;
+        
+        if (tauxFinal !== tauxArticleBase) {
+            // Taux DIFFÉRENT : on le sépare
+            optionsTauxDifferents.push({
+                nom: o.value,
+                prix: parseFloat(o.dataset.prix || 0),
+                taux: tauxFinal
+            });
+        } else {
+            // Même taux : on l'ajoute au prix de base
+            prixBase += parseFloat(o.dataset.prix || 0);
+        }
+    });
+    
+    // Construire le tva_breakdown
+    let tva_breakdown = [];
+    
+    // 1. Prix de l'article de base (réduit des options à taux différent)
+    let totalOptionsTauxDifferents = optionsTauxDifferents.reduce((sum, opt) => sum + opt.prix, 0);
+    let prixArticleBase = prixBase - totalOptionsTauxDifferents;
+    
+    // Ajouter les modificateurs simples au prix de base
+    let totalModsSimples = modsSimples.reduce((sum, mod) => sum + mod.prix, 0);
+    prixArticleBase += totalModsSimples;
+    
+    if (prixArticleBase > 0) {
+        tva_breakdown.push({
+            description: a.nom_article,
+            montant_ttc: prixArticleBase,
+            taux: tauxArticleBase
+        });
+    }
+    
+    // 2. Chaque option à taux différent = une entrée séparée
+    optionsTauxDifferents.forEach(opt => {
+        tva_breakdown.push({
+            description: opt.nom,
+            montant_ttc: opt.prix,
+            taux: opt.taux
+        });
+    });
+    
+    // Construire l'affichage des modificateurs
+    let modsAffichage = [];
+    if (varianteId && sel) {
+        modsAffichage.push(sel.selectedOptions[0].textContent);
+    }
+    modsSimples.forEach(m => modsAffichage.push(m.nom));
+    optionsTauxDifferents.forEach(o => modsAffichage.push(o.nom));
+    let modificateursStr = modsAffichage.join(', ');
+    
+    const key = a.id + '_' + (varianteId || 0) + '_' + modificateursStr;
+    const existing = ticket.lines.find(l => l.key === key);
+    
+    if (existing) {
+        existing.qty += qty;
+        if (commentaire) existing.commentaire = commentaire;
+    } else {
+        ticket.lines.push({
+            key,
+            article_id: a.id,
+            variante_id: varianteId,
+            nom: a.nom_article,
+            modificateurs: modificateursStr,
+            prix: prixBase + totalModsSimples, // Prix total pour l'affichage
+            qty,
+            taux: tauxArticleBase,
+            commentaire,
+            tva_breakdown: tva_breakdown // ✅ NOUVEAU : Détail du calcul TVA
+        });
+    }
+    
+    save();
+    renderTicket();
     closeModal('modalArticle');
-  }
-function toggleMobileMenu() {
+}
+  
+  function toggleMobileMenu() {
   const menu = document.getElementById('mobileMenu');
   menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
 }
