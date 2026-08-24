@@ -384,9 +384,15 @@ button{cursor:pointer; border:none; background:none}
   <button class="btn" onclick="confirmAddArticle()">Ajouter au ticket</button>
 </div></div>
 {# ---------- Modale : paiement ---------- #}
-<div class="modal" id="modalPay"><div class="box">
+<div class="modal" id="modalPay"><div class="box" style="max-width: 560px;">
   <button class="close" onclick="closeModal('modalPay')">✕</button>
   <h2>Paiement — <span id="payTotalModal">CHF 0.00</span></h2>
+  
+  {# ✅ NOUVEAU : Résumé des articles du ticket #}
+  <div style="max-height: 150px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; border: 1px solid #e9ecef;">
+    <div id="payTicketItems" style="color: #666;">Chargement...</div>
+  </div>
+
   <div class="modes" id="modesButtons"></div>
   <div id="payLines"></div>
   <div class="field"><label>Pourboire (CHF)</label><input type="number" step="0.05" id="tips" value="0"></div>
@@ -697,13 +703,13 @@ function confirmAddArticle(){
     const editIndex = $('modalArticle').dataset.editIndex;
     const isEditing = editIndex !== undefined && editIndex !== '';
     
-    // 1. Prix total de la ligne (ce que le client paie réellement, ex: 22 CHF)
-    let totalLinePrice = a.is_variable_price ? parseFloat($('maPrix').value||0) : parseFloat(a.prix_unitaire||0);
+    // 1. Prix de base de l'article (ex: 22.00)
+    let prixBase = a.is_variable_price ? parseFloat($('maPrix').value||0) : parseFloat(a.prix_unitaire||0);
     let varianteId = null;
     const sel = $('maVar');
     if (sel){ 
         varianteId = parseInt(sel.value); 
-        totalLinePrice = parseFloat(sel.selectedOptions[0].dataset.prix||totalLinePrice); 
+        prixBase = parseFloat(sel.selectedOptions[0].dataset.prix||prixBase); 
     }
     
     const qty = parseInt($('maQty').value||1);
@@ -718,19 +724,21 @@ function confirmAddArticle(){
         modsAffichage.push(sel.selectedOptions[0].textContent.trim());
     }
     
-    // Modificateurs simples (suppléments réels qui augmentent le prix total)
+    // 2. Modificateurs simples (ajoutent au prix)
     document.querySelectorAll('.maMod:checked').forEach(m => {
         let prixMod = parseFloat(m.dataset.prix || 0);
         let tauxMod = parseFloat(m.dataset.tauxTva) || tauxArticleBase;
         modsSimples.push({ nom: m.value, prix: prixMod, taux: tauxMod });
         modsAffichage.push(m.value);
+        prixBase += prixMod;
     });
     
-    // Options de modificateurs (valeurs théoriques pour ventiler la TVA)
+    // 3. Options de modificateurs (ventilation TVA)
     document.querySelectorAll('.maModOpt:checked').forEach(o => {
         let prixOption = parseFloat(o.dataset.prix || 0);
         let tauxOptionStr = o.dataset.tauxTva;
-        let tauxOption = (tauxOptionStr !== '' && tauxOptionStr !== undefined) ? parseFloat(tauxOptionStr) : 0;
+        // Gestion sécurisée des valeurs nulles venant du backend
+        let tauxOption = (tauxOptionStr && tauxOptionStr !== 'null' && tauxOptionStr !== 'undefined') ? parseFloat(tauxOptionStr) : 0;
         let tauxParent = parseFloat(o.dataset.tauxParent) || 0;
         
         let tauxFinal = (tauxOption > 0) ? tauxOption : tauxParent;
@@ -738,47 +746,35 @@ function confirmAddArticle(){
         
         if (tauxFinal !== tauxArticleBase) {
             // ✅ LOGIQUE CLÉ : On SOUSTRAIT le prix de l'option du prix du menu
-            // car cette option est déjà incluse dans le forfait de 22 CHF.
-            totalLinePrice -= prixOption; 
+            // car cette option est déjà incluse dans le forfait.
+            prixBase -= prixOption; 
             optionsTauxDifferents.push({ nom: o.value, prix: prixOption, taux: tauxFinal });
         }
     });
     
-    // Les modificateurs simples (ex: supplément fromage) augmentent le prix total
-    let totalModsSimples = modsSimples.reduce((sum, mod) => sum + mod.prix, 0);
-    totalLinePrice += totalModsSimples;
-    
-    // 2. Construction du breakdown TVA
+    // 4. Construction du breakdown TVA
     let tva_breakdown = [];
-    
-    // La part "Nourriture" (Menu - Options à taux différent + Mods simples)
-    if (totalLinePrice > 0) {
-        tva_breakdown.push({ description: a.nom_article, montant_ttc: totalLinePrice, taux: tauxArticleBase });
+    if (prixBase > 0) {
+        tva_breakdown.push({ description: a.nom_article, montant_ttc: prixBase, taux: tauxArticleBase });
     }
-    
-    // Les parts "Boissons/Options" à taux différent
     optionsTauxDifferents.forEach(opt => {
         tva_breakdown.push({ description: opt.nom, montant_ttc: opt.prix, taux: opt.taux });
     });
     
-    // 3. Prix final pour l'affichage sur le ticket
-    // On remet les options à taux différent pour que le total affiché soit bien 22 CHF (et non 17 CHF)
-    let finalDisplayPrice = totalLinePrice + optionsTauxDifferents.reduce((sum, opt) => sum + opt.prix, 0);
+    // 5. Prix final pour l'affichage sur le ticket (on remet les options pour avoir le total juste)
+    let finalDisplayPrice = prixBase + optionsTauxDifferents.reduce((sum, opt) => sum + opt.prix, 0);
     
     const modificateursStr = modsAffichage.join(', ');
     const modificateursData = { varianteId, modsSimples, optionsTauxDifferents };
     const key = a.id + '_' + (varianteId||0) + '_' + modificateursStr;
     
-    // 4. Mise à jour ou ajout dans le ticket
+    // ✅ DÉBOGAGE : Ouvrez la console du navigateur (F12) pour voir cette ligne
+    console.log("🧾 ARTICLE AJOUTÉ:", a.nom_article, "| Prix Base:", prixBase, "| Final:", finalDisplayPrice, "| Breakdown:", tva_breakdown);
+
+    // 6. Mise à jour ou ajout dans le ticket
     if (isEditing) {
         const idx = parseInt(editIndex);
-        ticket.lines[idx] = { 
-            key, article_id: a.id, variante_id: varianteId, nom: a.nom_article, 
-            modificateurs: modificateursStr, modificateursData, 
-            prix: finalDisplayPrice, // ✅ Affiche 22.00 CHF
-            qty, taux: tauxArticleBase, commentaire, 
-            tva_breakdown: tva_breakdown // ✅ Calcule 17 à 2.5% et 5 à 7.7%
-        };
+        ticket.lines[idx] = { key, article_id: a.id, variante_id: varianteId, nom: a.nom_article, modificateurs: modificateursStr, modificateursData, prix: finalDisplayPrice, qty, taux: tauxArticleBase, commentaire, tva_breakdown };
         delete $('modalArticle').dataset.editIndex;
     } else {
         const existing = ticket.lines.find(l => l.key === key);
@@ -786,13 +782,7 @@ function confirmAddArticle(){
             existing.qty += qty;
             if (commentaire) existing.commentaire = commentaire;
         } else {
-            ticket.lines.push({ 
-                key, article_id: a.id, variante_id: varianteId, nom: a.nom_article, 
-                modificateurs: modificateursStr, modificateursData, 
-                prix: finalDisplayPrice, // ✅ Affiche 22.00 CHF
-                qty, taux: tauxArticleBase, commentaire, 
-                tva_breakdown: tva_breakdown // ✅ Calcule 17 à 2.5% et 5 à 7.7%
-            });
+            ticket.lines.push({ key, article_id: a.id, variante_id: varianteId, nom: a.nom_article, modificateurs: modificateursStr, modificateursData, prix: finalDisplayPrice, qty, taux: tauxArticleBase, commentaire, tva_breakdown });
         }
     }
     
@@ -800,6 +790,7 @@ function confirmAddArticle(){
     renderTicket(); 
     closeModal('modalArticle');
 }
+
 function toggleMobileMenu() {
   const menu = document.getElementById('mobileMenu');
   menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
@@ -1163,6 +1154,15 @@ async function resumeDbTicket(id){
   function openPayModal(){
     if(!ticket.lines.length) return;
     payments = [];
+    const itemsHtml = ticket.lines.map(l => {
+        let mods = l.modificateurs ? `<br><span style="color:#666;font-size:11px; margin-left: 15px;">↳ ${l.modificateurs}</span>` : '';
+        return `<div style="display:flex;justify-content:space-between;margin-bottom:6px; border-bottom: 1px dashed #ddd; padding-bottom: 4px;">
+            <span>${l.qty}x ${l.nom} ${mods}</span>
+            <b>${fmt(l.prix * l.qty)}</b>
+        </div>`;
+    }).join('');
+    $('payTicketItems').innerHTML = itemsHtml || '<div style="text-align:center">Aucun article</div>';
+
     $('modesButtons').innerHTML = MODES.map(m => `<button type="button" onclick="addPayment(${m.id})">${m.nom}</button>`).join('');
     $('tips').value = 0; 
     $('tips').oninput = renderPayments;
