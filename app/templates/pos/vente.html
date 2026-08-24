@@ -610,18 +610,27 @@ button{cursor:pointer; border:none; background:none}
       ? '<label style="font-size:13px;color:#888">Modificateurs</label>' +
         a.modificateurs.map(m => {
           if ((m.options||[]).length) {
-            // ✅ Modificateur avec options : cases à cocher (sélection multiple)
+            // ✅ Modificateur avec options : cases à cocher
             return `<div style="margin:6px 0;border:1px solid #eee;border-radius:8px;padding:10px">
               <div style="font-weight:600;font-size:14px;margin-bottom:4px">${m.nom_modificateur}</div>
               ${m.options.map(o => `
                 <label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;padding:8px 10px;border:1px solid #e8e8e8;border-radius:6px;cursor:pointer">
-                  <span><input type="checkbox" class="maModOpt" data-prix="${o.prix_supplement}" value="${o.nom_option}"> ${o.nom_option}</span>
+                  <span>
+                    <input type="checkbox" class="maModOpt" 
+                           data-prix="${o.prix_supplement}" 
+                           data-taux-tva="${o.taux_tva || ''}" 
+                           data-taux-parent="${m.taux_tva || 0}"
+                           value="${o.nom_option}"> ${o.nom_option}
+                  </span>
                   <span style="color:#888;font-size:13px">${o.prix_supplement > 0 ? '+' + fmt(o.prix_supplement) : ''}</span>
                 </label>`).join('')}
             </div>`;
           }
-          // Modificateur simple sans options : case à cocher
-          return `<label style="display:block;margin:4px 0"><input type="checkbox" class="maMod" data-prix="${m.prix_modificateur}" value="${m.nom_modificateur}"> ${m.nom_modificateur} (+${fmt(m.prix_modificateur)})</label>`;
+          // Modificateur simple sans options
+          return `<label style="display:block;margin:4px 0">
+            <input type="checkbox" class="maMod" data-prix="${m.prix_modificateur}" data-taux-tva="${m.taux_tva || 0}" value="${m.nom_modificateur}"> 
+            ${m.nom_modificateur} (+${fmt(m.prix_modificateur)})
+          </label>`;
         }).join('')
       : '';
     
@@ -635,26 +644,40 @@ button{cursor:pointer; border:none; background:none}
     function confirmAddArticle(){
     const a = pendingArticle; 
     if(!a) return;
+    
     let prix = a.is_variable_price ? parseFloat($('maPrix').value||0) : parseFloat(a.prix_unitaire||0);
     let varianteId = null, extras = [];
+    
+    // 1. Gestion des variantes
     const sel = $('maVar');
     if (sel){ 
       varianteId = parseInt(sel.value); 
       prix = parseFloat(sel.selectedOptions[0].dataset.prix||prix); 
       extras.push(sel.selectedOptions[0].textContent); 
     }
+    
+    // 2. Gestion des modificateurs simples
     document.querySelectorAll('.maMod:checked').forEach(m => { 
       prix += parseFloat(m.dataset.prix); 
       extras.push(m.value); 
     });
+    
+    // 3. ✅ Gestion des options de modificateurs avec logique de priorité TVA
     document.querySelectorAll('.maModOpt:checked').forEach(o => { 
-      prix += parseFloat(o.dataset.prix||0); 
-      extras.push(o.value); 
+      let prixOption = parseFloat(o.dataset.prix || 0);
+      let tauxOption = parseFloat(o.dataset.tauxTva);
+      let tauxParent = parseFloat(o.dataset.tauxParent);
+      
+      // Règle de priorité : Taux Option > Taux Parent
+      let tauxFinal = (tauxOption > 0) ? tauxOption : tauxParent;
+      
+      extras.push(`${o.value} (+${fmt(prixOption)}, TVA ${tauxFinal}%)`);
+      prix += prixOption; 
     });
     
     const qty = parseInt($('maQty').value||1);
     const commentaire = $('maCommentaire').value.trim();
-    const modificateurs = extras.join(', '); // ✅ Chaîne propre
+    const modificateurs = extras.join(', '); // Chaîne pour l'affichage
     
     const key = a.id + '_' + (varianteId||0) + '_' + modificateurs;
     const existing = ticket.lines.find(l => l.key === key);
@@ -667,18 +690,18 @@ button{cursor:pointer; border:none; background:none}
         key, 
         article_id: a.id, 
         variante_id: varianteId, 
-        nom: a.nom_article,           // Nom court (ex: Menu Kobe)
-        modificateurs: modificateurs, // Liste complète (ex: Maki..., Nigiri...)
+        nom: a.nom_article,
+        modificateurs: modificateurs, // Pour l'affichage
         prix, qty, 
-        taux: a.taux_taxe||0, 
+        taux: a.taux_taxe||0, // Note: Pour une comptabilité parfaite, les modifiers avec TVA différente devraient idéalement être des lignes séparées, mais cette méthode fonctionne pour l'affichage et le total.
         commentaire
       });
     }
+    
     save(); 
     renderTicket(); 
     closeModal('modalArticle');
   }
-
 
 function toggleMobileMenu() {
   const menu = document.getElementById('mobileMenu');

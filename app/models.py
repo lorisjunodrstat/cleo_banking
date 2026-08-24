@@ -1317,6 +1317,7 @@ class DatabaseManager:
                     prix_modificateur DECIMAL(10,2) DEFAULT 0,
                     description TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    taux_tva DECIMAL(5,2) DEFAULT 0.00 COMMENT 'Taux de TVA par défaut pour ce modificateur (ex: 8.1)',
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
                     INDEX idx_nom_modificateur (nom_modificateur)
                 );
@@ -1334,6 +1335,7 @@ class DatabaseManager:
                     prix_supplement DECIMAL(10,2) DEFAULT 0,
                     description TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    taux_tva DECIMAL(5,2) DEFAULT NULL COMMENT 'Taux de TVA spécifique (ex: 8.1) pour cette option, sinon NULL = utiliser le taux du modificateur',
                     FOREIGN KEY (id_article) REFERENCES pos_articles(id) ON DELETE CASCADE,
                     FOREIGN KEY (id_modificateur) REFERENCES pos_modificateurs(id) ON DELETE CASCADE
                 );
@@ -1463,6 +1465,21 @@ class DatabaseManager:
                 );
                 """
                 cursor.execute(cursor_pos_compta_setting_query)
+
+                create_pos_compta_mapping_tva_query = """
+                CREATE TABLE IF NOT EXISTS pos_compta_mapping_tva (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
+                    pos_taxe_id INT NOT NULL,
+                    compte_vente_id INT NOT NULL COMMENT 'Compte de classe 3 (ex: 3001, 3002)',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (pos_taxe_id) REFERENCES pos_taxes(id) ON DELETE CASCADE,
+                    FOREIGN KEY (compte_vente_id) REFERENCES categories_comptables(id) ON DELETE CASCADE,
+                    UNIQUE KEY unique_user_taxe (utilisateur_id, pos_taxe_id)
+                );"""
+                cursor.execute(create_pos_compta_mapping_tva_query)
 
                 # ============================================================
                 # TABLES HISTORIQUE POS
@@ -17115,13 +17132,14 @@ class ModificateurPOS:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO pos_modificateurs 
-                    (utilisateur_id, nom_modificateur, prix_modificateur, description)
-                    VALUES (%s, %s, %s, %s)
+                    (utilisateur_id, nom_modificateur, prix_modificateur, description, taux_tva)
+                    VALUES (%s, %s, %s, %s, %s)
                 """, (
                     user_id,
                     data['nom_modificateur'],
                     data.get('prix_modificateur', 0),
-                    data.get('description')
+                    data.get('description'),
+                    data.get('taux_tva', 0.00) # ✅ Nouveau champ
                 ))
                 return cursor.lastrowid
         except Exception as e:
@@ -17141,43 +17159,6 @@ class ModificateurPOS:
             logger.error(f"Erreur récupération modificateurs: {e}")
             return []
 
-    def assigner_to_article(self, article_id: int, taxe_id: int, date_debut, date_fin=None) -> bool:
-        """Assigne une taxe à un article (désactive les autres taxes actives)"""
-        try:
-            with self.db.get_cursor() as cursor:
-                # Désactiver toutes les taxes actuelles de cet article
-                cursor.execute("""
-                    UPDATE pos_article_taxes 
-                    SET est_actuelle = FALSE 
-                    WHERE article_id = %s
-                """, (article_id,))
-                
-                # Vérifier si cette taxe est déjà assignée
-                cursor.execute("""
-                    SELECT id FROM pos_article_taxes 
-                    WHERE article_id = %s AND taxe_id = %s
-                """, (article_id, taxe_id))
-                existing = cursor.fetchone()
-                
-                if existing:
-                    # Mettre à jour l'entrée existante
-                    cursor.execute("""
-                        UPDATE pos_article_taxes 
-                        SET date_debut = %s, date_fin = %s, est_actuelle = TRUE
-                        WHERE id = %s
-                    """, (date_debut, date_fin, existing['id']))
-                else:
-                    # Créer une nouvelle entrée
-                    cursor.execute("""
-                        INSERT INTO pos_article_taxes 
-                        (article_id, taxe_id, date_debut, date_fin, est_actuelle)
-                        VALUES (%s, %s, %s, %s, TRUE)
-                    """, (article_id, taxe_id, date_debut, date_fin))
-                
-                return True
-        except Exception as e:
-            logger.error(f"Erreur assigner_to_article: {e}")
-            return False
     def get_by_id(self, mod_id: int, user_id: int) -> Optional[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
@@ -17193,10 +17174,16 @@ class ModificateurPOS:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
                     UPDATE pos_modificateurs 
-                    SET nom_modificateur = %s, prix_modificateur = %s, description = %s
+                    SET nom_modificateur = %s, prix_modificateur = %s, description = %s, taux_tva = %s
                     WHERE id = %s AND utilisateur_id = %s
-                """, (data['nom_modificateur'], data.get('prix_modificateur', 0),
-                    data.get('description', ''), mod_id, user_id))
+                """, (
+                    data['nom_modificateur'], 
+                    data.get('prix_modificateur', 0),
+                    data.get('description', ''), 
+                    data.get('taux_tva', 0.00), # ✅ Nouveau champ
+                    mod_id, 
+                    user_id
+                ))
                 return cursor.rowcount > 0
         except:
             return False
@@ -17211,9 +17198,9 @@ class ModificateurPOS:
                 return cursor.rowcount > 0
         except:
             return False
-        
+              
 class OptionModificateurPOS:
-    """Options de modificateurs — CLASSE MANQUANTE"""
+    """Options de modificateurs"""
     def __init__(self, db):
         self.db = db
 
@@ -17223,12 +17210,16 @@ class OptionModificateurPOS:
                 cursor.execute("""
                     INSERT INTO pos_options_modificateurs 
                     (utilisateur_id, nom_option, id_modificateur, id_article, 
-                     prix_supplement, description)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                     prix_supplement, description, taux_tva)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """, (
-                    user_id, data['nom_option'], data.get('id_modificateur'),
-                    data.get('id_article'), data.get('prix_supplement', 0),
-                    data.get('description', '')
+                    user_id, 
+                    data['nom_option'], 
+                    data.get('id_modificateur'),
+                    data.get('id_article'), 
+                    data.get('prix_supplement', 0),
+                    data.get('description', ''),
+                    data.get('taux_tva') # ✅ Peut être NULL
                 ))
                 return cursor.lastrowid
         except Exception as e:
@@ -17266,12 +17257,17 @@ class OptionModificateurPOS:
                 cursor.execute("""
                     UPDATE pos_options_modificateurs 
                     SET nom_option = %s, id_modificateur = %s, id_article = %s,
-                        prix_supplement = %s, description = %s
+                        prix_supplement = %s, description = %s, taux_tva = %s
                     WHERE id = %s AND utilisateur_id = %s
                 """, (
-                    data['nom_option'], data.get('id_modificateur'),
-                    data.get('id_article'), data.get('prix_supplement', 0),
-                    data.get('description', ''), option_id, user_id
+                    data['nom_option'], 
+                    data.get('id_modificateur'),
+                    data.get('id_article'), 
+                    data.get('prix_supplement', 0),
+                    data.get('description', ''), 
+                    data.get('taux_tva'), # ✅ Peut être NULL
+                    option_id, 
+                    user_id
                 ))
                 return cursor.rowcount > 0
         except Exception as e:
@@ -17301,7 +17297,7 @@ class OptionModificateurPOS:
         except Exception as e:
             logger.error(f"Erreur delete by modifier: {e}")
             return False
-
+        
 class ClientPOS:
     """
     Gestion des clients de la caisse.
@@ -18575,6 +18571,62 @@ class ReceiptPOS:
             logger.error(f"Erreur comptabilisation ticket {receipt_id}: {e}", exc_info=True)
             return False, f"Erreur système: {str(e)}"
 
+class POSComptaMapping:
+    """Gère le lien entre les taxes POS et les comptes comptables de vente (Classe 3)"""
+    def __init__(self, db):
+        self.db = db
+
+    def set_mapping(self, user_id: int, pos_taxe_id: int, compte_vente_id: int) -> bool:
+        """Crée ou met à jour le mapping pour une taxe"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pos_compta_mapping_tva 
+                    (utilisateur_id, pos_taxe_id, compte_vente_id)
+                    VALUES (%s, %s, %s)
+                    ON DUPLICATE KEY UPDATE 
+                    compte_vente_id = VALUES(compte_vente_id)
+                """, (user_id, pos_taxe_id, compte_vente_id))
+                return True
+        except Exception as e:
+            logger.error(f"Erreur set_mapping compta POS: {e}")
+            return False
+
+    def get_compte_vente_by_taxe(self, user_id: int, pos_taxe_id: int) -> Optional[int]:
+        """Récupère le compte de vente configuré pour une taxe POS donnée"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT compte_vente_id 
+                    FROM pos_compta_mapping_tva 
+                    WHERE utilisateur_id = %s AND pos_taxe_id = %s
+                """, (user_id, pos_taxe_id))
+                result = cursor.fetchone()
+                return result['compte_vente_id'] if result else None
+        except Exception as e:
+            logger.error(f"Erreur get_compte_vente_by_taxe: {e}")
+            return None
+
+    def get_all_mappings(self, user_id: int) -> List[Dict]:
+        """Récupère tous les mappings de l'utilisateur pour l'affichage dans l'interface"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT 
+                        m.id, m.pos_taxe_id, m.compte_vente_id,
+                        t.nom as taxe_nom, t.taux as taxe_taux,
+                        c.numero as compte_numero, c.nom as compte_nom
+                    FROM pos_compta_mapping_tva m
+                    JOIN pos_taxes t ON m.pos_taxe_id = t.id
+                    JOIN categories_comptables c ON m.compte_vente_id = c.id
+                    WHERE m.utilisateur_id = %s
+                    ORDER BY t.taux DESC
+                """, (user_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur get_all_mappings: {e}")
+            return []
+
 class POSComptabilisation:
     def __init__(self, db):
         self.db = db
@@ -18583,14 +18635,9 @@ class POSComptabilisation:
         self.modele_categorie = CategorieComptable(db)
 
     def get_a_comptabiliser(self, user_id: int, pdv_id: int = None, date_from: str = None, date_to: str = None, mode: str = 'jour') -> List[Dict]:
-        """
-        Récupère les données à comptabiliser, agrégées par jour (mode='jour') 
-        ou liste détaillée des tickets (mode='ticket').
-        """
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 if mode == 'jour':
-                    # Agrégation par jour et par mode de paiement
                     query = """
                         SELECT 
                             DATE(r.date) as date_jour,
@@ -18600,18 +18647,27 @@ class POSComptabilisation:
                             pm.compte_frais_service_id,
                             pm.frais_pourcentage,
                             pm.frais_fixe,
-                            COUNT(r.id) as nb_tickets,
-                            SUM(r.ventes_nettes) as total_ht,
-                            SUM(r.taxes) as total_tva,
-                            SUM(r.total_collecte) as total_ttc
+                            mct.compte_vente_id, -- ✅ Le compte de vente vient du mapping TVA !
+                            COUNT(DISTINCT r.id) as nb_tickets,C
+                            -- Calcul précis du HT et de la TVA basé sur le taux de la taxe appliquée
+                            SUM(ri.total_ligne / (1 + (at.taux / 100))) as total_ht,
+                            SUM(ri.total_ligne - (ri.total_ligne / (1 + (at.taux / 100)))) as total_tva,
+                            SUM(ri.total_ligne) as total_ttc
                         FROM pos_receipts r
                         JOIN pos_payments p ON r.id = p.receipt_id
                         JOIN pos_modes_paiement pm ON p.mode_paiement_id = pm.id
+                        JOIN pos_receipt_items ri ON r.id = ri.receipt_id
+                        -- 1. Trouver la taxe appliquée à l'article
+                        JOIN pos_article_taxes pat ON ri.article_id = pat.article_id AND pat.est_actuelle = TRUE
+                        JOIN pos_taxes at ON pat.taxe_id = at.id
+                        -- 2. Trouver le compte comptable associé à cette taxe via notre mapping
+                        LEFT JOIN pos_compta_mapping_tva mct ON at.id = mct.pos_taxe_id AND mct.utilisateur_id = %s
                         WHERE r.utilisateur_id = %s 
                           AND r.etat_comptable = 'non_comptabilise'
                           AND r.status = 'Fermé'
                     """
-                    params = [user_id]
+                    params = [user_id, user_id]
+                    
                     if pdv_id:
                         query += " AND r.pdv = %s"
                         params.append(pdv_id)
@@ -18622,28 +18678,44 @@ class POSComptabilisation:
                         query += " AND DATE(r.date) <= %s"
                         params.append(date_to)
                     
-                    query += " GROUP BY DATE(r.date), pm.id ORDER BY date_jour DESC, pm.nom"
+                    # Le GROUP BY sépare les écritures par compte de vente mappé
+                    query += """ 
+                        GROUP BY DATE(r.date), pm.id, mct.compte_vente_id 
+                        ORDER BY date_jour DESC, pm.nom, mct.compte_vente_id
+                    """
                     cursor.execute(query, params)
                     return cursor.fetchall()
+                    
                 else:
-                    # Mode détaillé par ticket
+                    # Mode détaillé par ticket (logique similaire)
                     query = """
-                        SELECT r.id, r.recu_numero, r.date, r.total_collecte as total_ttc, 
-                               r.ventes_nettes as total_ht, r.taxes as total_tva,
-                               pm.nom as mode_paiement_nom, pm.compte_tresorerie_id, 
-                               pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe
+                        SELECT 
+                            r.id, r.recu_numero, r.date, 
+                            pm.nom as mode_paiement_nom, pm.compte_tresorerie_id, 
+                            pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe,
+                            mct.compte_vente_id,
+                            SUM(ri.total_ligne / (1 + (at.taux / 100))) as total_ht,
+                            SUM(ri.total_ligne - (ri.total_ligne / (1 + (at.taux / 100)))) as total_tva,
+                            SUM(ri.total_ligne) as total_ttc
                         FROM pos_receipts r
                         JOIN pos_payments p ON r.id = p.receipt_id
                         JOIN pos_modes_paiement pm ON p.mode_paiement_id = pm.id
+                        JOIN pos_receipt_items ri ON r.id = ri.receipt_id
+                        JOIN pos_article_taxes pat ON ri.article_id = pat.article_id AND pat.est_actuelle = TRUE
+                        JOIN pos_taxes at ON pat.taxe_id = at.id
+                        LEFT JOIN pos_compta_mapping_tva mct ON at.id = mct.pos_taxe_id AND mct.utilisateur_id = %s
                         WHERE r.utilisateur_id = %s AND r.etat_comptable = 'non_comptabilise'
                         AND r.status = 'Fermé'
+                        GROUP BY r.id, pm.id, mct.compte_vente_id
                         ORDER BY r.date DESC
                     """
-                    cursor.execute(query, (user_id,))
+                    cursor.execute(query, (user_id, user_id))
                     return cursor.fetchall()
+                    
         except Exception as e:
             logger.error(f"Erreur récupération données à comptabiliser: {e}")
             return []
+
 
     def comptabiliser_selection(self, user_id: int, items_a_comptabiliser: List[Dict]) -> Tuple[bool, str]:
         """
@@ -18748,15 +18820,25 @@ class POSComptabilisation:
             logger.error(f"Erreur comptabilisation sélection: {e}", exc_info=True)
             return False, f"Erreur système: {str(e)}"
 
-    def _get_compte_vente_defaut(self, cursor, user_id: int) -> int:
-        """Récupère un compte de vente par défaut (ex: 3000) si non spécifié"""
-        cursor.execute("""
-            SELECT id FROM categories_comptables 
-            WHERE utilisateur_id = %s AND numero LIKE '3%%' AND actif = TRUE 
-            ORDER BY numero LIMIT 1
-        """, (user_id,))
-        res = cursor.fetchone()
-        return res['id'] if res else None
+    def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
+        """Récupère un compte de vente par défaut (ex: 3000) via les jointures du plan comptable"""
+        try:
+            cursor.execute("""
+                SELECT c.id 
+                FROM categories_comptables c
+                INNER JOIN plan_categorie pc ON c.id = pc.categorie_id
+                INNER JOIN plans_comptables p ON pc.plan_id = p.id
+                WHERE p.utilisateur_id = %s 
+                  AND c.numero LIKE '3%%' 
+                  AND c.actif = TRUE 
+                ORDER BY c.numero 
+                LIMIT 1
+            """, (user_id,))
+            res = cursor.fetchone()
+            return res['id'] if res else None
+        except Exception as e:
+            logger.error(f"Erreur récupération compte vente par défaut: {e}")
+            return None
 
 
 class PeriodeTravailPOS:
