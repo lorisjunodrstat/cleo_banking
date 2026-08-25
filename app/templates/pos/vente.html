@@ -610,6 +610,28 @@ function calculTVA() {
     const d = await r.json();
     ARTICLES = d.articles; 
     CATS = d.categories;
+
+    // ✅ DEBUG : Afficher les données reçues pour vérifier les intitulés et la TVA
+    console.log(" DONNÉES BRUTES REÇUES DU BACKEND:", d);
+    
+    // Chercher spécifiquement le Menu et la Bière pour voir leur structure
+    const menu = ARTICLES.find(a => a.nom_article && a.nom_article.toLowerCase().includes('menu'));
+    const biere = ARTICLES.find(a => a.nom_article && a.nom_article.toLowerCase().includes('biere'));
+    
+    console.log("🔍 ARTICLE 'MENU' REÇU:", menu);
+    console.log("🔍 ARTICLE 'BIERE' REÇU:", biere);
+
+    // ✅ CORRECTION PRÉVENTIVE : Si le backend envoie 'taux' au lieu de 'taux_taxe', on le corrige ici
+    ARTICLES.forEach(a => {
+        if (a.taux === undefined && a.taux_taxe === undefined) {
+            console.warn("⚠️ Attention: L'article", a.nom_article, "n'a pas de taux de TVA défini !");
+        }
+        // Si le backend renvoie 'taux' mais que le frontend attend 'taux_taxe'
+        if (a.taux !== undefined && a.taux_taxe === undefined) {
+            a.taux_taxe = a.taux;
+        }
+    });
+
     CATS.forEach(c => { 
       const o = document.createElement('option'); 
       o.value = c.id; 
@@ -715,6 +737,7 @@ function confirmAddArticle(){
     const qty = parseInt($('maQty').value||1);
     const commentaire = $('maCommentaire').value.trim();
     const tauxArticleBase = parseFloat(a.taux_taxe || 0);
+    console.log("🔍 DEBUG tauxArticleBase:", tauxArticleBase, "| a.taux_taxe:", a.taux_taxe, "| a:", a);
     
     let modsSimples = [];
     let optionsTauxDifferents = [];
