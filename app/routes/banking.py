@@ -67,10 +67,11 @@ stream_handler.setFormatter(formatter)
 # Ajout des handlers au logger
 logger.addHandler(file_handler)
 logger.addHandler(stream_handler)
-
-##########################################
+####################################################################################
+####################################################################################
     # ---- Fonctions utilitaires ----
-##########################################
+####################################################################################
+####################################################################################
 
 def get_comptes_utilisateur(user_id):
         """Retourne les comptes avec sous-comptes et soldes"""
@@ -143,10 +144,11 @@ def pages_installation():
 @bp.route('/about')
 def about():
     return render_template('pages/about.html')
-
-##########################################
-######## Banques
-##########################################
+####################################################################################
+####################################################################################
+###########################      Banques           #################################
+####################################################################################
+####################################################################################
 @bp.route('/banques', methods=['GET'])
 @login_required
 def liste_banques():
@@ -216,6 +218,42 @@ def delete_banque(banque_id):
 ##########################################
 ##### Créer des comptes et sous-comptes
 ##########################################
+@bp.route('/banking')
+@login_required
+def banking_dashboard():
+    if not hasattr(g, 'models') or g.models is None:
+        flash("Erreur interne : impossible d’accéder aux données bancaires.", "error")
+        return redirect(url_for('auth.login'))
+    user_id = current_user.id
+    logger.debug(f'Accès au dashboard bancaire pour l\'utilisateur {user_id}')
+    try:
+        stats = g.models.stats_model.get_resume_utilisateur(user_id)
+        repartition = g.models.stats_model.get_repartition_par_banque(user_id)
+        comptes = get_comptes_utilisateur(user_id)
+        logger.debug(f'Dashboard - Comptes récupérés: {len(comptes)} pour utilisateur {user_id}')
+
+        # Correction de la boucle (vous aviez une erreur de logique)
+        les_comptes = []
+        for c in comptes:
+            compte_detail = g.models.compte_model.get_by_id(c['id'])
+            if compte_detail:
+                les_comptes.append(compte_detail)
+
+        recettes_mois = stats.get('total_recettes_mois', 0)
+        depenses_mois = stats.get('total_depenses_mois', 0)
+        return render_template('banking/dashboard.html',
+                             comptes=comptes,
+                             stats=stats,
+                             repartition=repartition,
+                             recettes_mois=recettes_mois,
+                             depenses_mois=depenses_mois,
+                             les_comptes=les_comptes)
+                             
+    except Exception as e:
+        logger.error(f"Erreur dans banking_dashboard: {e}", exc_info=True)
+        flash("Une erreur est survenue lors du chargement du tableau de bord.", "error")
+        return redirect(url_for('auth.login'))
+
 
 @bp.route('/banking/compte/nouveau', methods=['GET', 'POST'])
 @login_required
@@ -300,41 +338,6 @@ def banking_nouveau_sous_compte(compte_id):
     
     return render_template('banking/nouveau_sous_compte.html', compte=compte)
 
-@bp.route('/banking')
-@login_required
-def banking_dashboard():
-    if not hasattr(g, 'models') or g.models is None:
-        flash("Erreur interne : impossible d’accéder aux données bancaires.", "error")
-        return redirect(url_for('auth.login'))
-    user_id = current_user.id
-    logger.debug(f'Accès au dashboard bancaire pour l\'utilisateur {user_id}')
-    try:
-        stats = g.models.stats_model.get_resume_utilisateur(user_id)
-        repartition = g.models.stats_model.get_repartition_par_banque(user_id)
-        comptes = get_comptes_utilisateur(user_id)
-        logger.debug(f'Dashboard - Comptes récupérés: {len(comptes)} pour utilisateur {user_id}')
-
-        # Correction de la boucle (vous aviez une erreur de logique)
-        les_comptes = []
-        for c in comptes:
-            compte_detail = g.models.compte_model.get_by_id(c['id'])
-            if compte_detail:
-                les_comptes.append(compte_detail)
-
-        recettes_mois = stats.get('total_recettes_mois', 0)
-        depenses_mois = stats.get('total_depenses_mois', 0)
-        return render_template('banking/dashboard.html',
-                             comptes=comptes,
-                             stats=stats,
-                             repartition=repartition,
-                             recettes_mois=recettes_mois,
-                             depenses_mois=depenses_mois,
-                             les_comptes=les_comptes)
-                             
-    except Exception as e:
-        logger.error(f"Erreur dans banking_dashboard: {e}", exc_info=True)
-        flash("Une erreur est survenue lors du chargement du tableau de bord.", "error")
-        return redirect(url_for('auth.login'))
 
 @bp.route('/banking/compte/<int:compte_id>')
 @login_required
@@ -1254,9 +1257,11 @@ def update_periode_favorite(compte_id, periode_favorite_id):
         flash("✅ Période favorite mise à jour avec succès.", "success")
 
     return redirect(url_for("banking.banking_compte_detail", compte_id=compte_id))
-##########################################
-#### Sous-compte
-##########################################
+
+
+####################################################################################
+############################## Sous-compte.  #######################################
+####################################################################################
 
 
 @bp.route('/banking/sous-compte/<int:sous_compte_id>')
@@ -2190,6 +2195,7 @@ def supprimer_transfert(transfert_id):
         flash(message, "danger")
 
     return redirect(return_to)
+
 @bp.route('/banking/liste_transferts', methods=['GET'])
 @login_required
 def liste_transferts():
@@ -2829,8 +2835,10 @@ def import_csv_final_distinct():
         flash(f"❌ {err}", "danger")
 
     return redirect(url_for('banking.banking_dashboard'))
-### Méthodes avec fichiers temp 
 
+##########################################
+### Méthodes avec fichiers temp 
+##########################################
 
 @bp.route('/import/temp/csv', methods=['GET', 'POST'])
 @login_required
@@ -2904,7 +2912,6 @@ def import_csv_upload_temp():
 
     return redirect(url_for('banking.import_csv_map_temp'))
 
-
 @bp.route('/import/temp/csv/map', methods=['GET'])
 @login_required
 def import_csv_map_temp():
@@ -2924,7 +2931,6 @@ def import_csv_map_temp():
         return redirect(url_for('banking.import_csv_upload_temp'))
 
     return render_template('banking/import_csv_map_temp.html', csv_headers=headers)
-
 
 @bp.route('/import/temp/csv/confirm', methods=['POST'])
 @login_required
@@ -2984,7 +2990,6 @@ def import_csv_confirm_temp():
     comptes_possibles = csv_data['comptes_possibles']
     # ❌ PLUS DE db_csv_store.save() ICI
     return render_template('banking/import_csv_confirm_temp.html', rows=rows_for_template, comptes_possibles=comptes_possibles)
-
 
 @bp.route('/import/temp/csv/final', methods=['POST'])
 @login_required
@@ -3112,7 +3117,6 @@ def import_csv_final_temp():
         flash(f"❌ {err}", "danger")
 
     return redirect(url_for('banking.banking_dashboard'))
-
 
 @bp.route('/import/temp/csv/distinct_confirm', methods=['POST'])
 @login_required
@@ -3342,6 +3346,7 @@ def banking_statistiques():
         evolution_values=evolution_values,
         selected_period=nb_mois
     )
+
 @bp.route("/statistiques/dashboard")
 @login_required
 def banking_statistique_dashboard():
@@ -3408,9 +3413,13 @@ def banking_supprimer_sous_compte(sous_compte_id):
     else:
         flash('Impossible de supprimer un sous-compte avec un solde positif', 'error')    
     return redirect(url_for('banking.banking_compte_detail', compte_id=compte_id))
-####################################################################
+
+####################################################################################
+####################################################################################
 ##### Partie comptabilité
-####################################################################
+####################################################################################
+####################################################################################
+
 
 @bp.route('/comptabilite/dashboard')
 @login_required
@@ -3456,6 +3465,7 @@ def comptabilite_dashboard():
                         nb_a_comptabiliser=nb_a_comptabiliser,
                         annee_selectionnee=annee,
                         annees_disponibles=annees_disponibles)
+
 @bp.route('/comptabilite/statistiques')
 @login_required
 def statistiques_comptables():
@@ -3479,7 +3489,7 @@ def statistiques_comptables():
                         date_to=date_to)
 
 ##########################################
-### Partie comptabilité 
+### Partie Catégorie comptabilité  
 ##########################################
 
 @bp.route('/comptabilite/categories')
@@ -3597,101 +3607,6 @@ def edit_categorie(categorie_id):
                         types_tva=types_tva,
                         types_ecriture=types_ecriture)
 
-@bp.route('/comptabilite/categories/import-csv', methods=['GET', 'POST'])
-@login_required
-def import_plan_comptable_csv():
-    all_plan = g.models.plan_comptable_model.get_all_plans(current_user.id)
-    if request.method == 'GET':
-        return render_template('comptabilite/import_categories_csv.html', all_plan=all_plan)
-
-    try:
-        if 'csv_file' not in request.files:
-            flash('Aucun fichier sélectionné', 'danger')
-            return redirect(url_for('banking.liste_categories_comptables'))
-        plan_id = request.form.get('plan_id', type=int)
-        if not plan_id:
-            flash('Veuillez sélectionner un plan comptable', 'danger')
-            return redirect(url_for('banking.import_plan_comptable_csv'))
-        file = request.files['csv_file']
-        if file and file.filename.endswith('.csv'):
-            # 1. Lecture unique du fichier
-            raw_data = file.stream.read()
-            # Tentative de décodage propre
-            try:
-                content = raw_data.decode("utf-8-sig")
-            except UnicodeDecodeError:
-                content = raw_data.decode("latin-1")
-            
-            # --- DEBUG (Facultatif, pour voir ce qu'on lit) ---
-            print(f"DEBUG: Taille du contenu : {len(content)}")
-            
-            # 2. Détection du délimiteur
-            stream = io.StringIO(content)
-            sniffer = csv_mod.Sniffer()
-            try:
-                # On analyse les premiers caractères pour trouver le dialecte
-                dialect = sniffer.sniff(content[:2048], delimiters=[',', ';'])
-            except csv_mod.Error:
-                # Si le sniffer échoue, on force une valeur par défaut
-                class DefaultDialect(csv_mod.excel):
-                    delimiter = ','
-                dialect = DefaultDialect
-            
-            # 3. Traitement
-            stream.seek(0) # On rembobine au début du StringIO
-            csv_input = csv_mod.reader(stream, dialect=dialect)
-            
-            # Sauter l'en-tête
-            header = next(csv_input, None)
-            
-            nb_insertions = 0
-            
-            with g.db_manager.get_cursor() as cursor:
-                # Vider la table
-                #cursor.execute("DELETE FROM categories_comptables")
-                
-                # Insertion
-                for row in csv_input:
-                    if len(row) >= 9:
-                        # Nettoyage des données
-                        raw_type = row[3]
-                        allowed_types = ['Actif', 'Passif', 'Charge', 'Revenus', 'Groupe']
-                        valeur_type = raw_type if raw_type in allowed_types else 'Actif'
-                        
-                        cursor.execute("""
-                            INSERT INTO categories_comptables 
-                            (numero, nom, parent_id, type_compte, compte_systeme, compte_associe, 
-                             type_tva, categorie_complementaire_id, type_ecriture_complementaire, actif)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        """, (
-                            row[0], row[1], 
-                            int(row[2]) if row[2] and row[2].strip() else None,
-                            valeur_type,
-                            row[4] if row[4] else None, 
-                            row[5] if row[5] else None, 
-                            row[6] if row[6] else None,
-                            int(row[7]) if row[7] and row[7].strip() else None,
-                            row[8] if row[8] and row[8].strip() else None,
-                            True
-                        ))
-                        categorie_id = cursor.lastrowid
-                        cursor.execute("""
-                            INSERT IGNORE INTO plan_categorie (plan_id, categorie_id)
-                            VALUES (%s, %s)
-                        """, (plan_id, categorie_id))
-                        nb_insertions += 1
-            
-            flash(f'Plan comptable importé avec succès: {nb_insertions} lignes.', 'success')
-        else:
-            flash('Format invalide, veuillez uploader un fichier CSV.', 'danger')
-            
-    except Exception as e:
-        print(f"ERREUR IMPORT: {e}") # Vérifiez bien votre terminal ici
-        flash(f'Erreur lors de l\'importation: {str(e)}', 'danger')
-        
-    return redirect(url_for('banking.liste_categories_comptables'))
-
-
 @bp.route('/comptabilite/categories/<int:categorie_id>/delete', methods=['POST'])
 @login_required
 def delete_categorie(categorie_id):
@@ -3703,50 +3618,12 @@ def delete_categorie(categorie_id):
     
     return redirect(url_for('banking.liste_categories_comptables'))
 
-@bp.route('/comptabilite/nouveau-contact', methods=['GET', 'POST'])
-@login_required
-def nouveau_contact_comptable():
-    if request.method == 'POST':
-        try:
-            data = {
-                'nom': request.form['nom'],
-                'email': request.form.get('email', ''),
-                'telephone': request.form.get('telephone', ''),
-                'adresse': request.form.get('adresse', ''),
-                'code_postal': request.form.get('code_postal', ''),
-                'ville': request.form.get('ville', ''),
-                'pays': request.form.get('pays', ''),
-                'utilisateur_id': current_user.id
-            }
-                # Debug: afficher les données
-            print(f"Données à insérer: {data}")
-            if g.models.contact_model.create(data):
-                flash('Contact créé avec succès', 'success')
-                return redirect(url_for('banking.liste_contacts_comptables'))
-            else:
-                flash('Erreur lors de la création du contact', 'danger')
-        except Exception as e:
-            flash(f'Erreur: {str(e)}', 'danger') 
-    # Pour les requêtes GET, on affiche le modal via la page liste_contacts_comptables
-    redirect_to = request.form.get('redirect_to', url_for('banking.liste_ecritures'))
-    return redirect(redirect_to)
 
 
-@bp.route('/comptabilite/contacts/<int:contact_id>/delete', methods=['POST'])
-@login_required
-def delete_contact_comptable(contact_id):
-    """Supprime un contact comptable"""
-    if g.models.contact_model.delete(contact_id, current_user.id):
-        flash('Contact supprimé avec succès', 'success')
-    else:
-        flash('Erreur lors de la suppression du contact', 'danger')
-    
-    return redirect(url_for('banking.liste_contacts_comptables'))
 
 ##########################################
-### Contacts en comptabilité
+### Partie Contact comptable 
 ##########################################
-
 @bp.route('/comptabilite/contacts')
 @login_required
 def liste_contacts_comptables():
@@ -3797,6 +3674,48 @@ def liste_contacts_comptables():
         comptes_lies=comptes_lies,
         ids_lies=ids_lies
     )
+
+
+@bp.route('/comptabilite/nouveau-contact', methods=['GET', 'POST'])
+@login_required
+def nouveau_contact_comptable():
+    if request.method == 'POST':
+        try:
+            data = {
+                'nom': request.form['nom'],
+                'email': request.form.get('email', ''),
+                'telephone': request.form.get('telephone', ''),
+                'adresse': request.form.get('adresse', ''),
+                'code_postal': request.form.get('code_postal', ''),
+                'ville': request.form.get('ville', ''),
+                'pays': request.form.get('pays', ''),
+                'utilisateur_id': current_user.id
+            }
+                # Debug: afficher les données
+            print(f"Données à insérer: {data}")
+            if g.models.contact_model.create(data):
+                flash('Contact créé avec succès', 'success')
+                return redirect(url_for('banking.liste_contacts_comptables'))
+            else:
+                flash('Erreur lors de la création du contact', 'danger')
+        except Exception as e:
+            flash(f'Erreur: {str(e)}', 'danger') 
+    # Pour les requêtes GET, on affiche le modal via la page liste_contacts_comptables
+    redirect_to = request.form.get('redirect_to', url_for('banking.liste_ecritures'))
+    return redirect(redirect_to)
+
+
+@bp.route('/comptabilite/contacts/<int:contact_id>/delete', methods=['POST'])
+@login_required
+def delete_contact_comptable(contact_id):
+    """Supprime un contact comptable"""
+    if g.models.contact_model.delete(contact_id, current_user.id):
+        flash('Contact supprimé avec succès', 'success')
+    else:
+        flash('Erreur lors de la suppression du contact', 'danger')
+    
+    return redirect(url_for('banking.liste_contacts_comptables'))
+
 
 @bp.route('/comptabilite/contacts/<int:contact_id>/edit', methods=['GET', 'POST'])
 @login_required
@@ -3854,6 +3773,10 @@ def link_contact_to_compte(contact_id):
             flash("Erreur lors de la liaison", "danger")
 
     return redirect(url_for('banking.liste_contacts_comptables'))
+
+##########################################
+### Partie Ecritures comptables
+##########################################
 
 @bp.route('/comptabilite/ecritures')
 @login_required
@@ -4098,6 +4021,7 @@ def liste_ecritures_par_contact(contact_id):
         show_transaction_modal=show_transaction_modal,
         transaction_detail=transaction_detail
     )
+
 @bp.route('/comptabilite/ecritures/update_statut/<int:ecriture_id>', methods=['POST'])
 @login_required
 def update_statut_ecriture(ecriture_id):
@@ -4128,8 +4052,8 @@ def update_statut_ecriture(ecriture_id):
     return redirect(request.referrer or url_for('banking.liste_ecritures'))
 
 ##### Fichier dans transactions 
-@bp.route('/comptabilite/ecritures/upload_fichier/<int:ecriture_id>', methods=['POST'])
-@login_required
+#@bp.route('/comptabilite/ecritures/upload_fichier/<int:ecriture_id>', methods=['POST'])
+#@login_required
 
 
 def upload_fichier_ecriture(ecriture_id):
@@ -4239,10 +4163,11 @@ def supprimer_fichier_ecriture(ecriture_id):
     
     return redirect(request.referrer or url_for('banking.liste_ecritures'))
 
-##########################################
+###################################################################################$
+###################################################################################$
 #### Catégorie des transactions
 # routes_categories
-##########################################
+###################################################################################$
     
 @bp.route('/gestion_categorie')
 @login_required
@@ -4438,25 +4363,7 @@ def transactions_par_categorie(categorie_id):
         flash("Erreur lors du chargement des transactions", "error")
         return redirect(url_for('banking.gestion_categories'))
 
-#@bp.route('/categorie/associer', methods=['POST'])
-#@login_required
-#def associer_categorie_transaction():
-#    transaction_id = request.form.get('transaction_id', type=int)
-#    categorie_id = request.form.get('categorie_id', type=int)
-#    
-#    if not transaction_id or not categorie_id:
-#        flash("Données manquantes", "error")
-#        return redirect(request.referrer or url_for('banking.banking_dashboard'))#
-#
-#    success, message = g.models.categorie_transaction_model.associer_categorie_transaction(
-#        transaction_id, categorie_id, current_user.id
-#    )
-#    if not success:
-#        flash(message, "error")
-#    else:
-#        flash("Catégorie associée avec succès", "success")
-#    
-#    return redirect(request.referrer)
+
 
 @bp.route('/categorie/associer-transaction', methods=['POST'])
 @login_required
@@ -4855,8 +4762,6 @@ def nouvelle_ecriture_from_selected():
                         today=datetime.now().strftime('%Y-%m-%d'),
                         taux_disponibles=taux_disponibles)
     
-   
-
 
 @bp.route('/comptabilite/update_statut_comptable/<int:transaction_id>', methods=['POST'])
 @login_required
@@ -5886,6 +5791,102 @@ def liste_plans():
     plans = g.models.plan_comptable_model.get_all_plans(current_user.id)
     return render_template('plans/liste.html', plans=plans)
 
+
+
+@bp.route('/comptabilite/categories/import-csv', methods=['GET', 'POST'])
+@login_required
+def import_plan_comptable_csv():
+    all_plan = g.models.plan_comptable_model.get_all_plans(current_user.id)
+    if request.method == 'GET':
+        return render_template('comptabilite/import_categories_csv.html', all_plan=all_plan)
+
+    try:
+        if 'csv_file' not in request.files:
+            flash('Aucun fichier sélectionné', 'danger')
+            return redirect(url_for('banking.liste_categories_comptables'))
+        plan_id = request.form.get('plan_id', type=int)
+        if not plan_id:
+            flash('Veuillez sélectionner un plan comptable', 'danger')
+            return redirect(url_for('banking.import_plan_comptable_csv'))
+        file = request.files['csv_file']
+        if file and file.filename.endswith('.csv'):
+            # 1. Lecture unique du fichier
+            raw_data = file.stream.read()
+            # Tentative de décodage propre
+            try:
+                content = raw_data.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                content = raw_data.decode("latin-1")
+            
+            # --- DEBUG (Facultatif, pour voir ce qu'on lit) ---
+            print(f"DEBUG: Taille du contenu : {len(content)}")
+            
+            # 2. Détection du délimiteur
+            stream = io.StringIO(content)
+            sniffer = csv_mod.Sniffer()
+            try:
+                # On analyse les premiers caractères pour trouver le dialecte
+                dialect = sniffer.sniff(content[:2048], delimiters=[',', ';'])
+            except csv_mod.Error:
+                # Si le sniffer échoue, on force une valeur par défaut
+                class DefaultDialect(csv_mod.excel):
+                    delimiter = ','
+                dialect = DefaultDialect
+            
+            # 3. Traitement
+            stream.seek(0) # On rembobine au début du StringIO
+            csv_input = csv_mod.reader(stream, dialect=dialect)
+            
+            # Sauter l'en-tête
+            header = next(csv_input, None)
+            
+            nb_insertions = 0
+            
+            with g.db_manager.get_cursor() as cursor:
+                # Vider la table
+                #cursor.execute("DELETE FROM categories_comptables")
+                
+                # Insertion
+                for row in csv_input:
+                    if len(row) >= 9:
+                        # Nettoyage des données
+                        raw_type = row[3]
+                        allowed_types = ['Actif', 'Passif', 'Charge', 'Revenus', 'Groupe']
+                        valeur_type = raw_type if raw_type in allowed_types else 'Actif'
+                        
+                        cursor.execute("""
+                            INSERT INTO categories_comptables 
+                            (numero, nom, parent_id, type_compte, compte_systeme, compte_associe, 
+                             type_tva, categorie_complementaire_id, type_ecriture_complementaire, actif)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (
+                            row[0], row[1], 
+                            int(row[2]) if row[2] and row[2].strip() else None,
+                            valeur_type,
+                            row[4] if row[4] else None, 
+                            row[5] if row[5] else None, 
+                            row[6] if row[6] else None,
+                            int(row[7]) if row[7] and row[7].strip() else None,
+                            row[8] if row[8] and row[8].strip() else None,
+                            True
+                        ))
+                        categorie_id = cursor.lastrowid
+                        cursor.execute("""
+                            INSERT IGNORE INTO plan_categorie (plan_id, categorie_id)
+                            VALUES (%s, %s)
+                        """, (plan_id, categorie_id))
+                        nb_insertions += 1
+            
+            flash(f'Plan comptable importé avec succès: {nb_insertions} lignes.', 'success')
+        else:
+            flash('Format invalide, veuillez uploader un fichier CSV.', 'danger')
+            
+    except Exception as e:
+        print(f"ERREUR IMPORT: {e}") # Vérifiez bien votre terminal ici
+        flash(f'Erreur lors de l\'importation: {str(e)}', 'danger')
+        
+    return redirect(url_for('banking.liste_categories_comptables'))
+
 @bp.route('/plans/creer', methods=['GET', 'POST'])
 @login_required
 def creer_plan():
@@ -6186,6 +6187,9 @@ def export_compte_de_resultat():
         response.headers["Content-type"] = "application/pdf"
         return response
 
+##########################################
+## routes pour le Journal de comptabilité
+##########################################
 
 @bp.route('/comptabilite/journal-comptable')
 def journal_comptable():
@@ -6731,6 +6735,8 @@ def compte_resultat_csv():
     return Response(out.getvalue(), mimetype='text/csv',
                     headers={'Content-Disposition':
                              f'attachment; filename=compte_resultat_{p["annee"]}.csv'})
+
+
 ##########################################
 ###### Regle Ecriture
 ##########################################

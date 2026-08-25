@@ -16432,25 +16432,24 @@ class TaxePOS:
             logger.error(f"Erreur récupération taxes POS: {e}")
             return []
 
-    def get_taxe_active_for_article(self, article_id: int, date_ref: date = None) -> Optional[Dict]:
-        """Récupère la taxe active pour un article à une date donnée"""
-        if date_ref is None:
-            date_ref = date.today()
+    def get_taxe_active_for_article(self, article_id: int) -> Optional[Dict]:
+        """Récupère la taxe actuellement active pour un article"""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 cursor.execute("""
                     SELECT t.* 
-                    FROM pos_article_taxes at
-                    JOIN pos_taxes t ON at.taxe_id = t.id
-                    WHERE at.article_id = %s
-                      AND at.date_debut <= %s
-                      AND (at.date_fin >= %s OR at.date_fin IS NULL)
-                      AND t.est_actif = TRUE
+                    FROM pos_taxes t
+                    INNER JOIN pos_article_taxes at ON t.id = at.taxe_id
+                    WHERE at.article_id = %s 
+                    AND at.est_actuelle = TRUE
+                    AND t.est_actif = TRUE
+                    AND (t.date_debut <= CURDATE() OR t.date_debut IS NULL)
+                    AND (t.date_fin >= CURDATE() OR t.date_fin IS NULL)
                     LIMIT 1
-                """, (article_id, date_ref, date_ref))
+                """, (article_id,))
                 return cursor.fetchone()
         except Exception as e:
-            logger.error(f"Erreur récupération taxe active: {e}")
+            logger.error(f"Erreur get_taxe_active_for_article: {e}")
             return None
 
     def assigner_to_article(self, article_id: int, taxe_id: int, 
@@ -16474,26 +16473,6 @@ class TaxePOS:
         except Exception as e:
             logger.error(f"Erreur assignation taxe: {e}")
             return False
-
-    def get_taxe_active_for_article(self, article_id: int) -> Optional[Dict]:
-        """Récupère la taxe actuellement active pour un article"""
-        try:
-            with self.db.get_cursor(dictionary=True) as cursor:
-                cursor.execute("""
-                    SELECT t.* 
-                    FROM pos_taxes t
-                    INNER JOIN pos_article_taxes at ON t.id = at.taxe_id
-                    WHERE at.article_id = %s 
-                    AND at.est_actuelle = TRUE
-                    AND t.est_actif = TRUE
-                    AND (t.date_debut <= CURDATE() OR t.date_debut IS NULL)
-                    AND (t.date_fin >= CURDATE() OR t.date_fin IS NULL)
-                    LIMIT 1
-                """, (article_id,))
-                return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur get_taxe_active_for_article: {e}")
-            return None
 
     def desactiver_taxes_article(self, article_id: int) -> bool:
         """Désactive toutes les taxes actuelles d'un article"""
