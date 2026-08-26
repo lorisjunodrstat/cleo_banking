@@ -1,13 +1,13 @@
 {% extends 'pos.html' %}
-{% block title %}Modifier méthode de paiement{% endblock %}
-{% block page_header %}<h2 class="mb-4">Modifier Méthode de Paiement</h2>{% endblock %}
+{% block title %}{{ 'Modifier' if payment_method else 'Nouvelle' }} méthode de paiement{% endblock %}
+{% block page_header %}<h2 class="mb-4">{{ 'Modifier' if payment_method else 'Créer une nouvelle' }} Méthode de Paiement</h2>{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-8">
         <div class="card shadow-sm">
             <div class="card-body">
-                <form method="POST">
+                <form method="POST" enctype="multipart/form-data">
                     {% if payment_method %}
                         <input type="hidden" name="payment_method_id" value="{{ payment_method.id }}">
                     {% endif %}
@@ -15,17 +15,18 @@
                     <!-- Champs de base -->
                     <div class="mb-3">
                         <label class="form-label">Nom de la méthode de paiement</label>
-                        <input type="text" name="nom" class="form-control" value="{{ payment_method.nom }}" required>
+                        <input type="text" name="nom" class="form-control" 
+                               value="{{ payment_method.nom if payment_method else '' }}" required>
                     </div>
                     
                     <div class="mb-3">
                         <label class="form-label">Description</label>
-                        <textarea name="description" class="form-control" rows="3">{{ payment_method.description }}</textarea>
+                        <textarea name="description" class="form-control" rows="3">{{ payment_method.description if payment_method else '' }}</textarea>
                     </div>
                     
                     <div class="mb-3 form-check">
                         <input type="checkbox" name="est_actif" class="form-check-input" id="est_actif" 
-                               {% if payment_method.est_actif %}checked{% endif %}>
+                               {% if payment_method and payment_method.est_actif %}checked{% endif %}>
                         <label class="form-check-label" for="est_actif">Actif</label>
                     </div>
                     
@@ -40,12 +41,12 @@
                             <option value="">-- Aucun --</option>
                             {% for c in comptes_tresorerie %}
                             <option value="{{ c.id }}" 
-                                {% if payment_method.compte_tresorerie_id == c.id %}selected{% endif %}>
+                                {% if payment_method and payment_method.compte_tresorerie_id == c.id %}selected{% endif %}>
                                 {{ c.numero }} - {{ c.nom }}
                             </option>
                             {% endfor %}
                         </select>
-                        <small class="text-muted">Ex: 1000 Caisse, 1020 Banque Postale, 4000 Créances Eat</small>
+                        <small class="text-muted">Ex: 1000 Caisse, 1020 Banque Postale, 4000 Créances</small>
                     </div>
                     
                     <div class="mb-3">
@@ -54,7 +55,7 @@
                             <option value="">-- Aucun --</option>
                             {% for c in comptes_charges %}
                             <option value="{{ c.id }}"
-                                {% if payment_method.compte_frais_service_id == c.id %}selected{% endif %}>
+                                {% if payment_method and payment_method.compte_frais_service_id == c.id %}selected{% endif %}>
                                 {{ c.numero }} - {{ c.nom }}
                             </option>
                             {% endfor %}
@@ -67,14 +68,14 @@
                             <label class="form-label">Frais en pourcentage (%)</label>
                             <input type="number" step="0.01" min="0" max="100" 
                                    name="frais_pourcentage" class="form-control"
-                                   value="{{ payment_method.frais_pourcentage or 0 }}">
+                                   value="{{ payment_method.frais_pourcentage if payment_method else 0 }}">
                             <small class="text-muted">Ex: 2.5 pour 2.5% de commission</small>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Frais fixes (CHF)</label>
                             <input type="number" step="0.05" min="0" 
                                    name="frais_fixe" class="form-control"
-                                   value="{{ payment_method.frais_fixe or 0 }}">
+                                   value="{{ payment_method.frais_fixe if payment_method else 0 }}">
                             <small class="text-muted">Ex: 0.30 pour 30 centimes fixes par transaction</small>
                         </div>
                     </div>

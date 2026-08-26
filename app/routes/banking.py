@@ -4047,31 +4047,38 @@ def update_statut_ecriture(ecriture_id):
     return redirect(request.referrer or url_for('banking.liste_ecritures'))
 
 ##### Fichier dans transactions 
-#@bp.route('/comptabilite/ecritures/upload_fichier/<int:ecriture_id>', methods=['POST'])
-#@login_required
-
-
+@bp.route('/comptabilite/ecritures/upload_fichier/<int:ecriture_id>', methods=['POST'])
+@login_required
 def upload_fichier_ecriture(ecriture_id):
     """Upload un fichier pour une écriture"""
     logging.info(f"Route upload appelée - Écriture: {ecriture_id}, Utilisateur: {current_user.id}")
+    
     if 'fichier' not in request.files:
         flash('Aucun fichier sélectionné', 'error')
         return redirect(request.referrer or url_for('banking.liste_ecritures'))
     
     fichier = request.files['fichier']
+    
+    # Sécurité : vérifier qu'un fichier a bien été sélectionné (pas juste un champ vide)
+    if fichier.filename == '':
+        flash('Aucun fichier sélectionné', 'error')
+        return redirect(request.referrer or url_for('banking.liste_ecritures'))
+
     logging.info(f"Fichier reçu - Nom: {fichier.filename}, Type: {fichier.content_type}")
+    
     success, message = g.models.ecriture_comptable_model.ajouter_fichier(
         ecriture_id, current_user.id, fichier
     )
+    
     logging.info(f"Résultat upload: {success} - {message}")
+    
     if success:
         flash(message, 'success')
-        flash(f'Fichier uploadé avec succès {fichier.filename} à {ecriture_id} sur {fichier.content_type}', 'success')
+        flash(f'Fichier uploadé avec succès : {fichier.filename}', 'success')
     else:
         flash(message, 'error')
     
     return redirect(request.referrer or url_for('banking.liste_ecritures'))
-
 @bp.route('/test_upload')
 @login_required
 def test_upload():
@@ -12382,6 +12389,8 @@ def pos_edit_payment_method(mode_id):
         return render_template('pos/edit_payment_method.html', payment_method=mode, comptes_tresorerie=comptes_tresorerie, comptes_charges=comptes_charges)
     
     return render_template('pos/edit_payment_method.html', payment_method=mode, comptes_tresorerie=comptes_tresorerie, comptes_charges=comptes_charges)
+
+
 @bp.route('/pos/payment-methods/<int:mode_id>/delete', methods=['POST'])
 @login_required
 def pos_delete_payment_method(mode_id):
