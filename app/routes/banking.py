@@ -4943,8 +4943,13 @@ def month_french_filter(value):
 @bp.route('/comptabilite/ecritures/nouvelle', methods=['GET', 'POST'])
 @login_required
 def nouvelle_ecriture():
-
+    # Variables par défaut pour le template
+    form_data = {}
+    today = datetime.now().strftime('%Y-%m-%d')
+    taux_disponibles = g.models.taux_tva_model.get_taux_for_select()
+    
     if request.method == 'POST':
+        form_data = request.form
         try:
             date_ecriture = request.form['date_ecriture']
             annee_ecriture = int(date_ecriture[:4])
@@ -4958,23 +4963,24 @@ def nouvelle_ecriture():
                 
                 if float(taux_soumis) not in taux_valides_values:
                     flash(f"Erreur : Le taux de TVA {taux_soumis}% n'est pas valide pour l'année {annee_ecriture}.", "danger")
-                    # On réaffiche le formulaire avec les données saisies et les bons taux pour cette année
+                    # Retour immédiat avec les bons taux pour l'année
                     return render_template('comptabilite/nouvelle_ecriture.html',
                         comptes=g.models.compte_model.get_by_user_id(current_user.id),
                         categories=g.models.categorie_comptable_model.get_all_categories(current_user.id),
                         contacts=g.models.contact_model.get_all(current_user.id),
                         categories_avec_complementaires=g.models.categorie_comptable_model.get_categories_avec_complementaires(current_user.id),
-                        today=date_ecriture, # Force la date choisie
-                        taux_disponibles=taux_valides, # 🔥 Taux corrigés pour l'année choisie
-                        form_data=request.form # 🔥 Pré-remplit le formulaire
+                        transactions_sans_ecritures=[], # À adapter si nécessaire
+                        today=date_ecriture,
+                        taux_disponibles=taux_valides,
+                        form_data=form_data
                     )
-            # 🔥 NOUVEAU : Récupérer le contact lié au compte si pas de contact spécifié
+            
+            # 🔥 Récupérer le contact lié au compte si pas de contact spécifié
             id_contact_form = int(request.form['id_contact']) if request.form.get('id_contact') else None
             compte_bancaire_id = int(request.form['compte_bancaire_id'])
             
             id_contact = id_contact_form
             if not id_contact_form and compte_bancaire_id:
-                # Si pas de contact spécifié, chercher le contact lié au compte
                 contact_lie = g.models.contact_compte_model.get_contact_by_compte(
                     compte_bancaire_id, 
                     current_user.id
@@ -4987,29 +4993,31 @@ def nouvelle_ecriture():
                 'compte_bancaire_id': compte_bancaire_id,
                 'categorie_id': int(request.form['categorie_id']),
                 'montant': Decimal(request.form['montant']),
-                'montant_htva':Decimal(request.form.get('montant_htva', request.form['montant'])),
+                'montant_htva': Decimal(request.form.get('montant_htva', request.form['montant'])),
                 'description': request.form.get('description', ''),
-                'id_contact': id_contact,  # 🔥 Utilise le contact du formulaire ou celui lié au compte
+                'id_contact': id_contact,
                 'reference': request.form.get('reference', ''),
                 'type_ecriture': request.form['type_ecriture'],
                 'tva_taux': Decimal(request.form['tva_taux']) if request.form.get('tva_taux') else None,
                 'utilisateur_id': current_user.id,
                 'statut': request.form.get('statut', 'pending'),
                 'devise': request.form.get('devise', 'CHF'),
-                'type_ecriture_comptable' : 'principale'
+                'type_ecriture_comptable': 'principale'
             }
             
+            # Calcul TVA
             if data['tva_taux']:
                 if 'montant_htva' in request.form and request.form['montant_htva']:
                     data['montant_htva'] = Decimal(request.form['montant_htva'])
                     data['tva_montant'] = data['montant'] - data['montant_htva']
                 else:
-                    data['montant_htva'] = data['montant'] / (1 + data['tva_taux'] /100)
+                    data['montant_htva'] = data['montant'] / (1 + data['tva_taux'] / 100)
                     data['tva_montant'] = data['montant'] - data['montant_htva']
             else:
                 data['montant_htva'] = data['montant']
                 data['tva_montant'] = 0
                 
+            # Création de l'écriture
             if g.models.ecriture_comptable_model.create(g.models.categorie_comptable_model, data):
                 flash('Écriture enregistrée avec succès', 'success')
                 ecriture_id = g.models.ecriture_comptable_model.last_insert_id
@@ -5019,27 +5027,42 @@ def nouvelle_ecriture():
 
                 transaction_id = request.form.get('transaction_id')
                 if transaction_id:
-                    g.models.ecriture_comptable_model.link_ecriture_to_transaction(transaction_id, g.models.ecriture_comptable_model.last_insert_id, current_user.id)
+                    g.models.ecriture_comptable_model.link_ecriture_to_transaction(transaction_id, ecriture_id, current_user.id)
+                
                 return redirect(url_for('banking.liste_ecritures'))
             else:
-                flash('Erreur lors de l\'enregistrement', 'danger')
+                flash('Erreur lors de l\'enregistrement en base de données', 'danger')
+                
         except Exception as e:
-            flash(f'Erreur: {str(e)}', 'danger')
-    
-    elif request.method == 'GET':
-        tous_les_taux = g.models.taux_tva_model.get_taux_for_select()
-        comptes = g.models.compte_model.get_all_accounts(user_id = current_user.id)
-        categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
-        contacts = g.models.contact_model.get_all(current_user.id)
-        categories_avec_complementaires = g.models.categorie_comptable_model.get_categories_avec_complementaires(current_user.id)
-        return render_template('comptabilite/nouvelle_ecriture.html',
-            comptes=comptes,
-            categories=categories,
-            categories_avec_complementaires=categories_avec_complementaires,
-            contacts=contacts,
-            transactions_sans_ecritures=transactions_sans_ecritures,
-            today=datetime.now().strftime('%Y-%m-%d'),
-            taux_disponibles=tous_les_taux)
+            logger.error(f"Erreur nouvelle_ecriture POST: {e}")
+            flash(f'Erreur inattendue: {str(e)}', 'danger')
+            
+        # 🔥 CORRECTION 1 : Si on arrive ici, c'est qu'il y a eu une erreur (else ou except).
+        # On met à jour les taux pour l'année saisie afin de réafficher le formulaire correctement.
+        if 'date_ecriture' in request.form:
+            try:
+                annee = int(request.form['date_ecriture'][:4])
+                taux_disponibles = g.models.taux_tva_model.get_taux_for_select(annee)
+                today = request.form['date_ecriture']
+            except ValueError:
+                pass
+
+    # 🔥 CORRECTION 2 : Définir la variable manquante (à adapter selon votre modèle)
+    # Exemple : transactions_sans_ecritures = g.models.transaction_financiere_model.get_sans_ecritures(current_user.id)
+    transactions_sans_ecritures = [] 
+
+    # 🔥 OPTIMISATION : Un seul render_template à la fin pour le GET et le POST (en cas d'erreur)
+    return render_template('comptabilite/nouvelle_ecriture.html',
+        comptes=g.models.compte_model.get_by_user_id(current_user.id),
+        categories=g.models.categorie_comptable_model.get_all_categories(current_user.id),
+        contacts=g.models.contact_model.get_all(current_user.id),
+        categories_avec_complementaires=g.models.categorie_comptable_model.get_categories_avec_complementaires(current_user.id),
+        transactions_sans_ecritures=transactions_sans_ecritures,
+        today=today,
+        taux_disponibles=taux_disponibles,
+        form_data=form_data
+    )
+
 
 @bp.route('/comptabilite/ecritures/multiple/nouvelle', methods=['GET', 'POST'])
 @login_required
