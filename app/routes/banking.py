@@ -12184,61 +12184,52 @@ def pos_stats_by_employee():
                          date_to=date_to)
 
 
-
 @bp.route('/pos/stats/payment-methods')
 @login_required
 def pos_stats_payment_methods():
     """Statistiques des ventes par mode de paiement"""
-    date_from = request.args.get('date_from', '')
-    date_to = request.args.get('date_to', '')
+    # Nettoyer les dates : si vide, on met None pour éviter les erreurs SQL
+    date_from = request.args.get('date_from', '').strip() or None
+    date_to = request.args.get('date_to', '').strip() or None
     
     try:
-        receipts = g.models.receipt_pos_model.get_all(
+        # ✅ Appel propre au modèle
+        rows = g.models.receipt_pos_model.get_payment_methods_stats(
             user_id=current_user.id,
             date_from=date_from,
             date_to=date_to
         )
         
-        payment_stats = {}
-        for receipt in receipts:
-            is_refund = receipt.get('receipt_type') == 'Remboursement'
-            
-            for payment in receipt.get('payments', []):
-                mode_nom = payment.get('mode_paiement_nom', 'Inconnu')
-                montant = float(payment.get('montant', 0) or 0)
-                
-                if mode_nom not in payment_stats:
-                    payment_stats[mode_nom] = {
-                        'method': mode_nom,
-                        'transactions': 0,
-                        'amount': 0.0,
-                        'refund_transactions': 0,
-                        'refund_amount': 0.0,
-                        'net': 0.0
-                    }
-                
-                stats = payment_stats[mode_nom]
-                stats['transactions'] += 1
-                stats['amount'] += montant
-                
-                if is_refund:
-                    stats['refund_transactions'] += 1
-                    stats['refund_amount'] += montant
-                    stats['net'] -= montant  # Déduit le remboursement du net
-                else:
-                    stats['net'] += montant
-        
-        payment_data = list(payment_stats.values())
-        
+        payment_data = []
         totals = {
-            'transactions': sum(p['transactions'] for p in payment_data),
-            'amount': sum(p['amount'] for p in payment_data),
-            'refund_transactions': sum(p['refund_transactions'] for p in payment_data),
-            'refund_amount': sum(p['refund_amount'] for p in payment_data),
-            'net': sum(p['net'] for p in payment_data)
+            'transactions': 0, 
+            'amount': 0.0, 
+            'refund_transactions': 0, 
+            'refund_amount': 0.0, 
+            'net': 0.0
         }
+        
+        # Formatage des données pour le template et calcul des totaux globaux
+        for row in rows:
+            net = float(row['amount']) - float(row['refund_amount'])
+            
+            payment_data.append({
+                'method': row['mode_nom'],
+                'transactions': int(row['transactions']),
+                'amount': float(row['amount']),
+                'refund_transactions': int(row['refund_transactions']),
+                'refund_amount': float(row['refund_amount']),
+                'net': net
+            })
+            
+            totals['transactions'] += int(row['transactions'])
+            totals['amount'] += float(row['amount'])
+            totals['refund_transactions'] += int(row['refund_transactions'])
+            totals['refund_amount'] += float(row['refund_amount'])
+            totals['net'] += net
+
     except Exception as e:
-        logger.error(f"Erreur stats modes de paiement: {e}")
+        logger.error(f"Erreur stats modes de paiement: {e}", exc_info=True)
         payment_data = []
         totals = {
             'transactions': 0,
@@ -12252,9 +12243,12 @@ def pos_stats_payment_methods():
         'pos/payment_methods.html',
         payment_data=payment_data,
         totals=totals,
-        date_from=date_from,
-        date_to=date_to
+        date_from=date_from or '',
+        date_to=date_to or ''
     )
+
+
+
 @bp.route('/pos/payment-methods-list')
 @login_required
 def pos_payment_methods_list():

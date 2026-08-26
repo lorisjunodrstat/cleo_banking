@@ -17486,6 +17486,42 @@ class ReceiptPOS:
             logger.error(f"Erreur récupération receipts: {e}")
             return []
 
+    def get_payment_methods_stats(self, user_id: int, date_from: str = None, date_to: str = None) -> List[Dict]:
+        """
+        Statistiques agrégées par mode de paiement (Ventes vs Remboursements).
+        Retourne une liste de dictionnaires avec les totaux par mode.
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                query = """
+                    SELECT 
+                        COALESCE(mp.nom, 'Inconnu') AS mode_nom,
+                        COUNT(CASE WHEN r.receipt_type = 'Vente' THEN p.id END) as transactions,
+                        COALESCE(SUM(CASE WHEN r.receipt_type = 'Vente' THEN p.montant ELSE 0 END), 0) as amount,
+                        COUNT(CASE WHEN r.receipt_type = 'Remboursement' THEN p.id END) as refund_transactions,
+                        COALESCE(SUM(CASE WHEN r.receipt_type = 'Remboursement' THEN p.montant ELSE 0 END), 0) as refund_amount
+                    FROM pos_payments p
+                    JOIN pos_receipts r ON p.receipt_id = r.id
+                    LEFT JOIN pos_modes_paiement mp ON p.mode_paiement_id = mp.id
+                    WHERE r.utilisateur_id = %s AND r.status != 'Annulé'
+                """
+                params = [user_id]
+                
+                if date_from:
+                    query += " AND DATE(r.date) >= %s"
+                    params.append(date_from)
+                if date_to:
+                    query += " AND DATE(r.date) <= %s"
+                    params.append(date_to)
+                    
+                query += " GROUP BY mp.nom ORDER BY amount DESC"
+                
+                cursor.execute(query, params)
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur get_payment_methods_stats: {e}")
+            return []
+
     def get_receipt_open(self, user_id: int) -> Optional[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
@@ -19167,38 +19203,36 @@ class PeriodeTravailPOS:
             return None
 
     def fermer_caisse(self, periode_id: int, user_id: int, data: Dict) -> Tuple[bool, str]:
-        """
-        Ferme une période de travail.
-        data: {montant_fin_prevu, montant_fin_reel}
-        Calcule la différence et crée les transactions de retrait/dépôt si nécessaire.
-        """
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 cursor.execute("""
-                    SELECT * FROM pos_periodes_travail 
-                    WHERE id = %s AND utilisateur_id = %s AND status = 'Ouvert'
+                    SELECT ppt.*, ppv.nom_pdv
+                    FROM pos_periodes_travail ppt
+                    LEFT JOIN pos_points_de_vente ppv ON ppt.pdv_id = ppv.id
+                    WHERE ppt.id = %s AND ppt.utilisateur_id = %s AND ppt.status = 'Ouvert'
                 """, (periode_id, user_id))
                 periode = cursor.fetchone()
                 if not periode:
                     return False, "Période non trouvée ou déjà fermée"
-                
+
                 montant_fin_reel = Decimal(str(data.get('montant_fin_reel', 0)))
                 montant_debut_reel = Decimal(str(periode['montant_debut_reel']))
-                
-                # Calculer les retraits et dépôts de la période
+
                 cursor.execute("""
                     SELECT COALESCE(SUM(montant_retrait), 0) as total_retraits
                     FROM pos_retraits WHERE periode_travail_id = %s
                 """, (periode_id,))
                 total_retraits = Decimal(str(cursor.fetchone()['total_retraits']))
-                
+
                 cursor.execute("""
                     SELECT COALESCE(SUM(montant_depot), 0) as total_depots
                     FROM pos_depots WHERE periode_travail_id = %s
                 """, (periode_id,))
                 total_depots = Decimal(str(cursor.fetchone()['total_depots']))
-                
-                # Calculer les ventes de la période
+
+                # ✅ FIX : filtre désormais par magasin ET pdv (colonnes texte de pos_receipts),
+                # plus seulement par date — sinon on additionne les espèces de TOUS les
+                # PDV actifs pendant la même plage horaire.
                 cursor.execute("""
                     SELECT
                         COALESCE(SUM(CASE WHEN p.est_remboursement = 0 THEN p.montant ELSE 0 END), 0) -
@@ -19206,15 +19240,16 @@ class PeriodeTravailPOS:
                     FROM pos_payments p
                     INNER JOIN pos_receipts r ON r.id = p.receipt_id
                     INNER JOIN pos_modes_paiement mp ON mp.id = p.mode_paiement_id
-                    WHERE r.utilisateur_id = %s AND r.date >= %s AND r.status != 'Annulé'
+                    WHERE r.utilisateur_id = %s AND r.date >= %s
+                    AND r.magasin = %s AND r.pdv = %s
+                    AND r.status != 'Annulé'
                     AND (mp.nom LIKE '%%spè%%' OR mp.nom LIKE '%%spe%%' OR mp.nom LIKE '%%cash%%' OR mp.nom LIKE '%%liquide%%')
-                """, (user_id, periode['date_debut']))
+                """, (user_id, periode['date_debut'], periode['magasin'], periode['nom_pdv']))
                 net_especes = Decimal(str(cursor.fetchone()['net_especes']))
 
-                # Attendu = départ + espèces nettes + dépôts − retraits
                 attendu = montant_debut_reel + net_especes + total_depots - total_retraits
                 difference = montant_fin_reel - attendu
-                                
+
                 cursor.execute("""
                     UPDATE pos_periodes_travail 
                     SET date_fin = NOW(), 
@@ -19233,13 +19268,14 @@ class PeriodeTravailPOS:
                     float(difference),
                     periode_id
                 ))
-                
+
                 return True, f"Caisse fermée. Différence: {difference:.2f} CHF"
-                
+
         except Exception as e:
             logger.error(f"Erreur fermeture caisse: {e}")
             return False, f"Erreur: {str(e)}"
 
+    
     def get_ouverte(self, user_id: int) -> Optional[Dict]:
         """Récupère la période de travail ouverte de l'utilisateur"""
         try:
@@ -19302,11 +19338,19 @@ class PeriodeTravailPOS:
             return []
 
     def get_detail_json(self, periode_id: int, user_id: int) -> Optional[Dict]:
-        """Retourne toutes les données d'une période pour la modale de fermeture"""
+        """Retourne toutes les données d'une période pour la modale de fermeture
+
+        ✅ FIX : toutes les requêtes d'agrégation sur pos_receipts / pos_payments
+        filtrent désormais aussi sur (r.magasin = period.magasin AND r.pdv =
+        period.nom_pdv), en plus de la plage de dates. Sans ce filtre, un
+        rapport d'équipe additionne les ventes de TOUS les PDV/caisses actifs
+        sur la même plage horaire, ce qui fausse totalement ventes brutes,
+        ventes nettes, espèces et ventilation par mode de paiement.
+        """
         try:
             import logging
             logger = logging.getLogger(__name__)
-            
+
             with self.db.get_cursor(dictionary=True) as cursor:
                 # --- Période + nom du PDV ---
                 cursor.execute("""
@@ -19316,19 +19360,17 @@ class PeriodeTravailPOS:
                     WHERE ppt.id = %s AND ppt.utilisateur_id = %s
                 """, (periode_id, user_id))
                 period = cursor.fetchone()
-                
-                logger.info(f"DEBUG get_detail_json: period = {period}")
-                
+
                 if not period:
                     logger.warning(f"DEBUG: Période {periode_id} non trouvée pour user {user_id}")
                     return None
 
                 date_fin = period.get('date_fin')
                 date_debut = period['date_debut']
-                
-                logger.info(f"DEBUG: date_debut = {date_debut}, date_fin = {date_fin}")
+                magasin = period['magasin']
+                nom_pdv = period.get('nom_pdv')
 
-                # --- Stats ventes ---
+                # --- Stats ventes (filtrées par magasin + pdv) ---
                 cursor.execute("""
                     SELECT
                         COALESCE(SUM(CASE WHEN receipt_type = 'Vente' THEN ventes_brutes ELSE 0 END), 0) AS ventes_brutes,
@@ -19337,14 +19379,14 @@ class PeriodeTravailPOS:
                         COALESCE(SUM(ventes_nettes), 0) AS ventes_nettes,
                         COALESCE(SUM(taxes), 0) AS taxes_total
                     FROM pos_receipts
-                    WHERE utilisateur_id = %s AND date >= %s 
+                    WHERE utilisateur_id = %s AND date >= %s
                     AND (date <= %s OR %s IS NULL) AND status != 'Annulé'
-                """, (user_id, date_debut, date_fin, date_fin))
-                
-                s = cursor.fetchone()
-                logger.info(f"DEBUG: stats ventes = {s}")
+                    AND magasin = %s AND pdv = %s
+                """, (user_id, date_debut, date_fin, date_fin, magasin, nom_pdv))
 
-                # --- Espèces uniquement ---
+                s = cursor.fetchone()
+
+                # --- Espèces uniquement (filtrées par magasin + pdv) ---
                 cursor.execute("""
                     SELECT
                         COALESCE(SUM(CASE WHEN p.est_remboursement = 0 THEN p.montant ELSE 0 END), 0) AS especes_ventes,
@@ -19352,35 +19394,35 @@ class PeriodeTravailPOS:
                     FROM pos_payments p
                     INNER JOIN pos_receipts r ON r.id = p.receipt_id
                     INNER JOIN pos_modes_paiement mp ON mp.id = p.mode_paiement_id
-                    WHERE r.utilisateur_id = %s AND r.date >= %s 
+                    WHERE r.utilisateur_id = %s AND r.date >= %s
                     AND (r.date <= %s OR %s IS NULL) AND r.status != 'Annulé'
-                    AND (mp.nom LIKE '%%spè%%' OR mp.nom LIKE '%%spe%%' 
+                    AND r.magasin = %s AND r.pdv = %s
+                    AND (mp.nom LIKE '%%spè%%' OR mp.nom LIKE '%%spe%%'
                         OR mp.nom LIKE '%%cash%%' OR mp.nom LIKE '%%liquide%%'
                         OR mp.nom LIKE '%%Espè%%' OR mp.nom LIKE '%%Cash%%')
-                """, (user_id, date_debut, date_fin, date_fin))
-                
-                c = cursor.fetchone()
-                logger.info(f"DEBUG: espèces = {c}")
+                """, (user_id, date_debut, date_fin, date_fin, magasin, nom_pdv))
 
-                # --- Ventes par mode de paiement ---
+                c = cursor.fetchone()
+
+                # --- Ventes par mode de paiement (filtrées par magasin + pdv) ---
                 cursor.execute("""
                     SELECT mp.nom AS nom, COALESCE(SUM(p.montant), 0) AS total
                     FROM pos_payments p
                     INNER JOIN pos_receipts r ON r.id = p.receipt_id
                     INNER JOIN pos_modes_paiement mp ON mp.id = p.mode_paiement_id
-                    WHERE r.utilisateur_id = %s AND r.date >= %s 
+                    WHERE r.utilisateur_id = %s AND r.date >= %s
                     AND (r.date <= %s OR %s IS NULL) AND r.status != 'Annulé'
+                    AND r.magasin = %s AND r.pdv = %s
                     GROUP BY mp.nom
                     ORDER BY total DESC
-                """, (user_id, date_debut, date_fin, date_fin))
-                
+                """, (user_id, date_debut, date_fin, date_fin, magasin, nom_pdv))
+
                 ventes_par_mode = [
                     {'nom': row['nom'], 'total': float(row['total'])}
                     for row in cursor.fetchall()
                 ]
-                logger.info(f"DEBUG: ventes_par_mode = {ventes_par_mode}")
 
-                # --- Totaux retraits / dépôts ---
+                # --- Totaux retraits / dépôts (déjà scopés par periode_travail_id, inchangé) ---
                 cursor.execute("""
                     SELECT COALESCE(SUM(montant_retrait), 0) AS t 
                     FROM pos_retraits WHERE periode_travail_id = %s
@@ -19392,10 +19434,8 @@ class PeriodeTravailPOS:
                     FROM pos_depots WHERE periode_travail_id = %s
                 """, (periode_id,))
                 total_depots = float(cursor.fetchone()['t'])
-                
-                logger.info(f"DEBUG: retraits = {total_retraits}, depots = {total_depots}")
 
-                # --- Liste des mouvements ---
+                # --- Liste des mouvements (déjà scopés par periode_travail_id, inchangé) ---
                 cursor.execute("""
                     SELECT 'retrait' AS type_mvt, montant_retrait AS montant, 
                         date_retrait AS date_mvt, description
@@ -19405,10 +19445,9 @@ class PeriodeTravailPOS:
                     FROM pos_depots WHERE periode_travail_id = %s
                     ORDER BY date_mvt
                 """, (periode_id, periode_id))
-                
+
                 mouvements_raw = cursor.fetchall()
-                logger.info(f"DEBUG: mouvements_raw = {mouvements_raw}")
-                
+
                 mouvements = [
                     {
                         'heure': row['date_mvt'].strftime('%H:%M') if row['date_mvt'] else '',
@@ -19458,9 +19497,7 @@ class PeriodeTravailPOS:
                     'ventes_par_mode': ventes_par_mode,
                     'mouvements': mouvements
                 }
-                
-                logger.info(f"DEBUG: résultat final = {result}")
-                
+
                 return result
 
         except Exception as e:
