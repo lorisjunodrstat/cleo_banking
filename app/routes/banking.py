@@ -20,7 +20,7 @@ from app.models import (
     PeriodeTravailPOS, MouvementCaissePOS
 )
 from io import StringIO
-import json as _json
+import json as json
 import os
 from xhtml2pdf import pisa
 import csv as csv_mod
