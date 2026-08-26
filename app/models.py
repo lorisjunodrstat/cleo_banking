@@ -16354,6 +16354,52 @@ class TaxePOS:
         except Exception as e:
             logger.error(f"Erreur récupération historique taux: {e}")
             return []
+    def get_by_id(self, type_taxe_id: int, user_id: int) -> Optional[Dict]:
+        """Récupère un type de taxe par son ID"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM pos_types_taxes 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (type_taxe_id, user_id))
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur get_by_id type taxe: {e}")
+            return None
+
+    def update_type(self, type_taxe_id: int, user_id: int, data: Dict) -> bool:
+        """Met à jour un type de taxe (nom, statut actif)"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_types_taxes 
+                    SET nom = %s, est_actif = %s
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (
+                    data.get('nom'),
+                    data.get('est_actif', True),
+                    type_taxe_id,
+                    user_id
+                ))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur update_type: {e}")
+            return False
+
+    def delete_type(self, type_taxe_id: int, user_id: int) -> bool:
+        """Supprime un type de taxe et tout son historique (CASCADE en base)"""
+        try:
+            with self.db.get_cursor() as cursor:
+                # Les taux historiques seront supprimés automatiquement grâce à ON DELETE CASCADE
+                # Les liaisons articles seront aussi supprimées (CASCADE)
+                cursor.execute("""
+                    DELETE FROM pos_types_taxes 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (type_taxe_id, user_id))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur delete_type: {e}")
+            return False
                 
 class ModePaiementPOS:
     """Modes de paiement (Espèces, Carte, Twint, etc.)"""
