@@ -40,12 +40,14 @@
                         
                         <div class="col-md-6">
                             <label class="form-label">Taux de TVA (%)</label>
+                            <!-- ✅ CORRECTION ICI : Utilisation de types_taxes_disponibles -->
                             <select name="taux_tva" class="form-select" id="taux_tva_select">
                                 <option value="">-- Hériter du parent --</option>
-                                {% for taux in taux_disponibles %}
-                                    <option value="{{ taux.taux }}" 
-                                        {% if option.taux_tva is not none and (option.taux_tva | float) == (taux.taux | float) %}selected{% endif %}>
-                                        {{ taux.nom }} ({{ taux.taux }}%)
+                                {% for type_taxe in types_taxes_disponibles %}
+                                    <option value="{{ type_taxe.taux_actuel }}" 
+                                            data-tva="{{ type_taxe.taux_actuel }}"
+                                            {% if option.taux_tva is not none and (option.taux_tva | float) == (type_taxe.taux_actuel | float) %}selected{% endif %}>
+                                        {{ type_taxe.nom }} ({{ type_taxe.taux_actuel }}%)
                                     </option>
                                 {% endfor %}
                             </select>
@@ -61,9 +63,9 @@
                     
                     <div class="alert alert-info" id="calcul_ttc">
                         <strong>Détail du calcul :</strong><br>
-                        Prix TTC saisi : <span id="prix_ttc_display">{{ "%.2f"|format(option.prix_supplement or 0) }}</span> CHF<br>
-                        Prix HT (après extraction TVA) : <span id="prix_ht_display">{{ "%.2f"|format((option.prix_supplement or 0) / (1 + ((option.taux_tva if option.taux_tva is not none else (parent_modifier.taux_tva if parent_modifier else 0)) / 100))) }}</span> CHF<br>
-                        TVA extraite : <span id="tva_display">{{ "%.2f"|format((option.prix_supplement or 0) - ((option.prix_supplement or 0) / (1 + ((option.taux_tva if option.taux_tva is not none else (parent_modifier.taux_tva if parent_modifier else 0)) / 100)))) }}</span> CHF
+                        Prix TTC saisi : <span id="prix_ttc_display">0.00</span> CHF<br>
+                        Prix HT (après extraction TVA) : <span id="prix_ht_display">0.00</span> CHF<br>
+                        TVA extraite : <span id="tva_display">0.00</span> CHF
                     </div>
                     
                     <div class="mb-3">
@@ -91,17 +93,21 @@ document.addEventListener('DOMContentLoaded', function() {
     const tauxTvaSelect = document.getElementById('taux_tva_select');
     const parentSelect = document.getElementById('parent_modifier');
     
+    function getTauxTva() {
+        // Si une valeur est sélectionnée dans la liste des TVA, on la prend
+        if (tauxTvaSelect.value !== '') {
+            return parseFloat(tauxTvaSelect.value) || 0;
+        }
+        // Sinon, on hérite du parent sélectionné
+        const selectedParent = parentSelect.options[parentSelect.selectedIndex];
+        return parseFloat(selectedParent.dataset.tva) || 0;
+    }
+
     function updateCalcul() {
         const prixTtc = parseFloat(prixTtcInput.value) || 0;
-        let tauxTva = parseFloat(tauxTvaSelect.value);
+        const tauxTva = getTauxTva();
         
-        // Si TVA vide, utiliser celle du parent sélectionné
-        if (isNaN(tauxTva) || tauxTvaSelect.value === '') {
-            const selectedOption = parentSelect.options[parentSelect.selectedIndex];
-            tauxTva = parseFloat(selectedOption.dataset.tva) || 0;
-        }
-        
-        // ✅ CORRECTION : Extraire la TVA du TTC (pas l'ajouter au HT)
+        // Extraction de la TVA du TTC
         const prixHt = prixTtc / (1 + tauxTva / 100);
         const tva = prixTtc - prixHt;
         
@@ -110,27 +116,31 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('tva_display').textContent = tva.toFixed(2);
     }
     
+    function updateHelpText() {
+        if (tauxTvaSelect.value === '') {
+            const selectedParent = parentSelect.options[parentSelect.selectedIndex];
+            const tvaParent = parseFloat(selectedParent.dataset.tva) || 0;
+            document.getElementById('tva_help').textContent = `Vide = hérite du parent (${tvaParent.toFixed(2)}%)`;
+        } else {
+            document.getElementById('tva_help').textContent = `Taux spécifique sélectionné : ${parseFloat(tauxTvaSelect.value).toFixed(2)}%`;
+        }
+    }
+
+    // Écouteurs d'événements
     prixTtcInput.addEventListener('input', updateCalcul);
+    
     tauxTvaSelect.addEventListener('change', function() {
+        updateHelpText();
         updateCalcul();
-        const selectedOption = this.options[this.selectedIndex];
-        const tvaParent = selectedOption.dataset.tva || '0';
-        document.getElementById('tva_help').textContent = `Vide = hérite du parent (${parseFloat(tvaParent).toFixed(2)}%)`;
     });
     
     parentSelect.addEventListener('change', function() {
+        updateHelpText();
         updateCalcul();
-        const selectedOption = this.options[this.selectedIndex];
-        const tvaParent = selectedOption.dataset.tva || '0';
-        document.getElementById('tva_help').textContent = `Vide = hérite du parent (${parseFloat(tvaParent).toFixed(2)}%)`;
     });
     
     // Initialisation au chargement
-    const selectedOption = parentSelect.options[parentSelect.selectedIndex];
-    if (selectedOption) {
-        const tvaParent = selectedOption.dataset.tva || '0';
-        document.getElementById('tva_help').textContent = `Vide = hérite du parent (${parseFloat(tvaParent).toFixed(2)}%)`;
-    }
+    updateHelpText();
     updateCalcul();
 });
 </script>

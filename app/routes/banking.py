@@ -11190,6 +11190,7 @@ def pos_edit_modifier_option(opt_id):
         parent_modifier=parent_modifier,
         types_taxes_disponibles=types_taxes_disponibles  # ✅ Variable injectée
     )
+
 @bp.route('/pos/modifier-option/<int:opt_id>/delete', methods=['POST'])
 @login_required
 def pos_delete_modifier_option(opt_id):

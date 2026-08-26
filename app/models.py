@@ -18921,8 +18921,8 @@ class POSComptabilisation:
                             pm.compte_frais_service_id,
                             pm.frais_pourcentage,
                             pm.frais_fixe,
-                            mct.compte_vente_id, -- ✅ Le compte de vente vient du mapping TVA !
-                            COUNT(DISTINCT r.id) as nb_tickets,C
+                            mct.compte_vente_id,
+                            COUNT(DISTINCT r.id) as nb_tickets,
                             -- Calcul précis du HT et de la TVA basé sur le taux de la taxe appliquée
                             SUM(ri.total_ligne / (1 + (at.taux / 100))) as total_ht,
                             SUM(ri.total_ligne - (ri.total_ligne / (1 + (at.taux / 100)))) as total_tva,
@@ -18930,16 +18930,25 @@ class POSComptabilisation:
                         FROM pos_receipts r
                         JOIN pos_payments p ON r.id = p.receipt_id
                         JOIN pos_modes_paiement pm ON p.mode_paiement_id = pm.id
-                        
-                        
                         JOIN pos_receipt_items ri ON r.id = ri.receipt_id
                         -- 1. Trouver le TYPE de taxe de l'article pour le mapping comptable
                         JOIN pos_article_taxes pat ON ri.article_id = pat.article_id AND pat.est_actuelle = TRUE
-                        -- 2. Trouver le compte comptable associé à ce TYPE de taxe
+                        -- 2. Joindre la table contenant le taux effectif (ajustez le nom de la table si nécessaire)
+                        JOIN pos_taxes at ON pat.taxe_id = at.id
+                        -- 3. Trouver le compte comptable associé à ce TYPE de taxe
                         LEFT JOIN pos_compta_mapping_tva mct ON pat.type_taxe_id = mct.type_taxe_id AND mct.utilisateur_id = %s
                         WHERE r.utilisateur_id = %s 
-                        AND r.comptabilise = FALSE  -- ✅ Utilise le booléen du nouveau schéma
+                        AND r.comptabilise = FALSE
                         AND r.status = 'Fermé'
+                        GROUP BY 
+                            DATE(r.date),
+                            pm.id,
+                            pm.nom,
+                            pm.compte_tresorerie_id,
+                            pm.compte_frais_service_id,
+                            pm.frais_pourcentage,
+                            pm.frais_fixe,
+                            mct.compte_vente_id;
                         """
                     params = [user_id, user_id]
                     
