@@ -7,7 +7,7 @@
     <div class="col-md-8">
         <div class="card shadow-sm">
             <div class="card-body">
-                <form method="POST" enctype="multipart/form-data">
+                <form method="POST">
                     {% if payment_method %}
                         <input type="hidden" name="payment_method_id" value="{{ payment_method.id }}">
                     {% endif %}
@@ -35,22 +35,28 @@
                     <!-- Section Comptabilité -->
                     <h5 class="mb-3">⚙️ Paramètres comptables</h5>
                     
+                    <!-- ✅ CORRECTION : Compte bancaire réel (comptes_principaux) -->
                     <div class="mb-3">
-                        <label class="form-label">Compte de trésorerie (où l'argent arrive)</label>
+                        <label class="form-label">Compte bancaire de trésorerie</label>
                         <select name="compte_tresorerie_id" class="form-select">
-                            <option value="">-- Aucun --</option>
-                            {% for c in comptes_tresorerie %}
+                            <option value="">-- Utiliser le compte du PDV (recommandé pour espèces) --</option>
+                            {% for c in comptes_bancaires %}
                             <option value="{{ c.id }}" 
                                 {% if payment_method and payment_method.compte_tresorerie_id == c.id %}selected{% endif %}>
-                                {{ c.numero }} - {{ c.nom }}
+                                {{ c.nom_compte }} - {{ c.banque_nom if c.banque_nom else c.iban or '' }}
                             </option>
                             {% endfor %}
                         </select>
-                        <small class="text-muted">Ex: 1000 Caisse, 1020 Banque Postale, 4000 Créances</small>
+                        <small class="text-muted">
+                            Compte bancaire où l'argent est réellement versé.<br>
+                            <strong>Espèces</strong> : laissez vide (utilisera le compte du PDV).<br>
+                            <strong>Carte/Twint</strong> : sélectionnez le compte dédié (ex: Concardis, Twint).
+                        </small>
                     </div>
                     
+                    <!-- Compte comptable pour les frais (reste inchangé) -->
                     <div class="mb-3">
-                        <label class="form-label">Compte de frais de service (commissions)</label>
+                        <label class="form-label">Compte comptable de frais de service</label>
                         <select name="compte_frais_service_id" class="form-select">
                             <option value="">-- Aucun --</option>
                             {% for c in comptes_charges %}
@@ -60,7 +66,7 @@
                             </option>
                             {% endfor %}
                         </select>
-                        <small class="text-muted">Ex: 6000 Frais bancaires, 6005 Commissions plateformes</small>
+                        <small class="text-muted">Compte de charge comptable pour les commissions (ex: 6000 Frais bancaires)</small>
                     </div>
                     
                     <div class="row">

@@ -4,25 +4,83 @@
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-6">
+    <div class="col-md-8">
         <div class="card shadow-sm">
             <div class="card-body">
                 <form method="POST">
+                    <!-- Champs de base -->
                     <div class="mb-3">
                         <label class="form-label">Nom du mode de paiement</label>
-                        <input type="text" name="nom" class="form-control" placeholder="Ex: Carte, Twint, Virement..." required>
+                        <input type="text" name="nom" class="form-control" placeholder="Ex: Carte Visa, Twint, Espèces..." required>
                     </div>
+                    
                     <div class="mb-3">
                         <label class="form-label">Description (optionnel)</label>
-                        <textarea name="description" class="form-control" rows="3"></textarea>
+                        <textarea name="description" class="form-control" rows="3" placeholder="Ex: Paiement par carte bancaire via Concardis"></textarea>
                     </div>
+                    
                     <div class="form-check mb-3">
                         <input class="form-check-input" type="checkbox" name="est_actif" id="est_actif" checked>
                         <label class="form-check-label" for="est_actif">
                             Activer ce mode de paiement
                         </label>
                     </div>
-                    <button type="submit" class="btn btn-success w-100">Enregistrer</button>
+                    
+                    <hr>
+                    
+                    <!-- Section Comptabilité -->
+                    <h5 class="mb-3">⚙️ Paramètres comptables</h5>
+                    
+                    <!-- ✅ Compte bancaire réel (comptes_principaux) -->
+                    <div class="mb-3">
+                        <label class="form-label">Compte bancaire de trésorerie</label>
+                        <select name="compte_tresorerie_id" class="form-select">
+                            <option value="">-- Utiliser le compte du PDV (recommandé pour espèces) --</option>
+                            {% for c in comptes_bancaires %}
+                            <option value="{{ c.id }}">
+                                {{ c.nom_compte }}{% if c.banque_nom %} - {{ c.banque_nom }}{% elif c.iban %} - {{ c.iban }}{% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted d-block mt-1">
+                            Compte bancaire où l'argent est réellement versé.<br>
+                            <strong>Espèces</strong> : laissez vide (utilisera automatiquement le compte du PDV).<br>
+                            <strong>Carte/Twint</strong> : sélectionnez le compte dédié (ex: Concardis, Twint).
+                        </small>
+                    </div>
+                    
+                    <!-- ✅ Compte comptable pour les frais (categories_comptables) -->
+                    <div class="mb-3">
+                        <label class="form-label">Compte comptable de frais de service</label>
+                        <select name="compte_frais_service_id" class="form-select">
+                            <option value="">-- Aucun --</option>
+                            {% for c in comptes_charges %}
+                            <option value="{{ c.id }}">
+                                {{ c.numero }} - {{ c.nom }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Compte de charge comptable pour les commissions (ex: 6000 Frais bancaires)</small>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Frais en pourcentage (%)</label>
+                            <input type="number" step="0.01" min="0" max="100" 
+                                   name="frais_pourcentage" class="form-control" value="0">
+                            <small class="text-muted">Ex: 2.5 pour 2.5% de commission</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Frais fixes (CHF)</label>
+                            <input type="number" step="0.05" min="0" 
+                                   name="frais_fixe" class="form-control" value="0">
+                            <small class="text-muted">Ex: 0.30 pour 30 centimes fixes par transaction</small>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="bi bi-check-circle me-2"></i>Créer le mode de paiement
+                    </button>
                 </form>
             </div>
         </div>
