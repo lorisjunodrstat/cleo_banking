@@ -8,6 +8,11 @@
     <div class="col-md-8">
         <div class="card shadow-sm">
             <div class="card-body">
+                <div class="alert alert-info mb-4">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>Note :</strong> Si vous ne sélectionnez pas de type de TVA ci-dessous, cette option héritera automatiquement du taux du modificateur parent.
+                </div>
+                
                 <form method="POST">
                     <div class="mb-3">
                         <label class="form-label">Nom de l'option *</label>
@@ -34,6 +39,7 @@
                                     <option value="{{ article.id }}">{{ article.nom_article }}</option>
                                 {% endfor %}
                             </select>
+                            <div class="form-text">Limiter cette option à un article spécifique.</div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Prix de supplément (CHF)</label>
@@ -46,6 +52,22 @@
                                 Montant ajouté au prix du menu si cette option est choisie. 
                                 Laissez 0 si l'option est incluse sans supplément.
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- ✅ NOUVEAU : Sélection du type de TVA (optionnel) -->
+                    <div class="mb-3">
+                        <label class="form-label">Type de TVA spécifique (optionnel)</label>
+                        <select name="taux_tva" class="form-select">
+                            <option value="">Hériter du modificateur parent</option>
+                            {% for type_taxe in types_taxes_disponibles %}
+                                <option value="{{ type_taxe.taux_actuel }}">
+                                    {{ type_taxe.nom }} ({{ type_taxe.taux_actuel }}%)
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">
+                            Laissez vide pour hériter du taux du parent. Sélectionnez un type si cette option a une nature fiscale différente.
                         </div>
                     </div>
                     

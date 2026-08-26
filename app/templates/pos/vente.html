@@ -533,6 +533,14 @@ button{cursor:pointer; border:none; background:none}
 
   const $ = id => document.getElementById(id);
   const fmt = n => 'CHF ' + (parseFloat(n)||0).toFixed(2);
+   // Petite fonction pour nettoyer les taux venant du HTML (évite les "null" ou "NaN")
+  function safeParseTaux(val) {
+      if (!val || val === 'null' || val === 'undefined' || val === '') {
+          return 0;
+      }
+      const parsed = parseFloat(val);
+      return isNaN(parsed) ? 0 : parsed;
+  }
   const save = () => localStorage.setItem('pos_current_ticket', JSON.stringify(ticket));
 
   /* ---------- Utilitaires TVA ---------- */
@@ -725,19 +733,20 @@ function confirmAddArticle(){
     const editIndex = $('modalArticle').dataset.editIndex;
     const isEditing = editIndex !== undefined && editIndex !== '';
     
-    // 1. Prix de base de l'article (ex: 22.00)
-    let prixBase = a.is_variable_price ? parseFloat($('maPrix').value||0) : parseFloat(a.prix_unitaire||0);
+    // 1. Prix de base de l'article
+    let prixBase = a.is_variable_price ? parseFloat($('maPrix').value || 0) : parseFloat(a.prix_unitaire || 0);
     let varianteId = null;
     const sel = $('maVar');
     if (sel){ 
         varianteId = parseInt(sel.value); 
-        prixBase = parseFloat(sel.selectedOptions[0].dataset.prix||prixBase); 
+        prixBase = parseFloat(sel.selectedOptions[0].dataset.prix || prixBase); 
     }
     
-    const qty = parseInt($('maQty').value||1);
+    const qty = parseInt($('maQty').value || 1);
     const commentaire = $('maCommentaire').value.trim();
-    const tauxArticleBase = parseFloat(a.taux_taxe || 0);
-    console.log("🔍 DEBUG tauxArticleBase:", tauxArticleBase, "| a.taux_taxe:", a.taux_taxe, "| a:", a);
+    
+    // On utilise la fonction de sécurité pour le taux de l'article
+    const tauxArticleBase = safeParseTaux(a.taux_taxe);
     
     let modsSimples = [];
     let optionsTauxDifferents = [];
@@ -747,10 +756,10 @@ function confirmAddArticle(){
         modsAffichage.push(sel.selectedOptions[0].textContent.trim());
     }
     
-    // 2. Modificateurs simples (ajoutent au prix)
+    // 2. Modificateurs simples
     document.querySelectorAll('.maMod:checked').forEach(m => {
-        let prixMod = parseFloat(m.dataset.prix || 0);
-        let tauxMod = parseFloat(m.dataset.tauxTva) || tauxArticleBase;
+        let prixMod = parseFloat(m.dataset.prix) || 0;
+        let tauxMod = safeParseTaux(m.dataset.tauxTva) || tauxArticleBase;
         modsSimples.push({ nom: m.value, prix: prixMod, taux: tauxMod });
         modsAffichage.push(m.value);
         prixBase += prixMod;
@@ -758,18 +767,18 @@ function confirmAddArticle(){
     
     // 3. Options de modificateurs (ventilation TVA)
     document.querySelectorAll('.maModOpt:checked').forEach(o => {
-        let prixOption = parseFloat(o.dataset.prix || 0);
-        let tauxOptionStr = o.dataset.tauxTva;
-        // Gestion sécurisée des valeurs nulles venant du backend
-        let tauxOption = (tauxOptionStr && tauxOptionStr !== 'null' && tauxOptionStr !== 'undefined') ? parseFloat(tauxOptionStr) : 0;
-        let tauxParent = parseFloat(o.dataset.tauxParent) || 0;
+        let prixOption = parseFloat(o.dataset.prix) || 0;
         
+        // ✅ ICI : On utilise la fonction de sécurité pour tauxOption et tauxParent
+        let tauxOption = safeParseTaux(o.dataset.tauxTva);
+        let tauxParent = safeParseTaux(o.dataset.tauxParent);
+        
+        // Si l'option a un taux > 0, on le prend, sinon on hérite du parent
         let tauxFinal = (tauxOption > 0) ? tauxOption : tauxParent;
         modsAffichage.push(o.value);
         
         if (tauxFinal !== tauxArticleBase) {
-            // ✅ LOGIQUE CLÉ : On SOUSTRAIT le prix de l'option du prix du menu
-            // car cette option est déjà incluse dans le forfait.
+            // On soustrait le prix de l'option du prix du menu car elle est déjà incluse
             prixBase -= prixOption; 
             optionsTauxDifferents.push({ nom: o.value, prix: prixOption, taux: tauxFinal });
         }
@@ -784,20 +793,21 @@ function confirmAddArticle(){
         tva_breakdown.push({ description: opt.nom, montant_ttc: opt.prix, taux: opt.taux });
     });
     
-    // 5. Prix final pour l'affichage sur le ticket (on remet les options pour avoir le total juste)
+    // 5. Prix final pour l'affichage sur le ticket
     let finalDisplayPrice = prixBase + optionsTauxDifferents.reduce((sum, opt) => sum + opt.prix, 0);
     
     const modificateursStr = modsAffichage.join(', ');
     const modificateursData = { varianteId, modsSimples, optionsTauxDifferents };
-    const key = a.id + '_' + (varianteId||0) + '_' + modificateursStr;
-    
-    // ✅ DÉBOGAGE : Ouvrez la console du navigateur (F12) pour voir cette ligne
-    console.log("🧾 ARTICLE AJOUTÉ:", a.nom_article, "| Prix Base:", prixBase, "| Final:", finalDisplayPrice, "| Breakdown:", tva_breakdown);
+    const key = a.id + '_' + (varianteId || 0) + '_' + modificateursStr;
 
     // 6. Mise à jour ou ajout dans le ticket
     if (isEditing) {
         const idx = parseInt(editIndex);
-        ticket.lines[idx] = { key, article_id: a.id, variante_id: varianteId, nom: a.nom_article, modificateurs: modificateursStr, modificateursData, prix: finalDisplayPrice, qty, taux: tauxArticleBase, commentaire, tva_breakdown };
+        ticket.lines[idx] = { 
+            key, article_id: a.id, variante_id: varianteId, nom: a.nom_article, 
+            modificateurs: modificateursStr, modificateursData, prix: finalDisplayPrice, 
+            qty, taux: tauxArticleBase, commentaire, tva_breakdown 
+        };
         delete $('modalArticle').dataset.editIndex;
     } else {
         const existing = ticket.lines.find(l => l.key === key);
@@ -805,7 +815,11 @@ function confirmAddArticle(){
             existing.qty += qty;
             if (commentaire) existing.commentaire = commentaire;
         } else {
-            ticket.lines.push({ key, article_id: a.id, variante_id: varianteId, nom: a.nom_article, modificateurs: modificateursStr, modificateursData, prix: finalDisplayPrice, qty, taux: tauxArticleBase, commentaire, tva_breakdown });
+            ticket.lines.push({ 
+                key, article_id: a.id, variante_id: varianteId, nom: a.nom_article, 
+                modificateurs: modificateursStr, modificateursData, prix: finalDisplayPrice, 
+                qty, taux: tauxArticleBase, commentaire, tva_breakdown 
+            });
         }
     }
     
@@ -813,7 +827,6 @@ function confirmAddArticle(){
     renderTicket(); 
     closeModal('modalArticle');
 }
-
 function toggleMobileMenu() {
   const menu = document.getElementById('mobileMenu');
   menu.style.display = menu.style.display === 'none' ? 'block' : 'none';

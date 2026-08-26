@@ -8,14 +8,18 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <form method="POST">
+                    <!-- Nom de l'article -->
                     <div class="mb-3">
                         <label class="form-label">Nom de l'article</label>
-                        <input type="text" name="nom_article" class="form-control" value="{{ article.nom if pos else '' }}" required>
+                        <input type="text" name="nom_article" class="form-control" placeholder="Ex: Café Espresso" required>
                     </div>
+                    
+                    <!-- Catégorie et Sous-catégorie -->
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
                             <label class="form-label">Catégorie</label>
-                            <select name="id_categorie" class="form-select" value="{{ article.id_categorie if pos else '' }}" required>
+                            <select name="id_categorie" class="form-select" required>
+                                <option value="" disabled selected>Choisir une catégorie</option>
                                 {% for cat in categories %}
                                     <option value="{{ cat.id }}">{{ cat.nom_categorie }}</option>
                                 {% endfor %}
@@ -23,7 +27,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Sous-catégorie (optionnel)</label>
-                            <select name="id_sous_categorie" class="form-select" value="{{ article.id_sous_categorie if pos else '' }}">
+                            <select name="id_sous_categorie" class="form-select">
                                 <option value="">Aucune</option>
                                 {% for sous_cat in sous_categories %}
                                     <option value="{{ sous_cat.id }}">{{ sous_cat.nom_sous_categorie }}</option>
@@ -31,38 +35,51 @@
                             </select>
                         </div>
                     </div>
+
+                    <!-- Prix, Coût et Taxe (Alignés sur 3 colonnes) -->
                     <div class="row g-3 mb-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Prix unitaire</label>
-                            <input type="number" step="0.01" name="prix_unitaire" class="form-control" value="{{ article.prix_unitaire if pos else '' }}" required>
+                        <div class="col-md-4">
+                            <label class="form-label">Prix unitaire (CHF)</label>
+                            <input type="number" step="0.01" name="prix_unitaire" class="form-control" placeholder="0.00" required>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Taxe applicable</label>
-                            <select name="taxe_id" class="form-select">
-                                <option value="">Aucune taxe (0%)</option>
-                                {% for taxe in taxes %}
-                                    <option value="{{ taxe.id }}" {% if taxe.est_actif %}selected{% endif %}>
-                                        {{ taxe.nom }} ({{ taxe.taux }}%)
+                        <div class="col-md-4">
+                            <label class="form-label">Coût unitaire (CHF)</label>
+                            <input type="number" step="0.01" name="cout_unitaire" class="form-control" placeholder="0.00" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Type de taxe applicable</label>
+                            <select name="type_taxe_id" class="form-select">
+                                <option value="">Aucune (0%)</option>
+                                {% for type_taxe in types_taxes %}
+                                    <option value="{{ type_taxe.id }}" {% if type_taxe.est_actif %}selected{% endif %}>
+                                        {{ type_taxe.nom }}{% if type_taxe.taux_actuel %} (Actuellement {{ type_taxe.taux_actuel }}%){% endif %}
                                     </option>
                                 {% endfor %}
                             </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Coût unitaire</label>
-                            <input type="number" step="0.01" name="cout_unitaire" class="form-control" value="{{ article.cout_unitaire if pos else '' }}" required>
+                            <div class="form-text" style="font-size: 0.8em;">
+                                <i class="bi bi-info-circle"></i> Le taux en vigueur au moment de la vente sera appliqué automatiquement.
+                            </div>
                         </div>
                     </div>
+
+                    <!-- Description -->
                     <div class="mb-3">
                         <label class="form-label">Description (optionnel)</label>
-                        <textarea name="description" class="form-control" rows="3">{{ article.description if pos else '' }}</textarea>
+                        <textarea name="description" class="form-control" rows="3" placeholder="Détails sur l'article..."></textarea>
                     </div>
-                    <div class="form-check mb-3">
+
+                    <!-- Prix variable -->
+                    <div class="form-check mb-4">
                         <input class="form-check-input" type="checkbox" name="is_variable_price" id="is_variable_price">
                         <label class="form-check-label" for="is_variable_price">
-                            Prix variable (ex: menu)
+                            Prix variable (le caissier pourra modifier le prix manuellement lors de la vente)
                         </label>
                     </div>
-                    <button type="submit" class="btn btn-success w-100">Enregistrer l'article</button>
+
+                    <!-- Bouton d'action -->
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="bi bi-save"></i> Enregistrer l'article
+                    </button>
                 </form>
             </div>
         </div>

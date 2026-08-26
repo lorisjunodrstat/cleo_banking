@@ -20,14 +20,14 @@
                             <div class="form-text">Prix de base si aucune option n'est définie.</div>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Taux de TVA par défaut (%)</label>
+                            <label class="form-label">Type de TVA par défaut</label>
                             <select name="taux_tva" class="form-select" required>
-                                {% for taux in taux_disponibles %}
-                                    <option value="{{ taux.taux }}">
-                                        {{ taux.nom }} ({{ taux.taux }}%)
+                                {% for type_taxe in types_taxes_disponibles %}
+                                    <option value="{{ type_taxe.taux_actuel }}">
+                                        {{ type_taxe.nom }} (Actuellement {{ type_taxe.taux_actuel }}%)
                                     </option>
                                 {% else %}
-                                    <option value="0.00">Aucun taux configuré (0%)</option>
+                                    <option value="0.00">Aucun type de taxe configuré (0%)</option>
                                 {% endfor %}
                             </select>
                             <div class="form-text">Taux appliqué aux options qui n'ont pas de taux spécifique.</div>

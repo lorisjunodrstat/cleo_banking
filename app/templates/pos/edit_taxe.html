@@ -1,34 +1,93 @@
-{%- extends "pos.html" -%}
-{% block title %}Taxes{% endblock %}
-{% block page_header %}<h2 class="mb-4">Edit Taxes</h2>{% endblock %}
+{% extends "pos.html" %}
+{% block title %}Modifier la taxe{% endblock %}
+{% block page_header %}<h2 class="mb-4">Gestion de la taxe : {{ type_taxe.nom }}</h2>{% endblock %}
+
 {% block content %}
-<div class="container">
-    <div class="card shadow-sm">
-        <div class="card-header bg-light">
-            <h5 class="card-title mb-4">Modifier la taxe : {{ taxe.nom }}</h5>
+<div class="row">
+    <!-- Partie 1 : Informations générales du Type de Taxe -->
+    <div class="col-md-5 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-light">
+                <h5 class="card-title mb-0">Informations générales</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="action" value="update_type">
+                    <div class="mb-3">
+                        <label for="nom" class="form-label">Nom du type de taxe</label>
+                        <input type="text" class="form-control" id="nom" name="nom" value="{{ type_taxe.nom }}" required>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input type="checkbox" name="est_actif" class="form-check-input" id="est_actif" 
+                               {% if type_taxe.est_actif %}checked{% endif %}>
+                        <label class="form-check-label" for="est_actif">Type de taxe actif</label>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Mettre à jour les informations</button>
+                </form>
+                <hr>
+                <form method="POST" onsubmit="return confirm('La suppression est définitive et supprimera tout l\'historique des taux. Continuer ?');">
+                    <input type="hidden" name="action" value="delete">
+                    <button type="submit" class="btn btn-outline-danger w-100">Supprimer ce type de taxe</button>
+                </form>
+            </div>
         </div>
-        <div class="card-body">
-            <form method="POST">
-                <div class="mb-3">
-                    <label for="nom" class="form-label">Nom de la taxe</label>
-                    <input type="text" class="form-control" id="nom" name="nom" value="{{ taxe.nom }}" required>
-                </div>
-                <div class="mb-3">
-                    <label for="taux" class="form-label">Taux (%)</label>
-                    <input type="number" step="0.01" class="form-control" id="taux" name="taux" value="{{ taxe.taux }}" required>
-                </div>
-                <div class="mb-3">
-                    <label for="date_debut" class="form-label">Date de début d'application</label>
-                    <input type="date" class="form-control" id="date_debut" name="date_debut" value="{{ taxe.date_debut.strftime('%Y-%m-%d') }}" required>
-                </div>
-                <div class="mb-3">
-                    <label for="date_fin" class="form-label">Date de fin d'application (optionnelle)</label>
-                    <input type="date" class="form-control" id="date_fin" name="date_fin" value="{{ taxe.date_fin.strftime('%Y-%m-%d') if taxe.date_fin else '' }}">
-                    <div class="form-text">Laissez vide si la taxe est toujours en vigueur.</div>
-                </div>
-                <button type="submit" class="btn btn-primary">Enregistrer les modifications</button>
-            </form>
+    </div>
+
+    <!-- Partie 2 : Historique des taux et Ajout -->
+    <div class="col-md-7 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Historique des taux</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm table-hover mb-4">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Taux (%)</th>
+                            <th>Date de début</th>
+                            <th>Date de fin</th>
+                            <th>Statut</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for taux in historique_taux %}
+                        <tr>
+                            <td class="fw-bold">{{ taux.taux }}%</td>
+                            <td>{{ taux.date_debut.strftime('%d/%m/%Y') }}</td>
+                            <td>{{ taux.date_fin.strftime('%d/%m/%Y') if taux.date_fin else 'En cours' }}</td>
+                            <td>
+                                {% if not taux.date_fin %}
+                                    <span class="badge bg-success">Actuel</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Archivé</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted">Aucun historique</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                <hr>
+                <h6 class="mb-3">Ajouter un nouveau taux (ex: changement de loi)</h6>
+                <form method="POST" class="row g-3 align-items-end">
+                    <input type="hidden" name="action" value="add_new_rate">
+                    <div class="col-md-4">
+                        <label class="form-label">Nouveau taux (%)</label>
+                        <input type="number" step="0.01" name="nouveau_taux" class="form-control" required>
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">Date de prise d'effet</label>
+                        <input type="date" name="nouveau_date_debut" class="form-control" required>
+                        <div class="form-text" style="font-size: 0.8em;">Clôturera automatiquement le taux en cours la veille.</div>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-success w-100">Ajouter le taux</button>
+                    </div>
+                </form>
+            </div>
         </div>
-    </div>    
+    </div>
 </div>
 {% endblock %}

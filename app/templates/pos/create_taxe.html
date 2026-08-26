@@ -1,36 +1,35 @@
 {% extends "pos.html" %}
-{% block title %}Nouvelle taxe{% endblock %}
-{% block page_header %}<h2 class="mb-4">Créer une nouvelle règle de taxe</h2>{% endblock %}
+{% block title %}Nouveau type de taxe{% endblock %}
+{% block page_header %}<h2 class="mb-4">Créer un nouveau type de taxe</h2>{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-6">
         <div class="card shadow-sm">
             <div class="card-body">
+                <div class="alert alert-info mb-4">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Créez ici le <strong>type</strong> de taxe (ex: "TVA Normale", "TVA Alimentaire"). 
+                    Vous pourrez ajouter de nouveaux taux historiques plus tard si la loi change.
+                </div>
                 <form method="POST">
                     <div class="mb-3">
-                        <label class="form-label">Nom de la taxe</label>
-                        <input type="text" name="nom" class="form-control" placeholder="Ex: TVA 8.1% (2024)" required>
-                        <div class="form-text">Incluez l'année ou la période pour plus de clarté historique.</div>
+                        <label class="form-label">Nom du type de taxe</label>
+                        <input type="text" name="nom" class="form-control" placeholder="Ex: TVA Alimentaire" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Taux (%)</label>
-                        <input type="number" step="0.01" name="taux" class="form-control" placeholder="Ex: 8.10" required>
+                        <label class="form-label">Taux initial (%)</label>
+                        <input type="number" step="0.01" name="taux" class="form-control" placeholder="Ex: 2.50" required>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Date de début d'application</label>
                         <input type="date" name="date_debut" class="form-control" value="{{ today }}" required>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Date de fin d'application (optionnelle)</label>
-                        <input type="date" name="date_fin" class="form-control">
-                        <div class="form-text">Laissez vide si la taxe est toujours en vigueur.</div>
-                    </div>
                     <div class="form-check mb-3">
                         <input type="checkbox" name="est_actif" class="form-check-input" id="est_actif" checked>
-                        <label class="form-check-label" for="est_actif">Activer cette taxe immédiatement</label>
+                        <label class="form-check-label" for="est_actif">Activer ce type de taxe immédiatement</label>
                     </div>
-                    <button type="submit" class="btn btn-success w-100">Enregistrer la taxe</button>
+                    <button type="submit" class="btn btn-success w-100">Créer le type de taxe</button>
                 </form>
             </div>
         </div>

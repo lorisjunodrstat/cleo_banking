@@ -11006,7 +11006,7 @@ def pos_modifiers_list():
 def pos_create_modifier():
     # Récupérer les taux de TVA du système
 
-    taux_disponibles =  g.models.taxe_pos_model.get_all(current_user.id, actif_only=True)
+    types_taxes_disponibles = g.models.taxe_pos_model.get_all_types(current_user.id, actif_only=True)
     
     if request.method == 'POST':
         g.models.modificateur_pos_model.create(current_user.id, {
@@ -11018,7 +11018,7 @@ def pos_create_modifier():
         flash('Modificateur créé !', 'success')
         return redirect(url_for('banking.pos_modifiers_list'))
     
-    return render_template('pos/create_modifier.html', taux_disponibles=taux_disponibles)
+    return render_template('pos/create_modifier.html', types_taxes_disponibles=types_taxes_disponibles)
 
 
 
@@ -11031,7 +11031,7 @@ def pos_edit_modifier(mod_id):
         return redirect(url_for('banking.pos_modifiers_list'))
 
     # ✅ Récupérer les taux de TVA du système
-    taux_disponibles =  g.models.taxe_pos_model.get_all(current_user.id, actif_only=True)
+    types_taxes_disponibles = g.models.taxe_pos_model.get_all_types(current_user.id, actif_only=True)
 
     if request.method == 'POST':
         g.models.modificateur_pos_model.update(mod_id, current_user.id, {
@@ -11043,7 +11043,7 @@ def pos_edit_modifier(mod_id):
         flash('Modificateur modifié !', 'success')
         return redirect(url_for('banking.pos_modifiers_list'))
     
-    return render_template('pos/edit_modifier.html', modifier=mod, taux_disponibles=taux_disponibles)
+    return render_template('pos/edit_modifier.html', modifier=mod, types_taxes_disponibles=types_taxes_disponibles)
 
 
 
@@ -11066,8 +11066,12 @@ def pos_modifier_detail(mod_id):
         flash('Modificateur introuvable.', 'error')
         return redirect(url_for('banking.pos_modifiers_list'))
 
-    # ✅ Récupérer les taux de TVA du système
-    taux_disponibles =  g.models.taxe_pos_model.get_all(current_user.id, actif_only=True)
+    # ✅ Récupérer les types de taxes disponibles avec leur taux actuel
+    from datetime import date
+    types_taxes_disponibles = g.models.taxe_pos_model.get_all_types(current_user.id, actif_only=True)
+    for tt in types_taxes_disponibles:
+        taux_info = g.models.taxe_pos_model.get_taux_for_date(tt['id'], date.today())
+        tt['taux_actuel'] = taux_info['taux'] if taux_info else 0.00
 
     if request.method == 'POST':
         action = request.form.get('action')
@@ -11124,12 +11128,10 @@ def pos_modifier_detail(mod_id):
         options=options, 
         articles=articles,
         articles_by_id=articles_by_id,
-        taux_disponibles=taux_disponibles,  # ✅ Ajouté
+        types_taxes_disponibles=types_taxes_disponibles,  # ✅ Variable injectée
         total_options=len(options), 
         articles_lies_count=articles_lies,
     )
-
-
 
 
 @bp.route('/pos/modifier-option/<int:opt_id>/edit', methods=['GET', 'POST'])
@@ -11143,14 +11145,17 @@ def pos_edit_modifier_option(opt_id):
     modifiers = g.models.modificateur_pos_model.get_all(current_user.id)
     articles = g.models.article_pos_model.get_all(current_user.id)
     
+    # ✅ Récupérer les types de taxes disponibles avec leur taux actuel
+    from datetime import date
+    types_taxes_disponibles = g.models.taxe_pos_model.get_all_types(current_user.id, actif_only=True)
+    for tt in types_taxes_disponibles:
+        taux_info = g.models.taxe_pos_model.get_taux_for_date(tt['id'], date.today())
+        tt['taux_actuel'] = taux_info['taux'] if taux_info else 0.00
+    
     # Récupérer le modificateur parent pour connaître sa TVA
     parent_modifier = None
     if option.get('id_modificateur'):
         parent_modifier = g.models.modificateur_pos_model.get_by_id(option['id_modificateur'], current_user.id)
-
-    # ✅ Récupérer les taux de TVA du système
-
-    taux_disponibles =  g.models.taxe_pos_model.get_all(current_user.id, actif_only=True)
 
     if request.method == 'POST':
         # ✅ Gestion de la TVA : vide = hérite du parent, sinon valeur spécifique
@@ -11183,9 +11188,8 @@ def pos_edit_modifier_option(opt_id):
         modifiers=modifiers, 
         articles=articles,
         parent_modifier=parent_modifier,
-        taux_disponibles=taux_disponibles  # ✅ Ajouté
+        types_taxes_disponibles=types_taxes_disponibles  # ✅ Variable injectée
     )
-
 @bp.route('/pos/modifier-option/<int:opt_id>/delete', methods=['POST'])
 @login_required
 def pos_delete_modifier_option(opt_id):
@@ -11258,7 +11262,8 @@ def pos_articles_list():
 @login_required
 def pos_create_article():
     categories = g.models.categorie_pos_model.get_all(current_user.id)
-    taxes = g.models.taxe_pos_model.get_all(current_user.id)
+    types_taxes = g.models.taxe_pos_model.get_all_types(current_user.id, actif_only=True)
+    
     
     if request.method == 'POST':
         article_id = g.models.article_pos_model.create(current_user.id, {
@@ -11271,9 +11276,10 @@ def pos_create_article():
             'code_barre': request.form.get('code_barre', '')
         })
         if article_id:
-            taxe_id = request.form.get('taxe_id')
-            if taxe_id:
-                g.models.taxe_pos_model.assigner_to_article(article_id, int(taxe_id), datetime.now().date())
+            type_taxe_id = request.form.get('type_taxe_id')
+            if type_taxe_id:
+
+                g.models.taxe_pos_model.assigner_type_to_article(article_id, int(type_taxe_id))
             flash('Article créé avec succès !', 'success')
             return redirect(url_for('banking.pos_articles_list'))
         flash('Erreur lors de la création.', 'error')
@@ -11289,14 +11295,15 @@ def pos_edit_article(article_id):
 
     categories      = g.models.categorie_pos_model.get_all(current_user.id)
     sous_categories = g.models.sous_categorie_pos_model.get_all(current_user.id)
-    taxes           = g.models.taxe_pos_model.get_all(current_user.id)
+    types_taxes = g.models.taxe_pos_model.get_all_types(current_user.id, actif_only=True)
+
     all_modifiers   = g.models.modificateur_pos_model.get_all(current_user.id)
     linked_mod_ids  = [m['id'] for m in g.models.article_pos_model.get_linked_modifiers(article_id)]
     variantes       = g.models.variante_pos_model.get_by_article(article_id)
     
     # Récupérer la taxe actuellement attribuée à l'article
-    taxe_actuelle = g.models.taxe_pos_model.get_taxe_active_for_article(article_id)
-    article['taxe_actuelle'] = taxe_actuelle
+    type_taxe_actuel = g.models.taxe_pos_model.get_type_for_article(article_id)
+    article['type_taxe_actuel'] = type_taxe_actuel
 
     if request.method == 'POST':
         # Champs de base
@@ -11319,11 +11326,10 @@ def pos_edit_article(article_id):
         g.models.article_pos_model.set_modifiers(article_id, selected_ids)
 
         # Taxe
-        taxe_id = request.form.get('taxe_id')
-        if taxe_id:
-            g.models.taxe_pos_model.assigner_to_article(article_id, int(taxe_id), datetime.now().date())
+        type_taxe_id = request.form.get('type_taxe_id')
+        if type_taxe_id:
+            g.models.taxe_pos_model.assigner_type_to_article(article_id, int(type_taxe_id))
         else:
-            # Si aucune taxe sélectionnée, désactiver toutes les taxes actuelles
             g.models.taxe_pos_model.desactiver_taxes_article(article_id)
 
         # Supprimer variantes cochées
@@ -11349,9 +11355,9 @@ def pos_edit_article(article_id):
 
     return render_template(
         'pos/edit_article.html',
-        article=article, categories=categories, sous_categories=sous_categories,
-        taxes=taxes, all_modifiers=all_modifiers,
-        linked_modifier_ids=linked_mod_ids, variantes=variantes,
+           article=article, categories=categories, sous_categories=sous_categories,
+        types_taxes=types_taxes, all_modifiers=all_modifiers, # ✅ Variable renommée
+        linked_modifier_ids=linked_mod_ids, variantes=variantes
     )
 @bp.route('/pos/articles/<int:article_id>/delete', methods=['POST'])
 @login_required
@@ -11716,20 +11722,32 @@ def pos_create_modifier_option():
     modifiers = g.models.modificateur_pos_model.get_all(current_user.id)
     articles = g.models.article_pos_model.get_all(current_user.id)
     
+    # ✅ AJOUT : Récupérer les types de taxes disponibles
+    from datetime import date
+    types_taxes_disponibles = g.models.taxe_pos_model.get_all_types(current_user.id, actif_only=True)
+    for tt in types_taxes_disponibles:
+        taux_info = g.models.taxe_pos_model.get_taux_for_date(tt['id'], date.today())
+        tt['taux_actuel'] = taux_info['taux'] if taux_info else 0.00
+    
     if request.method == 'POST':
+        # ... reste du code inchangé ...
         option_id = g.models.option_modificateur_pos_model.create(current_user.id, {
             'nom_option': request.form.get('nom_option', '').strip(),
             'id_modificateur': int(request.form.get('id_modificateur')) if request.form.get('id_modificateur') else None,
             'id_article': int(request.form.get('id_article')) if request.form.get('id_article') else None,
             'prix_supplement': safe_float(request.form.get('prix_supplement', '0')),
-            'description': request.form.get('description', '')
+            'description': request.form.get('description', ''),
+            'taux_tva': safe_float(request.form.get('taux_tva')) if request.form.get('taux_tva') else None
         })
         if option_id:
             flash('Option de modificateur créée avec succès !', 'success')
             return redirect(url_for('banking.pos_modifier_options'))
         flash('Erreur lors de la création.', 'error')
     
-    return render_template('pos/create_modifier_option.html', modifiers=modifiers, articles=articles)
+    return render_template('pos/create_modifier_option.html', 
+                         modifiers=modifiers, 
+                         articles=articles,
+                         types_taxes_disponibles=types_taxes_disponibles)  # ✅ AJOUT
 
 @bp.route('/pos/article/<int:article_id>/modifiers', methods=['GET', 'POST'])
 @login_required
@@ -11766,36 +11784,30 @@ def pos_article_taxes_history(article_id):
         flash("Article non trouvé.", "error")
         return redirect(url_for('banking.pos_articles_list'))
         
-    taxes_disponibles = g.models.taxe_pos_model.get_all(current_user.id, actif_only=False)
-    # ✅ VRAI APPEL AU MODÈLE
-    historique = g.models.taxe_pos_model.get_historique_article(article_id)
+    # ✅ On récupère tous les types de taxes disponibles
+    types_taxes_disponibles = g.models.taxe_pos_model.get_all_types(current_user.id, actif_only=False)
+    
+    # ✅ On récupère le type actuellement assigné
+    type_actuel = g.models.taxe_pos_model.get_type_for_article(article_id)
     
     if request.method == 'POST':
         action = request.form.get('action')
-        if action == 'add':
-            taxe_id = int(request.form.get('taxe_id'))
-            date_debut = datetime.strptime(request.form.get('date_debut'), '%Y-%m-%d').date()
-            date_fin_str = request.form.get('date_fin')
-            date_fin = datetime.strptime(date_fin_str, '%Y-%m-%d').date() if date_fin_str else None
-            
-            if g.models.taxe_pos_model.assigner_to_article(article_id, taxe_id, date_debut, date_fin):
-                flash('Taxe ajoutée à l\'historique.', 'success')
+        if action == 'update_type':
+            nouveau_type_id = request.form.get('type_taxe_id')
+            if nouveau_type_id:
+                g.models.taxe_pos_model.assigner_type_to_article(article_id, int(nouveau_type_id))
+                flash('Type de taxe mis à jour pour cet article.', 'success')
             else:
-                flash('Erreur lors de l\'ajout.', 'error')
+                g.models.taxe_pos_model.desactiver_taxes_article(article_id)
+                flash('Taxe retirée de cet article.', 'success')
                 
-        elif action == 'remove':
-            taxe_id = int(request.form.get('taxe_id'))
-            # ✅ VRAIE SUPPRESSION
-            g.models.taxe_pos_model.remove_from_article(article_id, taxe_id)
-            flash('Taxe retirée de l\'historique.', 'success')
-        
         return redirect(url_for('banking.pos_article_taxes_history', article_id=article_id))
     
     return render_template('pos/article_taxes_history.html', 
-                         article=article, taxes_disponibles=taxes_disponibles,
-                         historique=historique)
+                         article=article, 
+                         types_taxes_disponibles=types_taxes_disponibles,
+                         type_actuel=type_actuel)
 
-                         # ============================================================
 # IMPORT DE DONNÉES POS
 # ============================================================
 
@@ -12365,68 +12377,95 @@ def pos_delete_payment_method(mode_id):
 @bp.route('/pos/taxes-list')
 @login_required
 def pos_taxes_list():
-    taxes = g.models.taxe_pos_model.get_all(current_user.id, actif_only=False)
-    return render_template('pos/taxes_list.html', taxes=taxes)
+    # ✅ On liste les TYPES de taxes
+    types_taxes = g.models.taxe_pos_model.get_all_types(current_user.id, actif_only=False)
+    
+    # Optionnel : Enrichir la liste avec le taux actuel pour l'affichage UI
+    from datetime import date
+    for tt in types_taxes:
+        taux_info = g.models.taxe_pos_model.get_taux_for_date(tt['id'], date.today())
+        tt['taux_actuel'] = taux_info['taux'] if taux_info else 0.00
+        
+    return render_template('pos/taxes_list.html', types_taxes=types_taxes)
 
 
 @bp.route('/pos/taxes/create', methods=['GET', 'POST'])
 @login_required
 def pos_create_taxe():
     if request.method == 'POST':
-        try:
-            taux       = float(request.form.get('taux', '0').replace(',', '.'))
-            date_debut = datetime.strptime(request.form.get('date_debut'), '%Y-%m-%d').date()
-            df         = request.form.get('date_fin')
-            date_fin   = datetime.strptime(df, '%Y-%m-%d').date() if df else None
-        except ValueError:
-            flash('Format de taux ou date invalide.', 'error')
-            return redirect(url_for('banking.pos_create_taxe'))
-
-        existing = g.models.taxe_pos_model.get_all(current_user.id, actif_only=False)
-        if any(t['nom'] == request.form.get('nom', '').strip() for t in existing):
-            flash('Cette taxe existe déjà.', 'error')
+        nom = request.form.get('nom', '').strip()
+        
+        # 1. Créer le TYPE de taxe
+        type_taxe_id = g.models.taxe_pos_model.create_type(current_user.id, nom, 'est_actif' in request.form)
+        
+        if type_taxe_id:
+            # 2. Ajouter immédiatement un premier TAUX historique
+            try:
+                taux = float(request.form.get('taux', '0').replace(',', '.'))
+                date_debut = datetime.strptime(request.form.get('date_debut'), '%Y-%m-%d').date()
+                
+                g.models.taxe_pos_model.add_taux_historique(
+                    type_taxe_id=type_taxe_id,
+                    taux=taux,
+                    date_debut=date_debut,
+                    date_fin=None
+                )
+                flash('Type de taxe et taux initial créés avec succès !', 'success')
+                return redirect(url_for('banking.pos_taxes_list'))
+            except ValueError:
+                flash('Format de taux ou date invalide.', 'error')
         else:
-            g.models.taxe_pos_model.create(current_user.id, {
-                'nom':        request.form.get('nom', '').strip(),
-                'taux':       taux,
-                'date_debut': date_debut,
-                'date_fin':   date_fin,
-                'est_actif':  'est_actif' in request.form,
-            })
-            flash('Taxe créée !', 'success')
-            return redirect(url_for('banking.pos_taxes_list'))
+            flash('Ce type de taxe existe déjà ou une erreur est survenue.', 'error')
 
     return render_template('pos/create_taxe.html', today=datetime.now().strftime('%Y-%m-%d'))
 
 
-@bp.route('/pos/taxes/<int:taxe_id>/edit', methods=['GET', 'POST'])
+@bp.route('/pos/taxes/<int:type_taxe_id>/edit', methods=['GET', 'POST'])
 @login_required
-def pos_edit_taxe(taxe_id):
-    taxe = g.models.taxe_pos_model.get_by_id(taxe_id, current_user.id)
-    if not taxe:
-        flash('Taxe introuvable.', 'error')
+def pos_edit_taxe(type_taxe_id):
+    # ✅ On récupère le TYPE, pas l'ancienne taxe
+    type_taxe = g.models.taxe_pos_model.get_by_id(type_taxe_id, current_user.id) 
+    if not type_taxe:
+        flash('Type de taxe introuvable.', 'error')
         return redirect(url_for('banking.pos_taxes_list'))
+
+    # ✅ On récupère l'historique des taux pour ce type
+    historique_taux = g.models.taxe_pos_model.get_historique_taux(type_taxe_id)
 
     if request.method == 'POST':
-        try:
-            taux       = float(request.form.get('taux', '0').replace(',', '.'))
-            date_debut = datetime.strptime(request.form.get('date_debut'), '%Y-%m-%d').date()
-            df         = request.form.get('date_fin')
-            date_fin   = datetime.strptime(df, '%Y-%m-%d').date() if df else None
-        except ValueError:
-            flash('Format invalide.', 'error')
-            return redirect(url_for('banking.pos_edit_taxe', taxe_id=taxe_id))
-
-        g.models.taxe_pos_model.update(taxe_id, current_user.id, {
-            'nom':        request.form.get('nom', '').strip(),
-            'taux':       taux,
-            'date_debut': date_debut,
-            'date_fin':   date_fin,
-            'est_actif':  'est_actif' in request.form,
-        })
-        flash('Taxe mise à jour !', 'success')
-        return redirect(url_for('banking.pos_taxes_list'))
-    return render_template('pos/edit_taxe.html', taxe=taxe)
+        action = request.form.get('action')
+        
+        if action == 'update_type':
+            # Mise à jour du nom ou du statut actif
+            g.models.taxe_pos_model.update_type(
+                type_taxe_id, 
+                current_user.id, 
+                {
+                    'nom': request.form.get('nom', '').strip(),
+                    'est_actif': 'est_actif' in request.form
+                }
+            )
+            flash('Type de taxe mis à jour !', 'success')
+            
+        elif action == 'add_new_rate':
+            # Ajout d'un nouveau taux historique (ex: changement de TVA légale)
+            try:
+                nouveau_taux = float(request.form.get('nouveau_taux', '0').replace(',', '.'))
+                date_debut = datetime.strptime(request.form.get('nouveau_date_debut'), '%Y-%m-%d').date()
+                
+                g.models.taxe_pos_model.add_taux_historique(
+                    type_taxe_id=type_taxe_id,
+                    taux=nouveau_taux,
+                    date_debut=date_debut,
+                    date_fin=None # Les anciens taux seront automatiquement fermés par la méthode du modèle
+                )
+                flash('Nouveau taux historique ajouté !', 'success')
+            except ValueError:
+                flash('Format de taux ou date invalide.', 'error')
+                
+        return redirect(url_for('banking.pos_edit_taxe', type_taxe_id=type_taxe_id))
+        
+    return render_template('pos/edit_taxe.html', type_taxe=type_taxe, historique_taux=historique_taux)
 
 
 @bp.route('/pos/taxes/<int:taxe_id>/delete', methods=['POST'])
@@ -12909,11 +12948,13 @@ def pos_vente_caisse():
 def pos_vente_articles_json():
     user_id = current_user.id
     try:
-        # 1. Utiliser les modèles existants (garanti de fonctionner)
+        from datetime import date # ✅ Ajouté pour la date du jour
+        
+        # 1. Utiliser les modèles existants
         articles = g.models.article_pos_model.get_all(user_id)
         categories = g.models.categorie_pos_model.get_all(user_id)
         
-        # Récupérer l'instance db depuis un modèle existant pour éviter l'erreur g.db
+        # Récupérer l'instance db depuis un modèle existant
         db_instance = g.models.article_pos_model.db
         
         for article in articles:
@@ -12935,7 +12976,7 @@ def pos_vente_articles_json():
                         'id': o['id'],
                         'nom_option': o['nom_option'],
                         'prix_supplement': float(o.get('prix_supplement', 0)),
-                        # ✅ Gestion stricte : si NULL en base, on envoie None (pour hériter du parent)
+                        # ✅ Gestion stricte : si NULL en base, on envoie None (le JS le gérera proprement)
                         'taux_tva': float(o['taux_tva']) if o.get('taux_tva') is not None else None,
                         'description': o.get('description', '')
                     }
@@ -12945,9 +12986,14 @@ def pos_vente_articles_json():
             
             article['modificateurs'] = modificateurs
             
-            # 4. Récupérer la taxe active de l'article
-            taxe = g.models.taxe_pos_model.get_taxe_active_for_article(article['id'])
-            article['taux_taxe'] = float(taxe['taux']) if taxe else 0.0
+            # 4. ✅ NOUVEAU : Récupérer le TYPE de taxe, puis le TAUX en vigueur aujourd'hui
+            type_taxe = g.models.taxe_pos_model.get_type_for_article(article['id'])
+            if type_taxe:
+                # On demande le taux qui était/est valide à la date d'aujourd'hui
+                taux_info = g.models.taxe_pos_model.get_taux_for_date(type_taxe['id'], date.today())
+                article['taux_taxe'] = float(taux_info['taux']) if taux_info else 0.0
+            else:
+                article['taux_taxe'] = 0.0
         
         return jsonify({
             'articles': articles,
@@ -12958,7 +13004,6 @@ def pos_vente_articles_json():
         # Cela affichera l'erreur exacte dans votre terminal Flask
         logger.error(f"ERREUR CRITIQUE dans articles-json: {e}", exc_info=True)
         return jsonify({'articles': [], 'categories': [], 'error': str(e)}), 500
-    
 
 @bp.route('/pos/vente/clients.json')
 @login_required
