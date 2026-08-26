@@ -93,26 +93,21 @@ def profil_utilisateur(user_id):
     try:
         # 1. Récupérer les infos de l'utilisateur (pour le nom, email, etc.)
         # On suppose que vous avez un user_model accessible via g.models
-        db = g.db_manager.get_db()  # Récupérer la connexion à la base de données
-        if not db:
+        #db = g.db_manager.get_db()  # Récupérer la connexion à la base de données
+        #if not db:
         # Si g.db_manager n'est pas dispo, on tente la suggestion de VS Code
             # ou on redirige avec une erreur
-            flash("Base de données non accessible", "danger")
-            return redirect(url_for('banking.banking_dashboard'))
-        utilisateur = g.models.user_model.get_by_id(user_id, db)
-        
+#            flash("Base de données non accessible", "danger")
+ #           return redirect(url_for('banking.banking_dashboard'))
+        utilisateur = g.models.user_model.get_by_id(user_id)        
         if not utilisateur:
             flash("Utilisateur non trouvé", "danger")
             return redirect(url_for('banking.dashboard'))
-
-
-        # 3. Rendu de la page avec les variables attendues par le template
         return render_template(
-            'users/detail_utilisateur.html', 
-            user_id=user_id, 
-            utilisateur=utilisateur
-        )
-
+                'users/detail_utilisateur.html', 
+                user_id=user_id, 
+                utilisateur=utilisateur
+            )
     except Exception as e:
         logging.error(f"Erreur lors de l'affichage du profil pour l'utilisateur {user_id}: {e}")
         flash("Une erreur est survenue lors du chargement du profil.", "danger")
