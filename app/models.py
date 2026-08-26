@@ -16430,6 +16430,7 @@ class ModePaiementPOS:
         except Exception as e:
             logger.error(f"Erreur récupération modes paiement: {e}")
             return []
+
     def get_all_with_comptes(self, user_id: int, actif_only: bool = True) -> List[Dict]:
         """
         Récupère tous les modes de paiement avec les noms des comptes comptables affiliés.
@@ -16562,6 +16563,49 @@ class ModePaiementPOS:
                 return cursor.fetchone()
         except Exception as e:
             logger.error(f"Erreur récupération params comptables mode paiement {mode_id}: {e}")
+            return None
+
+    def get_compte_tresorerie_effectif(self, mode_paiement_id: int, pdv_id: int = None) -> Optional[int]:
+        """
+        Résout le compte de trésorerie effectif selon la logique :
+        - Si le mode a un compte_tresorerie_id configuré → l'utiliser
+        - Sinon, si mode = espèces ET pdv_id fourni → utiliser le compte du PDV
+        - Sinon → None
+        
+        Cela permet aux espèces d'utiliser le compte du PDV sans configuration globale.
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                # 1. Récupérer le mode de paiement
+                cursor.execute("""
+                    SELECT nom, compte_tresorerie_id 
+                    FROM pos_modes_paiement 
+                    WHERE id = %s
+                """, (mode_paiement_id,))
+                mode = cursor.fetchone()
+                
+                if not mode:
+                    return None
+                
+                # 2. Si le mode a un compte configuré, l'utiliser (Twint, Carte, etc.)
+                if mode['compte_tresorerie_id']:
+                    return mode['compte_tresorerie_id']
+                
+                # 3. Sinon, si c'est des espèces et qu'on a un PDV, utiliser son compte
+                if pdv_id and ('espèce' in mode['nom'].lower() or 'cash' in mode['nom'].lower()):
+                    cursor.execute("""
+                        SELECT compte_bancaire_id 
+                        FROM pos_points_de_vente 
+                        WHERE id = %s
+                    """, (pdv_id,))
+                    pdv = cursor.fetchone()
+                    if pdv and pdv['compte_bancaire_id']:
+                        return pdv['compte_bancaire_id']
+                
+                return None
+                
+        except Exception as e:
+            logger.error(f"Erreur résolution compte trésorerie effectif: {e}")
             return None
 
 class RestaurantOptionPOS:
@@ -17537,10 +17581,15 @@ class ReceiptPOS:
             logger.error(f"Erreur récupération receipt ouvert {user_id}: {e}")
             return None
 
-    def creer_vente(self, user_id: int, data: Dict, compte_bancaire_id: int) -> Tuple[bool, str, Optional[int]]:
+    def creer_vente(self, user_id: int, data: Dict, pdv_id: int) -> Tuple[bool, str, Optional[int]]:
         """
         ⭐ MÉTHODE PRINCIPALE : Crée une vente POS avec gestion avancée de la TVA (paniers mixtes) 
         et extraction de TVA depuis un prix TTC.
+        
+        ✅ NOUVEAU : Le paramètre est maintenant 'pdv_id' (et non plus compte_bancaire_id fixe).
+        Cela permet de résoudre dynamiquement le compte bancaire : 
+        - Espèces -> Compte bancaire du PDV
+        - Carte/Twint -> Compte de trésorerie configuré dans le mode de paiement
         """
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
@@ -17548,6 +17597,14 @@ class ReceiptPOS:
                 cout_marchandises = Decimal('0')
                 items_data = []
                 
+                # 0. RÉCUPÉRATION DU COMPTE BANCAIRE DU PDV (Fallback pour les espèces)
+                compte_bancaire_pdv = None
+                if pdv_id:
+                    cursor.execute("SELECT compte_bancaire_id FROM pos_points_de_vente WHERE id = %s", (pdv_id,))
+                    res_pdv = cursor.fetchone()
+                    if res_pdv:
+                        compte_bancaire_pdv = res_pdv['compte_bancaire_id']
+
                 # 1. TRAITEMENT DES ARTICLES ET CALCUL TVA DÉTAILLÉ
                 for item in data.get('items', []):
                     cursor.execute("SELECT * FROM pos_articles WHERE id = %s", (item['article_id'],))
@@ -17671,6 +17728,7 @@ class ReceiptPOS:
                 recu_numero = f"V-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
                 
                 # 5. INSERTION DU REÇU
+                # Note: compte_bancaire_id est rempli avec celui du PDV par défaut pour référence
                 cursor.execute("""
                     INSERT INTO pos_receipts 
                     (utilisateur_id, date, recu_numero, nom_ticket, description, receipt_type, ventes_brutes, reduction, 
@@ -17689,7 +17747,7 @@ class ReceiptPOS:
                     data.get('nom_du_caissier'), data.get('nom_du_client'),
                     data.get('numero_client'), data.get('id_client'),
                     data.get('discount_id'), float(reduction_ttc),
-                    compte_bancaire_id
+                    compte_bancaire_pdv
                 ))
                 receipt_id = cursor.lastrowid
                 
@@ -17709,49 +17767,102 @@ class ReceiptPOS:
                         item['modificateurs']
                     ))
                 
-                # 7. GESTION DES PAIEMENTS
+                # ========================================================================
+                # 7. GESTION DES PAIEMENTS ET TRANSACTIONS FINANCIÈRES (RÉÉCRIT)
+                # ========================================================================
                 nb_paiements = 0
+                primary_transaction_id = None
+                
                 for payment in data.get('payments', []):
-                    montant_pay = float(payment.get('montant', 0))
+                    montant_pay = Decimal(str(payment.get('montant', 0)))
                     if montant_pay <= 0: 
                         continue
+                        
+                    mode_paiement_id = payment['mode_paiement_id']
+                    
+                    # A. Enregistrer le paiement dans pos_payments
                     cursor.execute("""
                         INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant) 
                         VALUES (%s, %s, %s)
-                    """, (receipt_id, payment['mode_paiement_id'], montant_pay))
+                    """, (receipt_id, mode_paiement_id, float(montant_pay)))
                     nb_paiements += 1
+                    
+                    # B. Déterminer le compte bancaire effectif pour ce mode de paiement
+                    compte_effectif = compte_bancaire_pdv  # Fallback par défaut (Espèces)
+                    nom_mode = 'Paiement'
+                    
+                    cursor.execute("""
+                        SELECT nom, compte_tresorerie_id 
+                        FROM pos_modes_paiement 
+                        WHERE id = %s
+                    """, (mode_paiement_id,))
+                    mode_info = cursor.fetchone()
+                    
+                    if mode_info:
+                        nom_mode = mode_info['nom']
+                        # Si le mode de paiement a un compte dédié (ex: Concardis, Twint), on l'utilise
+                        if mode_info['compte_tresorerie_id']:
+                            compte_effectif = mode_info['compte_tresorerie_id']
+                    
+                    # C. Créer la transaction financière pour CE paiement spécifique
+                    if compte_effectif:
+                        success, msg, trans_id = self.transaction_model._inserer_transaction_with_cursor(
+                            cursor=cursor, 
+                            compte_type='compte_principal', 
+                            compte_id=compte_effectif,
+                            type_transaction='depot', 
+                            montant=montant_pay,
+                            description=f"Vente POS {recu_numero} - {nom_mode}",
+                            user_id=user_id, 
+                            date_transaction=datetime.now(), 
+                            validate_balance=False
+                        )
+                        
+                        # On garde la première transaction ID pour la lier au reçu (compatibilité)
+                        if nb_paiements == 1 and success and trans_id:
+                            primary_transaction_id = trans_id
 
+                # Fallback si aucun paiement explicite mais un total > 0 (comme dans l'ancien code)
                 if nb_paiements == 0 and float(total_collecte) > 0:
                     cursor.execute("""
-                        SELECT id FROM pos_modes_paiement 
+                        SELECT id, nom, compte_tresorerie_id FROM pos_modes_paiement 
                         WHERE utilisateur_id = %s 
                         ORDER BY (nom LIKE '%%spè%%' OR nom LIKE '%%cash%%') DESC, id LIMIT 1
                     """, (user_id,))
                     mode_defaut = cursor.fetchone()
                     if mode_defaut:
+                        compte_effectif = mode_defaut['compte_tresorerie_id'] or compte_bancaire_pdv
+                        
                         cursor.execute("""
                             INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant) 
                             VALUES (%s, %s, %s)
                         """, (receipt_id, mode_defaut['id'], float(total_collecte)))
+                        
+                        if compte_effectif:
+                            success, msg, primary_transaction_id = self.transaction_model._inserer_transaction_with_cursor(
+                                cursor=cursor, 
+                                compte_type='compte_principal', 
+                                compte_id=compte_effectif,
+                                type_transaction='depot', 
+                                montant=total_collecte,
+                                description=f"Vente POS {recu_numero} - {mode_defaut['nom']}",
+                                user_id=user_id, 
+                                date_transaction=datetime.now(), 
+                                validate_balance=False
+                            )
                 
-                # 8. LIEN AVEC LA TRANSACTION FINANCIÈRE
-                success, msg, transaction_id = self.transaction_model._inserer_transaction_with_cursor(
-                    cursor=cursor, 
-                    compte_type='compte_principal', 
-                    compte_id=compte_bancaire_id,
-                    type_transaction='depot', 
-                    montant=total_collecte,
-                    description=f"Vente POS {recu_numero} - {data.get('nom_du_caissier', '')}",
-                    user_id=user_id, 
-                    date_transaction=datetime.now(), 
-                    validate_balance=False
-                )
+                # Mise à jour du reçu avec la transaction principale (pour compatibilité)
+                if primary_transaction_id:
+                    cursor.execute("""
+                        UPDATE pos_receipts 
+                        SET transaction_id = %s 
+                        WHERE id = %s
+                    """, (primary_transaction_id, receipt_id))
+                    logger.info(f"✅ Vente {receipt_id} liée à transaction(s) financière(s)")
                 
-                if success and transaction_id:
-                    cursor.execute("UPDATE pos_receipts SET transaction_id = %s WHERE id = %s", (transaction_id, receipt_id))
-                    logger.info(f"✅ Vente {receipt_id} liée à transaction {transaction_id}")
-                
+                # ========================================================================
                 # 9. GESTION DE LA COMPTABILISATION
+                # ========================================================================
                 settings = self.get_compta_settings(user_id)
                 mode_compta = settings.get('mode_comptabilisation', 'par_jour')
                 generation = settings.get('generation_ecritures', 'manuel')
@@ -17775,7 +17886,7 @@ class ReceiptPOS:
         except Exception as e:
             logger.error(f"Erreur création vente POS: {e}", exc_info=True)
             return False, f"Erreur: {str(e)}", None
-
+        
     def creer_ticket_ouvert(self, user_id: int, data: Dict) -> Tuple[bool, str, Optional[int]]:
         """Enregistre un ticket sans paiement (status 'Ouvert'), sans transaction bancaire."""
         try:
