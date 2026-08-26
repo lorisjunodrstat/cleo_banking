@@ -13107,7 +13107,7 @@ def pos_compta_review():
 
     # GET : Afficher la page de revue
     a_comptabiliser = g.models.pos_comptabilisation_model.get_a_comptabiliser(user_id, pdv_id, mode=mode)
-    
+    flash(f"✅ {len(a_comptabiliser)} éléments à comptabiliser pour le mode '{mode}'", 'info')
     # ✅ Utiliser get_all_with_comptes qui inclut déjà les noms des comptes
     modes_paiement = g.models.mode_paiement_pos_model.get_all_with_comptes(user_id, actif_only=False)
     

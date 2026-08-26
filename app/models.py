@@ -18987,7 +18987,7 @@ class POSComptabilisation:
                         JOIN pos_receipt_items ri ON r.id = ri.receipt_id
                         JOIN pos_article_taxes pat ON ri.article_id = pat.article_id AND pat.est_actuelle = TRUE
                         JOIN pos_taxes at ON pat.taxe_id = at.id
-                        LEFT JOIN pos_compta_mapping_tva mct ON at.id = mct.pos_taxe_id AND mct.utilisateur_id = %s
+                        LEFT JOIN pos_compta_mapping_tva mct ON at.id = mct.type_taxe_id AND mct.utilisateur_id = %s
                         WHERE r.utilisateur_id = %s AND r.etat_comptable = 'non_comptabilise'
                         AND r.status = 'Fermé'
                         GROUP BY r.id, pm.id, mct.compte_vente_id
