@@ -11398,16 +11398,22 @@ def pos_create_sale():
     if not data:
         return jsonify({'success': False, 'message': 'Données invalides'}), 400
     
-    compte_bancaire_id = data.get('compte_bancaire_id')
-    porte_monnaie_id = data.get('porte_monnaie_id')
+    # ✅ NOUVEAU : On récupère le pdv_id (depuis les données ou la session)
+    pdv_id = data.get('pdv_id') or session.get('pos_pdv_id')
+    pdv = g.models.pdv_pos_model.get_by_id(pdv_id) if pdv_id else None
     
-    if not compte_bancaire_id:
-        return jsonify({'success': False, 'message': 'Compte bancaire non spécifié'}), 400
+    if not pdv or pdv.get('utilisateur_id') != current_user.id:
+        return jsonify({'success': False, 'message': 'PDV invalide ou non sélectionné.'}), 400
     
+    data['pdv'] = pdv['nom_pdv']
+    data['magasin'] = pdv.get('nom_magasin', '')
+    data['nom_du_caissier'] = getattr(current_user, 'nom_utilisateur', '') or ''
+
+    # ✅ APPEL MIS À JOUR : on passe pdv_id
     success, msg, receipt_id = g.models.receipt_pos_model.creer_vente(
         user_id=current_user.id,
         data=data,
-        compte_bancaire_id=compte_bancaire_id
+        pdv_id=pdv['id']
     )
     
     if success:
@@ -11415,9 +11421,10 @@ def pos_create_sale():
         return jsonify({
             'success': True,
             'receipt_id': receipt_id,
-            'transaction_id': receipt.get('transaction_liee_id'),
+            'transaction_id': receipt.get('transaction_liee_id') if receipt else None,
             'message': msg
         })
+    
     return jsonify({'success': False, 'message': msg}), 400
 
 # --- REÇUS ---
@@ -12248,11 +12255,11 @@ def pos_stats_payment_methods():
     )
 
 
-
 @bp.route('/pos/payment-methods-list')
 @login_required
 def pos_payment_methods_list():
-    modes = g.models.mode_paiement_pos_model.get_all(current_user.id)
+    # On récupère tous les modes (actifs et inactifs) pour la liste complète
+    modes = g.models.mode_paiement_pos_model.get_all(current_user.id, actif_only=False)
     return render_template('pos/payment_methods_list.html', modes=modes)
 
 
@@ -12261,18 +12268,33 @@ def pos_payment_methods_list():
 def pos_create_payment_method():
     if request.method == 'POST':
         nom = request.form.get('nom', '').strip()
-        existing = g.models.mode_paiement_pos_model.get_all(current_user.id)
-        if any(m['nom'] == nom for m in existing):
-            flash('Ce mode existe déjà.', 'error')
+        
+        # Vérification insensible à la casse
+        existing = g.models.mode_paiement_pos_model.get_all(current_user.id, actif_only=False)
+        if any(m['nom'].lower() == nom.lower() for m in existing):
+            flash('Ce mode de paiement existe déjà.', 'error')
         else:
+            # ✅ NOUVEAU : On récupère les champs comptables si le formulaire les envoie
+            compte_tresorerie_id = request.form.get('compte_tresorerie_id')
+            # Conversion sécurisée en entier ou None
+            compte_tresorerie_id = int(compte_tresorerie_id) if compte_tresorerie_id and str(compte_tresorerie_id).isdigit() else None
+            
             g.models.mode_paiement_pos_model.create(current_user.id, {
-                'nom':        nom,
+                'nom': nom,
                 'description': request.form.get('description', ''),
-                'est_actif':  'est_actif' in request.form,
+                'est_actif': 'est_actif' in request.form,
+                # Champs de la nouvelle architecture (seront NULL si non présents dans le form)
+                'compte_tresorerie_id': compte_tresorerie_id,
+                'type_versement': request.form.get('type_versement', 'immediat'),
+                'frais_pourcentage': float(request.form.get('frais_pourcentage', 0) or 0),
+                'frais_fixe': float(request.form.get('frais_fixe', 0) or 0)
             })
-            flash('Mode de paiement créé !', 'success')
+            flash('Mode de paiement créé avec succès !', 'success')
             return redirect(url_for('banking.pos_payment_methods_list'))
-    return render_template('pos/create_payment_method.html')
+            
+    comptes = g.models.categorie_comptable_model.get_by_type_for_pos('Actif', current_user.id)
+    return render_template('pos/create_payment_method.html', comptes=comptes)
+
 
 
 
@@ -13019,21 +13041,26 @@ def pos_vente_pay():
     pdv = g.models.pdv_pos_model.get_by_id(pdv_id) if pdv_id else None
 
     if not pdv or pdv.get('utilisateur_id') != current_user.id:
-        return jsonify({'success': False, 'message': 'PDV non sélectionné.'}), 400
-    if not pdv.get('compte_bancaire_id'):
-        return jsonify({'success': False, 'message': 'Aucun compte bancaire lié à ce PDV.'}), 400
+        return jsonify({'success': False, 'message': 'PDV non sélectionné ou session expirée.'}), 400
+    
+    # ✅ NOUVEAU : On ne bloque plus si le PDV n'a pas de compte bancaire.
+    # Le compte du PDV servira de fallback pour les espèces, mais les cartes/Twint 
+    # iront sur leurs comptes dédiés configurés dans le mode de paiement.
+    
     if not data.get('items'):
-        return jsonify({'success': False, 'message': 'Ticket vide.'}), 400
+        return jsonify({'success': False, 'tdetails': 'Ticket vide.'}), 400
 
     data['pdv'] = pdv['nom_pdv']
     data['magasin'] = pdv.get('nom_magasin', '')
     data['nom_du_caissier'] = getattr(current_user, 'nom_utilisateur', '') or ''
 
+    # ✅ APPEL MIS À JOUR : on passe pdv_id, la méthode resolvera les comptes elle-même
     success, msg, receipt_id = g.models.receipt_pos_model.creer_vente(
         user_id=current_user.id,
         data=data,
-        compte_bancaire_id=pdv['compte_bancaire_id'],
+        pdv_id=pdv['id']
     )
+    
     if success:
         receipt = g.models.receipt_pos_model.get_by_id(receipt_id, current_user.id)
         return jsonify({
@@ -13042,6 +13069,7 @@ def pos_vente_pay():
             'recu_numero': receipt.get('recu_numero') if receipt else None,
             'message': msg,
         })
+    
     return jsonify({'success': False, 'message': msg}), 400
 
 

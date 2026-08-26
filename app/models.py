@@ -19513,12 +19513,19 @@ class MouvementCaissePOS:
         self.transaction_model = TransactionFinanciere(db)
 
     def enregistrer_retrait(self, periode_id: int, user_id: int, montant: Decimal,
-                            compte_bancaire_id: int = None, description: str = '') -> Tuple[bool, str]:
+                            compte_bancaire_id: int = None, description: str = '',
+                            date_operation: datetime = None) -> Tuple[bool, str]:
         """
         Enregistre un retrait de caisse.
         Si compte_bancaire_id fourni, crée une transaction de dépôt dans le compte.
+        
+        ✅ NOUVEAU : date_operation permet d'importer des données historiques.
+                     Si None, utilise datetime.now() (comportement par défaut).
         """
         try:
+            # ✅ Si aucune date fournie, on prend la date actuelle
+            date_op = date_operation or datetime.now()
+            
             with self.db.get_cursor() as cursor:
                 # Vérifier la période
                 cursor.execute("""
@@ -19528,11 +19535,11 @@ class MouvementCaissePOS:
                 if not cursor.fetchone():
                     return False, "Période non trouvée ou fermée"
                 
-                # Enregistrer le retrait
+                # ✅ Enregistrer le retrait avec la date réelle (plus NOW())
                 cursor.execute("""
                     INSERT INTO pos_retraits (periode_travail_id, montant_retrait, date_retrait, description)
-                    VALUES (%s, %s, NOW(), %s)
-                """, (periode_id, float(montant), description))
+                    VALUES (%s, %s, %s, %s)
+                """, (periode_id, float(montant), date_op, description))
                 
                 # 🔗 Si compte bancaire fourni, créer une transaction de dépôt
                 if compte_bancaire_id:
@@ -19544,7 +19551,7 @@ class MouvementCaissePOS:
                         montant=montant,
                         description=f"Retrait caisse période {periode_id}",
                         user_id=user_id,
-                        date_transaction=datetime.now(),
+                        date_transaction=date_op,  # ✅ Date historique
                         validate_balance=False
                     )
                     if not success:
@@ -19557,12 +19564,18 @@ class MouvementCaissePOS:
             return False, f"Erreur: {str(e)}"
 
     def enregistrer_depot(self, periode_id: int, user_id: int, montant: Decimal,
-                          compte_bancaire_id: int = None, description: str = '') -> Tuple[bool, str]:
+                          compte_bancaire_id: int = None, description: str = '',
+                          date_operation: datetime = None) -> Tuple[bool, str]:
         """
         Enregistre un dépôt en caisse (ex: fond de caisse).
         Si compte_bancaire_id fourni, crée une transaction de retrait du compte.
+        
+        ✅ NOUVEAU : date_operation permet d'importer des données historiques.
         """
         try:
+            # ✅ Si aucune date fournie, on prend la date actuelle
+            date_op = date_operation or datetime.now()
+            
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
                     SELECT * FROM pos_periodes_travail 
@@ -19571,10 +19584,11 @@ class MouvementCaissePOS:
                 if not cursor.fetchone():
                     return False, "Période non trouvée ou fermée"
                 
+                # ✅ Enregistrer le dépôt avec la date réelle (plus NOW())
                 cursor.execute("""
                     INSERT INTO pos_depots (periode_travail_id, montant_depot, date_depot, description)
-                    VALUES (%s, %s, NOW(), %s)
-                """, (periode_id, float(montant), description))
+                    VALUES (%s, %s, %s, %s)
+                """, (periode_id, float(montant), date_op, description))
                 
                 if compte_bancaire_id:
                     success, msg, _ = self.transaction_model._inserer_transaction_with_cursor(
@@ -19585,7 +19599,7 @@ class MouvementCaissePOS:
                         montant=montant,
                         description=f"Dépôt caisse période {periode_id}",
                         user_id=user_id,
-                        date_transaction=datetime.now(),
+                        date_transaction=date_op,  # ✅ Date historique
                         validate_balance=True
                     )
                     if not success:
@@ -19611,7 +19625,6 @@ class MouvementCaissePOS:
                 return cursor.fetchall()
         except:
             return []
-
 class ModelManager:
     def __init__(self, db):
         self._db = db
