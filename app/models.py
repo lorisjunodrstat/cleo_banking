@@ -8408,12 +8408,11 @@ class EcritureComptable:
                         AND e.utilisateur_id = %s
                         AND e.date_ecriture <= %s
                         AND e.statut = 'validée'
-                    WHERE c.utilisateur_id = %s
-                    AND c.actif = TRUE
+                    WHERE c.actif = TRUE
                     AND c.type_compte IN ('Actif', 'Passif', 'Capitaux propres')
                     GROUP BY c.id, c.numero, c.nom, c.type_compte
                     ORDER BY c.numero
-                """, (user_id, date_bilan, user_id))
+                """, (user_id, date_bilan))
 
                 lignes = cursor.fetchall()
 
@@ -10845,8 +10844,7 @@ class Rapport:
                         AND e.date_ecriture <= %s
                         AND e.statut = 'validée'
                         AND e.type_ecriture_comptable = 'principale'
-                    WHERE c.utilisateur_id = %s
-                      AND c.actif = TRUE
+                    WHERE  c.actif = TRUE
                     GROUP BY c.id, c.numero, c.nom, c.type_compte
                     HAVING total_debit > 0 OR total_credit > 0
                     ORDER BY c.numero
