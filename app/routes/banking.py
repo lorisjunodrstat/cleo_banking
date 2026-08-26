@@ -12327,7 +12327,7 @@ def pos_create_payment_method():
             return redirect(url_for('banking.pos_payment_methods_list'))
     
     # ✅ CORRECTION : Récupérer les VRAIS comptes bancaires (comptes_principaux)
-    comptes_bancaires = g.models.compte_model.get_all(current_user.id, actif_only=True)
+    comptes_bancaires = g.models.compte_model.get_all_accounts(current_user.id)
     
     # ✅ CORRECTION : Récupérer les comptes comptables de type Charge pour les frais
     comptes_charges = g.models.categorie_comptable_model.get_by_type_for_pos('Charge', current_user.id)
@@ -12350,7 +12350,7 @@ def pos_edit_payment_method(mode_id):
     
     # ✅ CORRECTION : Récupérer les VRAIS comptes bancaires (comptes_principaux)
     # et non les catégories comptables
-    comptes_bancaires = g.models.compte_model.get_all(user_id, actif_only=True)
+    comptes_bancaires = g.models.compte_model.get_all_accounts(user_id)
     
     # Les comptes comptables restent pour les frais de service (charges)
     comptes_charges = g.models.categorie_comptable_model.get_by_type_for_pos('Charge', user_id)
