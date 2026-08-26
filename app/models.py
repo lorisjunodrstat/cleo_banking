@@ -9529,7 +9529,7 @@ class TauxTva:
                 if annee:
                     cursor.execute("""
                         SELECT id, annee, nom, pays, taux, 
-                               CONCAT(nom, ' ', annee,' ', pays, ' (', taux, '%)') as label
+                            CONCAT(nom, ' ', annee, ' ', pays, ' (', taux, '%%)') as label
                         FROM taux_tva 
                         WHERE annee = %s AND actif = TRUE 
                         ORDER BY taux DESC
@@ -9537,7 +9537,7 @@ class TauxTva:
                 else:
                     cursor.execute("""
                         SELECT id, annee, nom, pays, taux, 
-                               CONCAT(nom, ' ', annee,' ', pays, ' (', taux, '%)') as label
+                            CONCAT(nom, ' ', annee, ' ', pays, ' (', taux, '%%)') as label
                         FROM taux_tva 
                         WHERE actif = TRUE 
                         ORDER BY annee DESC, taux DESC
