@@ -8,7 +8,6 @@ import statistics
 from dbutils.pooled_db import PooledDB
 import pymysql
 from pymysql import Error, MySQLError
-from decimal import Decimal
 from datetime import datetime, date, timedelta
 import calendar
 import csv
@@ -32,12 +31,13 @@ logger = logging.getLogger(__name__)
 
 
 class Utilisateur(UserMixin):
-    def __init__(self, id, nom=None, prenom=None, email=None, mot_de_passe=None):
+    def __init__(self, id, nom=None, prenom=None, email=None, mot_de_passe=None, created_at=None):
         self.id = id
         self.nom = nom
         self.prenom = prenom
         self.email = email
         self.mot_de_passe = mot_de_passe
+        self.created_at = created_at
 
     # Méthodes requises par Flask-Login
     @property
@@ -1587,7 +1587,6 @@ class ComptePrincipal:
     def update_solde(self, compte_id: int, nouveau_solde: Decimal) -> bool:
         """Met à jour le solde d'un compte"""
         try:
-            # Correction de la syntaxe 'with self.db.get.cursor()'
             with self.db.get_cursor() as cursor:
                 query = "UPDATE comptes_principaux SET solde = %s WHERE id = %s"
                 cursor.execute(query, (nouveau_solde, compte_id))
@@ -1601,9 +1600,7 @@ class ComptePrincipal:
         Calcule le solde total d'un compte principal, en incluant ses sous-comptes.
         """
         try:
-            # Note: J'ai remplacé self.db par self.db pour plus de cohérence.
             with self.db.get_cursor() as cursor:
-                # Utilisation d'une requête SQL directe pour éviter une fonction de base de données.
                 query = """
                 SELECT
                     (SELECT COALESCE(SUM(solde), 0) FROM sous_comptes WHERE compte_principal_id = %s) +
@@ -1611,15 +1608,11 @@ class ComptePrincipal:
                 """
                 cursor.execute(query, (compte_id, compte_id))
                 result = cursor.fetchone()
-
-                # Le curseur retourne un dictionnaire, donc nous vérifions si 'solde_total' est présent.
-                # L'ancienne version retournait une erreur si le résultat était vide.
                 if result and 'solde_total' in result:
                     return Decimal(str(result['solde_total']))
                 else:
                     return Decimal('0')
         except MySQLError as e:
-            # J'ai remplacé "Error" par "MySQLError" pour gérer spécifiquement les erreurs de base de données.
             logger.error(f"808 Erreur lors du calcul du solde total pour le compte {compte_id}: {e}")
             return Decimal('0')
 
@@ -2308,7 +2301,7 @@ class TransactionFinanciere:
                 else:
                     query = """
                     INSERT INTO transactions
-                    (sous_compte_id, type_transaction, montant, description, utilisateur_id, date_transaction, solde_apres, reference_)
+                    (sous_compte_id, type_transaction, montant, description, utilisateur_id, date_transaction, solde_apres, reference_transfert)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """
                     cursor.execute(query, (compte_id, type_transaction, montant,#float(montant),
@@ -2813,7 +2806,7 @@ class TransactionFinanciere:
                     t.reference,
                     t.date_transaction,
                     t.solde_apres,
-                    t.referece_transfert,
+                    t.reference_transfert,
                     sc.nom_sous_compte as sous_compte_source,
                     sc_dest.nom_sous_compte as sous_compte_dest
                 FROM transactions t
@@ -2890,7 +2883,7 @@ class TransactionFinanciere:
                 #        SELECT id FROM comptes_principaux WHERE utilisateur_id = %(user_id)s
                 #    ))
                 #)
-                count_query = "SELECT COUNT(*) as total FROM (" + base_query + ") AS filtered"
+                
 
                 # Préparer les paramètres
                 params = {'user_id': user_id}
@@ -2935,6 +2928,8 @@ class TransactionFinanciere:
                         COALESCE(sc_dest.nom_sous_compte, '') LIKE %(q)s
                     )"""
                     params['q'] = q_clean
+                count_query = "SELECT COUNT(*) as total FROM (" + base_query + ") AS filtered"
+                
 
                 # === Compter le total ===
                 cursor.execute(count_query, params)
@@ -7807,7 +7802,7 @@ class EcritureComptable:
 
                 cursor.execute(query, values)
                 return cursor.rowcount > 0
-            return True
+            #return True
         except Error as e:
             logger.error(f"Erreur lors de la mise à jour de l'écriture comptable: {e}")
             return False
@@ -8151,7 +8146,7 @@ class EcritureComptable:
                     c.nom AS categorie_nom,
                     c.id AS categorie_id,
                     COUNT(e.id) AS nombre_ecritures,
-                    SUM(COALESCE(e.montant_htva, 0)) AS montant,  # ✅ Utilise HTVA
+                    SUM(COALESCE(e.montant_htva, 0)) AS montant,
                     SUM(COALESCE(e.montant, 0)) AS montant_ttc
                 FROM ecritures_comptables e
                 JOIN categories_comptables c ON e.categorie_id = c.id
@@ -9830,13 +9825,9 @@ class Contacts:
                     utilisateur_id
                 )
 
-                # Utilisez le logger de l'application Flask
                 logger.debug(f"[update] Query: {query} avec params: {values}")
-
                 cursor.execute(query, values)
-                # Le commit est géré par la classe DatabaseManager (autocommit)
-                # ou via une transaction si vous l'avez configurée.
-                return cursor.rowcount > 0 # Vérifie si une ligne a été modifiée
+                return cursor.rowcount > 0
         except Error as e:
             logger.error(f"Erreur lors de la mise à jour du contact: {e}")
             return False
@@ -9871,8 +9862,7 @@ class Contacts:
             with self.db.get_cursor() as cursor:
                 query = "DELETE FROM contacts WHERE id_contact = %s AND utilisateur_id = %s"
                 cursor.execute(query, (contact_id, utilisateur_id))
-                # Le commit est géré par la classe DatabaseManager
-                return cursor.rowcount > 0 # Vérifie si une ligne a été supprimée
+                return cursor.rowcount > 0
         except Error as e:
             logger.error(f"Erreur lors de la suppression du contact: {e}")
             return False
@@ -9883,8 +9873,6 @@ class Contacts:
             with self.db.get_cursor() as cursor:
                 cursor.execute("SELECT LAST_INSERT_ID()")
                 result = cursor.fetchone()
-                # Le résultat est un dictionnaire car vous utilisez DictCursor
-                # Il faut donc y accéder avec la clé 'LAST_INSERT_ID()'
                 return result['LAST_INSERT_ID()'] if result else None
         except Error as e:
             logger.error(f"Erreur lors de la récupération du dernier ID: {e}")
@@ -10141,7 +10129,6 @@ class Rapport:
         date_fin = date(annee, mois + 1, 1) if mois < 12 else date(annee + 1, 1, 1)
         date_fin = date_fin - timedelta(days=1)
 
-        # Utilisez EcritureComptable pour obtenir les données
         ecritures = ecriture_comptable.get_stats_by_categorie(
             user_id,
             str(date_debut),
@@ -10168,12 +10155,14 @@ class Rapport:
         date_debut = date(annee, 1, 1)
         date_fin = date(annee, 12, 31)
 
+        ecriture_comptable = EcritureComptable(self.db)
+
         donnees_mensuelles = []
         for mois in range(1, 13):
             donnees_mensuelles.append(
-                self.generate_rapport_mensuel(user_id, annee, mois, statut))
+                self.generate_rapport_mensuel(
+                    ecriture_comptable, user_id, annee, mois, statut))
 
-        ecriture_comptable = EcritureComptable(self.db)
         compte_resultat = ecriture_comptable.get_compte_de_resultat(
             user_id, str(date_debut), str(date_fin))
 
@@ -11401,7 +11390,6 @@ class CotisationContrat:
         Calcule le montant d'une cotisation.
         Retourne un float.
         """
-        from decimal import Decimal, ROUND_HALF_UP
 
         def to_decimal(val) -> Decimal:
             if val is None:
@@ -11764,7 +11752,6 @@ class IndemniteContrat:
         base_montant et taux_fallback peuvent être float ou Decimal.
         Retourne un float (pour compatibilité avec l'interface).
         """
-        from decimal import Decimal, ROUND_HALF_UP
 
         def to_decimal(val) -> Decimal:
             if val is None:
@@ -11845,7 +11832,7 @@ class IndemniteContrat:
         Attention : cette version utilise uniquement le salaire BRUT comme base.
         Pour une version complète avec brut_tot, il faudrait charger aussi les cotisations → à implémenter dans Salaire.
         """
-        from decimal import Decimal, ROUND_HALF_UP
+
 
         def to_decimal(val) -> Decimal:
             if val is None:
@@ -13510,8 +13497,9 @@ class Salaire:
             logger.error(f"Erreur récupération salaire par mois/année: {e}")
             return []
 
+
     def get_cotisations_indemnites_mois(self, cotisations_contrat_model, indemnites_contrat_model, user_id: int, annee: int, mois: int) -> Dict:
-        cotis = cotisations_contrat_model.get_total_cotisations_par_mois(user_id, annee, mois)
+        cotis = cotisations_contrat_model.get_total_cotisations_par_mois(bareme_cotisation_model, user_id, annee, mois)
         indem = indemnites_contrat_model.get_total_indemnites_par_mois(user_id, annee, mois)
 
         # Agréger par employé ou global
@@ -13585,7 +13573,6 @@ class Salaire:
                     'details': {}
                 }
 
-            from decimal import Decimal, ROUND_HALF_UP
 
             # Conversion sécurisée en Decimal
             def to_decimal(val):
@@ -15308,7 +15295,7 @@ class Competence:
         try:
             with self.db.get_cursor(commit=True) as cursor:
                 cursor.execute("""
-                INSERT INTP competences (user_id, nom, created_at)
+                INSERT INTO competences (user_id, nom, created_at)
                 VALUES (%s, %s, NOW())
                 """, (user_id, nom))
                 return cursor.lastrowid
@@ -15318,7 +15305,7 @@ class Competence:
     def modifier(self, user_id:int, nom: str, id_competence: int)-> int:
         try:
             with self.db.get_cursor(commit=True) as cursor:
-                cursor.excecute("""
+                cursor.execute("""
                 UPDATE competences
                 SET nom = %s
                 WHERE id= %s AND user_id = %s
@@ -17605,7 +17592,6 @@ class ReceiptPOS:
                 
                 # 0. RÉCUPÉRATION DU COMPTE BANCAIRE DU PDV (Fallback pour les espèces)
                 compte_bancaire_pdv = None
-                if mp_id
                 if pdv_id:
                     cursor.execute("SELECT compte_bancaire_id FROM pos_points_de_vente WHERE id = %s", (pdv_id,))
                     res_pdv = cursor.fetchone()
@@ -19088,7 +19074,7 @@ class POSComptabilisation:
                         -- 1. Trouver le TYPE de taxe de l'article pour le mapping comptable
                         JOIN pos_article_taxes pat ON ri.article_id = pat.article_id AND pat.est_actuelle = TRUE
                         -- 2. Joindre la table contenant le taux effectif (ajustez le nom de la table si nécessaire)
-                        JOIN pos_taxes at ON pat.taxe_id = at.id
+                        JOIN pos_taux_taxes at ON pat.taxe_id = at.id
                         -- 3. Trouver le compte comptable associé à ce TYPE de taxe
                         LEFT JOIN pos_compta_mapping_tva mct ON pat.type_taxe_id = mct.type_taxe_id AND mct.utilisateur_id = %s
                         WHERE r.utilisateur_id = %s 
@@ -19620,7 +19606,6 @@ class PeriodeTravailPOS:
 
         except Exception as e:
             logger.error(f"Erreur get_detail_json: {e}", exc_info=True)
-            import traceback
             traceback.print_exc()
             return None
 
@@ -19805,9 +19790,7 @@ class ModelManager:
     @property
     def contact_compte_model(self):
         return self._get_model('contact_compte', ContactCompte)
-    @property
-    def contact_plan_model(self):
-        return self._get_model('contact_plan', ContactPlan)
+
     @property
     def rapport_model(self):
         return self._get_model('rapport', Rapport)
