@@ -30,7 +30,7 @@
                 <label for="compte_id" class="form-label">Compte principal*</label>
                 <select class="form-select" name="compte_id" id="compte_id" required onchange="updateSousComptes()">
                     <option value="" disabled selected>-- Choisir un compte --</option>
-                    {% for compte in comptes %}
+                    {% for compte in comptes | sort(attribute='nom_compte') %}
                     <option value="{{ compte.id }}">
                         {{ compte.nom_banque }} - {{ compte.nom_compte }} ({{ compte.solde }} {{ compte.devise }})
                     </option>
@@ -42,7 +42,7 @@
                 <label for="sous_compte_id" class="form-label">Sous-compte*</label>
                 <select class="form-select" name="sous_compte_id" id="sous_compte_id" required>
                     <option value="" disabled selected>-- Choisissez d'abord un compte --</option>
-                    {% for sous_compte in sous_comptes %}
+                    {% for sous_compte in sous_comptes | sort(attribute='nom_sous_compte') %}
                     <option value="{{ sous_compte.id }}" data-compte-id="{{ sous_compte.compte_principal_id }}" class="sous-compte-option">
                         {{ sous_compte.nom_sous_compte }} ({{ sous_compte.solde }} {{ sous_compte.devise }})
                     </option>

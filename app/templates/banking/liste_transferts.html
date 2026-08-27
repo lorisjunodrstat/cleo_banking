@@ -54,7 +54,7 @@
                         <label class="form-label small fw-bold text-muted">Compte source</label>
                         <select name="compte_source_id" class="form-select form-select-sm">
                             <option value="">Tous</option>
-                            {% for c in comptes %}
+                            {% for c in comptes | sort(attribute='nom_compte') %}
                             <option value="{{ c.id }}" {% if compte_source_filter|int==c.id %}selected{% endif %}>
                                 {{ c.nom_compte }}
                             </option>
@@ -66,7 +66,7 @@
                         <label class="form-label small fw-bold text-muted">Compte destination</label>
                         <select name="compte_dest_id" class="form-select form-select-sm">
                             <option value="">Tous</option>
-                            {% for c in comptes %}
+                            {% for c in comptes | sort(attribute='nom_compte') %}
                             <option value="{{ c.id }}" {% if compte_dest_filter|int==c.id %}selected{% endif %}>
                                 {{ c.nom_compte }}
                             </option>
@@ -79,7 +79,7 @@
                         <label class="form-label small fw-bold text-muted">Sous-compte source</label>
                         <select name="sous_compte_source_id" class="form-select form-select-sm">
                             <option value="">Tous</option>
-                            {% for sc in sous_comptes %}
+                            {% for sc in sous_comptes | sort(attribute='nom_sous_compte') %}
                             <option value="{{ sc.id }}" {% if sc_source_filter|int==sc.id %}selected{% endif %}>
                                 {{ sc.nom_sous_compte }}
                             </option>
@@ -91,7 +91,7 @@
                         <label class="form-label small fw-bold text-muted">Sous-compte dest.</label>
                         <select name="sous_compte_dest_id" class="form-select form-select-sm">
                             <option value="">Tous</option>
-                            {% for sc in sous_comptes %}
+                            {% for sc in sous_comptes | sort(attribute='nom_sous_compte') %}
                             <option value="{{ sc.id }}" {% if sc_dest_filter|int==sc.id %}selected{% endif %}>
                                 {{ sc.nom_sous_compte }}
                             </option>

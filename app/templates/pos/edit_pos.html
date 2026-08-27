@@ -27,7 +27,7 @@
                         <label class="form-label">Compte bancaire de rattachement</label>
                         <select name="compte_bancaire_id" class="form-select" required>
                             <option value="">-- Sélectionner un compte --</option>
-                            {% for compte in comptes %}
+                            {% for compte in comptes | sort(attribute='nom_compte') %}
                                 <option value="{{ compte.id }}" {% if pos.compte_bancaire_id == compte.id %}selected{% endif %}>
                                     {{ compte.nom_compte }} 
                                     {% if compte.iban %}({{ compte.iban[-4:] }}){% endif %}

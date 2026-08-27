@@ -19,7 +19,7 @@
       <label for="compte_id">Compte principal :</label>
       <select id="compte_id" name="compte_id" class="form-control" required>
         <option value="" disabled selected>Choisissez un compte</option>
-        {% for compte in comptes %}
+        {% for compte in comptes | sort(attribute='nom_compte') %}
           <option value="{{ compte.id }}">{{ compte.nom }} (solde : {{ compte.solde }} CHF)</option>
         {% endfor %}
       </select>

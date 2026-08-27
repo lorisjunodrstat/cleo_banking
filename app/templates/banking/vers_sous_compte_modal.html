@@ -12,7 +12,7 @@
                         <label for="modalCompteSource" class="form-label">Compte source</label>
                         <select class="form-select" id="modalCompteSource" required>
                             <option value="" selected disabled>-- Choisir un compte --</option>
-                            {% for compte in comptes %}
+                            {% for compte in comptes | sort(attribute='nom_compte') %}
                             <option value="{{ compte.id }}" data-solde="{{ compte.solde }}">
                                 {{ compte.nom_banque }} - {{ compte.nom_compte }} ({{ compte.solde }} {{ compte.devise }})
                             </option>
@@ -23,7 +23,7 @@
                         <label for="modalSousCompteDest" class="form-label">Sous-compte destination</label>
                         <select class="form-select" id="modalSousCompteDest" required>
                             <option value="" selected disabled>-- Choisir un sous-compte --</option>
-                            {% for sous_compte in sous_comptes %}
+                            {% for sous_compte in sous_comptes | sort(attribute='nom_sous_compte') %}
                             <option value="{{ sous_compte.id }}" data-compte-id="{{ sous_compte.compte_principal_id }}">
                                 {{ sous_compte.nom_sous_compte }} ({{ sous_compte.solde }} {{ sous_compte.devise }})
                             </option>

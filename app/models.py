@@ -16408,7 +16408,11 @@ class ModePaiementPOS:
     def get_all(self, user_id: int, actif_only: bool = True) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                query = "SELECT * FROM pos_modes_paiement WHERE utilisateur_id = %s"
+                query = """SELECT *,
+                cp.nom_compte
+                FROM pos_modes_paiement pmp 
+                LEFT JOIN comptes_principaux cp ON pmp.compte_bancaire_id=cp.id
+                WHERE utilisateur_id = %s"""
                 if actif_only:
                     query += " AND est_actif = TRUE"
                 query += " ORDER BY nom"
@@ -19177,9 +19181,9 @@ class POSComptabilisation:
                         'type_ecriture_comptable': 'principale'
                     }
                     
-                    succes, msg = self.modele_ecriture.create(self.modele_categorie, data_vente)
+                    succes = self.modele_ecriture.create(self.modele_categorie, data_vente)
                     if not succes:
-                        raise Exception(f"Échec création écriture vente {reference}: {msg}")
+                        raise Exception(f"Échec création écriture vente {reference}")
                     nb_ecritures_creees += 1
 
                     # 2. ÉCRITURE SECONDAIRE : Les Frais de Service (si applicables)
@@ -19202,9 +19206,9 @@ class POSComptabilisation:
                             'statut': 'validée',
                             'type_ecriture_comptable': 'principale'
                         }
-                        succes_frais, msg_frais = self.modele_ecriture.create(self.modele_categorie, data_frais)
+                        succes_frais = self.modele_ecriture.create(self.modele_categorie, data_frais)
                         if not succes_frais:
-                            logger.error(f"Échec création écriture frais {reference}: {msg_frais}")
+                            logger.error(f"Échec création écriture frais {reference}")
                         else:
                             nb_ecritures_creees += 1
 

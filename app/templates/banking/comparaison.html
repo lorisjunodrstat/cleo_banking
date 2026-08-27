@@ -22,7 +22,7 @@
                         <label for="compte2_id" class="form-label">Compte 2 à comparer</label>
                         <select name="compte2_id" id="compte2_id" class="form-select" required>
                             <option value="">Sélectionnez un compte...</option>
-                            {% for compte in tous_les_comptes %}
+                            {% for compte in tous_les_comptes | sort(attribute='nom_compte') %}
                                 <!-- Ne pas inclure le compte 1 dans la liste du compte 2 -->
                                 {% if compte.id != compte1_selectionne.id %}
                                     <option value="{{ compte.id }}" {% if compte2_selectionne and compte.id == compte2_selectionne.id %}selected{% endif %}>

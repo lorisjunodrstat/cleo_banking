@@ -68,7 +68,7 @@
                         {% if not cumuler %}
                         <div class="form-group">
                             <label>Couleurs pour les comptes sélectionnés:</label>
-                            {% for c in comptes_cibles_possibles %}
+                            {% for c in comptes_cibles_possibles | sort(attribute='nom_compte') %}
                             {% if c.compte_id|string in comptes_cibles_ids %}
                             <div class="form-row align-items-center mb-1">
                                 <div class="col-md-4">
@@ -89,7 +89,7 @@
                             <label for="comptes_cibles">Sélectionnez les comptes cibles:</label>
                             <select multiple class="form-control" id="comptes_cibles" name="comptes_cibles" size="5"
                                 required>
-                                {% for c in comptes_cibles_possibles %}
+                                {% for c in comptes_cibles_possibles | sort(attribute='nom_compte') %}
                                 <option value="{{ c.compte_id }}" {% if c.compte_id|string in comptes_cibles_ids
                                     %}selected{% endif %}>{{ c.nom_compte }}</option>
                                 {% endfor %}

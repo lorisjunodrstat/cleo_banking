@@ -21,7 +21,7 @@
           <div class="col-auto"><label>Compte origine :</label>
             <select name="compte_id">
               <option value="">Tous</option>
-              {% for c in comptes %}
+              {% for c in comptes | sort(attribute='nom_compte')%}
               <option value="{{ c.id }}" {% if compte_source_filter|int==c.id %}selected{% endif %}>
                 {{ c.nom_compte }}
               </option>
@@ -32,7 +32,7 @@
           <div class="col-auto"><label>Compte destination :</label>
             <select name="compte_dest_id">
               <option value="">Tous</option>
-              {% for c in comptes %}
+              {% for c in comptes | sort(attribute='nom_compte') %}
               <option value="{{ c.id }}" {% if compte_dest_filter|int==c.id %}selected{% endif %}>
                 {{ c.nom_compte }}
               </option>
@@ -43,7 +43,7 @@
           <div class="col-auto"><label>Sous‑compte origine :</label>
             <select name="sous_compte_id">
               <option value="">Tous</option>
-              {% for sc in sous_comptes %}
+              {% for sc in sous_comptes | sort(attribute='nom_sous_compte') %}
               <option value="{{ sc.id }}" {% if sc_filter|int==sc.id %}selected{% endif %}>
                 {{ sc.nom_sous_compte }}
               </option>
@@ -54,7 +54,7 @@
           <div class="col-auto"><label>Sous‑compte destination :</label>
             <select name="sous_compte_dest_id">x
               <option value="">Tous</option>
-              {% for sc in sous_comptes %}
+              {% for sc in sous_comptes | sort(attribute='nom_sous_compte') %}
               <option value="{{ sc.id }}" {% if dest_sc_filter|int==sc.id %}selected{% endif %}>
                 {{ sc.nom_sous_compte }}
               </option>

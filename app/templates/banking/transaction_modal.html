@@ -125,7 +125,7 @@
                     <label for="categorie_select_{{ mv.id }}" class="form-label">Associer une catégorie</label>
                     <select class="form-select" id="categorie_select_{{ mv.id }}" name="categorie_id">
                         <option value="">Aucune (désassocier)</option>
-                        {% for cat in liste_categories %}
+                        {% for cat in liste_categories | sort(attribute='nom') %}
                         <option value="{{ cat.id }}">{{ cat.nom }}</option>
                         {% endfor %}
                     </select>

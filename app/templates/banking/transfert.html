@@ -50,7 +50,7 @@
                 {% if transfert_type == 'global' %}
                 <select class="form-select" name="compte_source_global" id="compte_source" required>
                     <option value="" disabled selected>-- Choisir un compte --</option>
-                    {% for c in all_comptes_global %}
+                    {% for c in all_comptes_global | sort(attribute='nom_compte') %}
                     <option value="{{ c.id }}">
                         {{ c.nom_compte }} ({{ c.utilisateur_nom }} {{ c.utilisateur_prenom }} - {{ c.solde }} {{
                         c.devise }})
@@ -60,13 +60,13 @@
                 {% else %}
                 <select class="form-select" name="compte_source" id="compte_source" required>
                     <option value="" disabled selected>-- Choisir un compte --</option>
-                    {% for compte in comptes %}
+                    {% for compte in comptes | sort(attribute='nom_compte') %}
                     <option value="{{ compte.id }}">
                         {{ compte.nom_banque }} - {{ compte.nom_compte }} ({{ compte.solde }} {{ compte.devise }}) ({{
                         compte.id }})
                     </option>
                     {% endfor %}
-                    {% for sous_compte in sous_comptes %}
+                    {% for sous_compte in sous_comptes | sort(attribute='nom_sous_compte') %}
                     <option value="{{ sous_compte.id }}">
                         {{ sous_compte.nom_banque }} - {{ sous_compte.nom_sous_compte }} ({{ sous_compte.solde }} CHF)
                         ({{ sous_compte.id }})
@@ -81,13 +81,13 @@
                 <label for="compte_dest" class="form-label">Compte destination*</label>
                 <select class="form-select" name="compte_dest" id="compte_dest" required>
                     <option value="" disabled selected>-- Choisir un compte --</option>
-                    {% for compte in comptes %}
+                    {% for compte in comptes | sort(attribute='nom_compte') %}
                     <option value="{{ compte.id }}">
                         {{ compte.nom_banque }} - {{ compte.nom_compte }} ({{ compte.solde }} {{ compte.devise }}) ({{
                         compte.id }})
                     </option>
                     {% endfor %}
-                    {% for sous_compte in sous_comptes %}
+                    {% for sous_compte in sous_comptes | sort(attribute='nom_sous_compte') %}
                     <option value="{{ sous_compte.id }}">
                         {{ sous_compte.nom_banque }} - {{ sous_compte.nom_sous_compte }} ({{ sous_compte.solde }} CHF)
                         ({{ sous_compte.id }})
@@ -108,7 +108,7 @@
                 <label for="compte_dest_global" class="form-label">Compte destination*</label>
                 <select class="form-select" name="compte_dest_global" id="compte_dest_global" required>
                     <option value="" disabled selected>-- Choisir un compte --</option>
-                    {% for c in all_comptes_global %}
+                    {% for c in all_comptes_global | sort(attribute='nom_compte') %}
                     <option value="{{ c.id }}">
                         {{ c.nom_compte }} ({{ c.utilisateur_nom }} {{ c.utilisateur_prenom }} - {{ c.solde }} {{
                         c.devise }})

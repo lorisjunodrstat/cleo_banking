@@ -28,7 +28,7 @@
                                 <label for="compte_id_1">Compte 1:</label>
                                 <select class="form-control" id="compte_id_1" name="compte_id_1" required>
                                     <option value="">Sélectionnez...</option>
-                                    {% for compte in comptes %}
+                                    {% for compte in comptes | sort(attribute='nom_compte') %}
                                     <option value="{{ compte.id }}" {% if form_data.compte_id_1==compte.id|string
                                         %}selected{% endif %}>{{ compte.nom_compte }} ({{ compte.iban[-4:] or
                                         compte.numero_compte[-4:] }})</option>
@@ -52,7 +52,7 @@
                                 <label for="compte_id_2">Compte 2:</label>
                                 <select class="form-control" id="compte_id_2" name="compte_id_2" required>
                                     <option value="">Sélectionnez...</option>
-                                    {% for compte in comptes %}
+                                    {% for compte in comptes| sort(attribute='nom_compte')  %}
                                     <option value="{{ compte.id }}" {% if form_data.compte_id_2==compte.id|string
                                         %}selected{% endif %}>{{ compte.nom_compte }} ({{ compte.iban[-4:] or
                                         compte.numero_compte[-4:] }})</option>

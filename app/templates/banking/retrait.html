@@ -33,7 +33,7 @@
                                 <label for="compte_id" class="form-label">ID du compte</label>
                                 <select class="form-select" id="compte_id" name="compte_id" required>
                                     <option value="" disabled {% if not form_data or not form_data.compte_id %}selected{% endif %}>-- Sélectionnez un compte --</option>
-                                    {% for compte in comptes %}
+                                    {% for compte in comptes | sort(attribute='nom_compte') %}
                                         <option value="{{ compte.id }}" {% if form_data and form_data.compte_id == compte.id|string %}selected{% endif %}>
                                             {{ compte.nom_banque }} - {{ compte.nom_compte }} ({{ compte.solde }} {{ compte.devise }})
                                         </option>
