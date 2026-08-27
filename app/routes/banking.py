@@ -4681,7 +4681,7 @@ def nouvelle_ecriture_from_selected():
 
                 if g.models.ecriture_comptable_model.create(data):
                     succes_count += 1
-                    ecriture_id = g.models.ecriture_comptable_model.last_insert_id
+                    ecriture_id = g.models.ecriture_comptable_model.get_last_insert_id
                     
                     # 🔥 COMPTAGE DES ÉCRITURES SECONDAIRES
                     secondaires = g.models.ecriture_comptable_model.get_ecritures_complementaires(ecriture_id, current_user.id)
@@ -5020,7 +5020,7 @@ def nouvelle_ecriture():
             # Création de l'écriture
             if g.models.ecriture_comptable_model.create(g.models.categorie_comptable_model, data):
                 flash('Écriture enregistrée avec succès', 'success')
-                ecriture_id = g.models.ecriture_comptable_model.last_insert_id
+                ecriture_id = g.models.ecriture_comptable_model.get_last_insert_id()
                 secondaires = g.models.ecriture_comptable_model.get_ecritures_complementaires(ecriture_id, current_user.id)
                 if secondaires:
                     flash(f'{len(secondaires)} écriture(s) secondaires créée(s) automatiquement', 'info')
@@ -5143,7 +5143,7 @@ def nouvelle_ecriture_multiple():
 
                 if g.models.ecriture_comptable_model.create(data):
                     succes_count += 1
-                    ecriture_id = g.models.ecriture_comptable_model.last_insert_id
+                    ecriture_id = g.models.ecriture_comptable_model.get_last_insert_id()
                     secondaires = g.models.ecriture_comptable_model.get_ecritures_complementaires(ecriture_id, current_user.id)
                     secondary_count += len(secondaires)
                 else:
@@ -5300,7 +5300,7 @@ def creer_ecritures_multiple_auto(transaction_id):
                 }
 
                 if g.models.ecriture_comptable_model.create(data):
-                    ecriture_id = g.models.ecriture_comptable_model.last_insert_id
+                    ecriture_id = g.models.ecriture_comptable_model.get_last_insert_id()
                     g.models.ecriture_comptable_model.link_ecriture_to_transaction(transaction_id, ecriture_id, current_user.id)
                     success_count += 1
                 else:
@@ -5505,7 +5505,7 @@ def nouvelle_ecriture_from_transactions():
                         data['tva_montant'] = Decimal('0')
 
                     if g.models.ecriture_comptable_model.create(data):
-                        ecriture_id = g.models.ecriture_comptable_model.last_insert_id
+                        ecriture_id = g.models.ecriture_comptable_model.get_last_insert_id()
                         # Lier l'écriture à la transaction
                         g.models.ecriture_comptable_model.link_ecriture_to_transaction(int(transaction_ids[i]), ecriture_id, current_user.id) # Convertir en int
                         success_count += 1
@@ -12305,6 +12305,9 @@ def pos_create_payment_method():
             flash('Ce mode de paiement existe déjà.', 'error')
         else:
             # ✅ CORRECTION : compte_tresorerie_id pointe vers comptes_principaux.id
+            compte_bancaire_id = request.form.get('compte_bancaire_id')
+            compte_bancaire_id = int(compte_bancaire_id) if compte_bancaire_id and str(compte_bancaire_id).isdigit() else None
+
             compte_tresorerie_id = request.form.get('compte_tresorerie_id')
             compte_tresorerie_id = int(compte_tresorerie_id) if compte_tresorerie_id and str(compte_tresorerie_id).isdigit() else None
             
@@ -12312,11 +12315,13 @@ def pos_create_payment_method():
             compte_frais_service_id = request.form.get('compte_frais_service_id')
             compte_frais_service_id = int(compte_frais_service_id) if compte_frais_service_id and str(compte_frais_service_id).isdigit() else None
             
+            compte_bancaire_od = request.form.get('')
             g.models.mode_paiement_pos_model.create(current_user.id, {
                 'nom': nom,
                 'description': request.form.get('description', ''),
                 'est_actif': 'est_actif' in request.form,
                 # ✅ Compte bancaire réel (comptes_principaux)
+                'compte_bancaire_id' : compte_bancaire_id,
                 'compte_tresorerie_id': compte_tresorerie_id,
                 # ✅ Compte comptable de charge (categories_comptables)
                 'compte_frais_service_id': compte_frais_service_id,
@@ -12361,6 +12366,7 @@ def pos_edit_payment_method(mode_id):
         est_actif = request.form.get('est_actif') == 'on'
         
         # ✅ CORRECTION : compte_tresorerie_id pointe maintenant vers comptes_principaux.id
+        compte_bancaire_id = request.form.get('compte_bancaire_id')
         compte_tresorerie_id = request.form.get('compte_tresorerie_id')
         compte_frais_service_id = request.form.get('compte_frais_service_id')
         
@@ -12370,6 +12376,7 @@ def pos_edit_payment_method(mode_id):
         except: frais_fixe = 0.0
         
         # Conversion sécurisée
+        compte_bancaire_id = int(compte_bancaire_id) if compte_bancaire_id and str(compte_bancaire_id).isdigit() else None
         compte_tresorerie_id = int(compte_tresorerie_id) if compte_tresorerie_id and str(compte_tresorerie_id).isdigit() else None
         compte_frais_service_id = int(compte_frais_service_id) if compte_frais_service_id and str(compte_frais_service_id).isdigit() else None
         
@@ -12394,7 +12401,7 @@ def pos_edit_payment_method(mode_id):
         if hasattr(g.models.mode_paiement_pos_model, 'update_compta_settings'):
             try:
                 succes_compta = g.models.mode_paiement_pos_model.update_compta_settings(
-                    mode_id, user_id, compte_tresorerie_id, compte_frais_service_id, frais_pourcentage, frais_fixe
+                    mode_id, user_id, compte_bancaire_id, compte_tresorerie_id, compte_frais_service_id, frais_pourcentage, frais_fixe
                 )
             except Exception as e:
                 logger.error(f"Erreur mise à jour compta: {e}")

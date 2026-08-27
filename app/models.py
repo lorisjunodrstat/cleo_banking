@@ -1122,6 +1122,7 @@ class DatabaseManager:
                     couleur VARCHAR(7) DEFAULT '#28a745',
                     est_actif BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    compte_bancaire_id INT NULL,
                     compte_tresorerie_id INT NULL COMMENT 'Compte de trésorerie (ex: 1000 Caisse)',
                     compte_frais_service_id INT NULL COMMENT 'Compte de charge pour les commissions',
                     frais_pourcentage DECIMAL(5,2) DEFAULT 0.00,
@@ -1129,6 +1130,7 @@ class DatabaseManager:
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
                     FOREIGN KEY (compte_tresorerie_id) REFERENCES categories_comptables(id) ON DELETE SET NULL,
                     FOREIGN KEY (compte_frais_service_id) REFERENCES categories_comptables(id) ON DELETE SET NULL,
+                    FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id) ON DELETE SET NULL,
                     UNIQUE KEY unique_mode_user (utilisateur_id, nom)
                 );""")
 
@@ -16411,9 +16413,9 @@ class ModePaiementPOS:
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
-                    INSERT INTO pos_modes_paiement (utilisateur_id, nom, description, est_actif)
-                    VALUES (%s, %s, %s, %s)
-                """, (user_id, data['nom'], data.get('description', ''), data.get('est_actif', True)))
+                    INSERT INTO pos_modes_paiement (utilisateur_id, nom, description, est_actif, compte_bancaire_id, compte_tresorerie_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (user_id, data['nom'], data.get('description', ''), data.get('est_actif', True), data.get('compte_bancaire_id'), data.get('compte_tresorerie_id')))
                 return cursor.lastrowid
         except Exception as e:
             return None
@@ -16477,10 +16479,11 @@ class ModePaiementPOS:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
                     UPDATE pos_modes_paiement 
-                    SET nom = %s, description = %s, est_actif = %s
+                    SET nom = %s, description = %s, est_actif = %s,
+                        compte_bancaire_id = %s, compte_tresorerie_id = %s
                     WHERE id = %s AND utilisateur_id = %s
                 """, (data['nom'], data.get('description', ''), 
-                    data.get('est_actif', True), mode_id, user_id))
+                    data.get('est_actif', True), data.get('compte_bancaire_id'), data.get('compte_tresorerie_id'), mode_id, user_id))
                 # ✅ Succès même si rowcount = 0 (données déjà à jour)
                 return True
         except Exception as e:
@@ -16509,7 +16512,8 @@ class ModePaiementPOS:
         except:
             return None
 
-    def update_compta_settings(self, mode_id: int, user_id: int, 
+    def update_compta_settings(self, mode_id: int, user_id: int,
+                            compte_bancaire_id : Optional(int), 
                            compte_tresorerie_id: Optional[int], 
                            compte_frais_service_id: Optional[int],
                            frais_pourcentage: float, 
@@ -16525,12 +16529,14 @@ class ModePaiementPOS:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
                     UPDATE pos_modes_paiement 
-                    SET compte_tresorerie_id = %s,
+                    SET compte_bancaire_id = %s,
+                        compte_tresorerie_id = %s,
                         compte_frais_service_id = %s,
                         frais_pourcentage = %s,
                         frais_fixe = %s
                     WHERE id = %s AND utilisateur_id = %s
                 """, (
+                    compte_bancaire_id,
                     compte_tresorerie_id,
                     compte_frais_service_id,
                     float(frais_pourcentage),
@@ -17599,6 +17605,7 @@ class ReceiptPOS:
                 
                 # 0. RÉCUPÉRATION DU COMPTE BANCAIRE DU PDV (Fallback pour les espèces)
                 compte_bancaire_pdv = None
+                if mp_id
                 if pdv_id:
                     cursor.execute("SELECT compte_bancaire_id FROM pos_points_de_vente WHERE id = %s", (pdv_id,))
                     res_pdv = cursor.fetchone()
@@ -17792,7 +17799,7 @@ class ReceiptPOS:
                     nom_mode = 'Paiement'
                     
                     cursor.execute("""
-                        SELECT nom, compte_tresorerie_id 
+                        SELECT nom, compte_bancaire_id 
                         FROM pos_modes_paiement 
                         WHERE id = %s
                     """, (mode_paiement_id,))

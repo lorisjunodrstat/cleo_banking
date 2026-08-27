@@ -31,14 +31,31 @@
                     <!-- Section Comptabilité -->
                     <h5 class="mb-3">⚙️ Paramètres comptables</h5>
                     
-                    <!-- ✅ Compte bancaire réel (comptes_principaux) -->
+                    <!--- Compte bancaire pour le versement du montant -->
+                    <div class="mb-3">
+                        <label class="form-label">Compte bancaire de Versement</label>
+                        <select name="compte_bancaire_id" class="form-select">
+                            <option value="">--Utiliser le compte du PDV --</option>
+                            {% for c in comptes_bancaires | sort(attribute='nom_compte') %}
+                            <option value="{{c.id }}">
+                            {{ c.nom_compte }}{% if c.banque_nom %} - {{ c.banque_nom }}{% elif c.iban %} - {{ c.iban }}{% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted d-block mt-1">
+                            Compte bancaire sur lequel le montant est crédité.</br>
+                            <strong>Espèce</strong> : Laissez vide pour les espèces, le compte du point de vente sera automatiquement utilisé>
+                        </small>
+
+                    </div>
+                    <!-- ✅ Compte Comptable réel (comptes_principaux) -->
                     <div class="mb-3">
                         <label class="form-label">Compte bancaire de trésorerie</label>
                         <select name="compte_tresorerie_id" class="form-select">
                             <option value="">-- Utiliser le compte du PDV (recommandé pour espèces) --</option>
-                            {% for c in comptes_bancaires %}
+                            {% for c in comptes_charges %}
                             <option value="{{ c.id }}">
-                                {{ c.nom_compte }}{% if c.banque_nom %} - {{ c.banque_nom }}{% elif c.iban %} - {{ c.iban }}{% endif %}
+                                {{ c.numero }} - {{ c.nom }}
                             </option>
                             {% endfor %}
                         </select>

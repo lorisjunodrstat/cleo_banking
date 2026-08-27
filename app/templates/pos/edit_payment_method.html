@@ -32,18 +32,38 @@
                     
                     <hr>
                     
-                    <!-- Section Comptabilité -->
-                    <h5 class="mb-3">⚙️ Paramètres comptables</h5>
-                    
                     <!-- ✅ CORRECTION : Compte bancaire réel (comptes_principaux) -->
                     <div class="mb-3">
                         <label class="form-label">Compte bancaire de trésorerie</label>
                         <select name="compte_tresorerie_id" class="form-select">
                             <option value="">-- Utiliser le compte du PDV (recommandé pour espèces) --</option>
-                            {% for c in comptes_bancaires %}
+                            {% for c in comptes_bancaires | sort(attribute='nom_compte') %}
                             <option value="{{ c.id }}" 
                                 {% if payment_method and payment_method.compte_tresorerie_id == c.id %}selected{% endif %}>
                                 {{ c.nom_compte }} - {{ c.banque_nom if c.banque_nom else c.iban or '' }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">
+                            Compte bancaire où l'argent est réellement versé.<br>
+                            <strong>Espèces</strong> : laissez vide (utilisera le compte du PDV).<br>
+                            <strong>Carte/Twint</strong> : sélectionnez le compte dédié (ex: Concardis, Twint).
+                        </small>
+                    </div>
+
+                    <!-- Section Comptabilité -->
+                    <h5 class="mb-3">⚙️ Paramètres comptables</h5>
+                    
+
+                    <!-- ✅ CORRECTION : Compte comptable réel (comptes_principaux) -->
+                    <div class="mb-3">
+                        <label class="form-label">Compte bancaire de trésorerie</label>
+                        <select name="compte_tresorerie_id" class="form-select">
+                            <option value="">-- Utiliser le compte du PDV (recommandé pour espèces) --</option>
+                            {% for c in comptes_charges %}
+                            <option value="{{ c.id }}" 
+                                {% if payment_method and payment_method.compte_tresorerie_id == c.id %}selected{% endif %}>
+                                {{ c.numero }} - {{ c.nom }}
                             </option>
                             {% endfor %}
                         </select>
