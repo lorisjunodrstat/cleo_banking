@@ -220,9 +220,7 @@ class DatabaseManager:
                     logger.error(f"Erreur lors de la fermeture de la connexion : {close_error}", exc_info=True)
 
     def create_tables(self):
-        """
-        Crée toutes les tables de la base de données si elles n'existent pas.
-        """
+        """Crée toutes les tables de la base de données si elles n'existent pas."""
         logger.info("Vérification et création des tables de la base de données...")
         try:
             with self.get_cursor() as cursor:
@@ -1330,8 +1328,8 @@ class DatabaseManager:
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
                 );""")
 
-            logger.info("✅ Tables POS (Point de Vente) créées/vérifiées avec succès.")
-            cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
+                logger.info("✅ Tables POS (Point de Vente) créées/vérifiées avec succès.")
+                cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
             logger.info("Toutes les tables ont été vérifiées/créées avec succès.")
             print("✅ Toutes les tables ont été créées ou vérifiées.")
             
