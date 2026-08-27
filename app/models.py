@@ -16500,7 +16500,7 @@ class ModePaiementPOS:
             return None
 
     def update_compta_settings(self, mode_id: int, user_id: int,
-                            compte_bancaire_id : Optional(int), 
+                            compte_bancaire_id : Optional[int], 
                            compte_tresorerie_id: Optional[int], 
                            compte_frais_service_id: Optional[int],
                            frais_pourcentage: float, 
