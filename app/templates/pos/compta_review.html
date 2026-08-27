@@ -35,7 +35,10 @@
                                 <input type="checkbox" name="selection" class="item-check form-check-input" 
                                        value='{{ item | tojson | safe }}'>
                             </td>
-                            <td class="fw-medium">{{ item.date_jour or item.date.strftime('%d.%m.%Y') }}</td>
+                            <td class="fw-medium">
+                                {% set d = item.date_jour or item.date %}
+                                {{ d.strftime('%d.%m.%Y') if d is not string else d }}
+                            </td>
                             <td><span class="badge bg-secondary">{{ item.mode_paiement_nom }}</span></td>
                             <td class="text-center">{{ item.nb_tickets or 1 }}</td>
                             <td class="text-end fw-bold">CHF {{ "%.2f"|format(item.total_ttc) }}</td>
