@@ -19060,7 +19060,7 @@ class POSComptabilisation:
                 if mode == 'jour':
                     query = """
                         SELECT 
-                            DATE_FORMAT(r.date, '%Y-%m-%d') as date_jour,
+                            DATE_FORMAT(r.date, '%%Y-%%m-%%d') as date_jour,
                             pm.id as mode_paiement_id,
                             pm.nom as mode_paiement_nom,
                             pm.compte_tresorerie_id,
@@ -19097,7 +19097,7 @@ class POSComptabilisation:
 
                     query += """
                         GROUP BY 
-                            DATE_FORMAT(r.date, '%Y-%m-%d'), pm.id, pm.nom, pm.compte_tresorerie_id,
+                            DATE_FORMAT(r.date, '%%Y-%%m-%%d'), pm.id, pm.nom, pm.compte_tresorerie_id,
                             pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe,
                             mct.compte_vente_id
                         ORDER BY date_jour DESC, pm.nom, mct.compte_vente_id
@@ -19109,7 +19109,7 @@ class POSComptabilisation:
                     query = """
                         SELECT 
                             r.id, r.recu_numero, 
-                            DATE_FORMAT(r.date, '%Y-%m-%d %H:%i:%s') as date,
+                            DATE_FORMAT(r.date, '%%Y-%%m-%%d %%H:%%i:%%s') as date,
                             pm.nom as mode_paiement_nom, pm.compte_tresorerie_id, 
                             pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe,
                             mct.compte_vente_id,
@@ -19134,7 +19134,6 @@ class POSComptabilisation:
         except Exception as e:
             logger.error(f"Erreur récupération données à comptabiliser: {e}")
             return []
-
     @staticmethod
     def _parse_date_ecriture(raw):
         """Convertit une valeur date (str ISO, str RFC 1123, datetime str, ou date déjà) en objet date."""
