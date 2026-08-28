@@ -9,7 +9,7 @@
             <a href="{{ url_for('banking.liste_employe') }}">← Retour à la liste des employés</a>
         </div>
     </div>
-    <div class="card">
+    <div class="card mb-4">
         <div class="card-header">
             <h5 class="card-title">Informations Employé</h5>
         </div>
@@ -27,6 +27,26 @@
                 <li>Aucun contrat</li>
                 {% endfor %}
             </ul>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title">Planning</h5>
+        </div>
+        <div class="card-body">
+            <a href="{{ url_for('banking.planning_employe', employe_id=employe.id) }}" class="btn btn-primary">
+                Voir le planning de {{ employe.prenom }} {{ employe.nom }}
+            </a>
+        </div>
+    </div>
+    <div class="mt-4">
+        <div class="card-header">
+            <h5>Salaires et heures</h5>
+        </div>
+        div class="card-body">
+            <a href="#" class="btn btn-secondary">
+                Salaires et heures de {{ employe.prenom }} {{ employe.nom }}
+            </a>
         </div>
     </div>
 </div>

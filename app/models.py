@@ -13811,12 +13811,15 @@ class Salaire:
             logger.error(f"Erreur import salaires: {e}")
             return False
 
-    def get_by_user_and_month(self, user_id: int, employeur: str, id_contrat: int, mois: int = None, annee: int = None) -> List[Dict]:
+    def get_by_user_and_month(self, user_id: int, 
+                              #employeur: str, 
+                              id_contrat: int, mois: int = None, annee: int = None) -> List[Dict]:
         with self.db.get_cursor() as cursor:
             if not cursor:
                 return []
-            query = "SELECT * FROM salaires WHERE user_id = %s AND employeur = %s AND id_contrat = %s"
-            params = [user_id, employeur, id_contrat]
+                #query = "SELECT * FROM salaires WHERE user_id = %s AND employeur = %s AND id_contrat = %s"
+            query = "SELECT * FROM salaires WHERE user_id = %s AND id_contrat = %s"
+            params = [user_id, id_contrat]
             if mois is not None:
                 query += " AND mois = %s"
                 params.append(mois)

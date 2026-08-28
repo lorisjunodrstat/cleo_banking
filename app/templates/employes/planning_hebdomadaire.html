@@ -584,5 +584,22 @@
         </div>
     </div>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var modalCopierJour = document.getElementById('modalCopierJour');
+    if (modalCopierJour) {
+        modalCopierJour.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            var employeId = button.getAttribute('data-employe-id');
+            var dateKey = button.getAttribute('data-date');
 
+            var inputEmployeId = modalCopierJour.querySelector('#copier_employe_id');
+            var inputDateSource = modalCopierJour.querySelector('#copier_date_source');
+
+            if (inputEmployeId) inputEmployeId.value = employeId;
+            if (inputDateSource) inputDateSource.value = dateKey;
+        });
+    }
+});
+</script>
 {% endblock %}

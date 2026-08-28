@@ -8782,7 +8782,7 @@ def recalculer_salaires():
     # Récupérer tous les salaires de cette année pour cet employeur/contrat
     salaires = g.models.salaire_model.get_by_user_and_month(
         user_id=current_user_id,
-        employeur=employeur,
+     #   employeur=employeur,
         id_contrat=id_contrat,
         annee=annee
     )
@@ -9901,7 +9901,7 @@ def detail_employe(employe_id):
 
     salaires = g.models.salaire_model.get_by_user_and_month(
         user_id=current_user.id,
-        employeur=employe.get('employeur', ''),
+      #  employeur=employe.get('employeur', ''),
         id_contrat=employe.get('id_contrat'),
         annee=annee,
         mois=mois
