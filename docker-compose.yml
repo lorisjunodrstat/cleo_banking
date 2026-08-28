@@ -1,13 +1,9 @@
-version: '3.8'
-
 services:
   db:
-    # On remplace mysql par mariadb pour la compatibilité ARM (Raspberry)
     image: mariadb:10.6 
     container_name: app_mysql
     restart: unless-stopped
     environment:
-      # On utilise les mêmes noms de variables, MariaDB les comprend
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: appdb
       MYSQL_USER: appuser
@@ -20,7 +16,6 @@ services:
     networks:
       - app_network
     healthcheck:
-      # Correction du healthcheck pour MariaDB
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
       interval: 10s
       timeout: 5s
@@ -35,7 +30,7 @@ services:
         condition: service_healthy
     environment:
       FLASK_APP: __init__.py
-      FLASK_ENV: production  # Conseil : passe en production sur le Pi pour les perfs
+      FLASK_ENV: production
       DB_HOST: db
       DB_PORT: 3306
       DB_NAME: appdb
@@ -45,10 +40,9 @@ services:
     volumes:
       - .:/app
       - ./logs:/logs
-      - ./uploads:/app/uploads
-      - ./static:/app/static:ro
+      - upload_data:/app/static/uploads  # ✅ On monte le volume ici en écriture pour les logos
     ports:
-      - "8073:5000" # Accès via http://IP_DU_PI:8073
+      - "8073:5000"
     networks:
       - app_network
 
@@ -66,6 +60,7 @@ services:
 
 volumes:
   mysql_data:
+  upload_data:  # ✅ Déclaration indispensable du volume ici
 
 networks:
   app_network:
