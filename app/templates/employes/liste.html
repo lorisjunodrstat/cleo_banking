@@ -26,6 +26,7 @@
                     <th>Prénom</th>
                     <th>Email</th>
                     <th>Actions</th>
+                    <th>Contrat</th>
                 </tr>
             </thead>
             <tbody>
@@ -43,6 +44,11 @@
                             <button type="submit" onclick="return confirm('Confirmer ?')"><i class="bi bi-trash-fill"></i></button>
                         </form>
                     </td>
+                    {% if e.contrat %}
+                    <td><a href="{{ url_for('banking.detail_contrat', employe_id=e.id) }}">Voir le contrat</a></td>
+                    {% else %}
+                    <td><a href="{{ url_for('banking.creer_contrat_employe', employe_id=e.id) }}">Créer un contrat</a></td>
+                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>
