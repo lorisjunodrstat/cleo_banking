@@ -89,6 +89,7 @@
                         <th>N° Reçu</th>
                         <th>Client</th>
                         <th>Caissier</th>
+                        <th>Comptabilisé?</th>
                         <th>Total</th>
                         <th class="text-end">Actions</th>
                     </tr>
@@ -110,6 +111,15 @@
                         </td>
                         <td>{{ rd.r.nom_du_client or rd.r.client_nom or 'Client de passage' }}</td>
                         <td>{{ rd.r.nom_du_caissier or '-' }}</td>
+                        <td>
+                            {% if rd.r.etat_comptable == 'comptabilise' %}
+                                <span class="badge bg-success">Oui</span>
+                            {% elif rd.r.etat_comptable == 'non_comptabilise' %}
+                                <span class="badge bg-danger">Non</span>
+                            {% else %}
+                                <span class="badge bg-secondary">-</span>
+                            {% endif %}
+                        </td>
                         <td class="fw-bold">CHF {{ "%.2f"|format(rd.r.total_collecte or 0) }}</td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-primary view-receipt" data-receipt-id="{{ rd.r.id }}">
@@ -422,6 +432,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <div class="mt-2 p-2 bg-info bg-opacity-10 rounded">
                                     <small class="text-muted d-block">Nom du ticket:</small>
                                     <strong>${data.nom_ticket}</strong>
+                                </div>
+                            ` : ''}
+                            ${data.etat_comptable ? `
+                                <div class="mt-2 p-2 bg-info bg-opacity-10 rounded">
+                                    <small class="text-muted d-block">État comptable:</small>
+                                    <strong>${data.etat_comptable}</strong>
                                 </div>
                             ` : ''}
                         </div>
