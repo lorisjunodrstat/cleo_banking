@@ -9941,7 +9941,7 @@ def creer_contrat_employe(employe_id):
     if request.method == 'GET':
         return render_template('employes/creer_contrat_employe.html', employe=employe)
     types_cotisations = g.models.type_cotisations_model.get_all_by_user(current_user.id)
-    types_indemnites = g.models.type_indemnites_model.get_all_by_user(current_user
+    types_indemnites = g.models.type_indemnites_model.get_all_by_user(current_user)
 
     # POST
     data = request.form.to_dict()
