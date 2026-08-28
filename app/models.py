@@ -19230,8 +19230,8 @@ class POSComptabilisation:
                             'statut': 'validée',
                             'type_ecriture_comptable': 'principale'
                         }
-                        logger.info(f'ecriture crée dans categorie_id {data_frais['categorie_id']
-                        }')
+                        logger.info(f'écriture crée dans categorie_id {data_frais["categorie_id"]}')
+                        logger.info(f'data_frais: {data_frais}')
                         succes_frais = self.modele_ecriture.create(self.modele_categorie, data_frais)
                         if not succes_frais:
                             logger.error(f"Échec création écriture frais {reference}")
