@@ -19179,7 +19179,7 @@ class POSComptabilisation:
                     compte_frais_id = item.get('compte_frais_service_id')
                     frais_pct = float(item.get('frais_pourcentage', 0) or 0)
                     frais_fixe = float(item.get('frais_fixe', 0) or 0)
-                    
+                    categorie_id = item.get('compte_tresorerie_id')
                     reference = f"JOURNAL-{date_ecriture}" if est_agregat else item.get('recu_numero')
                     description = f"Ventes POS {item.get('mode_paiement_nom')} - {date_ecriture}" if est_agregat else f"Vente POS {item.get('recu_numero')}"
 
@@ -19191,7 +19191,7 @@ class POSComptabilisation:
                     data_vente = {
                         'date_ecriture': date_ecriture,
                         'compte_bancaire_id': compte_bancaire_id,  # <- Utilisation du bon ID
-                        'categorie_id': self._get_compte_vente_defaut(cursor, user_id),
+                        'categorie_id': categorie_id,
                         'montant': total_ttc,
                         'montant_htva': total_ht,
                         'devise': 'CHF',
