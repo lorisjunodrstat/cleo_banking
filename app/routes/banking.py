@@ -12289,7 +12289,7 @@ def pos_stats_payment_methods():
 @login_required
 def pos_payment_methods_list():
     # On récupère tous les modes (actifs et inactifs) pour la liste complète
-    modes = g.models.mode_paiement_pos_model.get_all(current_user.id, actif_only=False)
+    modes = g.models.mode_paiement_pos_model.get_all(current_user.id, actif_only=True)
     return render_template('pos/payment_methods_list.html', modes=modes)
 
 
