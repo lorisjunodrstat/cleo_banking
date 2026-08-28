@@ -19136,19 +19136,19 @@ class POSComptabilisation:
             return []
     @static_method
     def _parse_date_ecriture(raw):
-    """Convertit une valeur date (str ISO, str RFC 1123, datetime str, ou date déjà) en objet date."""
-    if isinstance(raw, date):
-        return raw
-    if isinstance(raw, str):
-        try:
-            return datetime.fromisoformat(raw).date()
-        except ValueError:
-            pass
-        try:
-            return parsedate_to_datetime(raw).date()
-        except (TypeError, ValueError):
-            pass
-    raise ValueError(f"Format de date non reconnu pour date_ecriture: {raw!r}")
+        """Convertit une valeur date (str ISO, str RFC 1123, datetime str, ou date déjà) en objet date."""
+        if isinstance(raw, date):
+            return raw
+        if isinstance(raw, str):
+            try:
+                return datetime.fromisoformat(raw).date()
+            except ValueError:
+                pass
+            try:
+                return parsedate_to_datetime(raw).date()
+            except (TypeError, ValueError):
+                pass
+        raise ValueError(f"Format de date non reconnu pour date_ecriture: {raw!r}")
 
     def comptabiliser_selection(self, user_id: int, items_a_comptabiliser: List[Dict]) -> Tuple[bool, str]:
         """
