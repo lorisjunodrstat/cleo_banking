@@ -14,6 +14,7 @@ services:
       MYSQL_PASSWORD: apppassword123
     volumes:
       - mysql_data:/var/lib/mysql
+      - upload_data:/data
     ports:
       - "3307:3306"
     networks:
