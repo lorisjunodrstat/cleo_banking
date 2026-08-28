@@ -39,7 +39,7 @@
                             <option value="">-- Utiliser le compte du PDV (recommandé pour espèces) --</option>
                             {% for c in comptes_bancaires | sort(attribute='nom_compte') %}
                             <option value="{{ c.id }}" 
-                                {% if payment_method and payment_method.compte_tresorerie_id == c.id %}selected{% endif %}>
+                                {% if payment_method and payment_method.compte_bancaire_id == c.id %}selected{% endif %}>
                                 {{ c.nom_compte }} - {{ c.banque_nom if c.banque_nom else c.iban or '' }}
                             </option>
                             {% endfor %}
@@ -57,7 +57,7 @@
 
                     <!-- ✅ CORRECTION : Compte comptable réel (comptes_principaux) -->
                     <div class="mb-3">
-                        <label class="form-label">Compte bancaire de trésorerie</label>
+                        <label class="form-label">Compte comptable de trésorerie</label>
                         <select name="compte_tresorerie_id" class="form-select">
                             <option value="">-- Utiliser le compte du PDV (recommandé pour espèces) --</option>
                             {% for c in comptes_charges %}
