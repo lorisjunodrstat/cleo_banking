@@ -211,7 +211,7 @@
                             <div class="cotisation-item mb-4 p-3 border rounded" data-index="0">
                                 <button type="button" class="btn btn-sm btn-danger float-end remove-cotisation" style="display:none;">Supprimer</button>
                                 <div class="mb-3">
-                                    <label class="form-label">Type de Cotisation *</label>
+                                    <label class="form-label">Type de Cotisation * {{ types_cotisations|length }}</label>
                                     <select class="form-select cotisation-type" name="cotisations[0][type_id]" required>
                                         <option value="">-- Sélectionner --</option>
                                         {% for type_cot in types_cotisations %}
@@ -247,7 +247,7 @@
                             <div class="indemnite-item mb-4 p-3 border rounded" data-index="0">
                                 <button type="button" class="btn btn-sm btn-danger float-end remove-indemnite" style="display:none;">Supprimer</button>
                                 <div class="mb-3">
-                                    <label class="form-label">Type d'Indemnité *</label>
+                                    <label class="form-label">Type d'Indemnité * {{ types_indemnites|length }}</label>
                                     <select class="form-select indemnite-type" name="indemnites[0][type_id]" required>
                                         <option value="">-- Sélectionner --</option>
                                         {% for type_ind in types_indemnites %}
