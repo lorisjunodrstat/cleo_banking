@@ -19204,7 +19204,7 @@ class POSComptabilisation:
                         'statut': 'validée',
                         'type_ecriture_comptable': 'principale'
                     }
-                    logger.info(f'écriture principale crée dans categorie_id:{data_vente['categorie_id']}')
+                    logger.info(f"écriture principale crée dans categorie_id:{data_vente['categorie_id']}")
                     succes = self.modele_ecriture.create(self.modele_categorie, data_vente)
                     if not succes:
                         raise Exception(f"Échec création écriture vente {reference}")
@@ -19261,6 +19261,7 @@ class POSComptabilisation:
         except Exception as e:
             logger.error(f"Erreur comptabilisation sélection: {e}", exc_info=True)
             return False, f"Erreur système: {str(e)}"
+
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
         """Récupère un compte de vente par défaut (ex: 3000) via les jointures du plan comptable"""
         try:
