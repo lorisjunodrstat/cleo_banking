@@ -9940,6 +9940,8 @@ def creer_contrat_employe(employe_id):
 
     if request.method == 'GET':
         return render_template('employes/creer_contrat_employe.html', employe=employe)
+    types_cotisations = g.models.type_cotisations_model.get_all_by_user(current_user.id)
+    types_indemnites = g.models.type_indemnites_model.get_all_by_user(current_user
 
     # POST
     data = request.form.to_dict()
@@ -9964,7 +9966,10 @@ def creer_contrat_employe(employe_id):
     except Exception as e:
         logging.error(f"Erreur création contrat: {e}")
         flash(f"Erreur : {e}", "error")
-        return render_template('employes/creer_contrat_employe.html', employe=employe)
+        return render_template('employes/creer_contrat_employe.html',
+                                employe=employe,
+                                types_cotisations=types_cotisations,
+                                types_indemnites=types_indemnites)
     
 @bp.route('/contrats/<int:contrat_id>/cotisations', methods=['GET', 'POST'])
 @login_required

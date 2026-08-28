@@ -11422,6 +11422,7 @@ class CotisationContrat:
             else:
                 montant = (base * taux / Decimal('100')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
             return float(montant)     
+
     def assigner_a_contrat(self, contrat_id: int, type_cotisation_id: int, taux:float, annee: int, base_calcul : str = "brut")-> bool:
         try:
             with self.db.get_cursor() as cursor:
@@ -11634,6 +11635,7 @@ class CotisationContrat:
             'max_val': max_val,
             'annee': annee
         }
+
     def get_all_by_user(self, user_id: int) -> List[Dict]:
         """Récupère toutes les cotisations pour les contrats d'un utilisateur"""
         try:
