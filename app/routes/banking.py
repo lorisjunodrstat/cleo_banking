@@ -12400,32 +12400,38 @@ def pos_edit_payment_method(mode_id):
         succes_compta = False
         if hasattr(g.models.mode_paiement_pos_model, 'update_compta_settings'):
             try:
-                succes_compta = g.models.mode_paiement_pos_model.update_compta_settings(
+                succes_compta, msg_compta = g.models.mode_paiement_pos_model.update_compta_settings(
                     mode_id, user_id, compte_bancaire_id, compte_tresorerie_id, compte_frais_service_id, frais_pourcentage, frais_fixe
                 )
             except Exception as e:
                 logger.error(f"Erreur mise à jour compta: {e}")
+                succes_compta = False
+                msg_compta = "Erreur interne lors de la mise à jour."
         else:
             # Fallback SQL
             try:
                 with g.db.get_cursor() as cursor: 
                     cursor.execute("""
                         UPDATE pos_modes_paiement 
-                        SET compte_tresorerie_id = %s, compte_frais_service_id = %s,
-                            frais_pourcentage = %s, frais_fixe = %s
+                        SET compte_bancaire_id = %s,
+                        compte_tresorerie_id = %s, 
+                        compte_frais_service_id = %s,
+                        frais_pourcentage = %s, frais_fixe = %s
                         WHERE id = %s AND utilisateur_id = %s
-                    """, (compte_tresorerie_id, compte_frais_service_id, frais_pourcentage, frais_fixe, mode_id, user_id))
+                    """, (compte_bancaire_id, compte_tresorerie_id, compte_frais_service_id, frais_pourcentage, frais_fixe, mode_id, user_id))
                     succes_compta = True
             except Exception as e:
                 logger.error(f"Erreur fallback SQL: {e}")
                 succes_compta = False
+                msg_compta = str(e)
         
         # 3. Logique de succès
         if succes_base or succes_compta:
             flash('✅ Mode de paiement mis à jour avec succès', 'success')
             return redirect(url_for('banking.pos_payment_methods_list'))
         else:
-            flash('❌ Erreur lors de la mise à jour', 'error')
+            error_msg = msg_compta if not success_compta else '❌ Erreur lors de la mise à jour'
+            flash('{error_msg}', 'error')
         
         return render_template('pos/edit_payment_method.html', 
                              payment_method=mode, 

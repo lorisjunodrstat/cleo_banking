@@ -16502,20 +16502,30 @@ class ModePaiementPOS:
             return None
 
     def update_compta_settings(self, mode_id: int, user_id: int,
-                            compte_bancaire_id : Optional[int], 
-                           compte_tresorerie_id: Optional[int], 
-                           compte_frais_service_id: Optional[int],
-                           frais_pourcentage: float, 
-                           frais_fixe: float) -> bool:
-        """
-        Met à jour les paramètres comptables d'un mode de paiement :
-        - Compte de trésorerie (où l'argent arrive)
-        - Compte de frais de service (commissions)
-        - Frais en pourcentage
-        - Frais fixes
-        """
+                                compte_bancaire_id: Optional[int],
+                                compte_tresorerie_id: Optional[int],
+                                compte_frais_service_id: Optional[int],
+                                frais_pourcentage: float,
+                                frais_fixe: float) -> Tuple[bool, str]:
         try:
             with self.db.get_cursor() as cursor:
+                # Validation des FK avant l'UPDATE pour un message clair
+                if compte_tresorerie_id:
+                    cursor.execute(
+                        "SELECT 1 FROM categories_comptables WHERE id = %s AND actif = TRUE",
+                        (compte_tresorerie_id,)
+                    )
+                    if not cursor.fetchone():
+                        return False, "Le compte de trésorerie sélectionné n'existe plus ou a été désactivé. Merci de recharger la page."
+
+                if compte_frais_service_id:
+                    cursor.execute(
+                        "SELECT 1 FROM categories_comptables WHERE id = %s AND actif = TRUE",
+                        (compte_frais_service_id,)
+                    )
+                    if not cursor.fetchone():
+                        return False, "Le compte de frais sélectionné n'existe plus ou a été désactivé. Merci de recharger la page."
+
                 cursor.execute("""
                     UPDATE pos_modes_paiement 
                     SET compte_bancaire_id = %s,
@@ -16525,20 +16535,13 @@ class ModePaiementPOS:
                         frais_fixe = %s
                     WHERE id = %s AND utilisateur_id = %s
                 """, (
-                    compte_bancaire_id,
-                    compte_tresorerie_id,
-                    compte_frais_service_id,
-                    float(frais_pourcentage),
-                    float(frais_fixe),
-                    mode_id,
-                    user_id
+                    compte_bancaire_id, compte_tresorerie_id, compte_frais_service_id,
+                    float(frais_pourcentage), float(frais_fixe), mode_id, user_id
                 ))
-                # ✅ CORRECTION : Retourner True si pas d'exception
-                # (rowcount = 0 signifie que les données étaient déjà à jour, pas une erreur)
-                return True
+                return True, "Mise à jour effectuée avec succès"
         except Exception as e:
             logger.error(f"Erreur mise à jour champs comptables mode paiement {mode_id}: {e}")
-            return False
+            return False, "Erreur lors de la mise à jour des paramètres comptables"
 
     def get_compta_settings(self, mode_id: int, user_id: int) -> Optional[Dict]:
         """
