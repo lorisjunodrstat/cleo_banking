@@ -19165,7 +19165,7 @@ class POSComptabilisation:
                     
                     raw_date = item.get('date_jour') or item.get('date')
                     try:
-                        date_ecriture = _parse_date_ecriture(raw_date)
+                        date_ecriture = POSComptabilisation._parse_date_ecriture(raw_date)
                     except ValueError as e:
                         logger.error(f"Date invalide pour l'item {item}: {e}")
                         continue
