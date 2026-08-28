@@ -9,6 +9,7 @@ from dbutils.pooled_db import PooledDB
 import pymysql
 from pymysql import Error, MySQLError
 from datetime import datetime, date, timedelta
+from email.utils import parsedate_to_datetime
 import calendar
 import csv
 import json
@@ -19059,7 +19060,7 @@ class POSComptabilisation:
                 if mode == 'jour':
                     query = """
                         SELECT 
-                            DATE(r.date) as date_jour,
+                            DATE_FORMAT(r.date, '%Y-%m-%d') as date_jour,
                             pm.id as mode_paiement_id,
                             pm.nom as mode_paiement_nom,
                             pm.compte_tresorerie_id,
@@ -19094,7 +19095,6 @@ class POSComptabilisation:
                         query += " AND DATE(r.date) <= %s"
                         params.append(date_to)
 
-                    # UN SEUL GROUP BY, placé après tous les filtres WHERE
                     query += """
                         GROUP BY 
                             DATE(r.date), pm.id, pm.nom, pm.compte_tresorerie_id,
@@ -19106,10 +19106,10 @@ class POSComptabilisation:
                     return cursor.fetchall()
                     
                 else:
-                    # Mode détaillé par ticket (logique similaire)
                     query = """
                         SELECT 
-                            r.id, r.recu_numero, r.date, 
+                            r.id, r.recu_numero, 
+                            DATE_FORMAT(r.date, '%Y-%m-%d %H:%i:%s') as date,
                             pm.nom as mode_paiement_nom, pm.compte_tresorerie_id, 
                             pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe,
                             mct.compte_vente_id,
@@ -19134,7 +19134,21 @@ class POSComptabilisation:
         except Exception as e:
             logger.error(f"Erreur récupération données à comptabiliser: {e}")
             return []
-
+    @static_method
+    def _parse_date_ecriture(raw):
+    """Convertit une valeur date (str ISO, str RFC 1123, datetime str, ou date déjà) en objet date."""
+    if isinstance(raw, date):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return datetime.fromisoformat(raw).date()
+        except ValueError:
+            pass
+        try:
+            return parsedate_to_datetime(raw).date()
+        except (TypeError, ValueError):
+            pass
+    raise ValueError(f"Format de date non reconnu pour date_ecriture: {raw!r}")
 
     def comptabiliser_selection(self, user_id: int, items_a_comptabiliser: List[Dict]) -> Tuple[bool, str]:
         """
@@ -19149,7 +19163,12 @@ class POSComptabilisation:
                     # Déterminer si c'est un agrégat journalier ou un ticket unique
                     est_agregat = 'date_jour' in item and 'nb_tickets' in item
                     
-                    date_ecriture = item.get('date_jour') or item.get('date').date()
+                    raw_date = item.get('date_jour') or item.get('date')
+                    try:
+                        date_ecriture = _parse_date_ecriture(raw_date)
+                    except ValueError as e:
+                        logger.error(f"Date invalide pour l'item {item}: {e}")
+                        continue
                     total_ht = float(item['total_ht'])
                     total_tva = float(item['total_tva'])
                     total_ttc = float(item['total_ttc'])
