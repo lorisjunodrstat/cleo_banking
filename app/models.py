@@ -19134,7 +19134,7 @@ class POSComptabilisation:
         except Exception as e:
             logger.error(f"Erreur récupération données à comptabiliser: {e}")
             return []
-    @static_method
+    @staticmethod
     def _parse_date_ecriture(raw):
         """Convertit une valeur date (str ISO, str RFC 1123, datetime str, ou date déjà) en objet date."""
         if isinstance(raw, date):
