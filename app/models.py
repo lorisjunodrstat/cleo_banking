@@ -19173,7 +19173,9 @@ class POSComptabilisation:
                     total_ht = float(item['total_ht'])
                     total_tva = float(item['total_tva'])
                     total_ttc = float(item['total_ttc'])
-                    compte_tresorerie_id = item.get('compte_tresorerie_id')
+                    
+                    # CORRECTION : On récupère bien le compte bancaire (lié à comptes_principaux)
+                    compte_bancaire_id = item.get('compte_bancaire_id')
                     compte_frais_id = item.get('compte_frais_service_id')
                     frais_pct = float(item.get('frais_pourcentage', 0) or 0)
                     frais_fixe = float(item.get('frais_fixe', 0) or 0)
@@ -19181,16 +19183,15 @@ class POSComptabilisation:
                     reference = f"JOURNAL-{date_ecriture}" if est_agregat else item.get('recu_numero')
                     description = f"Ventes POS {item.get('mode_paiement_nom')} - {date_ecriture}" if est_agregat else f"Vente POS {item.get('recu_numero')}"
 
-                    if not compte_tresorerie_id:
-                        logger.warning(f"Mode de paiement sans compte de trésorerie configuré pour {reference}")
+                    if not compte_bancaire_id:
+                        logger.warning(f"Mode de paiement sans compte bancaire configuré pour {reference}")
                         continue
 
                     # 1. ÉCRITURE PRINCIPALE : La Vente (Recette)
-                    # On débit le compte de trésorerie (ex: Créances Eat) du montant TTC total
                     data_vente = {
                         'date_ecriture': date_ecriture,
-                        'compte_bancaire_id': compte_tresorerie_id,
-                        'categorie_id': self._get_compte_vente_defaut(cursor, user_id), # À implémenter ou passer en paramètre
+                        'compte_bancaire_id': compte_bancaire_id,  # <- Utilisation du bon ID
+                        'categorie_id': self._get_compte_vente_defaut(cursor, user_id),
                         'montant': total_ttc,
                         'montant_htva': total_ht,
                         'devise': 'CHF',
@@ -19215,15 +19216,15 @@ class POSComptabilisation:
                     if montant_frais > 0.01 and compte_frais_id:
                         data_frais = {
                             'date_ecriture': date_ecriture,
-                            'compte_bancaire_id': compte_tresorerie_id, # On crédite le même compte pour réduire la créance
+                            'compte_bancaire_id': compte_bancaire_id,
                             'categorie_id': compte_frais_id,
                             'montant': montant_frais,
                             'montant_htva': montant_frais,
                             'devise': 'CHF',
                             'description': f"Frais de service sur {description}",
                             'reference': f"{reference}-FRAIS",
-                            'type_ecriture': 'depense', # C'est une charge
-                            'tva_taux': 0, # Simplifié, à adapter si les frais sont soumis à TVA
+                            'type_ecriture': 'depense',
+                            'tva_taux': 0,
                             'tva_montant': 0,
                             'utilisateur_id': user_id,
                             'statut': 'validée',
@@ -19258,7 +19259,6 @@ class POSComptabilisation:
         except Exception as e:
             logger.error(f"Erreur comptabilisation sélection: {e}", exc_info=True)
             return False, f"Erreur système: {str(e)}"
-
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
         """Récupère un compte de vente par défaut (ex: 3000) via les jointures du plan comptable"""
         try:
