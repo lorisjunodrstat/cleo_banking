@@ -19126,7 +19126,8 @@ class POSComptabilisation:
                         LEFT JOIN pos_compta_mapping_tva mct ON at.id = mct.type_taxe_id AND mct.utilisateur_id = %s
                         WHERE r.utilisateur_id = %s AND r.etat_comptable = 'non_comptabilise'
                         AND r.status = 'Fermé'
-                        GROUP BY r.id, pm.id, mct.compte_vente_id
+                        GROUP BY r.id, r.recu_numero, r.date, pm.nom, pm.compte_tresorerie_id, 
+                                 pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe, mct.compte_vente_id
                         ORDER BY r.date DESC
                     """
                     cursor.execute(query, (user_id, user_id))
@@ -19239,22 +19240,27 @@ class POSComptabilisation:
                             nb_ecritures_creees += 1
 
                     # 3. Marquer comme comptabilisé en base
+                    # 3. Marquer comme comptabilisé en base
                     if est_agregat:
+                        # Mise à jour pour le mode journalier groupé par date et mode de paiement
                         cursor.execute("""
                             UPDATE pos_receipts r
                             JOIN pos_payments p ON r.id = p.receipt_id
                             SET r.etat_comptable = 'comptabilise', r.comptabilise = 1, r.date_comptabilisation = %s
                             WHERE DATE(r.date) = %s 
                               AND p.mode_paiement_id = %s 
-                              AND r.utilisateur_id = %s 
-                              AND r.etat_comptable = 'non_comptabilise'
+                              And r.utilisateur_id = %s 
+                              AND r.status = 'Fermé'
                         """, (date_ecriture, date_ecriture, item['mode_paiement_id'], user_id))
                     else:
-                        cursor.execute("""
-                            UPDATE pos_receipts 
-                            SET etat_comptable = 'comptabilise', comptabilise = 1, date_comptabilisation = %s 
-                            WHERE id = %s
-                        """, (date_ecriture, item['id']))
+                        # Mise à jour pour un ticket unique
+                        ticket_id = item.get('id')
+                        if ticket_id:
+                            cursor.execute("""
+                                UPDATE pos_receipts 
+                                SET etat_comptable = 'comptabilise', comptabilise = 1, date_comptabilisation = %s 
+                                WHERE id = %s AND utilisateur_id = %s
+                            """, (date_ecriture, ticket_id, user_id))
 
                 return True, f"{nb_ecritures_creees} écriture(s) générée(s) avec succès."
 
