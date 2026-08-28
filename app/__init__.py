@@ -63,7 +63,7 @@ from flask_session import Session
 Session(app)
 
 # --- Chemins d'upload ---
-UPLOAD_FOLDER_LOGOS = os.path.join(app.static_folder, 'uploads', 'logos')
+UPLOAD_FOLDER_LOGOS = os.environ.get('UPLOAD_FOLDER', '/data/uploads/logos')
 os.makedirs(UPLOAD_FOLDER_LOGOS, exist_ok=True)
 # Configuration de la base de données avec PyMySQL
 app.config['DB_CONFIG'] = DB_CONFIG
