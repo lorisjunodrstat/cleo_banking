@@ -37,7 +37,7 @@
                     <td>
                         <a href="{{ url_for('banking.detail_employe', employe_id=e.id, user_id=current_user.id) }}"><i class="bi bi-eye"></i></a>
                         <a
-                            href="{{ url_for('banking.modifier_employe', employe_id=e.id, user_id=current_user.id) }}"><i class="bi bi-pencil"></i>/a>
+                            href="{{ url_for('banking.modifier_employe', employe_id=e.id, user_id=current_user.id) }}"><i class="bi bi-pencil"></i></a>
                         <form method="post" action="{{ url_for('banking.supprimer_employe', employe_id=e.id) }}"
                             style="display:inline;">
                             <button type="submit" onclick="return confirm('Confirmer ?')"><i class="bi bi-trash-fill"></i></button>

@@ -17800,8 +17800,8 @@ class ReceiptPOS:
                     if mode_info:
                         nom_mode = mode_info['nom']
                         # Si le mode de paiement a un compte dédié (ex: Concardis, Twint), on l'utilise
-                        if mode_info['compte_tresorerie_id']:
-                            compte_effectif = mode_info['compte_tresorerie_id']
+                        if mode_info['compte_bancaire_id']:
+                            compte_effectif = mode_info['compte_bancaire_id']
                     
                     # C. Créer la transaction financière pour CE paiement spécifique
                     if compte_effectif:
