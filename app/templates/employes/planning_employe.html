@@ -7,11 +7,11 @@
     <h2>Planning de {{ employe.prenom }} {{ employe.nom }} - {{ mois }}/{{ annee }}</h2>
 
     <div style="margin-bottom: 1rem;">
-        <a href="{{ url_for('banking.planning_employe', employe_id=employe.id, mois=mois-1, annee=annee) }}"
-            class="btn btn-sm btn-outline-secondary">◀ Mois précédent</a>
-        |
-        <a href="{{ url_for('banking.planning_employe', employe_id=employe.id, mois=mois+1, annee=annee) }}"
-            class="btn btn-sm btn-outline-secondary">Mois suivant ▶</a>
+        <a href="{{ url_for('banking.planning_employe', employe_id=employe.id, mois=mois - 1, annee=annee) }}"
+    class="btn btn-sm btn-outline-secondary">◀ Mois précédent</a>
+|
+        <a href="{{ url_for('banking.planning_employe', employe_id=employe.id, mois=mois + 1, annee=annee) }}"
+    class="btn btn-sm btn-outline-secondary">Mois suivant ▶</a>
     </div>
 
     {% if not heures %}

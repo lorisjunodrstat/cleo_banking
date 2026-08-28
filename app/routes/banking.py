@@ -10182,6 +10182,10 @@ def retirer_employe_de_equipe(id_equipe, employe_id):
         flash("Erreur lors du retrait", "error")
     return redirect(url_for('banking.detail_equipe', id_equipe=id_equipe))
 ### Planning 
+from datetime import datetime
+from flask import render_template, request, redirect, url_for, flash, g
+from flask_login import login_required, current_user
+
 @bp.route('/employes/<int:employe_id>/planning')
 @login_required
 def planning_employe(employe_id):
@@ -10190,14 +10194,26 @@ def planning_employe(employe_id):
         flash("Employé non trouvé.", "error")
         return redirect(url_for('banking.liste_employe'))
 
-    annee = int(request.args.get('annee', datetime.now().year))
-    mois = int(request.args.get('mois', datetime.now().month))
+    try:
+        annee = int(request.args.get('annee', datetime.now().year))
+        mois = int(request.args.get('mois', datetime.now().month))
+    except ValueError:
+        annee = datetime.now().year
+        mois = datetime.now().month
+
+    # Handle month/year rollover
+    if mois < 1:
+        mois = 12
+        annee -= 1
+    elif mois > 12:
+        mois = 1
+        annee += 1
 
     # Récupérer les heures avec plages
     heures = g.models.heure_model.get_h1d_h2f_for_period(
         user_id=current_user.id,
-        employeur="TBD",  # ⚠️ Problème : ton modèle `HeureTravail` exige employeur/contrat
-        id_contrat=1,     # → à revoir dans la DB
+        employeur="TBD",
+        id_contrat=1,
         annee=annee,
         mois=mois
     )
