@@ -19097,7 +19097,7 @@ class POSComptabilisation:
 
                     query += """
                         GROUP BY 
-                            DATE(r.date), pm.id, pm.nom, pm.compte_tresorerie_id,
+                            DATE_FORMAT(r.date, '%Y-%m-%d'), pm.id, pm.nom, pm.compte_tresorerie_id,
                             pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe,
                             mct.compte_vente_id
                         ORDER BY date_jour DESC, pm.nom, mct.compte_vente_id
@@ -19134,6 +19134,7 @@ class POSComptabilisation:
         except Exception as e:
             logger.error(f"Erreur récupération données à comptabiliser: {e}")
             return []
+
     @staticmethod
     def _parse_date_ecriture(raw):
         """Convertit une valeur date (str ISO, str RFC 1123, datetime str, ou date déjà) en objet date."""
