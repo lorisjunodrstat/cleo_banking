@@ -155,7 +155,7 @@
     }
 
     /* Responsive */
-    @media (max-width: 768px) {
+    @media (max-width: 1400px) {
         .table-responsive {
             font-size: 0.875rem;
         }
@@ -309,7 +309,7 @@
                     <label for="categorie_id" class="form-label">Catégorie comptable</label>
                     <select id="categorie_id" name="categorie_id" class="form-select">
                         <option value="">Toutes les catégories</option>
-                        {% for categorie in categories | sort(attribute='nom') %}
+                        {% for categorie in categories | sort(attribute='numero') %}
                         <option value="{{ categorie.id }}" {% if categorie.id==categorie_id|int %}selected{% endif %}>
                             {{ categorie.numero }} - {{ categorie.nom }}
                         </option>

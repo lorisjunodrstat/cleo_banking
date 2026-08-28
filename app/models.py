@@ -19243,7 +19243,7 @@ class POSComptabilisation:
                         cursor.execute("""
                             UPDATE pos_receipts r
                             JOIN pos_payments p ON r.id = p.receipt_id
-                            SET r.etat_comptable = 'comptabilise', r.date_comptabilisation = %s
+                            SET r.etat_comptable = 'comptabilise', r.comptabilise = 1, r.date_comptabilisation = %s
                             WHERE DATE(r.date) = %s 
                               AND p.mode_paiement_id = %s 
                               AND r.utilisateur_id = %s 
@@ -19252,7 +19252,7 @@ class POSComptabilisation:
                     else:
                         cursor.execute("""
                             UPDATE pos_receipts 
-                            SET etat_comptable = 'comptabilise', date_comptabilisation = %s 
+                            SET etat_comptable = 'comptabilise', comptabilise = 1, date_comptabilisation = %s 
                             WHERE id = %s
                         """, (date_ecriture, item['id']))
 
