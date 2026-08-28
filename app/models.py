@@ -19064,6 +19064,7 @@ class POSComptabilisation:
                             pm.id as mode_paiement_id,
                             pm.nom as mode_paiement_nom,
                             pm.compte_tresorerie_id,
+                            pm.compte_bancaire_id,
                             pm.compte_frais_service_id,
                             pm.frais_pourcentage,
                             pm.frais_fixe,
