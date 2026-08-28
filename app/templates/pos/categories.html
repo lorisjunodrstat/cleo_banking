@@ -24,7 +24,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for cat in categories %}
+                    {% for cat in categories | sort(attribute='nom_categorie') %}
                     <tr>
                         <td><strong>{{ cat.nom_categorie }}</strong></td>
                         <td class="text-muted">{{ cat.description or '-' }}</td>

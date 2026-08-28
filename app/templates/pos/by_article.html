@@ -109,7 +109,7 @@
                     </tr>
                 </thead>
                 <tbody id="tableBody">
-                    {% for a in articles %}
+                    {% for a in articles | sort(attribute='nom') %}
                     <tr class="article-row">
                         <td>{{ a.nom }}</td>
                         <td>{{ a.category or '—' }}</td>

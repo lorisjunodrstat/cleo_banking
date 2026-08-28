@@ -102,7 +102,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for c in categories %}
+                    {% for c in categories | sort(attribute='nom') %}
                     <tr>
                         <td>{{ c.nom }}</td>
                         <td class="text-center">{{ c.total_qty }}</td>

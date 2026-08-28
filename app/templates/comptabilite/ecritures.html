@@ -296,7 +296,7 @@
                     <label for="id_contact" class="form-label">Contact</label>
                     <select id="id_contact" name="id_contact" class="form-select">
                         <option value="">Tous les contacts</option>
-                        {% for contact in contacts %}
+                        {% for contact in contacts | sort(attribute='nom') %}
                         <option value="{{ contact.id_contact }}" {% if contact.id_contact==contact_selectionne|int
                             %}selected{% endif %}>
                             {{ contact.nom }}
@@ -309,7 +309,7 @@
                     <label for="categorie_id" class="form-label">Catégorie comptable</label>
                     <select id="categorie_id" name="categorie_id" class="form-select">
                         <option value="">Toutes les catégories</option>
-                        {% for categorie in categories %}
+                        {% for categorie in categories | sort(attribute='nom') %}
                         <option value="{{ categorie.id }}" {% if categorie.id==categorie_id|int %}selected{% endif %}>
                             {{ categorie.numero }} - {{ categorie.nom }}
                         </option>

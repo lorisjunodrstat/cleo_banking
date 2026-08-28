@@ -12,7 +12,7 @@
         <table class="table table-hover">
             <thead class="table-light"><tr><th>Employé</th><th class="text-center">Reçus</th><th class="text-end">Ventes nettes</th><th class="text-end">Taxes</th><th class="text-end">Pourboires</th></tr></thead>
             <tbody>
-                {% for e in employees %}
+                {% for e in employees | sort(attribute='name') %}
                 <tr><td>{{ e.name }}</td><td class="text-center">{{ e.receipt_count }}</td><td class="text-end">CHF {{ "%.2f"|format(e.total_sales) }}</td><td class="text-end">CHF {{ "%.2f"|format(e.total_taxes) }}</td><td class="text-end">CHF {{ "%.2f"|format(e.total_tips) }}</td></tr>
                 {% else %}<tr><td colspan="5" class="text-center text-muted py-4">Aucune donnée</td></tr>{% endfor %}
             </tbody>

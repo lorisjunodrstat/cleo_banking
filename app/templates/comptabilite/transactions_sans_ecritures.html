@@ -71,7 +71,7 @@
                     <label for="compte_id" class="form-label">Compte bancaire</label>
                     <select id="compte_id" name="compte_id" class="form-select" required>
                         <option value="">Sélectionner un compte</option>
-                        {% for compte in comptes %}
+                        {% for compte in comptes | sort(attribute='nom_compte') %}
                         <option value="{{ compte.id }}" {% if compte.id==compte_selectionne %}selected{% endif %}>
                             {{ compte.nom_compte }} ({{ compte.nom_banque }})
                         </option>
@@ -101,7 +101,7 @@
                     <label for="compte_dest" class="form-label">Compte destinataire</label>
                     <select id="compte_dest" name="compte_dest" class="form-select">
                         <option value="">Tous</option>
-                        {% for cpt in comptes_destinataires %}
+                        {% for cpt in comptes_destinataires | sort(attribute='nom_compte') %}
                         <option value="{{ cpt.id }}" {% if cpt.id==compte_dest_selectionne %}selected{% endif %}>
                             {{ cpt.nom_compte }} ({{ cpt.id }})
                         </option>
