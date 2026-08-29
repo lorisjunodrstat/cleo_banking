@@ -7671,20 +7671,30 @@ def gestion_entreprise():
     current_user_id = current_user.id
     ensure_upload_dir()
 
-    entreprise_definie = g.models.entreprise_model.entreprise_exists_for_user(current_user_id)
-    if not entreprise_definie:
+    # 1. Récupérer toutes les entreprises actives de l'utilisateur
+    entreprises = g.models.entreprise_model.get_all_entreprises_for_user(current_user_id, actif_only=True)
+    
+    if not entreprises:
         return redirect(url_for('banking.dashboard_employe'))
 
+    # 2. Déterminer quelle entreprise est active via l'URL (?entreprise_id=X)
+    entreprise_id_arg = request.args.get('entreprise_id', type=int)
+    if entreprise_id_arg:
+        entreprise = next((e for e in entreprises if e['id'] == entreprise_id_arg), entreprises[0])
+    else:
+        entreprise = entreprises[0]
+
+    current_entreprise_id = entreprise['id']
     edit_mode = request.args.get('edit') == '1'
 
     if request.method == 'POST':
-        # Cas spécial : suppression du logo uniquement
+        # Cas spécial : suppression du logo uniquement via formulaire/action
         if request.form.get('action') == 'delete_logo':
-            if g.models.entreprise_model.delete_logo(current_user_id):
+            if g.models.entreprise_model.delete_logo(current_user_id, current_entreprise_id):
                 flash("Logo supprimé.", "success")
             else:
                 flash("Aucun logo à supprimer.", "info")
-            return redirect(url_for('banking.gestion_entreprise', edit='1'))
+            return redirect(url_for('banking.gestion_entreprise', entreprise_id=current_entreprise_id, edit='1'))
 
         # Récupération des données
         data = {
@@ -7699,12 +7709,10 @@ def gestion_entreprise():
         # Validation serveur
         is_valid, errors = g.models.entreprise_model.validate_entreprise_data(data)
         if not is_valid:
-            # On re-rend le formulaire avec les erreurs
-            entreprise = g.models.entreprise_model.get_or_create_for_user(current_user_id)
-            # On fusionne les données saisies pour ne pas les perdre
-            entreprise.update(data)
+            entreprise.update(data)  # Fusion temporaire pour affichage
             return render_template(
                 'entreprise/gestion.html',
+                entreprises=entreprises,
                 entreprise=entreprise,
                 edit_mode=True,
                 errors=errors,
@@ -7712,7 +7720,7 @@ def gestion_entreprise():
             )
 
         # Gestion du logo
-        delete_logo = request.form.get('delete_logo') == '1'
+        delete_logo_checkbox = request.form.get('delete_logo') == '1'
         new_logo_uploaded = False
 
         if 'logo' in request.files:
@@ -7723,72 +7731,69 @@ def gestion_entreprise():
                 file.seek(0)
                 if size > MAX_FILE_SIZE:
                     flash("Le fichier est trop volumineux (max. 2 Mo).", "error")
-                    return redirect(url_for('banking.gestion_entreprise', edit='1'))
+                    return redirect(url_for('banking.gestion_entreprise', entreprise_id=current_entreprise_id, edit='1'))
 
                 ext = file.filename.rsplit('.', 1)[1].lower()
-                filename = f"user_{current_user_id}_logo_{secrets.token_urlsafe(8)}.{ext}"
+                filename = f"user_{current_user_id}_ent_{current_entreprise_id}_logo_{secrets.token_urlsafe(8)}.{ext}"
                 filepath = os.path.join(UPLOAD_FOLDER_LOGOS, filename)
 
-                # Supprimer l'ancien logo AVANT de sauvegarder le nouveau
-                g.models.entreprise_model.delete_logo(current_user_id)
+                # Supprimer l'ancien logo avant d'enregistrer le nouveau
+                g.models.entreprise_model.delete_logo(current_user_id, current_entreprise_id)
 
                 file.save(filepath)
                 data['logo_path'] = os.path.join('uploads', 'logos', filename).replace('\\', '/')
                 new_logo_uploaded = True
 
-        # Si pas de nouveau logo mais demande de suppression
-        if delete_logo and not new_logo_uploaded:
-            g.models.entreprise_model.delete_logo(current_user_id)
-            data['logo_path'] = None  # sera ignoré par update (pas dans allowed), on gère autrement
-            # On force la mise à jour du champ logo_path à NULL
-            with g.db.get_cursor() as cursor:
-                cursor.execute(
-                    "UPDATE entreprise SET logo_path = NULL WHERE user_id = %s",
-                    (current_user_id,)
-                )
-            # Retirer logo_path des data pour update() classique
-            data.pop('logo_path', None)
+        # Si pas de nouveau logo mais case "Supprimer le logo" cochée
+        if delete_logo_checkbox and not new_logo_uploaded:
+            g.models.entreprise_model.delete_logo(current_user_id, current_entreprise_id)
+            data.pop('logo_path', None) # Géré par delete_logo
 
-        # Mise à jour des autres champs
-        if g.models.entreprise_model.update(current_user_id, data) or new_logo_uploaded or delete_logo:
+        # Mise à jour des autres champs en ciblant l'ID de l'entreprise
+        if g.models.entreprise_model.update(current_entreprise_id, data) or new_logo_uploaded or delete_logo_checkbox:
             flash("Informations de l'entreprise mises à jour.", "success")
         else:
             flash("Aucune modification effectuée.", "warning")
 
-        return redirect(url_for('banking.gestion_entreprise'))
+        return redirect(url_for('banking.gestion_entreprise', entreprise_id=current_entreprise_id))
 
-    entreprise = g.models.entreprise_model.get_or_create_for_user(current_user_id)
     return render_template(
         'entreprise/gestion.html',
+        entreprises=entreprises,
         entreprise=entreprise,
         edit_mode=edit_mode,
         errors={},
         form_data={}
     )
-def delete_logo(self, user_id: int) -> bool:
-    """
-    Supprime le logo de la base ET du disque.
-    Retourne True si un logo a effectivement été supprimé.
-    """
-    ancien_logo = self.get_logo_path(user_id)
-    if not ancien_logo:
-        return False
 
-    # Suppression physique
-    ancien_path = os.path.join(current_app.static_folder, ancien_logo)
-    if os.path.exists(ancien_path):
-        try:
-            os.remove(ancien_path)
-        except OSError as e:
-            logger.warning(f"Impossible de supprimer {ancien_path} : {e}")
+def delete_logo(self, user_id: int, entreprise_id: int) -> bool:
+        """
+        Supprime le logo de la base ET du disque pour une entreprise spécifique.
+        """
+        # Récupérer le chemin du logo de cette entreprise précise
+        with self.db.get_cursor() as cursor:
+            cursor.execute("SELECT logo_path FROM entreprise WHERE user_id = %s AND id = %s", (user_id, entreprise_id))
+            row = cursor.fetchone()
+            ancien_logo = row['logo_path'] if isinstance(row, dict) else (row[0] if row else None)
 
-    # Suppression en base
-    with self.db.get_cursor() as cursor:
-        cursor.execute(
-            "UPDATE entreprise SET logo_path = NULL WHERE user_id = %s",
-            (user_id,)
-        )
-        return cursor.rowcount > 0
+        if not ancien_logo:
+            return False
+
+        # Suppression physique du fichier
+        ancien_path = os.path.join(current_app.static_folder, ancien_logo)
+        if os.path.exists(ancien_path):
+            try:
+                os.remove(ancien_path)
+            except OSError as e:
+                logger.warning(f"Impossible de supprimer {ancien_path} : {e}")
+
+        # Suppression en base
+        with self.db.get_cursor() as cursor:
+            cursor.execute(
+                "UPDATE entreprise SET logo_path = NULL WHERE user_id = %s AND id = %s",
+                (user_id, entreprise_id)
+            )
+            return cursor.rowcount > 0
 
 
 
@@ -9369,7 +9374,7 @@ def nouveau_contrat2():
     user_id = current_user.id
     contrat_id = request.args.get('contrat_id', type=int)
     annee = datetime.now().year
-    
+    entreprises = g.models.enterprise_model.
     # Données pour pré-remplir (si modification)
     contrat = {}
     cotisations_existantes = {}
@@ -9401,6 +9406,7 @@ def nouveau_contrat2():
                 'id': contrat_id,
                 'user_id': user_id,
                 'employeur': request.form.get('employeur', '').strip(),
+                'entreprise_id': request.form.get('entreprise_id'),
                 'heures_hebdo': float(request.form.get('heures_hebdo')),
                 'salaire_horaire': float(request.form.get('salaire_horaire')),
                 'date_debut': request.form.get('date_debut'),

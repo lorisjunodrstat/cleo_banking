@@ -15,6 +15,7 @@ import csv
 import json
 import os
 import uuid
+import re
 import time
 import math
 from collections import defaultdict
@@ -330,8 +331,14 @@ class DatabaseManager:
                     cotisation_accident_n_prof_tx DECIMAL(5,2),
                     cotisation_assurance_indemnite_maladie_tx DECIMAL(5,2),
                     cotisation_cap_tx DECIMAL(5,2),
+                    entreprise_id INT NULL
+                    employeur VARCHAR(255),
+                    employe_id INT NOT NULL
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
+                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id),
+                    FOREIGN KEY (entreprise_id) REFERENCES entreprise(id)
+                    FOREIGN KEY (employe_id) REFERENCES employes(id)
+
                 );""")
 
                 cursor.execute("""
@@ -833,7 +840,7 @@ class DatabaseManager:
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS entreprise (
                     id INT AUTO_INCREMENT PRIMARY KEY,
-                    user_id INT NOT NULL UNIQUE,
+                    user_id INT NOT NULL,
                     nom VARCHAR(255) NOT NULL,
                     rue VARCHAR(255),
                     code_postal VARCHAR(20),
@@ -843,6 +850,7 @@ class DatabaseManager:
                     logo_path VARCHAR(255),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    est_actif BOOLEAN DEFAULT TRUE,
                     FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
                 );""")
 
@@ -12101,6 +12109,7 @@ class Contrat:
                 user_id = int(data['user_id'])
                 employe_id = int(data['employe_id']) if data.get('employe_id') is not None else None
                 employeur = str(data['employeur']).strip()
+                entreprise_id = int(data['entreprise_id']) if data.get('enteprise_id') is not None else None
                 heures_hebdo = float(data['heures_hebdo'])
                 date_debut = data['date_debut']
                 date_fin = data.get('date_fin') or None  # NULL si non fourni
@@ -12115,6 +12124,7 @@ class Contrat:
                             user_id = %s,
                             employe_id = %s,
                             employeur = %s,
+                            entreprise_id = %s,
                             heures_hebdo = %s,
                             date_debut = %s,
                             date_fin = %s,
@@ -12125,7 +12135,7 @@ class Contrat:
                         WHERE id = %s
                     """
                     params = (
-                        user_id, employe_id, employeur, heures_hebdo,
+                        user_id, employe_id, employeur, entreprise_id,  heures_hebdo,
                         date_debut, date_fin, salaire_horaire,
                         jour_estimation_salaire, versement_10, versement_25,
                         data['id']
@@ -15777,22 +15787,18 @@ class Entreprise:
             """, (user_id,))
             return cursor.fetchone()
 
-    def update(self, user_id: int, data: Dict) -> bool:
-        """
-        Met à jour les infos de l'entreprise.
-        Champs autorisés : nom, rue, code_postal, commune, email, telephone, logo_path
-        """
+    def update(self, entreprise_id: int, data: Dict) -> bool:
         allowed = {'nom', 'rue', 'code_postal', 'commune', 'email', 'telephone', 'logo_path'}
         update_data = {k: v for k, v in data.items() if k in allowed}
         if not update_data:
             return False
 
         set_clause = ", ".join([f"{k} = %s" for k in update_data.keys()])
-        values = list(update_data.values()) + [user_id]
+        values = list(update_data.values()) + [entreprise_id]
 
         with self.db.get_cursor() as cursor:
             cursor.execute(f"""
-                UPDATE entreprise SET {set_clause} WHERE user_id = %s
+                UPDATE entreprise SET {set_clause} WHERE id = %s
             """, values)
             return cursor.rowcount > 0
 
@@ -15805,6 +15811,17 @@ class Entreprise:
             row = cursor.fetchone()
             return row[0] if row else None
 
+    def delete_logo(self, user_id: int, current_entreprise_id: int) -> bool:
+        """
+        Supprime le chemin du logo en base pour une entreprise spécifique.
+        """
+        with self.db.get_cursor() as cursor:
+            cursor.execute("""
+                UPDATE entreprise SET logo_path = NULL 
+                WHERE user_id = %s AND id = %s
+            """, (user_id, current_entreprise_id))
+            return cursor.rowcount > 0
+
     def entreprise_exists_for_user(self, user_id: int) -> bool:
         try:
             with self.db.get_cursor() as cursor:
@@ -15813,8 +15830,7 @@ class Entreprise:
         except Exception as e:
             logger.error(f"Pas d'entreprise pour l'utilisateur {user_id} : {e}")
             return False
-    import re
-
+    @staticmethod
     def validate_entreprise_data(data: Dict) -> tuple[bool, Dict[str, str]]:
         """
         Valide les données de l'entreprise.
@@ -15873,6 +15889,19 @@ class Entreprise:
             errors['commune'] = "La commune ne peut pas dépasser 100 caractères."
 
         return (len(errors) == 0, errors)
+    def get_all_entreprises_for_user(self, user_id, actif_only: bool = True) -> List[Dict]:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                query = "SELECT * FROM entreprise WHERE user_id = %s"
+                if actif_only:
+                    query += " AND est_actif = TRUE"
+                query += " ORDER BY nom"
+                cursor.execute(query, (user_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération types de enterprise: {e}")
+            return []
+
 
 # ============================================================
 # MODULE POS (Point de Vente / Caisse)
