@@ -10272,6 +10272,7 @@ from flask_login import login_required, current_user
 @bp.route('/employes/<int:employe_id>/planning')
 @login_required
 def planning_employe(employe_id):
+    # Récupérer UN SEUL employé (évite l'erreur de type 'list')
     employe = g.models.employe_model.get_by_id(employe_id, current_user.id)
     if not employe:
         flash("Employé non trouvé.", "error")
@@ -10284,7 +10285,6 @@ def planning_employe(employe_id):
         annee = datetime.now().year
         mois = datetime.now().month
 
-    # Handle month/year rollover
     if mois < 1:
         mois = 12
         annee -= 1
@@ -10292,18 +10292,18 @@ def planning_employe(employe_id):
         mois = 1
         annee += 1
 
-    # Récupérer les heures avec plages
+    # Récupérer les heures de cet employé pour la période
     heures = g.models.heure_model.get_h1d_h2f_for_period(
         user_id=current_user.id,
-        employeur="TBD",
-        id_contrat=1,
+        employeur=employe.get('employeur', 'TBD'),
+        id_contrat=employe.get('id_contrat', 1),
         annee=annee,
         mois=mois
     )
 
     return render_template(
         'employes/planning_employe.html',
-        employe=employe,
+        employe=employe,  # Objet unique (contient .id, .prenom, .nom)
         heures=heures,
         annee=annee,
         mois=mois
@@ -10386,84 +10386,83 @@ def get_semaine_from_date(date_str: str):
     lundi = date - timedelta(days=date.weekday())
     return [lundi + timedelta(days=i) for i in range(7)]
 
-@bp.route('/employes/planning-employes')
-@login_required
-def planning_employes():
-    user_id = current_user.id
-    date_ref = request.args.get('date', datetime.today().strftime('%Y-%m-%d'))
-    semaine = get_semaine_from_date(date_ref)  # [lundi, mardi, ..., dimanche]
-    employe = g.models.employe_model.get_all_by_user(user_id)
-    try:
-        annee = int(request.args.get('annee', datetime.now().year))
-        mois = int(request.args.get('mois', datetime.now().month))
-    except ValueError:
-        annee = datetime.now().year
-        mois = datetime.now().month
-    
+#@bp.route('/employes/planning-employes')
+#@login_required
+#def planning_employes():
+#    user_id = current_user.id
+#    date_ref = request.args.get('date', datetime.today().strftime('%Y-%m-%d'))
+#    semaine = get_semaine_from_date(date_ref)  # [lundi, mardi, ..., dimanche]
+#    try:
+#    employe = g.models.employe_model.get_all_by_user(user_id)
+#        mois = int(request.args.get('mois', datetime.now().month))
+#        annee = int(request.args.get('annee', datetime.now().year))
+#    except ValueError:
+#        mois = datetime.now().month
+##        annee = datetime.now().year
     # Handle month/year rollover
-    if mois < 1:
-        mois = 12
-        annee -= 1
-    elif mois > 12: 
-        mois = 1
-        annee += 1
+##    
+#    if mois < 1:
+#        mois = 12
+#        annee -= 1
+#    elif mois > 12: 
+#        mois = 1
+#        annee += 1#
+#
+#    # Charger équipes + employés
+#    equipes = g.models.equipe_model.get_all_by_user(user_id)
+#    for equipe in equipes:
+#        equipe['membres'] = g.models.employe_model.get_by_equipe(equipe['id'])
 
-    # Charger équipes + employés
-    equipes = g.models.equipe_model.get_all_by_user(user_id)
-    for equipe in equipes:
-        equipe['membres'] = g.models.employe_model.get_by_equipe(equipe['id'])
+#    # Charger tous les shifts de la semaine
+#    all_shifts = g.models.heure_model.get_shifts_for_week(user_id, semaine[0], semaine[-1])
+#    
+#    shifts_by_employe_jour = defaultdict(lambda: defaultdict(list))
+##    # Option 2: Utiliser PlanningRegles pour la validation si elle existe
+#    
+##    # Vérifier si planning_regles existe
+#    has_planning_regles = hasattr(g.models, 'planning_regles')
+#    for s in all_shifts:
+#    
+#        s['duree'] = s['plage_fin'] - s['plage_debut']
+#        # Validation conditionnelle
+#        
+#        if has_planning_regles:
+#            # Essayer d'obtenir des violations pour ce shift
+#            violations = []
+##            # Note: Vous devrez peut-être adapter cette logique
+#            try:
+#                # Exemple: valider ce shift spécifique
+#                # Vous aurez besoin d'adapter cette partie selon votre logique métier
+#                date_shift = s['date']
+#                violations = g.models.planning_regles.valider_periode_simulee(
+#                    user_id, 
+#                    date_shift, 
+#                    date_shift
+#                )
+#                s['violations'] = violations
+#                s['valide'] = len(violations) == 0
+#                logger.error(f"Erreur validation shift: {e}")
+#            except Exception as e:
+#                s['valide'] = True
+#        else:
+#                s['violations'] = []
+#            s['valide'] = True
+#            s['violations'] = []        
+#        key = s['date'].strftime('%Y-%m-%d')
 
-    # Charger tous les shifts de la semaine
-    all_shifts = g.models.heure_model.get_shifts_for_week(user_id, semaine[0], semaine[-1])
-    
-    # Option 2: Utiliser PlanningRegles pour la validation si elle existe
-    shifts_by_employe_jour = defaultdict(lambda: defaultdict(list))
-    
-    # Vérifier si planning_regles existe
-    has_planning_regles = hasattr(g.models, 'planning_regles')
-    
-    for s in all_shifts:
-        s['duree'] = s['plage_fin'] - s['plage_debut']
-        
-        # Validation conditionnelle
-        if has_planning_regles:
-            # Essayer d'obtenir des violations pour ce shift
-            # Note: Vous devrez peut-être adapter cette logique
-            violations = []
-            try:
-                # Exemple: valider ce shift spécifique
-                # Vous aurez besoin d'adapter cette partie selon votre logique métier
-                date_shift = s['date']
-                violations = g.models.planning_regles.valider_periode_simulee(
-                    user_id, 
-                    date_shift, 
-                    date_shift
-                )
-                s['valide'] = len(violations) == 0
-                s['violations'] = violations
-            except Exception as e:
-                logger.error(f"Erreur validation shift: {e}")
-                s['valide'] = True
-                s['violations'] = []
-        else:
-            s['valide'] = True
-            s['violations'] = []
-        
-        key = s['date'].strftime('%Y-%m-%d')
-        shifts_by_employe_jour[s['employe_id']][key].append(s)
-
-    return render_template(
-        'employes/planning_employe.html',
-        employe=employe,
-        week_dates=semaine,
-        equipes=equipes,
-        shifts_by_employe_jour=shifts_by_employe_jour,
-        prev_week=semaine[0] - timedelta(weeks=1),
-        next_week=semaine[0] + timedelta(weeks=1),
-        has_validation=has_planning_regles,
-        mois=mois, 
-        annee=annee
-    )
+##        shifts_by_employe_jour[s['employe_id']][key].append(s)
+#    return render_template(
+#        'employes/planning_employe.html',
+#        week_dates=semaine,
+##        employe=employe,
+##        equipes=equipes,
+#        shifts_by_employe_jour=shifts_by_employe_jour,
+#        next_week=semaine[0] + timedelta(weeks=1),
+#        prev_week=semaine[0] - timedelta(weeks=1),
+#        has_validation=has_planning_regles,
+#        mois=mois, 
+#    )
+#        annee=annee
 
 @bp.route('/planning/supprimer_jour', methods=['POST'])
 @login_required
