@@ -10394,19 +10394,19 @@ def planning_employes():
     semaine = get_semaine_from_date(date_ref)  # [lundi, mardi, ..., dimanche]
     employe = g.models.employe_model.get_all_by_user(user_id)
     try:
-            annee = int(request.args.get('annee', datetime.now().year))
-            mois = int(request.args.get('mois', datetime.now().month))
-        except ValueError:
-            annee = datetime.now().year
-            mois = datetime.now().month
+        annee = int(request.args.get('annee', datetime.now().year))
+        mois = int(request.args.get('mois', datetime.now().month))
+    except ValueError:
+        annee = datetime.now().year
+        mois = datetime.now().month
     
-        # Handle month/year rollover
-        if mois < 1:
-            mois = 12
-            annee -= 1
-        elif mois > 12:
-            mois = 1
-            annee += 1
+    # Handle month/year rollover
+    if mois < 1:
+        mois = 12
+        annee -= 1
+    elif mois > 12: 
+        mois = 1
+        annee += 1
 
     # Charger équipes + employés
     equipes = g.models.equipe_model.get_all_by_user(user_id)
