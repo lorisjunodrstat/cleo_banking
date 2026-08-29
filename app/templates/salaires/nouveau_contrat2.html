@@ -7,6 +7,23 @@
         </div>
         <div class="card-body">
             <form method="POST">
+                
+                <!-- Sélection de l'entreprise -->
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <label class="form-label">Entreprise associée <span class="text-danger">*</span></label>
+                        <select class="form-select" name="entreprise_id" required>
+                            <option value="">-- Choisir une entreprise --</option>
+                            {% for ent in entreprises %}
+                                <option value="{{ ent.id }}" 
+                                    {% if (contrat and contrat.entreprise_id == ent.id) or (not contrat and loop.first) %}selected{% endif %}>
+                                    {{ ent.nom }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
                 <!-- Champs de base du contrat -->
                 <div class="row mb-3">
                     <div class="col-md-12">
