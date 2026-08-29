@@ -12087,8 +12087,8 @@ class Contrat:
         self.db = db
         
     def user_has_types_cotisation_or_indemnite(self, user_id: int, cotisations_contrat_model, indemnites_contrat_model) -> bool:
-        cotisations = cotisations_contrat_model.get_all_by_user(user_id)
-        indemnites = indemnites_contrat_model.get_all_by_user(user_id)
+        cotisations = cotisations_contrat_model.get_all_by_user(user_id) or []
+        indemnites = indemnites_contrat_model.get_all_by_user(user_id) or []
         return len(cotisations) > 0 or len(indemnites) > 0
 
     def create_or_update(self, data: Dict) -> bool:
@@ -12344,6 +12344,7 @@ class Employe:
                 return cursor.fetchall()
         except Exception as e:
             logger.error(f'Erreur de récupération des employées pour user_id {user_id}: {e}')
+            return []
 
     def get_by_id(self, employe_id: int, user_id : int) -> Optional[Dict]:
         """
