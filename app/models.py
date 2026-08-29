@@ -653,8 +653,10 @@ class DatabaseManager:
                     difference DECIMAL(10,2),
                     difference_pourcent DECIMAL(5,2),
                     user_id INT NOT NULL,
+                    id_contrat INT NOT NULL
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
+                    FOREIGN KEY (id_contrat) REFERENCES contrats(id)
                 );""")
 
                 cursor.execute("""
