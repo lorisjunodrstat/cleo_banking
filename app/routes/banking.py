@@ -9993,6 +9993,32 @@ def gestion_contrats_employe(employe_id):
     contrats = g.models.contrat_model.get_all_contrats(current_user.id)
     return render_template('employes/gestion_contrat.html', employe=employe, contrats=contrats)
 
+@bp.route('/contrats/liste')
+@login_required
+def liste_contrats():
+    current_user_id = current_user.id
+
+    contrats = g.models.contrat_model.get_all_contrats(current_user_id)
+    employes = g.models.employe_model.get_all_by_user(current_user_id)
+    employes_by_id = {e['id']: e for e in employes}
+
+    aujourdhui = date.today()
+    contrats_avec_employe = []
+    for c in contrats:
+        employe = employes_by_id.get(c.get('employe_id'))
+        date_fin = c.get('date_fin')
+        actif = date_fin is None or date_fin >= aujourdhui
+        contrats_avec_employe.append({
+            'contrat': c,
+            'employe': employe,
+            'actif': actif
+        })
+
+    return render_template(
+        'employes/liste_contrats.html',
+        contrats_avec_employe=contrats_avec_employe
+    )
+
 @bp.route('/employes/<int:employe_id>/contrat/nouveau', methods=['GET', 'POST'])
 @login_required
 def creer_contrat_employe(employe_id):
