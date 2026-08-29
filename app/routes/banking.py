@@ -9669,11 +9669,11 @@ def dashboard_employes():
         return redirect(url_for('banking.gestion_entreprise'))
     
     # Étape 2: Vérifier les types de cotisations et indemnités
-    contrat_model = g.models.contrat_model
-    has_cotisations_indemnites = contrat_model.user_has_types_cotisation_or_indemnite(
+
+    has_cotisations_indemnites = g.models.contrat_model.user_has_types_cotisation_or_indemnite(
         current_user_id, 
-        cotisations_contrat_model=g.models.cotisations_contrat_model, 
-        indemnites_contrat_model=g.models.indemnites_contrat_model
+        cotisations_contrat_model=g.models.contrat_models.cotisations_contrat_model, 
+        indemnites_contrat_model=g.models.contrat_model.indemnites_contrat_model
     )
     
     if not has_cotisations_indemnites:
@@ -10005,7 +10005,10 @@ def creer_contrat_employe(employe_id):
     if request.method == 'GET':
         return render_template('employes/creer_contrat_employe.html', employe=employe)
     types_cotisations = g.models.type_cotisations_model.get_all_by_user(current_user_id)
+    logging.info(f"voici les cotisations : {types_cotisation}")
     types_indemnites = g.models.type_indemnites_model.get_all_by_user(current_user_id)
+    logging.info(f"voici les indemnités : {types_indemnites}")
+
 
     # POST
     data = request.form.to_dict()

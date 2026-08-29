@@ -11452,7 +11452,6 @@ class CotisationContrat:
             logger.error(f"Erreur récupération cotisation contrat : {e}")
             return []
     
-
     def get_for_contrat_and_annee(self, contrat_id: int, annee: int) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
@@ -11728,7 +11727,6 @@ class CotisationContrat:
         with self.db.get_cursor(dictionary=True) as cursor:
             cursor.execute("SELECT id, nom FROM types_cotisation ORDER BY nom")
             return cursor.fetchall()
-
 
     def user_has_types_cotisation(self, user_id: int) -> bool:
         """Vérifie si l'utilisateur a défini des types de cotisations"""
@@ -12178,6 +12176,7 @@ class Contrat:
         except Exception as e:
             logger.error(f"Erreur get_by_id contrat {contrat_id}: {e}")
             return None
+
     def get_all_contrats(self, user_id: int) -> List[Dict]:
         """Liste tous les contrats de l'utilisateur, du plus récent au plus ancien."""
         try:
@@ -19914,7 +19913,7 @@ class ModelManager:
     def synthese_mensuelle_model(self):
         return self._get_model('synthese_mensuelle', SyntheseMensuelle)
     @property
-    def contrat_model(self):
+    def f(self):
         return self._get_model('contrat', Contrat)
     @property
     def employe_model(self):
