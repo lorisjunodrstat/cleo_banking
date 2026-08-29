@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Planning hebdomadaire{% endblock %}
+
+{% block content %}
+<h2>Planning hebdomadaire — {{ mois }}/{{ annee }}</h2>
+
+<div style="margin-bottom: 1rem;">
+    <a href="{{ url_for('banking.planning_employes', date=prev_week.strftime('%Y-%m-%d'), mois=mois, annee=annee) }}"
+       class="btn btn-sm btn-outline-secondary">◀ Semaine précédente</a>
+    |
+    <a href="{{ url_for('banking.planning_employes', date=next_week.strftime('%Y-%m-%d'), mois=mois, annee=annee) }}"
+       class="btn btn-sm btn-outline-secondary">Semaine suivante ▶</a>
+</div>
+
+{% if not equipes %}
+<div class="alert alert-info">
+    Aucune équipe trouvée.
+</div>
+{% else %}
+    {% for equipe in equipes %}
+    <h4 class="mt-4">{{ equipe.nom }}</h4>
+
+    {% if not equipe.membres %}
+    <div class="alert alert-secondary">
+        Aucun membre dans cette équipe.
+    </div>
+    {% else %}
+    <div class="table-responsive">
+        <table class="table table-bordered align-middle">
+            <thead>
+                <tr>
+                    <th>Employé</th>
+                    {% for jour in week_dates %}
+                    <th>{{ jour.strftime('%a %d/%m') }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for membre in equipe.membres %}
+                <tr>
+                    <td>{{ membre.prenom }} {{ membre.nom }}</td>
+                    {% for jour in week_dates %}
+                    {% set jour_key = jour.strftime('%Y-%m-%d') %}
+                    {% set shifts_jour = shifts_by_employe_jour[membre.id][jour_key] %}
+                    <td>
+                        {% if not shifts_jour %}
+                        <span class="text-muted">—</span>
+                        {% else %}
+                            {% for s in shifts_jour %}
+                            <div class="mb-1 p-1 {% if has_validation and not s.valide %}bg-danger-subtle{% else %}bg-light{% endif %} rounded">
+                                {{ s.plage_debut }} – {{ s.plage_fin }}
+                                <br>
+                                <small>{{ "%.2f"|format(s.duree) }} h</small>
+                                {% if has_validation and not s.valide %}
+                                <br>
+                                <span class="badge bg-danger" title="{{ s.violations|join(', ') }}">
+                                    ⚠ {{ s.violations|length }} violation(s)
+                                </span>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+    {% endfor %}
+{% endif %}
+
+<div style="margin-top: 2rem;">
+    <a href="{{ url_for('banking.liste_employe') }}" class="btn btn-secondary">
+        ← Retour à la liste
+    </a>
+</div>
+{% endblock %}

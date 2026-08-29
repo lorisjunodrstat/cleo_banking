@@ -10393,13 +10393,13 @@ def planning_employes():
     date_ref = request.args.get('date', datetime.today().strftime('%Y-%m-%d'))
     semaine = get_semaine_from_date(date_ref)  # [lundi, mardi, ..., dimanche]
     try:
-    employe = g.models.employe_model.get_all_by_user(user_id)
+        employe = g.models.employe_model.get_all_by_user(user_id)
         mois = int(request.args.get('mois', datetime.now().month))
         annee = int(request.args.get('annee', datetime.now().year))
     except ValueError:
         mois = datetime.now().month
         annee = datetime.now().year
-    Handle month/year rollover    
+    #Handle month/year rollover    
     if mois < 1:
         mois = 12
         annee -= 1
@@ -10435,8 +10435,9 @@ def planning_employes():
                 )
                 s['violations'] = violations
                 s['valide'] = len(violations) == 0
-                logger.error(f"Erreur validation shift: {e}")
+                
             except Exception as e:
+                logger.error(f"Erreur validation shift: {e}")
                 s['valide'] = True
         else:
             s['violations'] = []
@@ -10446,7 +10447,7 @@ def planning_employes():
 
         shifts_by_employe_jour[s['employe_id']][key].append(s)
     return render_template(
-        'employes/planning_employe.html',
+        'employes/planning_employes.html',
         week_dates=semaine,
         employe=employe,
         equipes=equipes,
