@@ -296,6 +296,7 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS employes (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     user_id INT NOT NULL,
+                    entreprise_id INT NOT NULL,
                     nom VARCHAR(100) NOT NULL,
                     prenom VARCHAR(100) NOT NULL,
                     email VARCHAR(150),
@@ -308,6 +309,7 @@ class DatabaseManager:
                     code_acces_salaire VARCHAR(50),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                    FOREIGN KEY (entreprise_id) REFERENCES entreprise(id)
                 );""")
 
                 cursor.execute("""
@@ -791,10 +793,12 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS equipes_employes (
                     equipe_id INT,
                     employe_id INT,
+                    entreprise_id INT
                     added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (equipe_id, employe_id),
                     FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE CASCADE,
                     FOREIGN KEY (employe_id) REFERENCES employes(id) ON DELETE CASCADE
+                    FOREIGN KEY (entreprise_id) REFERENCES enterprise(id)
                 );""")
 
                 cursor.execute("""
@@ -12109,7 +12113,7 @@ class Contrat:
                 user_id = int(data['user_id'])
                 employe_id = int(data['employe_id']) if data.get('employe_id') is not None else None
                 employeur = str(data['employeur']).strip()
-                entreprise_id = int(data['entreprise_id']) if data.get('enteprise_id') is not None else None
+                entreprise_id = int(data['entreprise_id']) if data.get('entreprise_id') is not None else None
                 heures_hebdo = float(data['heures_hebdo'])
                 date_debut = data['date_debut']
                 date_fin = data.get('date_fin') or None  # NULL si non fourni
@@ -12145,13 +12149,13 @@ class Contrat:
                 else:
                     query = """
                     INSERT INTO contrats (
-                        user_id, employe_id, employeur, heures_hebdo,
+                        user_id, employe_id, employeur, entreprise_id, heures_hebdo,
                         date_debut, date_fin, salaire_horaire,
                         jour_estimation_salaire, versement_10, versement_25
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                     params = (
-                    user_id, employe_id, employeur, heures_hebdo,
+                    user_id, employe_id, employeur, entreprise_id, heures_hebdo,
                     date_debut, date_fin, salaire_horaire,
                     jour_estimation_salaire, versement_10, versement_25
                     )
@@ -12163,21 +12167,23 @@ class Contrat:
             logger.error(f"Erreur lors de la création/mise à jour du contrat: {e}")
             return False
 
-    def get_contrat_actuel(self, user_id: int) -> Optional[Dict]:
-        """Récupère le contrat en cours pour l'utilisateur (fin null ou future)"""
+    def get_contrat_actuel(self, user_id: int, entreprise_id: int = None) -> Optional[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 query = """
                     SELECT * FROM contrats
                     WHERE user_id = %s
-                    AND (date_fin IS NULL OR date_fin >= CURDATE())
-                    ORDER BY date_debut ASC
-                    LIMIT 1
                 """
-                cursor.execute(query, (user_id,))
+                params = [user_id]
+                if entreprise_id:
+                    query += " AND entreprise_id = %s"
+                    params.append(entreprise_id)
+
+                query += " AND (date_fin IS NULL OR date_fin >= CURDATE()) ORDER BY date_debut ASC LIMIT 1"
+                cursor.execute(query, params)
                 return cursor.fetchone()
         except Exception as e:
-            logger.error(f"Erreur lors de la récupération du contrat: {e}")
+            logger.error(f"Erreur lors de la récupération du contrat : {e}")
             return None
 
     def get_by_id(self, contrat_id: int) -> Optional[Dict]:
@@ -12310,18 +12316,20 @@ class Employe:
         - genre
         - date_de_naissance
         """
-        required = {'user_id', 'nom', 'prenom', 'genre', 'date_de_naissance'}
+        required = {'user_id', 'entreprise_id', 'nom', 'prenom', 'genre', 'date_de_naissance'}
         if not required.issubset(data.keys()):
-            raise ValueError("Champs manquants : 'user_id', 'nom', 'prenom', 'genre', 'date_de_naissance', requis")
+            raise ValueError("Champs manquants : 'user_id', 'entreprise_id', 'nom', 'prenom', 'genre', 'date_de_naissance', requis")
         try:
             with self.db.get_cursor(commit=True) as cursor:
                 query = """
                 INSERT INTO employes
-                (user_id, nom, prenom, email, telephone, rue, code_postal, commune, genre, date_de_naissance, created_at)
-                VALUES (%s, %s, %s, %s,%s, %s, %s, %s, %s, %s, NOW())
+                (user_id, entreprise_id, nom, prenom, email, telephone, rue, 
+                code_postal, commune, genre, date_de_naissance, created_at)
+                VALUES (%s, %s,%s, %s, %s,%s, %s, %s, %s, %s, %s, NOW())
                 """
                 values = (
                     data['user_id'],
+                    data['entreprise_id'],
                     data['nom'],
                     data['prenom'],
                     data.get('email'),
@@ -12394,7 +12402,7 @@ class Employe:
             logger.error(f'Erreur lors de la mise à jour employe {employe_id} pour {data}: {e}')
             return False
 
-    def delete(self, employe_id: int, user_id: int) -> bool:
+    def delete(self, employe_id: int, user_id: int, entreprise_id: int) -> bool:
         """
         supprime un employe avec vérification
         """
@@ -12402,8 +12410,8 @@ class Employe:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
                             DELETE FROM employes
-                            WHERE id = %s AND user_id = %s
-                            """, (employe_id, user_id))
+                            WHERE id = %s AND user_id = %s AND entreprise_id = %s
+                            """, (employe_id, user_id, entreprise_id))
                 return cursor.rowcount > 0
         except Exception as e:
             logger.error(f'Erreur dans la suppresion employe {employe_id} de user {user_id}; {e}')
@@ -15830,6 +15838,7 @@ class Entreprise:
         except Exception as e:
             logger.error(f"Pas d'entreprise pour l'utilisateur {user_id} : {e}")
             return False
+    
     @staticmethod
     def validate_entreprise_data(data: Dict) -> tuple[bool, Dict[str, str]]:
         """
@@ -15889,6 +15898,7 @@ class Entreprise:
             errors['commune'] = "La commune ne peut pas dépasser 100 caractères."
 
         return (len(errors) == 0, errors)
+    
     def get_all_entreprises_for_user(self, user_id, actif_only: bool = True) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
@@ -15901,6 +15911,14 @@ class Entreprise:
         except Exception as e:
             logger.error(f"Erreur récupération types de enterprise: {e}")
             return []
+    def get_by_id(self, user_id: int, entreprise_id: int) ->Optional[Dict]: 
+        with self.db.get_cursor() as cursor:
+            if not cursor:
+                return None
+            cursor.execute("SELECT * FROM entreprise WHERE user_id = %s AND id = %s", (user_id, entreprise_id,))
+            return cursor.fetchone()
+
+
 
 
 # ============================================================

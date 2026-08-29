@@ -10144,18 +10144,22 @@ def gestion_cotisations_contrat(contrat_id):
 
 @bp.route('/employes/<int:employe_id>/supprimer_employe', methods = ['POST'])
 @login_required
-def supprimer_employe(employe_id):
+def supprimer_employe(employe_id, entreprise_id:
     try:
         current_user_id = current_user.id
         
         # Vérifier que l'employé appartient bien à l'utilisateur
         employe = g.models.employe_model.get_by_id(employe_id, current_user_id)
-        if not employe:
+        entreprise = g.models.entreprise_model.get_by_id(current_user_id, enterprise_id)
+        if not employe :
             flash("Employé non trouvé ou vous n'avez pas les permissions", "error")
             return redirect(url_for('banking.liste_employe'))
+        if not entereprise :
+            flash("Entreprise non trouvée", "error")
+            return redirect_url('banking.gestion_entreprise')
         
         # Supprimer l'employé
-        success = g.models.employe_model.delete(employe_id, current_user_id)
+        success = g.models.employe_model.delete(employe_id, current_user_id, entreprise_id)
         
         if success:
             flash("Employé supprimé avec succès", "success")
