@@ -10001,22 +10001,26 @@ def creer_contrat_employe(employe_id):
     if not employe:
         flash("Employé non trouvé.", "error")
         return redirect(url_for('banking.liste_employe'))
+
     types_cotisations = g.models.type_cotisations_model.get_all_by_user(current_user_id)
     logging.info(f"voici les cotisations : {types_cotisations}")
     types_indemnites = g.models.type_indemnites_model.get_all_by_user(current_user_id)
     logging.info(f"voici les indemnités : {types_indemnites}")
-    if request.method == 'GET':
-        return render_template('employes/creer_contrat_employe.html', employe=employe)
-    
 
+    if request.method == 'GET':
+        return render_template(
+            'employes/creer_contrat_employe.html', 
+            employe=employe,
+            types_cotisations=types_cotisations,
+            types_indemnites=types_indemnites
+        )
 
     # POST
     data = request.form.to_dict()
     data['user_id'] = current_user.id
-    data['employe_id'] = employe_id  # ⬅️ Important !
+    data['employe_id'] = employe_id
 
     try:
-        # Convertir les champs numériques
         for key in ['heures_hebdo', 'salaire_horaire']:
             if data.get(key):
                 data[key] = float(data[key])
@@ -10029,15 +10033,22 @@ def creer_contrat_employe(employe_id):
             return redirect(url_for('banking.gestion_contrats_employe', employe_id=employe_id))
         else:
             flash("Erreur lors de la création du contrat.", "error")
-            return render_template('employes/creer_contrat_employe.html', employe=employe, form_data=data)
+            return render_template(
+                'employes/creer_contrat_employe.html', 
+                employe=employe, 
+                form_data=data,
+                types_cotisations=types_cotisations,
+                types_indemnites=types_indemnites
+            )
     except Exception as e:
         logging.error(f"Erreur création contrat: {e}")
         flash(f"Erreur : {e}", "error")
-        return render_template('employes/creer_contrat_employe.html',
-                                employe=employe,
-                                types_cotisations=types_cotisations,
-                                types_indemnites=types_indemnites)
-    
+        return render_template(
+            'employes/creer_contrat_employe.html',
+            employe=employe,
+            types_cotisations=types_cotisations,
+            types_indemnites=types_indemnites
+        )
 @bp.route('/contrats/<int:contrat_id>/cotisations', methods=['GET', 'POST'])
 @login_required
 def gestion_cotisations_contrat(contrat_id):
