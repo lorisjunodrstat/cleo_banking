@@ -7264,7 +7264,8 @@ def heures_travail():
 
     # Calcul des soldes
     for semaine_data in semaines.values():
-        semaine_data['solde'] = semaine_data['total'] - heures_hebdo_contrat
+        for semaine_data in semaines.values():
+            semaine_data['solde'] = semaine_data['total'] - float(heures_hebdo_contrat)
     
     total_general = sum(s['total'] for s in semaines.values())
     logging.debug(f"banking 3043 DEBUG: Total général des heures: {total_general}")

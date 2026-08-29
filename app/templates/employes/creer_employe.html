@@ -36,8 +36,6 @@
 
 {% block content %}
 <div class="form-container">
-    <h1>Créer un nouvel employé</h1>
-
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
@@ -45,82 +43,88 @@
             {% endfor %}
         {% endif %}
     {% endwith %}
-
-    <form method="POST" action="{{ url_for('banking.create_employe') }}">
+    <div class="card">
+        <div class="card-header">
+            <h2>Créer un nouvel employé</h2>
+        </div>
+        <div="card-body">
+            <form method="POST" action="{{ url_for('banking.create_employe') }}">
         
-        <!-- Sélection de l'entreprise -->
-        <div class="form-group">
-            <label for="entreprise_id">Entreprise rattachée *</label>
-            <select id="entreprise_id" name="entreprise_id" required>
-                <option value="">Sélectionner une entreprise</option>
-                {% for ent in entreprises %}
-                    <option value="{{ ent.id }}" {% if form_data and form_data.entreprise_id|int == ent.id %}selected{% endif %}>
-                        {{ ent.nom }}
-                    </option>
-                {% endfor %}
-            </select>
-        </div>
+                <!-- Sélection de l'entreprise -->
+                <div class="form-group">
+                    <label for="entreprise_id">Entreprise rattachée *</label>
+                    <select id="entreprise_id" name="entreprise_id" required>
+                        <option value="">Sélectionner une entreprise</option>
+                        {% for ent in entreprises %}
+                            <option value="{{ ent.id }}" {% if form_data and form_data.entreprise_id|int == ent.id %}selected{% endif %}>
+                                {{ ent.nom }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
 
-        <div class="form-row">
-            <div class="form-group">
-                <label for="prenom">Prénom *</label>
-                <input type="text" id="prenom" name="prenom" value="{{ form_data.prenom if form_data else '' }}" required>
-            </div>
-            <div class="form-group">
-                <label for="nom">Nom *</label>
-                <input type="text" id="nom" name="nom" value="{{ form_data.nom if form_data else '' }}" required>
-            </div>
-            <div class="form-group">
-                <label for="genre">Genre *</label>
-                <select id="genre" name="genre" required>
-                    <option value="">Sélectionner un genre</option>
-                    <option value="M" {% if form_data and form_data.genre == 'M' %}selected{% endif %}>Masculin</option>
-                    <option value="F" {% if form_data and form_data.genre == 'F' %}selected{% endif %}>Féminin</option>
-                </select>
-            </div>
-        </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="prenom">Prénom *</label>
+                        <input type="text" id="prenom" name="prenom" value="{{ form_data.prenom if form_data else '' }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="nom">Nom *</label>
+                        <input type="text" id="nom" name="nom" value="{{ form_data.nom if form_data else '' }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="genre">Genre *</label>
+                        <select id="genre" name="genre" required>
+                            <option value="">Sélectionner un genre</option>
+                            <option value="M" {% if form_data and form_data.genre == 'M' %}selected{% endif %}>Masculin</option>
+                            <option value="F" {% if form_data and form_data.genre == 'F' %}selected{% endif %}>Féminin</option>
+                        </select>
+                    </div>
+                </div>
 
-        <div class="form-group">
-            <label for="email">Email</label>
-            <input type="email" id="email" name="email" value="{{ form_data.email if form_data else '' }}">
-        </div>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" value="{{ form_data.email if form_data else '' }}">
+                </div>
 
-        <div class="form-group">
-            <label for="telephone">Téléphone</label>
-            <input type="tel" id="telephone" name="telephone" value="{{ form_data.telephone if form_data else '' }}">
-        </div>
+                <div class="form-group">
+                    <label for="telephone">Téléphone</label>
+                    <input type="tel" id="telephone" name="telephone" value="{{ form_data.telephone if form_data else '' }}">
+                </div>
 
-        <div class="form-row">
-            <div class="form-group">
-                <label for="date_de_naissance">Date de naissance</label>
-                <input type="date" id="date_de_naissance" name="date_de_naissance" value="{{ form_data.date_de_naissance if form_data else '' }}">
-            </div>
-            <div class="form-group">
-                <label for="No_AVS">N° AVS</label>
-                <input type="text" id="No_AVS" name="No_AVS" value="{{ form_data.No_AVS if form_data else '' }}">
-            </div>
-        </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="date_de_naissance">Date de naissance</label>
+                        <input type="date" id="date_de_naissance" name="date_de_naissance" value="{{ form_data.date_de_naissance if form_data else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="No_AVS">N° AVS</label>
+                        <input type="text" id="No_AVS" name="No_AVS" value="{{ form_data.No_AVS if form_data else '' }}">
+                    </div>
+                </div>
 
-        <div class="form-group">
-            <label for="rue">Adresse</label>
-            <input type="text" id="rue" name="rue" value="{{ form_data.rue if form_data else '' }}">
-        </div>
+                <div class="form-group">
+                    <label for="rue">Adresse</label>
+                    <input type="text" id="rue" name="rue" value="{{ form_data.rue if form_data else '' }}">
+                </div>
 
-        <div class="form-row">
-            <div class="form-group">
-                <label for="code_postal">Code postal</label>
-                <input type="text" id="code_postal" name="code_postal" value="{{ form_data.code_postal if form_data else '' }}">
-            </div>
-            <div class="form-group">
-                <label for="commune">Commune</label>
-                <input type="text" id="commune" name="commune" value="{{ form_data.commune if form_data else '' }}">
-            </div>
-        </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="code_postal">Code postal</label>
+                        <input type="text" id="code_postal" name="code_postal" value="{{ form_data.code_postal if form_data else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="commune">Commune</label>
+                        <input type="text" id="commune" name="commune" value="{{ form_data.commune if form_data else '' }}">
+                    </div>
+                </div>
 
-        <div class="button-group">
-            <button type="submit" class="btn-primary">Créer l'employé</button>
-            <a href="{{ url_for('banking.dashboard_employes') }}" class="btn-secondary">Annuler</a>
+                <div class="button-group">
+                    <button type="submit" class="btn-primary">Créer l'employé</button>
+                    <a href="{{ url_for('banking.dashboard_employes') }}" class="btn-secondary">Annuler</a>
+                </div>
+            </form>
         </div>
-    </form>
+    </div>
 </div>
 {% endblock %}
