@@ -1,70 +1,176 @@
 {% extends "base.html" %}
 
-{% block title %}Paramètres de l'entreprise{% endblock %}
+{% block title %}Mon entreprise{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-    <h2 class="mb-4">Mon entreprise</h2>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">Mon entreprise</h2>
+        {% if not edit_mode %}
+            <a href="{{ url_for('banking.gestion_entreprise', edit='1') }}" class="btn btn-outline-primary">
+                <i class="bi bi-pencil"></i> Modifier
+            </a>
+        {% endif %}
+    </div>
+
+    {% if edit_mode %}
+    {# ===================== MODE ÉDITION ===================== #}
     <div class="card">
         <div class="card-header">
             <h5 class="mb-0">Coordonnées et logo</h5>
         </div>
         <div class="card-body">
-            <form method="post" enctype="multipart/form-data">
+            <form method="post" enctype="multipart/form-data" novalidate>
+                {# ---- Nom ---- #}
                 <div class="mb-3">
-                    <label for="nom" class="form-label">Nom de l'entreprise</label>
-                    <input type="text" class="form-control" id="nom" name="nom" value="{{ entreprise.nom }}" required>
+                    <label for="nom" class="form-label">Nom de l'entreprise <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control {% if errors.nom %}is-invalid{% endif %}"
+                           id="nom" name="nom"
+                           value="{{ form_data.nom if form_data.nom is defined else entreprise.nom }}"
+                           maxlength="150" required>
+                    {% if errors.nom %}<div class="invalid-feedback">{{ errors.nom }}</div>{% endif %}
                 </div>
+
+                {# ---- Rue ---- #}
                 <div class="mb-3">
                     <label for="rue" class="form-label">Rue</label>
-                    <input type="text" class="form-control" id="rue" name="rue" value="{{ entreprise.rue }}">
+                    <input type="text" class="form-control {% if errors.rue %}is-invalid{% endif %}"
+                           id="rue" name="rue" maxlength="200"
+                           value="{{ form_data.rue if form_data.rue is defined else entreprise.rue }}">
+                    {% if errors.rue %}<div class="invalid-feedback">{{ errors.rue }}</div>{% endif %}
                 </div>
+
+                {# ---- CP + Commune ---- #}
                 <div class="row mb-3">
                     <div class="col-md-4">
                         <label for="code_postal" class="form-label">Code postal</label>
-                        <input type="text" class="form-control" id="code_postal" name="code_postal"
-                            value="{{ entreprise.code_postal }}">
+                        <input type="text" class="form-control {% if errors.code_postal %}is-invalid{% endif %}"
+                               id="code_postal" name="code_postal" maxlength="10"
+                               value="{{ form_data.code_postal if form_data.code_postal is defined else entreprise.code_postal }}">
+                        {% if errors.code_postal %}<div class="invalid-feedback">{{ errors.code_postal }}</div>{% endif %}
                     </div>
                     <div class="col-md-8">
                         <label for="commune" class="form-label">Commune</label>
-                        <input type="text" class="form-control" id="commune" name="commune"
-                            value="{{ entreprise.commune }}">
+                        <input type="text" class="form-control {% if errors.commune %}is-invalid{% endif %}"
+                               id="commune" name="commune" maxlength="100"
+                               value="{{ form_data.commune if form_data.commune is defined else entreprise.commune }}">
+                        {% if errors.commune %}<div class="invalid-feedback">{{ errors.commune }}</div>{% endif %}
                     </div>
-                </div>
-                <div class="mb-3">
-                    <label for="email" class="form-label">Email</label>
-                    <input type="email" class="form-control" id="email" name="email" value="{{ entreprise.email }}">
-                </div>
-                <div class="mb-3">
-                    <label for="telephone" class="form-label">Téléphone</label>
-                    <input type="text" class="form-control" id="telephone" name="telephone"
-                        value="{{ entreprise.telephone }}">
                 </div>
 
-                <div class="mb-4">
-                    <label class="form-label">Logo actuel</label>
+                {# ---- Email ---- #}
+                <div class="mb-3">
+                    <label for="email" class="form-label">Email</label>
+                    <input type="email" class="form-control {% if errors.email %}is-invalid{% endif %}"
+                           id="email" name="email" maxlength="150"
+                           value="{{ form_data.email if form_data.email is defined else entreprise.email }}">
+                    {% if errors.email %}<div class="invalid-feedback">{{ errors.email }}</div>{% endif %}
+                </div>
+
+                {# ---- Téléphone ---- #}
+                <div class="mb-3">
+                    <label for="telephone" class="form-label">Téléphone</label>
+                    <input type="tel" class="form-control {% if errors.telephone %}is-invalid{% endif %}"
+                           id="telephone" name="telephone" maxlength="30"
+                           placeholder="+32 470 12 34 56"
+                           value="{{ form_data.telephone if form_data.telephone is defined else entreprise.telephone }}">
+                    {% if errors.telephone %}<div class="invalid-feedback">{{ errors.telephone }}</div>{% endif %}
+                </div>
+
+                {# ---- Logo ---- #}
+                <div class="mb-4 p-3 bg-light rounded">
+                    <label class="form-label fw-bold">Logo</label>
+
                     {% if entreprise.logo_path %}
-                    <div class="mb-2">
-                        <img src="{{ url_for('static', filename=entreprise.logo_path) }}" alt="Logo"
-                            style="max-height: 80px; border: 1px solid #ddd; padding: 2px;">
+                    <div class="d-flex align-items-center gap-3 mb-3">
+                        <img src="{{ url_for('static', filename=entreprise.logo_path) }}" alt="Logo actuel"
+                             style="max-height: 80px; border: 1px solid #ddd; padding: 2px; background: white;">
+                        <div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="delete_logo" name="delete_logo" value="1">
+                                <label class="form-check-label" for="delete_logo">
+                                    Supprimer le logo actuel
+                                </label>
+                            </div>
+                            <small class="text-muted">
+                                Ou téléchargez un nouveau fichier pour le remplacer.
+                            </small>
+                        </div>
                     </div>
                     {% else %}
-                    <p class="text-muted">Aucun logo défini.</p>
+                    <p class="text-muted mb-2">Aucun logo défini.</p>
                     {% endif %}
-                
-                    <label for="logo" class="form-label">Remplacer le logo</label>
-                    <input type="file" class="form-control" id="logo" name="logo" accept="image/*">
+
+                    <label for="logo" class="form-label">Nouveau logo</label>
+                    <input type="file" class="form-control" id="logo" name="logo" accept="image/png,image/jpeg,image/gif">
                     <div class="form-text">
-                        Formats acceptés : PNG, JPG, GIF (max. 2 Mo).<br>
+                        Formats acceptés : PNG, JPG, GIF — max. 2 Mo.<br>
                         Le logo apparaîtra sur les PDF de salaire.
                     </div>
                 </div>
 
-                <button type="submit" class="btn btn-primary">Enregistrer</button>
-                <a href="{{ url_for('banking.dashboard_employes') }}" class="btn btn-secondary">Annuler</a>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Enregistrer
+                    </button>
+                    <a href="{{ url_for('banking.gestion_entreprise') }}" class="btn btn-secondary">Annuler</a>
+                </div>
             </form>
         </div>
     </div>
+
+    {% else %}
+    {# ===================== MODE LECTURE ===================== #}
+    <div class="card">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-8">
+                    <h4 class="mb-3">{{ entreprise.nom }}</h4>
+
+                    {% if entreprise.rue or entreprise.code_postal or entreprise.commune %}
+                    <p class="mb-1">
+                        <i class="bi bi-geo-alt text-muted"></i>
+                        {{ entreprise.rue }}<br>
+                        {% if entreprise.code_postal or entreprise.commune %}
+                            <span class="ms-4">{{ entreprise.code_postal }} {{ entreprise.commune }}</span>
+                        {% endif %}
+                    </p>
+                    {% endif %}
+
+                    {% if entreprise.email %}
+                    <p class="mb-1">
+                        <i class="bi bi-envelope text-muted"></i>
+                        <a href="mailto:{{ entreprise.email }}">{{ entreprise.email }}</a>
+                    </p>
+                    {% endif %}
+
+                    {% if entreprise.telephone %}
+                    <p class="mb-1">
+                        <i class="bi bi-telephone text-muted"></i>
+                        <a href="tel:{{ entreprise.telephone }}">{{ entreprise.telephone }}</a>
+                    </p>
+                    {% endif %}
+
+                    {% if entreprise.nom.startswith('Entreprise de utilisateur') %}
+                    <div class="alert alert-info mt-3 mb-0">
+                        <i class="bi bi-info-circle"></i>
+                        Vous n'avez pas encore renseigné les informations de votre entreprise.
+                        <a href="{{ url_for('banking.gestion_entreprise', edit='1') }}">Les compléter maintenant</a>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-4 text-md-end">
+                    {% if entreprise.logo_path %}
+                        <img src="{{ url_for('static', filename=entreprise.logo_path) }}" alt="Logo"
+                             class="img-fluid" style="max-height: 120px;">
+                    {% else %}
+                        <div class="text-muted small">Aucun logo</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
-

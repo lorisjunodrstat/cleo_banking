@@ -15811,6 +15811,66 @@ class Entreprise:
         except Exception as e:
             logger.error(f"Pas d'entreprise pour l'utilisateur {user_id} : {e}")
             return False
+    import re
+
+    def validate_entreprise_data(data: Dict) -> tuple[bool, Dict[str, str]]:
+        """
+        Valide les données de l'entreprise.
+        Retourne (is_valid, errors) où errors est {champ: message}.
+        """
+        errors = {}
+
+        # Nom : obligatoire, longueur raisonnable
+        nom = data.get('nom', '').strip()
+        if not nom:
+            errors['nom'] = "Le nom de l'entreprise est obligatoire."
+        elif len(nom) > 150:
+            errors['nom'] = "Le nom ne peut pas dépasser 150 caractères."
+
+        # Email : optionnel mais doit être valide si rempli
+        email = data.get('email', '').strip()
+        if email:
+            # Regex simple mais robuste pour la plupart des cas
+            email_pattern = re.compile(
+                r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+            )
+            if not email_pattern.match(email):
+                errors['email'] = "L'adresse email n'est pas valide."
+            elif len(email) > 150:
+                errors['email'] = "L'email ne peut pas dépasser 150 caractères."
+
+        # Téléphone : optionnel, format souple (BE/FR/CH/...)
+        telephone = data.get('telephone', '').strip()
+        if telephone:
+            # On retire espaces, tirets, points, parenthèses pour validation
+            cleaned = re.sub(r"[\s\-\.\(\)]", "", telephone)
+            # Accepte : +32..., 0032..., 0..., ou numéros internationaux courts
+            phone_pattern = re.compile(r"^(\+|00)?[0-9]{7,15}$")
+            if not phone_pattern.match(cleaned):
+                errors['telephone'] = "Le numéro de téléphone n'est pas valide."
+            elif len(telephone) > 30:
+                errors['telephone'] = "Le téléphone ne peut pas dépasser 30 caractères."
+
+        # Code postal : optionnel, numérique si rempli
+        cp = data.get('code_postal', '').strip()
+        if cp:
+            if not cp.isdigit() or not (3 <= len(cp) <= 10):
+                errors['code_postal'] = "Le code postal doit contenir entre 3 et 10 chiffres."
+
+        # Cohérence : si code postal, commune obligatoire (et inversement)
+        commune = data.get('commune', '').strip()
+        if cp and not commune:
+            errors['commune'] = "Veuillez indiquer la commune."
+        if commune and not cp:
+            errors['code_postal'] = "Veuillez indiquer le code postal."
+
+        # Longueur champs adresse
+        if len(data.get('rue', '')) > 200:
+            errors['rue'] = "La rue ne peut pas dépasser 200 caractères."
+        if len(commune) > 100:
+            errors['commune'] = "La commune ne peut pas dépasser 100 caractères."
+
+        return (len(errors) == 0, errors)
 
 # ============================================================
 # MODULE POS (Point de Vente / Caisse)
