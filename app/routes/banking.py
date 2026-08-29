@@ -7670,91 +7670,6 @@ def ensure_upload_dir():
 def gestion_entreprise():
     current_user_id = current_user.id
     ensure_upload_dir()
-    
-    entreprise_definie = g.models.entreprise_model.entreprise_exists_for_user(current_user_id)
-    if not entreprise_definie:
-        return redirect(url_for('banking.dashboard_employe'))
-
-    edit_mode = request.args.get('edit') == '1'
-
-    if request.method == 'POST':
-        data = {
-            'nom': request.form.get('nom', '').strip(),
-            'rue': request.form.get('rue', '').strip(),
-            'code_postal': request.form.get('code_postal', '').strip(),
-            'commune': request.form.get('commune', '').strip(),
-            'email': request.form.get('email', '').strip(),
-            'telephone': request.form.get('telephone', '').strip(),
-            'logo_path': None
-        }
-
-        # Gestion du logo (inchangé)
-        if 'logo' in request.files:
-            file = request.files['logo']
-            if file and file.filename != '' and allowed_file(file.filename):
-                file.seek(0, os.SEEK_END)
-                size = file.tell()
-                file.seek(0)
-                if size > MAX_FILE_SIZE:
-                    flash("Le fichier est trop volumineux (max. 2 Mo).", "error")
-                    return redirect(url_for('banking.gestion_entreprise', edit='1'))
-
-                ext = file.filename.rsplit('.', 1)[1].lower()
-                filename = f"user_{current_user_id}_logo_{secrets.token_urlsafe(8)}.{ext}"
-                filepath = os.path.join(UPLOAD_FOLDER_LOGOS, filename)
-
-                ancien_logo = g.models.entreprise_model.get_logo_path(current_user_id)
-                if ancien_logo:
-                    ancien_path = os.path.join(current_app.static_folder, ancien_logo)
-                    if os.path.exists(ancien_path):
-                        os.remove(ancien_path)
-
-                file.save(filepath)
-                data['logo_path'] = os.path.join('uploads', 'logos', filename).replace('\\', '/')
-
-        if g.models.entreprise_model.update(current_user_id, data):
-            flash("Informations de l'entreprise mises à jour.", "success")
-        else:
-            flash("Aucune modification effectuée.", "warning")
-        
-        # Retour en mode lecture après soumission
-        return redirect(url_for('banking.gestion_entreprise'))
-
-    entreprise = g.models.entreprise_model.get_or_create_for_user(current_user_id)
-    return render_template('entreprise/gestion.html', 
-                           entreprise=entreprise, 
-                           edit_mode=edit_mode)
-
-def delete_logo(self, user_id: int) -> bool:
-    """
-    Supprime le logo de la base ET du disque.
-    Retourne True si un logo a effectivement été supprimé.
-    """
-    ancien_logo = self.get_logo_path(user_id)
-    if not ancien_logo:
-        return False
-
-    # Suppression physique
-    ancien_path = os.path.join(current_app.static_folder, ancien_logo)
-    if os.path.exists(ancien_path):
-        try:
-            os.remove(ancien_path)
-        except OSError as e:
-            logger.warning(f"Impossible de supprimer {ancien_path} : {e}")
-
-    # Suppression en base
-    with self.db.get_cursor() as cursor:
-        cursor.execute(
-            "UPDATE entreprise SET logo_path = NULL WHERE user_id = %s",
-            (user_id,)
-        )
-        return cursor.rowcount > 0
-
-@bp.route('/entreprise', methods=['GET', 'POST'])
-@login_required
-def gestion_entreprise():
-    current_user_id = current_user.id
-    ensure_upload_dir()
 
     entreprise_definie = g.models.entreprise_model.entreprise_exists_for_user(current_user_id)
     if not entreprise_definie:
@@ -7850,6 +7765,32 @@ def gestion_entreprise():
         errors={},
         form_data={}
     )
+def delete_logo(self, user_id: int) -> bool:
+    """
+    Supprime le logo de la base ET du disque.
+    Retourne True si un logo a effectivement été supprimé.
+    """
+    ancien_logo = self.get_logo_path(user_id)
+    if not ancien_logo:
+        return False
+
+    # Suppression physique
+    ancien_path = os.path.join(current_app.static_folder, ancien_logo)
+    if os.path.exists(ancien_path):
+        try:
+            os.remove(ancien_path)
+        except OSError as e:
+            logger.warning(f"Impossible de supprimer {ancien_path} : {e}")
+
+    # Suppression en base
+    with self.db.get_cursor() as cursor:
+        cursor.execute(
+            "UPDATE entreprise SET logo_path = NULL WHERE user_id = %s",
+            (user_id,)
+        )
+        return cursor.rowcount > 0
+
+
 
 ### ---- Routes heures travail pour employées
 def prepare_svg_heures_employes(data_employes, jours_semaine, seuil_heure):
