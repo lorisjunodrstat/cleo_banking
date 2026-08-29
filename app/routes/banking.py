@@ -9374,8 +9374,13 @@ def nouveau_contrat2():
     user_id = current_user.id
     contrat_id = request.args.get('contrat_id', type=int)
     annee = datetime.now().year
-    entreprises = g.models.enterprise_model.
-    # Données pour pré-remplir (si modification)
+
+    # 1. Récupérer les entreprises de l'utilisateur pour le menu déroulant
+    entreprises = g.models.entreprise_model.get_all_entreprises_for_user(user_id, actif_only=True)
+    if not entreprises:
+        flash("Veuillez d'abord créer une entreprise avant de rédiger un contrat.", "warning")
+        return redirect(url_for('banking.gestion_entreprise'))
+
     contrat = {}
     cotisations_existantes = {}
     indemnites_existantes = {}
@@ -9386,7 +9391,6 @@ def nouveau_contrat2():
             flash("Contrat introuvable ou accès refusé.", "danger")
             return redirect(url_for('banking.gestion_contrat'))
             
-        # Charger les affectations existantes pour l'année
         cotisations_existantes = {
             c['type_cotisation_id']: c 
             for c in g.models.cotisations_contrat_model.get_for_contrat_and_annee(contrat_id, annee)
@@ -9396,17 +9400,20 @@ def nouveau_contrat2():
             for i in g.models.indemnites_contrat_model.get_for_contrat_and_annee(contrat_id, annee)
         }
 
-    # Charger les types disponibles (créés à l'étape 1)
     types_cotisations = g.models.type_cotisations_model.get_all_by_user(user_id)
     types_indemnites = g.models.type_indemnites_model.get_all_by_user(user_id)
 
     if request.method == 'POST':
         try:
+            # Récupération et conversion sécurisée de l'entreprise sélectionnée
+            entreprise_id_raw = request.form.get('entreprise_id')
+            entreprise_id = int(entreprise_id_raw) if entreprise_id_raw else None
+
             data = {
                 'id': contrat_id,
                 'user_id': user_id,
                 'employeur': request.form.get('employeur', '').strip(),
-                'entreprise_id': request.form.get('entreprise_id'),
+                'entreprise_id': entreprise_id,  # <-- Intégration de l'entreprise_id
                 'heures_hebdo': float(request.form.get('heures_hebdo')),
                 'salaire_horaire': float(request.form.get('salaire_horaire')),
                 'date_debut': request.form.get('date_debut'),
@@ -9437,7 +9444,6 @@ def nouveau_contrat2():
                     base_calcul=request.form.get(f'cot_{tid}_base', 'brut')
                 )
             else:
-                # Désactiver si décoché
                 try:
                     with g.models.cotisations_contrat_model.db.get_cursor() as cur:
                         cur.execute(
@@ -9445,7 +9451,7 @@ def nouveau_contrat2():
                             (new_contrat_id, tid, annee)
                         )
                 except Exception:
-                    pass  # Silencieux si non existant
+                    pass
 
         # 3. Sauvegarde des indemnités sélectionnées
         for ti in types_indemnites:
@@ -9474,6 +9480,7 @@ def nouveau_contrat2():
     return render_template(
         'salaires/nouveau_contrat2.html',
         contrat=contrat,
+        entreprises=entreprises,  # <-- Transmission des entreprises au template
         types_cotisations=types_cotisations,
         types_indemnites=types_indemnites,
         cotisations_existantes=cotisations_existantes,
@@ -9481,7 +9488,6 @@ def nouveau_contrat2():
         annee=annee,
         today=date.today()
     )
-
 #######
 
 
