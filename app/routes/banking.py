@@ -9672,8 +9672,8 @@ def dashboard_employes():
 
     has_cotisations_indemnites = g.models.contrat_model.user_has_types_cotisation_or_indemnite(
         current_user_id, 
-        cotisations_contrat_model=g.models.contrat_model.cotisations_contrat_model, 
-        indemnites_contrat_model=g.models.contrat_model.indemnites_contrat_model
+        cotisations_contrat_model=g.models.cotisations_contrat_model, 
+        indemnites_contrat_model=g.models.indemnites_contrat_model
     )
     
     if not has_cotisations_indemnites:
@@ -9746,6 +9746,7 @@ def dashboard_employes():
         mois=mois,
         annee=annee
     )
+
 # --- Types de cotisation ---
 @bp.route('/cotisations/types')
 @login_required
