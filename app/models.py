@@ -19913,7 +19913,7 @@ class ModelManager:
     def synthese_mensuelle_model(self):
         return self._get_model('synthese_mensuelle', SyntheseMensuelle)
     @property
-    def f(self):
+    def contrat_model(self):
         return self._get_model('contrat', Contrat)
     @property
     def employe_model(self):
