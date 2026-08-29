@@ -10393,6 +10393,20 @@ def planning_employes():
     date_ref = request.args.get('date', datetime.today().strftime('%Y-%m-%d'))
     semaine = get_semaine_from_date(date_ref)  # [lundi, mardi, ..., dimanche]
     employe = g.models.employe_model.get_all_by_user(user_id)
+    try:
+            annee = int(request.args.get('annee', datetime.now().year))
+            mois = int(request.args.get('mois', datetime.now().month))
+        except ValueError:
+            annee = datetime.now().year
+            mois = datetime.now().month
+    
+        # Handle month/year rollover
+        if mois < 1:
+            mois = 12
+            annee -= 1
+        elif mois > 12:
+            mois = 1
+            annee += 1
 
     # Charger équipes + employés
     equipes = g.models.equipe_model.get_all_by_user(user_id)
@@ -10446,7 +10460,9 @@ def planning_employes():
         shifts_by_employe_jour=shifts_by_employe_jour,
         prev_week=semaine[0] - timedelta(weeks=1),
         next_week=semaine[0] + timedelta(weeks=1),
-        has_validation=has_planning_regles
+        has_validation=has_planning_regles,
+        mois=mois, 
+        annee=annee
     )
 
 @bp.route('/planning/supprimer_jour', methods=['POST'])
