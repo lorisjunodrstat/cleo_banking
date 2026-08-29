@@ -9880,12 +9880,16 @@ def liste_employe():
 @login_required
 def create_employe():
     current_user_id = current_user.id
+    entreprises = g.models.entreprise_model.get_all_entreprises_for_user(current_user_id, actif_only=True)
+    
     if request.method == 'GET':
-        return render_template('employes/creer_employe.html')
+        return render_template('employes/creer_employe.html', entreprises=entreprises)
+        
     elif request.method == 'POST':
         try:
             data = {
                 'user_id': current_user_id,
+                'entreprise_id': request.form.get('entreprise_id'),
                 'nom': request.form.get('nom'),
                 'prenom': request.form.get('prenom'),
                 'genre': request.form.get('genre'),
@@ -9897,21 +9901,24 @@ def create_employe():
                 'date_de_naissance': request.form.get('date_de_naissance'),
                 'No_AVS': request.form.get('No_AVS')
             }
-            mandatory_fields = ('nom', 'prenom', 'No_AVS')
-            if not all(field in data and data[field] for field in mandatory_fields) :
-                flash("Le nom, le prénom et le numéro AVS sont oblîgatoires")
-                return render_template('employed/creer_employe.html')
+            
+            mandatory_fields = ('nom', 'prenom', 'entreprise_id')
+            if not all(field in data and data[field] for field in mandatory_fields):
+                flash("Le nom, le prénom et l'entreprise sont obligatoires", "error")
+                return render_template('employes/creer_employe.html', entreprises=entreprises, form_data=data)
+                
             success = g.models.employe_model.create(data)
             if success:
-                flash("Nouvel employà créé avec succès", "success")
+                flash("Nouvel employé créé avec succès", "success")
                 return redirect(url_for('banking.liste_employe'))
             else: 
-                flash("Erreur lors de la création de l'employe avec les données suivantes : {data}", "error")
-                return render_template('employes/creer_employe.html', form_data=data)
+                flash(f"Erreur lors de la création de l'employé avec les données suivantes : {data}", "error")
+                return render_template('employes/creer_employe.html', entreprises=entreprises, form_data=data)
+                
         except Exception as e:
-            logging.error("Erreur lors de la creation employe: {e}")
+            logging.error(f"Erreur lors de la creation employe: {e}")
             flash(f'Erreur lors de la création : {str(e)}', 'error')        
-            return render_template('employes/creer_employe.html')
+            return render_template('employes/creer_employe.html', entreprises=entreprises, form_data=data)
 
 @bp.route('/dashboard/modifier_employe')
 @login_required
