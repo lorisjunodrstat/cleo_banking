@@ -308,7 +308,7 @@ class DatabaseManager:
                     date_de_naissance DATE NOT NULL,
                     code_acces_salaire VARCHAR(50),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
                     FOREIGN KEY (entreprise_id) REFERENCES entreprise(id)
                 );""")
 
