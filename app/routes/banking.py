@@ -9670,7 +9670,7 @@ def dashboard_employes():
     
     # Étape 2: Vérifier les types de cotisations et indemnités
 
-    has_cotisations_indemnites = g.models.cotisations_contrat_model.user_has_types_cotisation_or_indemnite(
+    has_cotisations_indemnites = g.models.contrat_model.user_has_types_cotisation_or_indemnite(
         current_user_id, 
         cotisations_contrat_model=g.models.contrat_model.cotisations_contrat_model, 
         indemnites_contrat_model=g.models.contrat_model.indemnites_contrat_model
