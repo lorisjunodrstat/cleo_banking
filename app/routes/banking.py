@@ -10001,13 +10001,13 @@ def creer_contrat_employe(employe_id):
     if not employe:
         flash("Employé non trouvé.", "error")
         return redirect(url_for('banking.liste_employe'))
-
+    types_cotisations = g.models.type_cotisations_model.get_all_by_user(current_user_id)
+        logging.info(f"voici les cotisations : {types_cotisations}")
+        types_indemnites = g.models.type_indemnites_model.get_all_by_user(current_user_id)
+        logging.info(f"voici les indemnités : {types_indemnites}")
     if request.method == 'GET':
         return render_template('employes/creer_contrat_employe.html', employe=employe)
-    types_cotisations = g.models.type_cotisations_model.get_all_by_user(current_user_id)
-    logging.info(f"voici les cotisations : {types_cotisations}")
-    types_indemnites = g.models.type_indemnites_model.get_all_by_user(current_user_id)
-    logging.info(f"voici les indemnités : {types_indemnites}")
+    
 
 
     # POST
