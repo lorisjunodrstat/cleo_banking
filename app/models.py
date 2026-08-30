@@ -20112,6 +20112,9 @@ class ModelManager:
     @property
     def pos_comptabilisation_model(self):
         return self._get_model('pos_comptabilisation', POSComptabilisation)
+    @property
+    def pos_compta_mapping_model(self):
+        return self._get_model('pos_comptabilisation', POSComptaMapping)
 
     @property
     def periode_travail_pos_model(self):
