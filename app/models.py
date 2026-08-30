@@ -1317,7 +1317,8 @@ class DatabaseManager:
                     FOREIGN KEY (type_taxe_id) REFERENCES pos_types_taxes(id) ON DELETE CASCADE,
                     FOREIGN KEY (compte_vente_id) REFERENCES categories_comptables(id) ON DELETE CASCADE,
                     UNIQUE KEY unique_user_type_taxe (utilisateur_id, type_taxe_id)
-                );""")
+                );
+                """)
 
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS pos_historique_modifications (
