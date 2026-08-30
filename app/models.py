@@ -1186,6 +1186,7 @@ class DatabaseManager:
                     transaction_id INT NULL COMMENT 'Lien vers la transaction financière créée',
                     compte_bancaire_id INT NULL COMMENT 'Compte bancaire où l''argent est encaissé',
                     comptabilise BOOLEAN DEFAULT FALSE,
+                    etat_comptable VARCHAR(50) DEFAULT 'non_comptabilise',
                     date_comptabilisation DATE NULL,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
                     FOREIGN KEY (porte_monnaie_id) REFERENCES pos_porte_monnaie(id) ON DELETE SET NULL,
@@ -16441,22 +16442,37 @@ class TaxePOS:
         """Assigne un type de taxe à un article (remplace l'ancienne affectation)"""
         try:
             with self.db.get_cursor() as cursor:
-                # Désactiver les anciennes liaisons
+                # 1. Désactiver toutes les anciennes liaisons pour cet article
                 cursor.execute("""
                     UPDATE pos_article_taxes 
                     SET est_actuelle = FALSE 
                     WHERE article_id = %s
                 """, (article_id,))
                 
-                # Insérer la nouvelle liaison (gère les réassignations grâce à ON DUPLICATE KEY UPDATE)
+                # 2. Vérifier si la liaison spécifique existe déjà (même inactive)
                 cursor.execute("""
-                    INSERT INTO pos_article_taxes (article_id, type_taxe_id, est_actuelle)
-                    VALUES (%s, %s, TRUE)
-                    ON DUPLICATE KEY UPDATE est_actuelle = TRUE
+                    SELECT id FROM pos_article_taxes 
+                    WHERE article_id = %s AND type_taxe_id = %s
                 """, (article_id, type_taxe_id))
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # 3a. Si elle existe, la réactiver
+                    cursor.execute("""
+                        UPDATE pos_article_taxes 
+                        SET est_actuelle = TRUE 
+                        WHERE article_id = %s AND type_taxe_id = %s
+                    """, (article_id, type_taxe_id))
+                else:
+                    # 3b. Sinon, créer une nouvelle liaison
+                    cursor.execute("""
+                        INSERT INTO pos_article_taxes (article_id, type_taxe_id, est_actuelle)
+                        VALUES (%s, %s, TRUE)
+                    """, (article_id, type_taxe_id))
+                
                 return True
         except Exception as e:
-            logger.error(f"Erreur assignation type taxe à article: {e}")
+            logger.error(f"Erreur assignation type taxe à article {article_id}: {e}")
             return False
 
     def get_type_for_article(self, article_id: int) -> Optional[Dict]:

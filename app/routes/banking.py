@@ -11485,12 +11485,11 @@ def pos_create_article():
         if article_id:
             type_taxe_id = request.form.get('type_taxe_id')
             if type_taxe_id:
-
                 g.models.taxe_pos_model.assigner_type_to_article(article_id, int(type_taxe_id))
             flash('Article créé avec succès !', 'success')
             return redirect(url_for('banking.pos_articles_list'))
         flash('Erreur lors de la création.', 'error')
-    return render_template('pos/create_article.html', categories=categories, taxes=taxes)
+    return render_template('pos/create_article.html', categories=categories, types_taxes=types_taxes)
 
 @bp.route('/pos/articles/<int:article_id>/edit', methods=['GET', 'POST'])
 @login_required
@@ -11525,6 +11524,7 @@ def pos_edit_article(article_id):
             'vendu_type':        request.form.get('vendu_type', 'piece'),
             'stock':             int(safe_float(request.form.get('stock', 0))),
             'stock_alerte':      int(safe_float(request.form.get('stock_alerte', 0))),
+            
         }
         g.models.article_pos_model.update(article_id, current_user.id, data)
 
