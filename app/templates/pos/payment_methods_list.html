@@ -30,7 +30,7 @@
                     <td><strong>{{ mode.nom }}</strong></td>
                     <td>{{ mode.description or '-' }}</td>
                     <td>{{ mode.compte_bancaire.id if mode.compte_bancaire else '-' }} - {{ mode.nom_compte if mode.nom_compte else '-' }}</td>
-                    <td>{{ mode.compte_tresorerie_id if mode.compte_tresorerie_id else '-' }} - {{ mode.nom_tresorerie if mode.nom_tresorerie else '-' }}</td>
+                    <td>{{ mode.numero_tresorerie if mode.numero_tresorerie else '-' }} - {{ mode.nom_tresorerie if mode.nom_tresorerie else '-' }}</td>
                     <td><span class="badge bg-{{ 'success' if mode.est_actif else 'secondary' }}">{{ 'Actif' if mode.est_actif else 'Inactif' }}</span></td>
                     <td>
                         <a href="{{ url_for('banking.pos_edit_payment_method', mode_id=mode.id) }}" class="btn btn-primary btn-sm">Modifier</a>

@@ -16597,11 +16597,12 @@ class ModePaiementPOS:
             with self.db.get_cursor(dictionary=True) as cursor:
                 query = """SELECT *,
                     cp.nom_compte,
-                    cap.nom_tresorerie
+                    cap.numero AS numero_tresorerie,
+                    cap.nom AS nom_tresorerie
                 FROM pos_modes_paiement pmp 
                 LEFT JOIN comptes_principaux cp ON pmp.compte_bancaire_id = cp.id
                 LEFT JOIN categories_comptables cap ON pmp.compte_tresorerie_id = cap.id
-                WHERE pmp.utilisateur_id = %s 
+                WHERE pmp.utilisateur_id = %s
                 LIMIT 0, 25"""
                 if actif_only:
                     query += " AND est_actif = TRUE"
