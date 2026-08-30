@@ -15958,17 +15958,17 @@ class MagasinPOS:
     def __init__(self, db):
         self.db = db
 
-    def create(self, user_id: int, data: Dict) -> Optional[int]:
-        """Crée un nouveau magasin pour l'utilisateur"""
+    def create(self, user_id: int, entreprise_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO pos_magasins 
-                    (utilisateur_id, nom_magasin, adresse, ville, canton, 
-                     code_postal, pays, telephone, email, description)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (utilisateur_id, entreprise_id, nom_magasin, adresse, ville, canton, 
+                    code_postal, pays, telephone, email, description)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     user_id,
+                    entreprise_id,  # ← Ajouté
                     data['nom_magasin'],
                     data.get('adresse'),
                     data.get('ville'),
@@ -16015,7 +16015,23 @@ class MagasinPOS:
             logger.error(f"Erreur récupération magasin {magasin_id}: {e}")
             return None
 
+    def verify_magasin_belongs_to_user(self, magasin_id: int, user_id: int) -> bool:
+        """Vérifie qu'un magasin appartient bien à l'utilisateur"""
+        with self.db.get_cursor() as cursor:
+            cursor.execute("""
+                SELECT 1 
+                FROM pos_magasins m
+                JOIN entreprise e ON e.id = m.entreprise_id
+                WHERE m.id = %s AND e.user_id = %s
+            """, (magasin_id, user_id))
+            return cursor.fetchone() is not None
+    
     def update(self, magasin_id: int, user_id: int, data: Dict) -> bool:
+        # ✅ Vérification avant mise à jour
+        if not self.verify_magasin_belongs_to_user(magasin_id, user_id):
+            logger.warning(f"Tentative de mise à jour d'un magasin non autorisé: {magasin_id}")
+            return False
+        
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
@@ -16034,8 +16050,13 @@ class MagasinPOS:
         except Exception as e:
             logger.error(f"Erreur mise à jour magasin: {e}")
             return False
-
+    
     def delete(self, magasin_id: int, user_id: int) -> bool:
+        # ✅ Vérification avant suppression
+        if not self.verify_magasin_belongs_to_user(magasin_id, user_id):
+            logger.warning(f"Tentative de suppression d'un magasin non autorisé: {magasin_id}")
+            return False
+        
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute(
@@ -16046,6 +16067,7 @@ class MagasinPOS:
         except Exception as e:
             logger.error(f"Erreur suppression magasin: {e}")
             return False
+
 
 
 class PointDeVentePOS:
@@ -16490,6 +16512,7 @@ class TaxePOS:
         except Exception as e:
             logger.error(f"Erreur récupération historique taux: {e}")
             return []
+
     def get_by_id(self, type_taxe_id: int, user_id: int) -> Optional[Dict]:
         """Récupère un type de taxe par son ID"""
         try:
@@ -16536,7 +16559,22 @@ class TaxePOS:
         except Exception as e:
             logger.error(f"Erreur delete_type: {e}")
             return False
-                
+
+    def desactiver_taxes_article(self, article_id: int) -> bool:
+        """Désactive toutes les liaisons de taxes pour un article"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_article_taxes 
+                    SET est_actuelle = FALSE 
+                    WHERE article_id = %s
+                """, (article_id,))
+                return True
+        except Exception as e:
+            logger.error(f"Erreur désactivation taxes article {article_id}: {e}")
+            return False
+
+                        
 class ModePaiementPOS:
     """Modes de paiement (Espèces, Carte, Twint, etc.)"""
     def __init__(self, db):

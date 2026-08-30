@@ -195,10 +195,11 @@
                     <h5 class="mb-0"><i class="bi bi-percent me-2"></i>Taxe</h5>
                 </div>
                 <div class="card-body">
-                    <select name="taxe_id" class="form-select">
+                    <select name="type_taxe_id" class="form-select">
+                        <!--     ^^^^^^^^^^^^^^ Changé ici -->
                         <option value="">Aucune taxe</option>
-                        {% for taxe in taxes %}
-                            <option value="{{ taxe.id }}" {% if article.taxe_actuelle and article.taxe_actuelle.id == taxe.id %}selected{% endif %}>
+                        {% for taxe in types_taxes %}
+                            <option value="{{ taxe.id }}" {% if article.type_taxe_actuel and article.type_taxe_actuel.id == taxe.id %}selected{% endif %}>
                                 {{ taxe.nom }} ({{ taxe.taux }}%)
                             </option>
                         {% endfor %}

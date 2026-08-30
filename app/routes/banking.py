@@ -11560,6 +11560,7 @@ def pos_edit_article(article_id):
         types_taxes=types_taxes, all_modifiers=all_modifiers, # ✅ Variable renommée
         linked_modifier_ids=linked_mod_ids, variantes=variantes
     )
+
 @bp.route('/pos/articles/<int:article_id>/delete', methods=['POST'])
 @login_required
 def pos_delete_article(article_id):
