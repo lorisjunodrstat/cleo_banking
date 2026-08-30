@@ -19212,26 +19212,33 @@ class ReceiptPOS:
 
     def get_stats_summary(self, user_id: int, date_from: str, date_to: str, 
                           employee: str = None) -> Dict:
-        """Récupère les stats agrégées pour une période"""
+        """Récupère les stats agrégées pour une période (CORRIGÉ pour les ventes nettes)"""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 q = """
                     SELECT
-                      COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END),0) AS ventes_brutes,
-                      COALESCE(SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_brutes) ELSE 0 END),0) AS remboursements,
-                      COALESCE(SUM(reduction),0) AS reductions,
-                      COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END),0) AS ventes_nettes,
-                      COALESCE(SUM(marge_brute),0) AS marge_brute,
-                      COALESCE(SUM(taxes),0) AS taxes,
-                      COALESCE(SUM(total_collecte),0) AS total_collecte,
-                      COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN 1 ELSE 0 END),0) AS nb_ventes
+                      COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END), 0) AS ventes_brutes,
+                      COALESCE(SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_brutes) ELSE 0 END), 0) AS remboursements,
+                      COALESCE(SUM(reduction), 0) AS reductions,
+                      -- 🟢 CORRECTION : Ventes nettes = Ventes brutes - Remboursements - Réductions
+                      COALESCE(
+                        SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END) +
+                        SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_nettes) ELSE 0 END) -
+                        SUM(reduction),
+                        0
+                      ) AS ventes_nettes,
+                      COALESCE(SUM(marge_brute), 0) AS marge_brute,
+                      COALESCE(SUM(taxes), 0) AS taxes,
+                      COALESCE(SUM(total_collecte), 0) AS total_collecte,
+                      COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN 1 ELSE 0 END), 0) AS nb_ventes
                     FROM pos_receipts
-                    WHERE utilisateur_id=%s AND status!='Annulé'
+                    WHERE utilisateur_id = %s AND status != 'Annulé'
                       AND DATE(date) >= %s AND DATE(date) <= %s
                 """
                 params = [user_id, date_from, date_to]
                 if employee:
-                    q += " AND nom_du_caissier = %s"; params.append(employee)
+                    q += " AND nom_du_caissier = %s"
+                    params.append(employee)
                 cursor.execute(q, params)
                 r = cursor.fetchone()
                 return {k: float(r[k]) for k in ('ventes_brutes','remboursements','reductions',
@@ -19239,34 +19246,38 @@ class ReceiptPOS:
         except Exception as e:
             logger.error(f"Erreur get_stats_summary: {e}")
             return {}
-
+    
     def get_daily_stats(self, user_id: int, date_from: str, date_to: str, 
                         employee: str = None) -> List[Dict]:
-        """Stats journalières avec tous les jours (même ceux sans vente)"""
+        """Stats journalières avec tous les jours (CORRIGÉ pour les ventes nettes)"""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 q = """
                     SELECT DATE(date) AS jour,
                       SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END) AS ventes_brutes,
-                      SUM(CASE WHEN receipt_type='Remboursement' THEN ABS(ventes_brutes) ELSE 0 END) AS remboursements,
+                      SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_brutes) ELSE 0 END) AS remboursements,
                       SUM(reduction) AS reductions,
-                      SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END) AS ventes_nettes,
+                      -- 🟢 CORRECTION : Ventes nettes = Ventes brutes - Remboursements - Réductions
+                      SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END) +
+                      SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_nettes) ELSE 0 END) -
+                      SUM(reduction) AS ventes_nettes,
                       SUM(marge_brute) AS marge_brute,
                       SUM(taxes) AS taxes
                     FROM pos_receipts
-                    WHERE utilisateur_id=%s AND status!='Annulé'
+                    WHERE utilisateur_id = %s AND status != 'Annulé'
                       AND DATE(date) >= %s AND DATE(date) <= %s
                 """
                 params = [user_id, date_from, date_to]
                 if employee:
-                    q += " AND nom_du_caissier=%s"; params.append(employee)
+                    q += " AND nom_du_caissier = %s"
+                    params.append(employee)
                 q += " GROUP BY DATE(date)"
                 cursor.execute(q, params)
                 return {str(r['jour']): r for r in cursor.fetchall()}
         except Exception as e:
             logger.error(f"Erreur get_daily_stats: {e}")
             return {}
-
+        
     def get_stats_by_payment_mode(self, user_id: int, date_from: str, date_to: str, 
                                    employee: str = None) -> List[Dict]:
         """Stats par mode de paiement"""
