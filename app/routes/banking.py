@@ -10929,8 +10929,10 @@ def pos_store_list():
 @bp.route('/pos/stores/create', methods=['GET', 'POST'])
 @login_required
 def pos_create_store():
+    entreprises = g.models.entreprise_model.get_all_entreprises_for_user(current_user.id)
     if request.method == 'POST':
-        store_id = g.models.magasin_pos_model.create(current_user.id, {
+        entreprise_id : request.form.get('entreprise_id')
+        store_id = g.models.magasin_pos_model.create(current_user.id, entreprise_id, {
             'nom_magasin': request.form.get('nom_magasin'),
             'adresse': request.form.get('adresse', ''),
             'ville': request.form.get('ville', ''),
@@ -10945,11 +10947,12 @@ def pos_create_store():
             flash('Magasin créé avec succès !', 'success')
             return redirect(url_for('banking.pos_store_list')) # Adaptez 'banking.' si votre blueprint s'appelle autrement
         flash('Erreur lors de la création du magasin.', 'error')
-    return render_template('pos/create_store.html')
+    return render_template('pos/create_store.html', entreprises=entreprises)
 
 @bp.route('/pos/stores/<int:store_id>/edit', methods=['GET', 'POST'])
 @login_required
 def pos_edit_store(store_id):
+    entreprises = g.models.entreprise_model.get_all_entreprises_for_user(current_user.id)
     magasin = g.models.magasin_pos_model.get_by_id(store_id, current_user.id)
     if not magasin:
         flash('Magasin non trouvé.', 'error')
@@ -10971,7 +10974,7 @@ def pos_edit_store(store_id):
             flash('Magasin modifié avec succès !', 'success')
             return redirect(url_for('banking.pos_store_list'))
         flash('Erreur lors de la modification.', 'error')
-    return render_template('pos/edit_store.html', magasin=magasin)
+    return render_template('pos/edit_store.html', magasin=magasin, entreprises=entreprises)
 
 @bp.route('/pos/stores/<int:store_id>/delete', methods=['POST'])
 @login_required

@@ -15,6 +15,7 @@
                 <table class="table table-hover">
                     <thead class="table-light">
                         <tr>
+                            <th>Entreprise</th>
                             <th>Nom du Magasin</th>
                             <th>Adresse</th>
                             <th>Actions</th>
@@ -23,6 +24,7 @@
                     <tbody>
                         {% for st in stores %}
                         <tr>
+                            <td> {{ st.nom_entreprise }}</td>
                             <td>{{ st.nom_magasin }}</td>
                             <td>{{ st.adresse }}</td>
                             <td>

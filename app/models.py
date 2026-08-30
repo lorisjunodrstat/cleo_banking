@@ -845,6 +845,7 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS entreprise (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     user_id INT NOT NULL,
+                    entreprise_id INT
                     nom VARCHAR(255) NOT NULL,
                     rue VARCHAR(255),
                     code_postal VARCHAR(20),
@@ -855,7 +856,8 @@ class DatabaseManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     est_actif BOOLEAN DEFAULT TRUE,
-                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (entreprise_id) REFERENCES entreprise(id)
                 );""")
 
                 # ========================================================================
@@ -15911,6 +15913,7 @@ class Entreprise:
         except Exception as e:
             logger.error(f"Erreur récupération types de enterprise: {e}")
             return []
+
     def get_by_id(self, user_id: int, entreprise_id: int) ->Optional[Dict]: 
         with self.db.get_cursor() as cursor:
             if not cursor:
@@ -15918,6 +15921,27 @@ class Entreprise:
             cursor.execute("SELECT * FROM entreprise WHERE user_id = %s AND id = %s", (user_id, entreprise_id,))
             return cursor.fetchone()
 
+    def get_magasins(self, user_id: int) -> List[Dict]:
+        """Récupère tous les magasins de l'entreprise de l'utilisateur"""
+        with self.db.get_cursor(dictionary=True) as cursor:
+            cursor.execute("""
+                SELECT m.* 
+                FROM pos_magasins m
+                JOIN entreprise e ON e.id = m.entreprise_id
+                WHERE e.user_id = %s
+            """, (user_id,))
+            return cursor.fetchall()
+
+    def get_entreprise_by_magasin(self, magasin_id: int) -> Optional[Dict]:
+        """Récupère l'entreprise associée à un magasin"""
+        with self.db.get_cursor(dictionary=True) as cursor:
+            cursor.execute("""
+                SELECT e.* 
+                FROM entreprise e
+                JOIN pos_magasins m ON m.entreprise_id = e.id
+                WHERE m.id = %s
+            """, (magasin_id,))
+            return cursor.fetchone()
 
 
 
@@ -15965,11 +15989,14 @@ class MagasinPOS:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 cursor.execute("""
-                    SELECT m.*, 
-                           (SELECT COUNT(*) FROM pos_points_de_vente WHERE magasin_id = m.id) as nb_pdv
+                    SELECT 
+                        m.*, 
+                        (SELECT COUNT(*) FROM pos_points_de_vente WHERE magasin_id = m.id) AS nb_pdv,
+                        e.nom AS nom_entreprise
                     FROM pos_magasins m
+                    LEFT JOIN entreprise e ON e.id = m.entreprise_id
                     WHERE m.utilisateur_id = %s
-                    ORDER BY m.nom_magasin
+                    ORDER BY m.nom_magasin;
                 """, (user_id,))
                 return cursor.fetchall()
         except Exception as e:
@@ -16029,24 +16056,31 @@ class PointDeVentePOS:
     def __init__(self, db):
         self.db = db
 
-    def create(self, user_id: int, magasin_id: int, data: Dict) -> Optional[int]:
+    def create(self, user_id: int, entreprise_id: int, data: Dict) -> Optional[int]:
+        """Crée un magasin lié à une entreprise spécifique"""
         try:
             with self.db.get_cursor() as cursor:
-                # Vérifier que le magasin appartient à l'utilisateur
                 cursor.execute("""
-                    SELECT id FROM pos_magasins 
-                    WHERE id = %s AND utilisateur_id = %s
-                """, (magasin_id, user_id))
-                if not cursor.fetchone():
-                    return None
-                
-                cursor.execute("""
-                    INSERT INTO pos_points_de_vente (magasin_id, nom_pdv, compte_bancaire_id)
-                    VALUES (%s, %s, %s)
-                """, (magasin_id, data['nom_pdv'], data.get('compte_bancaire_id')))
+                    INSERT INTO pos_magasins 
+                    (utilisateur_id, entreprise_id, nom_magasin, adresse, ville, canton, 
+                    code_postal, pays, telephone, email, description)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    user_id,
+                    entreprise_id,
+                    data['nom_magasin'],
+                    data.get('adresse'),
+                    data.get('ville'),
+                    data.get('canton'),
+                    data.get('code_postal'),
+                    data.get('pays', 'Suisse'),
+                    data.get('telephone'),
+                    data.get('email'),
+                    data.get('description')
+                ))
                 return cursor.lastrowid
         except Exception as e:
-            logger.error(f"Erreur création PDV: {e}")
+            logger.error(f"Erreur création magasin: {e}")
             return None
 
     def update(self, pdv_id: int, user_id: int, data: Dict) -> bool:
