@@ -79,7 +79,7 @@
                     <div class="mb-3">
                         <label class="form-label">Taxe</label>
                         <select name="taxe_id" class="form-select" required>
-                            {% for taxe in taxes_disponibles %}
+                            {% for taxe in types_taxes_disponibles %}
                                 <option value="{{ taxe.id }}">{{ taxe.nom }} ({{ taxe.taux }}%)</option>
                             {% endfor %}
                         </select>
