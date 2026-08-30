@@ -16441,54 +16441,52 @@ class TaxePOS:
     def assigner_type_to_article(self, article_id: int, type_taxe_id: int) -> bool:
         """Assigne un type de taxe à un article (remplace l'ancienne affectation)"""
         try:
+            article_id = int(article_id)
+            type_taxe_id = int(type_taxe_id) if type_taxe_id else None
+
+            if not type_taxe_id:
+                return self.desactiver_taxes_article(article_id)
+
             with self.db.get_cursor() as cursor:
-                # 1. Désactiver toutes les anciennes liaisons pour cet article
+                # 1. Nettoyer/Désactiver toutes les anciennes affectations de cet article
                 cursor.execute("""
                     UPDATE pos_article_taxes 
                     SET est_actuelle = FALSE 
                     WHERE article_id = %s
                 """, (article_id,))
                 
-                # 2. Vérifier si la liaison spécifique existe déjà (même inactive)
+                # 2. Supprimer les éventuels doublons passés pour cet article et ce type de taxe
                 cursor.execute("""
-                    SELECT id FROM pos_article_taxes 
+                    DELETE FROM pos_article_taxes 
                     WHERE article_id = %s AND type_taxe_id = %s
                 """, (article_id, type_taxe_id))
-                existing = cursor.fetchone()
                 
-                if existing:
-                    # 3a. Si elle existe, la réactiver
-                    cursor.execute("""
-                        UPDATE pos_article_taxes 
-                        SET est_actuelle = TRUE 
-                        WHERE article_id = %s AND type_taxe_id = %s
-                    """, (article_id, type_taxe_id))
-                else:
-                    # 3b. Sinon, créer une nouvelle liaison
-                    cursor.execute("""
-                        INSERT INTO pos_article_taxes (article_id, type_taxe_id, est_actuelle)
-                        VALUES (%s, %s, TRUE)
-                    """, (article_id, type_taxe_id))
+                # 3. Insérer une propre et unique ligne active
+                cursor.execute("""
+                    INSERT INTO pos_article_taxes (article_id, type_taxe_id, est_actuelle)
+                    VALUES (%s, %s, TRUE)
+                """, (article_id, type_taxe_id))
                 
                 return True
         except Exception as e:
-            logger.error(f"Erreur assignation type taxe à article {article_id}: {e}")
+            logger.error(f"Erreur assignation type taxe à article {article_id}: {e}", exc_info=True)
             return False
 
     def get_type_for_article(self, article_id: int) -> Optional[Dict]:
         """Récupère le type de taxe actuellement configuré pour un article"""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
+                # ✅ Alias 'pat' au lieu du mot réservé 'at'
                 cursor.execute("""
-                    SELECT t.id, t.nom, t.est_actif 
+                    SELECT t.id, t.nom, t.taux, t.est_actif 
                     FROM pos_types_taxes t
-                    INNER JOIN pos_article_taxes at ON t.id = at.type_taxe_id
-                    WHERE at.article_id = %s AND at.est_actuelle = TRUE
+                    INNER JOIN pos_article_taxes pat ON t.id = pat.type_taxe_id
+                    WHERE pat.article_id = %s AND pat.est_actuelle = TRUE
                     LIMIT 1
                 """, (article_id,))
                 return cursor.fetchone()
         except Exception as e:
-            logger.error(f"Erreur récupération type taxe pour article: {e}")
+            logger.error(f"Erreur récupération type taxe pour article {article_id}: {e}", exc_info=True)
             return None
 
     def get_taux_pour_date_ticket(self, article_id: int, date_ticket: date) -> Optional[Dict]:
