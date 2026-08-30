@@ -3536,10 +3536,16 @@ def nouvelle_categorie():
         except Exception as e:
             flash(f'Erreur: {str(e)}', 'danger')
     categories = g.models.categorie_comptable_model.get_all_categories()
+    types_compte = ['Actif', 'Passif', 'Charge', 'Revenus', 'Groupe']
+    types_tva = ['', 'taux_plein', 'taux_reduit', 'taux_zero', 'exonere']
+    types_ecriture = ['', 'depense', 'recette']
     return render_template('comptabilite/edit_categorie.html', 
                         categories=categories,
                         categorie=None,
-                        all_plan=all_plan)
+                        all_plan=all_plan,
+                        types_compte=types_compte,
+                        types_tva=types_tva,
+                        types_ecriture=types_ecriture)
 
 @bp.route('/comptabilite/categories/<int:categorie_id>/edit', methods=['GET', 'POST'])
 @login_required
