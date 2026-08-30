@@ -16473,15 +16473,22 @@ class TaxePOS:
             return False
 
     def get_type_for_article(self, article_id: int) -> Optional[Dict]:
-        """Récupère le type de taxe actuellement configuré pour un article"""
+        """Récupère le type de taxe et le taux actuellement valide pour un article."""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                # ✅ Alias 'pat' au lieu du mot réservé 'at'
                 cursor.execute("""
-                    SELECT t.id, t.nom, t.taux, t.est_actif 
+                    SELECT 
+                        t.id, 
+                        t.nom, 
+                        t.est_actif,
+                        tx.taux
                     FROM pos_types_taxes t
                     INNER JOIN pos_article_taxes pat ON t.id = pat.type_taxe_id
+                    LEFT JOIN pos_taux_taxes tx ON t.id = tx.type_taxe_id 
+                        AND (tx.date_fin IS NULL OR tx.date_fin >= CURRENT_DATE)
+                        AND tx.date_debut <= CURRENT_DATE
                     WHERE pat.article_id = %s AND pat.est_actuelle = TRUE
+                    ORDER BY tx.date_debut DESC
                     LIMIT 1
                 """, (article_id,))
                 return cursor.fetchone()
@@ -16514,26 +16521,32 @@ class TaxePOS:
         }
 
     def get_all_types(self, user_id: int, actif_only: bool = True) -> List[Dict]:
-        """Récupère tous les types de taxes de l'utilisateur"""
+        """Récupère tous les types de taxes d'un utilisateur avec leur taux actuel."""
         try:
-            # Pensez à préciser dictionary=True si votre helper db l'exige
             with self.db.get_cursor(dictionary=True) as cursor:
                 query = """
-                    SELECT * 
-                    FROM pos_types_taxes 
-                    WHERE utilisateur_id = %s
+                    SELECT 
+                        t.id, 
+                        t.nom, 
+                        t.est_actif,
+                        tx.taux
+                    FROM pos_types_taxes t
+                    LEFT JOIN pos_taux_taxes tx ON t.id = tx.type_taxe_id 
+                        AND (tx.date_fin IS NULL OR tx.date_fin >= CURRENT_DATE)
+                        AND tx.date_debut <= CURRENT_DATE
+                    WHERE t.utilisateur_id = %s
                 """
                 params = [user_id]
 
                 if actif_only:
-                    query += " AND est_actif = TRUE"  # ✅ 'AND' ajouté
+                    query += " AND t.est_actif = TRUE"
 
-                query += " ORDER BY nom"  # ✅ 'ptt.' retiré
+                query += " ORDER BY t.nom"
                 
                 cursor.execute(query, params)
                 return cursor.fetchall()
         except Exception as e:
-            logger.error(f"Erreur récupération types de taxes: {e}")
+            logger.error(f"Erreur récupération types de taxes: {e}", exc_info=True)
             return []
 
     def get_historique_taux(self, type_taxe_id: int) -> List[Dict]:
