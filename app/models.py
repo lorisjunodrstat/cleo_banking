@@ -19218,7 +19218,7 @@ class ReceiptPOS:
                 q = """
                     SELECT
                       COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END),0) AS ventes_brutes,
-                      COALESCE(SUM(CASE WHEN receipt_type='Remboursement' THEN ABS(ventes_brutes) ELSE 0 END),0) AS remboursements,
+                      COALESCE(SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_brutes) ELSE 0 END),0) AS remboursements,
                       COALESCE(SUM(reduction),0) AS reductions,
                       COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END),0) AS ventes_nettes,
                       COALESCE(SUM(marge_brute),0) AS marge_brute,
