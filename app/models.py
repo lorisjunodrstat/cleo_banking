@@ -16518,7 +16518,8 @@ class TaxePOS:
     def get_all_types(self, user_id: int, actif_only: bool = True) -> List[Dict]:
         """Récupère tous les types de taxes de l'utilisateur"""
         try:
-            with self.db.get_cursor() as cursor:
+            # Pensez à préciser dictionary=True si votre helper db l'exige
+            with self.db.get_cursor(dictionary=True) as cursor:
                 query = """
                     SELECT * 
                     FROM pos_types_taxes 
@@ -16527,9 +16528,9 @@ class TaxePOS:
                 params = [user_id]
 
                 if actif_only:
-                    query += " AND est_actif = TRUE"
+                    query += " AND est_actif = TRUE"  # ✅ 'AND' ajouté
 
-                query += " ORDER BY ptt.nom"
+                query += " ORDER BY nom"  # ✅ 'ptt.' retiré
                 
                 cursor.execute(query, params)
                 return cursor.fetchall()
