@@ -11564,7 +11564,7 @@ def pos_edit_article(article_id):
         'pos/edit_article.html',
            article=article, categories=categories, sous_categories=sous_categories,
         types_taxes=types_taxes, all_modifiers=all_modifiers, # ✅ Variable renommée
-        linked_modifier_ids=linked_mod_ids, variantes=variantes
+        linked_modifier_ids=linked_mod_ids, variantes=variantes, type_taxe_actuel=type_taxe_actuel
     )
 
 @bp.route('/pos/articles/<int:article_id>/delete', methods=['POST'])
