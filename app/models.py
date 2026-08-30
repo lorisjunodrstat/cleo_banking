@@ -1060,6 +1060,8 @@ class DatabaseManager:
                     type_taxe_id INT NOT NULL,
                     est_actuelle BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    date_debut TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    date_fin TIMESTAMP NULL DEFAULT NULL,
                     FOREIGN KEY (article_id) REFERENCES pos_articles(id) ON DELETE CASCADE,
                     FOREIGN KEY (type_taxe_id) REFERENCES pos_types_taxes(id) ON DELETE CASCADE,
                     INDEX idx_article (article_id),
@@ -16439,7 +16441,9 @@ class TaxePOS:
             return None
 
     def assigner_type_to_article(self, article_id: int, type_taxe_id: int) -> bool:
-        """Assigne un type de taxe à un article (remplace l'ancienne affectation)"""
+        """
+        Assigne un type de taxe avec traçabilité temporelle (date_debut / date_fin).
+        """
         try:
             article_id = int(article_id)
             type_taxe_id = int(type_taxe_id) if type_taxe_id else None
@@ -16448,26 +16452,38 @@ class TaxePOS:
                 return self.desactiver_taxes_article(article_id)
 
             with self.db.get_cursor() as cursor:
-                # 1. Nettoyer/Désactiver toutes les anciennes affectations de cet article
+                # 1. Vérifier la taxe actuellement active
+                cursor.execute("""
+                    SELECT type_taxe_id 
+                    FROM pos_article_taxes 
+                    WHERE article_id = %s AND est_actuelle = TRUE
+                    LIMIT 1
+                """, (article_id,))
+                actuelle = cursor.fetchone()
+
+                # Récupération de la valeur selon le type de curseur (Tuple ou Dict)
+                current_tax_id = actuelle['type_taxe_id'] if isinstance(actuelle, dict) else (actuelle[0] if actuelle else None)
+
+                # Si le type de taxe n'a pas changé, on ne crée pas d'entrée inutile
+                if current_tax_id == type_taxe_id:
+                    return True
+
+                # 2. Clôturer l'affectation précédente
                 cursor.execute("""
                     UPDATE pos_article_taxes 
-                    SET est_actuelle = FALSE 
-                    WHERE article_id = %s
+                    SET est_actuelle = FALSE, 
+                        date_fin = CURRENT_TIMESTAMP 
+                    WHERE article_id = %s AND est_actuelle = TRUE
                 """, (article_id,))
-                
-                # 2. Supprimer les éventuels doublons passés pour cet article et ce type de taxe
+
+                # 3. Ouvrir la nouvelle période de validité
                 cursor.execute("""
-                    DELETE FROM pos_article_taxes 
-                    WHERE article_id = %s AND type_taxe_id = %s
+                    INSERT INTO pos_article_taxes (article_id, type_taxe_id, est_actuelle, date_debut)
+                    VALUES (%s, %s, TRUE, CURRENT_TIMESTAMP)
                 """, (article_id, type_taxe_id))
-                
-                # 3. Insérer une propre et unique ligne active
-                cursor.execute("""
-                    INSERT INTO pos_article_taxes (article_id, type_taxe_id, est_actuelle)
-                    VALUES (%s, %s, TRUE)
-                """, (article_id, type_taxe_id))
-                
+
                 return True
+
         except Exception as e:
             logger.error(f"Erreur assignation type taxe à article {article_id}: {e}", exc_info=True)
             return False
@@ -16597,17 +16613,18 @@ class TaxePOS:
             return False
 
     def desactiver_taxes_article(self, article_id: int) -> bool:
-        """Désactive toutes les liaisons de taxes pour un article"""
+        """Clôture la taxe actuellement active d'un article en enregistrant la date de fin."""
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
                     UPDATE pos_article_taxes 
-                    SET est_actuelle = FALSE 
-                    WHERE article_id = %s
+                    SET est_actuelle = FALSE,
+                        date_fin = CURRENT_TIMESTAMP 
+                    WHERE article_id = %s AND est_actuelle = TRUE
                 """, (article_id,))
                 return True
         except Exception as e:
-            logger.error(f"Erreur désactivation taxes article {article_id}: {e}")
+            logger.error(f"Erreur désactivation taxes article {article_id}: {e}", exc_info=True)
             return False
 
                         
