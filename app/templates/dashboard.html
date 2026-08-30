@@ -1,0 +1,235 @@
+{% extends 'base.html' %}
+
+{% block title %}Accueil & Connexion - Application Flask{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Hero Section Header */
+    .hero-header {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        color: white;
+        border-radius: 1rem;
+        padding: 2.5rem 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.3);
+    }
+
+    /* Modern Module Cards */
+    .module-card {
+        border: 1px solid #e2e8f0;
+        border-radius: 1rem;
+        background: #ffffff;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .module-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        border-color: rgba(99, 102, 241, 0.4);
+    }
+
+    .icon-square {
+        width: 54px;
+        height: 54px;
+        border-radius: 0.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+    }
+
+    /* Colors by Domain */
+    .bg-banking-light { background-color: #eef2ff; color: #4f46e5; }
+    .bg-rh-light { background-color: #f0fdf4; color: #16a34a; }
+    .bg-compta-light { background-color: #fff7ed; color: #ea580c; }
+    .bg-pos-light { background-color: #faf5ff; color: #9333ea; }
+
+    /* Quick Links Pill Buttons */
+    .btn-pill {
+        border-radius: 50rem;
+        font-size: 0.85rem;
+        padding: 0.375rem 0.85rem;
+        margin: 0.2rem;
+        text-decoration: none;
+        display: inline-block;
+        transition: background-color 0.2s ease;
+    }
+
+    .btn-pill-indigo { background-color: #eef2ff; color: #4338ca; }
+    .btn-pill-indigo:hover { background-color: #e0e7ff; color: #3730a3; }
+
+    .btn-pill-green { background-color: #f0fdf4; color: #15803d; }
+    .btn-pill-green:hover { background-color: #dcfce7; color: #166534; }
+
+    .btn-pill-orange { background-color: #fff7ed; color: #c2410c; }
+    .btn-pill-orange:hover { background-color: #ffedd5; color: #9a3412; }
+
+    .btn-pill-purple { background-color: #faf5ff; color: #7e22ce; }
+    .btn-pill-purple:hover { background-color: #f3e8ff; color: #6b21a8; }
+
+    /* Auth Card Styling */
+    .login-card {
+        border: none;
+        border-radius: 1rem;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-2">
+
+    {% if not current_user.is_authenticated %}
+    <div class="row g-4 align-items-center mb-5">
+        <div class="col-lg-7">
+            <span class="badge bg-primary-subtle text-primary fw-semibold px-3 py-2 rounded-pill mb-3">Plateforme de Gestion Intégrée</span>
+            <h1 class="display-5 fw-bold text-dark mb-3">Pilotez votre entreprise en un seul endroit.</h1>
+            <p class="lead text-muted mb-4">
+                Une suite complète regroupant vos comptes bancaires, la gestion de vos salariés, votre comptabilité générale et votre caisse d'enregistrement.
+            </p>
+            <div class="d-flex gap-3">
+                <a href="#features" class="btn btn-outline-secondary btn-lg rounded-pill px-4">Découvrir les modules</a>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card login-card p-4 bg-white">
+                <div class="card-body">
+                    <div class="text-center mb-4">
+                        <div class="icon-square bg-banking-light mx-auto mb-2">
+                            <i class="fas fa-user-lock"></i>
+                        </div>
+                        <h4 class="fw-bold">Connexion</h4>
+                        <p class="text-muted small">Accédez à votre espace sécurisé</p>
+                    </div>
+
+                    <form action="{{ url_for('auth.login') }}" method="POST">
+                        <div class="form-floating mb-3">
+                            <input type="email" class="form-control" id="floatingInput" name="email" placeholder="nom@exemple.com" required>
+                            <label for="floatingInput">Adresse Email</label>
+                        </div>
+                        <div class="form-floating mb-3">
+                            <input type="password" class="form-control" id="floatingPassword" name="password" placeholder="Mot de passe" required>
+                            <label for="floatingPassword">Mot de passe</label>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="rememberMe" name="remember">
+                                <label class="form-check-label small" for="rememberMe">Se souvenir de moi</label>
+                            </div>
+                            <a href="#" class="small text-decoration-none">Oublié ?</a>
+                        </div>
+                        <button class="btn btn-primary w-100 py-3 rounded-3 fw-bold shadow-sm" type="submit">
+                            Se connecter <i class="fas fa-arrow-right ms-2"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="hero-header d-flex justify-content-between align-items-center">
+        <div>
+            <h2 class="fw-bold mb-1">Bonjour, {{ current_user.nom }} 👋</h2>
+            <p class="mb-0 text-white-50">Bienvenue sur votre tableau de bord centralized.</p>
+        </div>
+        <div>
+            <span class="badge bg-white text-dark px-3 py-2 rounded-pill fw-semibold">
+                <i class="fas fa-circle text-success me-1"></i> Système Actif
+            </span>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row g-4" id="features">
+        
+        <div class="col-md-6 col-xl-3">
+            <div class="card module-card p-3">
+                <div class="card-body">
+                    <div class="icon-square bg-banking-light">
+                        <i class="fas fa-university"></i>
+                    </div>
+                    <h5 class="fw-bold mb-2">Banking</h5>
+                    <p class="text-muted small">Suivi des comptes, trésorerie, virements et opérations bancaires.</p>
+                    
+                    <hr class="my-3 border-light-subtle">
+                    
+                    <div class="d-flex flex-wrap gap-1">
+                        <a href="{{ url_for('banking.banking_dashboard') }}" class="btn-pill btn-pill-indigo"><i class="fas fa-chart-pie me-1"></i> Dashboard</a>
+                        <a href="{{ url_for('banking.banking_transfert') }}" class="btn-pill btn-pill-indigo"><i class="fas fa-exchange-alt me-1"></i> Transfert</a>
+                        <a href="{{ url_for('banking.depot') }}" class="btn-pill btn-pill-indigo"><i class="fas fa-arrow-down me-1"></i> Dépôt</a>
+                        <a href="{{ url_for('banking.retrait') }}" class="btn-pill btn-pill-indigo"><i class="fas fa-arrow-up me-1"></i> Retrait</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-xl-3">
+            <div class="card module-card p-3">
+                <div class="card-body">
+                    <div class="icon-square bg-rh-light">
+                        <i class="fas fa-users-cog"></i>
+                    </div>
+                    <h5 class="fw-bold mb-2">RH & Salaires</h5>
+                    <p class="text-muted small">Planning du personnel, suivi des heures et calcul de la paie.</p>
+                    
+                    <hr class="my-3 border-light-subtle">
+                    
+                    <div class="d-flex flex-wrap gap-1">
+                        <a href="{{ url_for('banking.dashboard_employes') }}" class="btn-pill btn-pill-green"><i class="fas fa-users me-1"></i> Employés</a>
+                        <a href="{{ url_for('banking.planning_employes') }}" class="btn-pill btn-pill-green"><i class="fas fa-calendar-alt me-1"></i> Planning</a>
+                        <a href="{{ url_for('banking.salaires') }}" class="btn-pill btn-pill-green"><i class="fas fa-calculator me-1"></i> Salaires</a>
+                        <a href="{{ url_for('banking.synthese_mensuelle') }}" class="btn-pill btn-pill-green"><i class="fas fa-file-invoice me-1"></i> Paie</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-xl-3">
+            <div class="card module-card p-3">
+                <div class="card-body">
+                    <div class="icon-square bg-compta-light">
+                        <i class="fas fa-calculator"></i>
+                    </div>
+                    <h5 class="fw-bold mb-2">Comptabilité</h5>
+                    <p class="text-muted small">Écritures, bilans, déclaration de TVA et états financiers.</p>
+                    
+                    <hr class="my-3 border-light-subtle">
+                    
+                    <div class="d-flex flex-wrap gap-1">
+                        <a href="{{ url_for('banking.liste_ecritures') }}" class="btn-pill btn-pill-orange"><i class="fas fa-list me-1"></i> Écritures</a>
+                        <a href="{{ url_for('banking.nouvelle_ecriture') }}" class="btn-pill btn-pill-orange"><i class="fas fa-plus me-1"></i> Saisie</a>
+                        <a href="{{ url_for('banking.bilan_comptable') }}" class="btn-pill btn-pill-orange"><i class="fas fa-file-invoice-dollar me-1"></i> Bilan</a>
+                        <a href="{{ url_for('banking.declaration_tva') }}" class="btn-pill btn-pill-orange"><i class="fas fa-percent me-1"></i> TVA</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-xl-3">
+            <div class="card module-card p-3">
+                <div class="card-body">
+                    <div class="icon-square bg-pos-light">
+                        <i class="fas fa-cash-register"></i>
+                    </div>
+                    <h5 class="fw-bold mb-2">Point de Vente</h5>
+                    <p class="text-muted small">Terminal de caisse enregistreuse et suivi des encaissements directs.</p>
+                    
+                    <hr class="my-3 border-light-subtle">
+                    
+                    <div class="d-flex flex-wrap gap-1">
+                        <a href="{{ url_for('banking.pos_dashboard') }}" class="btn border border-purple text-purple btn-pill btn-pill-purple w-100 text-center py-2 fw-bold">
+                            <i class="fas fa-terminal me-2"></i>Ouvrir la Caisse POS
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

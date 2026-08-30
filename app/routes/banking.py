@@ -140,6 +140,14 @@ def pages_installation():
 @bp.route('/about')
 def about():
     return render_template('pages/about.html')
+
+
+
+@bp.route('/dashboard')
+@login_required  # Empêche l'accès aux utilisateurs non connectés
+def main_dashboard():
+    # Rendu du fichier 'dashboard.html' situé à la racine du dossier templates/
+    return render_template('dashboard.html')
 ####################################################################################
 ####################################################################################
 ###########################      Banques           #################################
