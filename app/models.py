@@ -19212,21 +19212,20 @@ class ReceiptPOS:
 
     def get_stats_summary(self, user_id: int, date_from: str, date_to: str, 
                           employee: str = None) -> Dict:
-        """Récupère les stats agrégées pour une période (CORRIGÉ pour les ventes nettes)"""
+        """Récupère les stats agrégées pour une période (CORRIGÉ - pas de double soustraction)"""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 q = """
                     SELECT
+                      -- Ventes brutes : uniquement les ventes, pas les remboursements
                       COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END), 0) AS ventes_brutes,
-                      COALESCE(SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_brutes) ELSE 0 END), 0) AS remboursements,
+                      -- Remboursements : affichés en positif pour l'UI, mais négatifs en interne
+                      COALESCE(SUM(CASE WHEN receipt_type='Remboursement' THEN ABS(ventes_brutes) ELSE 0 END), 0) AS remboursements,
+                      -- Réductions : somme des réductions appliquées
                       COALESCE(SUM(reduction), 0) AS reductions,
-                      -- 🟢 CORRECTION : Ventes nettes = Ventes brutes - Remboursements - Réductions
-                      COALESCE(
-                        SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END) +
-                        SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_nettes) ELSE 0 END) -
-                        SUM(reduction),
-                        0
-                      ) AS ventes_nettes,
+                      -- 🟢 CORRECTION : ventes_nettes contient DÉJÀ la réduction, on ne soustrait pas encore
+                      COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END) +
+                               SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_nettes) ELSE 0 END), 0) AS ventes_nettes,
                       COALESCE(SUM(marge_brute), 0) AS marge_brute,
                       COALESCE(SUM(taxes), 0) AS taxes,
                       COALESCE(SUM(total_collecte), 0) AS total_collecte,
