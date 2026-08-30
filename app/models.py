@@ -19417,7 +19417,7 @@ class POSComptabilisation:
                         WHERE r.utilisateur_id = %s  
                         AND (r.comptabilise = FALSE OR r.etat_comptable = 'non_comptabilise')
                         AND r.status = 'Fermé'
-                        AND r.receipt_type = 'Vente'
+                        AND r.receipt_type IN ('Vente', 'Remboursement')
                         GROUP BY 
                             DATE_FORMAT(r.date, '%%Y-%%m-%%d'), 
                             pm.id, pm.nom, pm.compte_bancaire_id, pm.compte_tresorerie_id,
