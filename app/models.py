@@ -16518,17 +16518,16 @@ class TaxePOS:
     def get_all_types(self, user_id: int, actif_only: bool = True) -> List[Dict]:
         """Récupère tous les types de taxes de l'utilisateur"""
         try:
-            with self.db.get_cursor(dictionary=True) as cursor:
-                # Correction de l'ordre SQL : SELECT ... FROM ... LEFT JOIN ... WHERE ...
+            with self.db.get_cursor() as cursor:
                 query = """
                     SELECT * 
-                    FROM pos_types_taxes
+                    FROM pos_types_taxes 
                     WHERE utilisateur_id = %s
                 """
                 params = [user_id]
 
                 if actif_only:
-                    query += " AND ptt.est_actif = TRUE"
+                    query += " est_actif = TRUE"
 
                 query += " ORDER BY ptt.nom"
                 
