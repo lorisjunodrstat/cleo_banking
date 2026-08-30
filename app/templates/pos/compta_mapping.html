@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Mapping Comptable des Taxes POS</h2>
+    
+    <!-- Formulaire d'ajout / modification -->
+    <form method="POST" action="{{ url_for('banking.pos_compta_mapping') }}" class="card p-4 mb-4">
+        <div class="row">
+            <div class="col-md-5">
+                <label for="type_taxe_id" class="form-label">Type de taxe POS</label>
+                <select name="type_taxe_id" id="type_taxe_id" class="form-select" required>
+                    <option value="">-- Choisir une taxe --</option>
+                    {% for taxe in types_taxes %}
+                        <option value="{{ taxe.id }}">{{ taxe.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="col-md-5">
+                <label for="compte_vente_id" class="form-label">Compte Comptable Associé</label>
+                <select name="compte_vente_id" id="compte_vente_id" class="form-select" required>
+                    <option value="">-- Choisir un compte --</option>
+                    {% for compte in comptes_comptables %}
+                        <!-- Permet de choisir aussi bien du 3000 (Ventes) que du 2030 (Passif / Bons cadeaux) -->
+                        <option value="{{ compte.id }}">{{ compte.numero }} - {{ compte.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100">Enregistrer</button>
+            </div>
+        </div>
+    </form>
+
+    <!-- Tableau des mappings enregistrés -->
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Type de Taxe POS</th>
+                <th>Compte Comptable Cible</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in mappings %}
+            <tr>
+                <td>{{ m.taxe_nom }}</td>
+                <td><strong>{{ m.compte_numero }}</strong> - {{ m.compte_nom }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

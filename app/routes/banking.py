@@ -13399,6 +13399,39 @@ def pos_compta_settings():
     
     return render_template('pos/compta_settings.html', settings=settings)
 
+@bp.route('/pos/compta-mapping', methods=['GET', 'POST'])
+@login_required
+def pos_compta_mapping():
+    """Gère l'association entre les types de TVA POS et les comptes comptables (3000, 2030, etc.)"""
+    user_id = current_user.id
+    
+    if request.method == 'POST':
+        type_taxe_id = request.form.get('type_taxe_id', type=int)
+        compte_vente_id = request.form.get('compte_vente_id', type=int)
+        
+        if not type_taxe_id or not compte_vente_id:
+            flash('❌ Veuillez sélectionner un type de taxe et un compte', 'error')
+        else:
+            succes = g.models.pos_compta_mapping_model.set_mapping(user_id, type_taxe_id, compte_vente_id)
+            if succes:
+                flash('✅ Mapping comptable enregistré', 'success')
+            else:
+                flash('❌ Erreur lors de l\'enregistrement', 'error')
+                
+        return redirect(url_for('banking.pos_compta_mapping'))
+
+    # GET : Récupérer les données pour l'affichage
+    types_taxes = g.models.taxe_pos_model.get_all_types(user_id)
+    comptes_comptables = g.models.categorie_comptable_model.get_all_for_user(user_id) # Adaptez selon votre modèle
+    mappings_existants = g.models.pos_compta_mapping_model.get_all_mappings(user_id)
+    
+    return render_template(
+        'pos/compta_mapping.html', 
+        types_taxes=types_taxes,
+        comptes_comptables=comptes_comptables,
+        mappings=mappings_existants
+    )
+
 @bp.route('/pos/compta-journal', methods=['GET', 'POST'])
 @login_required
 def pos_compta_journal():
