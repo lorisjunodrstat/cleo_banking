@@ -13422,7 +13422,7 @@ def pos_compta_mapping():
 
     # GET : Récupérer les données pour l'affichage
     types_taxes = g.models.taxe_pos_model.get_all_types(user_id)
-    comptes_comptables = g.models.categorie_comptable_model.get_all_for_user(user_id) # Adaptez selon votre modèle
+    comptes_comptables = g.models.categorie_comptable_model.get_all_categories(user_id) 
     mappings_existants = g.models.pos_compta_mapping_model.get_all_mappings(user_id)
     
     return render_template(
