@@ -16521,10 +16521,9 @@ class TaxePOS:
             with self.db.get_cursor(dictionary=True) as cursor:
                 # Correction de l'ordre SQL : SELECT ... FROM ... LEFT JOIN ... WHERE ...
                 query = """
-                    SELECT ptt.*, ptt2.taux AS taux 
-                    FROM pos_types_taxes ptt 
-                    LEFT JOIN pos_taux_taxes ptt2 ON ptt.id = ptt2.type_taxe_id 
-                    WHERE ptt.utilisateur_id = %s
+                    SELECT * 
+                    FROM pos_types_taxes
+                    WHERE utilisateur_id = %s
                 """
                 params = [user_id]
 
