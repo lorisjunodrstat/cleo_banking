@@ -16473,22 +16473,14 @@ class TaxePOS:
             return False
 
     def get_type_for_article(self, article_id: int) -> Optional[Dict]:
-        """Récupère le type de taxe et le taux actuellement valide pour un article."""
+        """Récupère le type de taxe actuellement assigné à l'article."""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 cursor.execute("""
-                    SELECT 
-                        t.id, 
-                        t.nom, 
-                        t.est_actif,
-                        tx.taux
+                    SELECT t.id, t.nom, t.est_actif 
                     FROM pos_types_taxes t
                     INNER JOIN pos_article_taxes pat ON t.id = pat.type_taxe_id
-                    LEFT JOIN pos_taux_taxes tx ON t.id = tx.type_taxe_id 
-                        AND (tx.date_fin IS NULL OR tx.date_fin >= CURRENT_DATE)
-                        AND tx.date_debut <= CURRENT_DATE
                     WHERE pat.article_id = %s AND pat.est_actuelle = TRUE
-                    ORDER BY tx.date_debut DESC
                     LIMIT 1
                 """, (article_id,))
                 return cursor.fetchone()
@@ -16521,27 +16513,20 @@ class TaxePOS:
         }
 
     def get_all_types(self, user_id: int, actif_only: bool = True) -> List[Dict]:
-        """Récupère tous les types de taxes d'un utilisateur avec leur taux actuel."""
+        """Récupère uniquement la liste des types de taxes de l'utilisateur."""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 query = """
-                    SELECT 
-                        t.id, 
-                        t.nom, 
-                        t.est_actif,
-                        tx.taux
-                    FROM pos_types_taxes t
-                    LEFT JOIN pos_taux_taxes tx ON t.id = tx.type_taxe_id 
-                        AND (tx.date_fin IS NULL OR tx.date_fin >= CURRENT_DATE)
-                        AND tx.date_debut <= CURRENT_DATE
-                    WHERE t.utilisateur_id = %s
+                    SELECT id, nom, est_actif 
+                    FROM pos_types_taxes 
+                    WHERE utilisateur_id = %s
                 """
                 params = [user_id]
 
                 if actif_only:
-                    query += " AND t.est_actif = TRUE"
+                    query += " AND est_actif = TRUE"
 
-                query += " ORDER BY t.nom"
+                query += " ORDER BY nom"
                 
                 cursor.execute(query, params)
                 return cursor.fetchall()
