@@ -16527,7 +16527,7 @@ class TaxePOS:
                 params = [user_id]
 
                 if actif_only:
-                    query += " est_actif = TRUE"
+                    query += " AND est_actif = TRUE"
 
                 query += " ORDER BY ptt.nom"
                 
