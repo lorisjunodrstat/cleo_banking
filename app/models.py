@@ -333,14 +333,13 @@ class DatabaseManager:
                     cotisation_accident_n_prof_tx DECIMAL(5,2),
                     cotisation_assurance_indemnite_maladie_tx DECIMAL(5,2),
                     cotisation_cap_tx DECIMAL(5,2),
-                    entreprise_id INT NULL
+                    entreprise_id INT NULL,
                     employeur VARCHAR(255),
-                    employe_id INT NOT NULL
+                    employe_id INT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES utilisateurs(id),
-                    FOREIGN KEY (entreprise_id) REFERENCES entreprise(id)
+                    FOREIGN KEY (entreprise_id) REFERENCES entreprise(id),
                     FOREIGN KEY (employe_id) REFERENCES employes(id)
-
                 );""")
 
                 cursor.execute("""
