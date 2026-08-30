@@ -1,54 +1,260 @@
 {% extends "pos.html" %}
 {% block content %}
 <div class="container mt-4">
-    <h2>Mapping Comptable des Taxes POS</h2>
+    <h2>🔗 Mapping Comptable des Taxes POS</h2>
+    
+    <!-- Message d'information amélioré -->
+    <div class="alert alert-info">
+        <h6><i class="fas fa-info-circle"></i> Règle comptable importante :</h6>
+        <ul class="mb-0">
+            <li>Associer un type de taxe à un compte de <strong>Classe 3</strong> (ex: 3001 Ventes) → Génère une <strong>vente normale avec TVA</strong></li>
+            <li>Associer un type de taxe à un compte de <strong>Classe 2</strong> (ex: 2030 Acomptes) → Indique un <strong>achat de crédit (Bon Cadeau/Abonnement)</strong> sans TVA à l'achat</li>
+        </ul>
+    </div>
     
     <!-- Formulaire d'ajout / modification -->
-    <form method="POST" action="{{ url_for('banking.pos_compta_mapping') }}" class="card p-4 mb-4">
-        <div class="row">
+    <form method="POST" action="{{ url_for('banking.pos_compta_mapping') }}" class="card p-4 mb-4 shadow-sm">
+        <h5 class="mb-3">➕ Nouveau Mapping</h5>
+        <div class="row g-3">
             <div class="col-md-5">
-                <label for="type_taxe_id" class="form-label">Type de taxe POS</label>
+                <label for="type_taxe_id" class="form-label fw-bold">Type de taxe POS</label>
                 <select name="type_taxe_id" id="type_taxe_id" class="form-select" required>
                     <option value="">-- Choisir une taxe --</option>
                     {% for taxe in types_taxes %}
-                        <option value="{{ taxe.id }}">{{ taxe.nom }}</option>
+                        <option value="{{ taxe.id }}">
+                            {{ taxe.nom }}
+                            {% if not taxe.est_actif %}(Inactif){% endif %}
+                        </option>
                     {% endfor %}
                 </select>
             </div>
             
             <div class="col-md-5">
-                <label for="compte_vente_id" class="form-label">Compte Comptable Associé</label>
+                <label for="compte_vente_id" class="form-label fw-bold">Compte Comptable Cible</label>
                 <select name="compte_vente_id" id="compte_vente_id" class="form-select" required>
                     <option value="">-- Choisir un compte --</option>
                     {% for compte in comptes_comptables %}
-                        <!-- Permet de choisir aussi bien du 3000 (Ventes) que du 2030 (Passif / Bons cadeaux) -->
-                        <option value="{{ compte.id }}">{{ compte.numero }} - {{ compte.nom }}</option>
+                        {% set num_str = compte.numero | string %}
+                        <option value="{{ compte.id }}" data-classe="{{ num_str[0] if num_str else '' }}">
+                            {{ compte.numero }} - {{ compte.nom }}
+                            {% if num_str.startswith('2') %}
+                                (Passif / Acompte)
+                            {% elif num_str.startswith('3') %}
+                                (Produit / Vente)
+                            {% elif num_str.startswith('1') %}
+                                (Actif)
+                            {% elif num_str.startswith('4') or num_str.startswith('5') or num_str.startswith('6') %}
+                                (Charge)
+                            {% endif %}
+                        </option>
                     {% endfor %}
                 </select>
+                <small class="form-text text-muted" id="compte-help"></small>
             </div>
             
             <div class="col-md-2 d-flex align-items-end">
-                <button type="submit" class="btn btn-primary w-100">Enregistrer</button>
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="fas fa-plus"></i> Ajouter
+                </button>
             </div>
         </div>
     </form>
 
     <!-- Tableau des mappings enregistrés -->
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Type de Taxe POS</th>
-                <th>Compte Comptable Cible</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for m in mappings %}
-            <tr>
-                <td>{{ m.taxe_nom }}</td>
-                <td><strong>{{ m.compte_numero }}</strong> - {{ m.compte_nom }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="card shadow-sm">
+        <div class="card-header bg-white">
+            <h5 class="mb-0">📋 Mappings Enregistrés</h5>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-striped table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Type de Taxe POS</th>
+                        <th>Compte Comptable Cible</th>
+                        <th>Type de Compte</th>
+                        <th class="text-center" style="width: 180px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in mappings %}
+                    {% set num_str = m.compte_numero | string %}
+                    <tr id="mapping-row-{{ m.type_taxe_id }}">
+                        <td>
+                            <strong>{{ m.taxe_nom }}</strong>
+                            <input type="hidden" name="taxe_id_{{ m.type_taxe_id }}" value="{{ m.type_taxe_id }}">
+                        </td>
+                        <td>
+                            <!-- Formulaire de mise à jour par ligne -->
+                            <form method="POST" action="{{ url_for('banking.update_pos_compta_mapping') }}" 
+                                  class="d-flex gap-2 align-items-center" 
+                                  id="update-form-{{ m.type_taxe_id }}">
+                                <input type="hidden" name="type_taxe_id" value="{{ m.type_taxe_id }}">
+                                <input type="hidden" name="mapping_id" value="{{ m.id }}">
+                                
+                                <select name="compte_vente_id" class="form-select form-select-sm" 
+                                        style="min-width: 250px;" required>
+                                    <option value="">-- Choisir un compte --</option>
+                                    {% for compte in comptes_comptables %}
+                                        {% set cnum = compte.numero | string %}
+                                        <option value="{{ compte.id }}" 
+                                                {% if compte.id == m.compte_vente_id %}selected{% endif %}
+                                                data-classe="{{ cnum[0] if cnum else '' }}">
+                                            {{ compte.numero }} - {{ compte.nom }}
+                                            {% if cnum.startswith('2') %}(Passif){% endif %}
+                                            {% if cnum.startswith('3') %}(Produit){% endif %}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                                
+                                <button type="submit" class="btn btn-sm btn-success" 
+                                        title="Mettre à jour ce mapping">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                            </form>
+                        </td>
+                        <td>
+                            <!-- ✅ NOUVEAU : Badge indiquant le type de compte -->
+                            {% if num_str.startswith('2') %}
+                                <span class="badge bg-warning text-dark" title="Compte de Passif - Utilisé pour les bons cadeaux/abonnements">
+                                    <i class="fas fa-wallet"></i> Passif (Acompte)
+                                </span>
+                            {% elif num_str.startswith('3') %}
+                                <span class="badge bg-success" title="Compte de Produit - Ventes normales">
+                                    <i class="fas fa-chart-line"></i> Produit (Vente)
+                                </span>
+                            {% elif num_str.startswith('1') %}
+                                <span class="badge bg-info text-dark" title="Compte d'Actif">
+                                    <i class="fas fa-building"></i> Actif
+                                </span>
+                            {% elif num_str.startswith('4') or num_str.startswith('5') or num_str.startswith('6') %}
+                                <span class="badge bg-secondary" title="Compte de Charge">
+                                    <i class="fas fa-minus-circle"></i> Charge
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary">Autre</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <!-- Bouton pour supprimer -->
+                            <button type="button" class="btn btn-sm btn-danger" 
+                                    onclick="deleteMapping({{ m.id }}, '{{ m.taxe_nom }}')"
+                                    title="Supprimer ce mapping">
+                                <i class="fas fa-trash"></i> Supprimer
+                            </button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center text-muted py-5">
+                            <i class="fas fa-info-circle fa-2x mb-3 d-block"></i>
+                            <h6>Aucun mapping enregistré</h6>
+                            <p class="mb-0">Utilisez le formulaire ci-dessus pour créer votre premier mapping.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
+
+<!-- Modal de confirmation pour suppression -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">⚠️ Confirmer la suppression</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Êtes-vous sûr de vouloir supprimer le mapping pour <strong id="delete-taxe-name"></strong> ?</p>
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Attention :</strong> Les futures ventes utilisant ce type de taxe ne seront plus comptabilisées automatiquement jusqu'à ce qu'un nouveau mapping soit créé.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> Annuler
+                </button>
+                <form method="POST" action="{{ url_for('banking.delete_pos_compta_mapping') }}" id="delete-form" class="d-inline">
+                    <input type="hidden" name="mapping_id" id="delete-mapping-id">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash"></i> Supprimer définitivement
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Fonction pour la suppression avec confirmation
+function deleteMapping(mappingId, taxeNom) {
+    document.getElementById('delete-mapping-id').value = mappingId;
+    document.getElementById('delete-taxe-name').textContent = taxeNom;
+    var modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    modal.show();
+}
+
+// Mise à jour dynamique de l'aide contextuelle lors du choix du compte
+document.getElementById('compte_vente_id').addEventListener('change', function() {
+    const selectedOption = this.options[this.selectedIndex];
+    const classe = selectedOption.getAttribute('data-classe');
+    const helpText = document.getElementById('compte-help');
+    
+    if (classe === '2') {
+        helpText.innerHTML = '<span class="text-warning"><i class="fas fa-info-circle"></i> <strong>Compte de Passif :</strong> Ce compte sera utilisé pour les achats de bons cadeaux/abonnements. Aucune TVA ne sera générée à l\'achat.</span>';
+    } else if (classe === '3') {
+        helpText.innerHTML = '<span class="text-success"><i class="fas fa-check-circle"></i> <strong>Compte de Produit :</strong> Ce compte sera utilisé pour les ventes normales. La TVA sera générée automatiquement selon le taux configuré.</span>';
+    } else if (classe) {
+        helpText.innerHTML = '<span class="text-info"><i class="fas fa-info-circle"></i> Compte de classe ' + classe + ' sélectionné.</span>';
+    } else {
+        helpText.textContent = '';
+    }
+});
+
+// Auto-hide des messages flash après 5 secondes
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        const alerts = document.querySelectorAll('.alert:not(.alert-info):not(.alert-warning)');
+        alerts.forEach(function(alert) {
+            if (alert.classList.contains('alert-success') || alert.classList.contains('alert-danger')) {
+                alert.style.transition = 'opacity 0.5s';
+                alert.style.opacity = '0';
+                setTimeout(function() {
+                    alert.remove();
+                }, 500);
+            }
+        });
+    }, 5000);
+});
+</script>
+
+<!-- CSS additionnel -->
+<style>
+.table-hover tbody tr:hover {
+    background-color: #f8f9fa;
+}
+.form-select-sm {
+    font-size: 0.875rem;
+}
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+}
+.badge {
+    font-size: 0.75rem;
+    padding: 0.4em 0.6em;
+}
+.card-header {
+    border-bottom: 2px solid #dee2e6;
+}
+.alert ul {
+    margin-bottom: 0;
+    padding-left: 1.5rem;
+}
+.alert ul li {
+    margin-bottom: 0.25rem;
+}
+</style>
 {% endblock %}

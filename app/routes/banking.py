@@ -13244,10 +13244,13 @@ def pos_vente_articles_json():
             # 4. ✅ NOUVEAU : Récupérer le TYPE de taxe, puis le TAUX en vigueur aujourd'hui
             type_taxe = g.models.taxe_pos_model.get_type_for_article(article['id'])
             if type_taxe:
-                # On demande le taux qui était/est valide à la date d'aujourd'hui
+                article['type_taxe_id'] = type_taxe['id']
+                article['type_taxe_nom'] = type_taxe['nom']
                 taux_info = g.models.taxe_pos_model.get_taux_for_date(type_taxe['id'], date.today())
                 article['taux_taxe'] = float(taux_info['taux']) if taux_info else 0.0
             else:
+                article['type_taxe_id'] = None
+                article['type_taxe_nom'] = 'Aucune'
                 article['taux_taxe'] = 0.0
         
         return jsonify({
@@ -13438,6 +13441,57 @@ def pos_compta_mapping():
         mappings=mappings_existants
     )
 
+@bp.route('/pos/compta-mapping/update', methods=['POST'])
+@login_required
+def update_pos_compta_mapping():
+    """Met à jour un mapping existant"""
+    user_id = current_user.id
+    type_taxe_id = request.form.get('type_taxe_id', type=int)
+    compte_vente_id = request.form.get('compte_vente_id', type=int)
+    mapping_id = request.form.get('mapping_id', type=int)
+    
+    if not type_taxe_id or not compte_vente_id:
+        flash('❌ Veuillez sélectionner un type de taxe et un compte', 'error')
+        return redirect(url_for('banking.pos_compta_mapping'))
+    
+    # Utiliser set_mapping qui fait un UPDATE si le mapping existe déjà
+    succes = g.models.pos_compta_mapping_model.set_mapping(user_id, type_taxe_id, compte_vente_id)
+    
+    if succes:
+        flash('✅ Mapping comptable mis à jour avec succès', 'success')
+    else:
+        flash('❌ Erreur lors de la mise à jour du mapping', 'error')
+        
+    return redirect(url_for('banking.pos_compta_mapping'))
+
+
+@bp.route('/pos/compta-mapping/delete', methods=['POST'])
+@login_required
+def delete_pos_compta_mapping():
+    """Supprime un mapping existant"""
+    mapping_id = request.form.get('mapping_id', type=int)
+    
+    if not mapping_id:
+        flash('❌ Mapping invalide', 'error')
+        return redirect(url_for('banking.pos_compta_mapping'))
+    
+    try:
+        with g.db.get_cursor() as cursor:
+            cursor.execute("""
+                DELETE FROM pos_compta_mapping_tva 
+                WHERE id = %s AND utilisateur_id = %s
+            """, (mapping_id, current_user.id))
+            
+            if cursor.rowcount > 0:
+                flash('✅ Mapping supprimé avec succès', 'success')
+            else:
+                flash('❌ Mapping non trouvé ou accès non autorisé', 'error')
+    except Exception as e:
+        logger.error(f"Erreur suppression mapping: {e}")
+        flash('❌ Erreur lors de la suppression', 'error')
+    
+    return redirect(url_for('banking.pos_compta_mapping'))
+
 @bp.route('/pos/compta-journal', methods=['GET', 'POST'])
 @login_required
 def pos_compta_journal():
@@ -13453,7 +13507,17 @@ def pos_compta_journal():
             return redirect(url_for('banking.pos_compta_journal'))
         
         
-        succes, message = g.models.pos_comptabilisation_model.comptabiliser_journal_journee(pdv_id, user_id, date_jour)
+        elements_a_comptabiliser = g.models.pos_comptabilisation_model.get_a_comptabiliser(
+            user_id, pdv_id=pdv_id, date_from=date_jour, date_to=date_jour, mode='jour'
+        )
+        
+        if not elements_a_comptabiliser:
+            flash('ℹ️ Aucune écriture à comptabiliser pour cette date.', 'info')
+            return redirect(url_for('banking.pos_compta_journal'))
+
+        succes, message = g.models.pos_comptabilisation_model.comptabiliser_selection(
+            user_id, elements_a_comptabiliser
+        )
         
         if succes:
             flash(f'✅ {message}', 'success')

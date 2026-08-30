@@ -1310,14 +1310,28 @@ class DatabaseManager:
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     utilisateur_id INT NOT NULL,
                     type_taxe_id INT NOT NULL,
-                    compte_vente_id INT NOT NULL COMMENT 'Compte de classe 3 (ex: 3001, 3002)',
+                    compte_tva_id INT NULL COMMENT 'Compte de TVA passif (classe 2, ex: 2200)',
+                    taux DECIMAL(5,2) NULL COMMENT 'Taux de TVA historique (ex: 8.10, 2.50)',
+                    compte_vente_id INT NOT NULL COMMENT 'Compte de vente (classe 3, ex: 3001, 3002) ou compte passif (classe 2, ex: 2030 pour bons cadeaux)',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    
+                    -- Contraintes de clés étrangères
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
                     FOREIGN KEY (type_taxe_id) REFERENCES pos_types_taxes(id) ON DELETE CASCADE,
                     FOREIGN KEY (compte_vente_id) REFERENCES categories_comptables(id) ON DELETE CASCADE,
-                    UNIQUE KEY unique_user_type_taxe (utilisateur_id, type_taxe_id)
-                );
+                    FOREIGN KEY (compte_tva_id) REFERENCES categories_comptables(id) ON DELETE SET NULL,
+                    
+                    -- Contrainte d'unicité : un seul mapping par utilisateur et par type de taxe
+                    UNIQUE KEY unique_user_type_taxe (utilisateur_id, type_taxe_id),
+                    
+                    -- Index pour optimiser les recherches
+                    INDEX idx_utilisateur (utilisateur_id),
+                    INDEX idx_type_taxe (type_taxe_id),
+                    INDEX idx_compte_vente (compte_vente_id),
+                    INDEX idx_compte_tva (compte_tva_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci 
+                COMMENT='Mapping entre les types de taxes POS et les comptes comptables (ventes et TVA)';
                 """)
 
                 cursor.execute("""
@@ -1341,6 +1355,7 @@ class DatabaseManager:
                     recu_numero VARCHAR(50),
                     montant_original DECIMAL(10,2),
                     raison TEXT,
+                    etait_comptabilise BOOLEAN DEFAULT FALSE,
                     date_suppression TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
                 );""")
@@ -18213,14 +18228,14 @@ class ReceiptPOS:
 
     def annuler_vente(self, receipt_id: int, user_id: int, raison: str = "") -> Tuple[bool, str]:
         """
-        Annule une vente :
-        - Crée une transaction de remboursement
-        - Restaure le stock
-        - Marque le receipt comme annulé
+        Annule une vente en tenant compte de son état de comptabilisation.
+        - Si comptabilisée : Génère une écriture d'extourne (le système créera automatiquement 
+          la ligne de TVA inversée grâce au compte complémentaire configuré sur le compte de vente).
+        - Si non comptabilisée (ex: ticket ouvert) : Annulation simple sans impact au journal.
         """
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                # Récupérer le receipt
+                # 1. Récupérer le receipt
                 cursor.execute("""
                     SELECT * FROM pos_receipts 
                     WHERE id = %s AND utilisateur_id = %s
@@ -18232,8 +18247,66 @@ class ReceiptPOS:
                 if receipt['status'] == 'Annulé':
                     return False, "Receipt déjà annulé"
                 
-                # 🔗 Créer une transaction de remboursement (retrait)
-                if receipt['transaction_id'] and receipt['compte_bancaire_id']:
+                # 2. Gestion comptable : Extourne SI ET SEULEMENT SI déjà comptabilisé
+                est_comptabilise = receipt.get('comptabilise') or receipt.get('etat_comptable') == 'comptabilise'
+                
+                if est_comptabilise:
+                    from app.models import EcritureComptable, CategorieComptable
+                    modele_ecriture = EcritureComptable(self.db)
+                    modele_categorie = CategorieComptable(self.db)
+                    
+                    # Retrouver l'écriture principale d'origine pour réutiliser exactement les mêmes comptes
+                    cursor.execute("""
+                        SELECT categorie_id, compte_bancaire_id 
+                        FROM ecritures_comptables 
+                        WHERE reference LIKE %s AND utilisateur_id = %s AND type_ecriture_comptable = 'principale'
+                        ORDER BY id ASC LIMIT 1
+                    """, (f"%{receipt['recu_numero']}%", user_id))
+                    ecriture_origine = cursor.fetchone()
+                    
+                    if ecriture_origine:
+                        categorie_id = ecriture_origine['categorie_id']
+                        compte_bancaire_id = ecriture_origine['compte_bancaire_id']
+                    else:
+                        # Fallback sécurisé si l'écriture n'est pas retrouvée par référence
+                        categorie_id = self._get_categorie_vente_defaut(cursor, user_id)
+                        compte_bancaire_id = receipt.get('compte_bancaire_id')
+
+                    if not categorie_id:
+                        return False, "Impossible de déterminer la catégorie comptable pour l'extourne."
+
+                    # Création de l'extourne : on inverse le type_ecriture ('depense' au lieu de 'recette')
+                    # Le modèle EcritureComptable générera automatiquement l'écriture secondaire (TVA) 
+                    # en utilisant le compte complémentaire associé à cette catégorie de vente.
+                    data_extourne = {
+                        'date_ecriture': datetime.now().date(),
+                        'compte_bancaire_id': compte_bancaire_id,
+                        'categorie_id': categorie_id,
+                        'montant': float(receipt['total_collecte']),
+                        'montant_htva': float(receipt['ventes_nettes']),
+                        'devise': 'CHF',
+                        'description': f"Extourne vente POS {receipt['recu_numero']} - {raison}",
+                        'reference': f"EXT-{receipt['recu_numero']}",
+                        'type_ecriture': 'depense', # Inverse de 'recette' pour annuler le produit
+                        'tva_taux': float(receipt['taxes'] / receipt['ventes_nettes'] * 100) if receipt['ventes_nettes'] > 0 else 0,
+                        'tva_montant': float(receipt['taxes']),
+                        'utilisateur_id': user_id,
+                        'statut': 'validée',
+                        'type_ecriture_comptable': 'extourne'
+                    }
+                    
+                    succes, msg = modele_ecriture.create(modele_categorie, data_extourne)
+                    if not succes:
+                        return False, f"Échec de l'extourne comptable : {msg}"
+                    
+                    # Marquer le receipt comme extourné pour éviter les doubles extournes
+                    cursor.execute("""
+                        UPDATE pos_receipts SET etat_comptable = 'extourne' WHERE id = %s
+                    """, (receipt_id,))
+
+                # 3. Gestion bancaire : Annuler la transaction financière si elle existe 
+                # (Ceci s'applique même si non comptabilisé, car la transaction est créée à la vente)
+                if receipt.get('transaction_id') and receipt.get('compte_bancaire_id'):
                     success, msg, _ = self.transaction_model._inserer_transaction_with_cursor(
                         cursor=cursor,
                         compte_type='compte_principal',
@@ -18246,9 +18319,9 @@ class ReceiptPOS:
                         validate_balance=False
                     )
                     if not success:
-                        return False, f"Erreur remboursement: {msg}"
+                        return False, f"Erreur remboursement bancaire : {msg}"
                 
-                # Restaurer le stock
+                # 4. Restaurer le stock
                 cursor.execute("""
                     SELECT article_id, quantite FROM pos_receipt_items WHERE receipt_id = %s
                 """, (receipt_id,))
@@ -18258,24 +18331,50 @@ class ReceiptPOS:
                         UPDATE pos_articles SET stock = stock + %s WHERE id = %s
                     """, (item['quantite'], item['article_id']))
                 
-                # Marquer comme annulé
+                # 5. Marquer comme annulé
                 cursor.execute("""
-                    UPDATE pos_receipts SET status = 'Annulé', cloture_at = NOW() WHERE id = %s
+                    UPDATE pos_receipts 
+                    SET status = 'Annulé', cloture_at = NOW() 
+                    WHERE id = %s
                 """, (receipt_id,))
                 
-                # Historique
+                # 6. Historique (Ajoutez la colonne 'etait_comptabilise' BOOLEAN dans votre table pos_historique_suppressions)
                 cursor.execute("""
                     INSERT INTO pos_historique_suppressions 
-                    (receipt_id, utilisateur_id, recu_numero, montant_original, raison)
-                    VALUES (%s, %s, %s, %s, %s)
+                    (receipt_id, utilisateur_id, recu_numero, montant_original, raison, etait_comptabilise)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                 """, (receipt_id, user_id, receipt['recu_numero'], 
-                      receipt['total_collecte'], raison))
+                      receipt['total_collecte'], raison, est_comptabilise))
                 
-                return True, "Vente annulée avec succès"
+                msg_succes = "Vente annulée avec succès"
+                if est_comptabilise:
+                    msg_succes += " (Extourne comptable générée automatiquement)"
+                    
+                return True, msg_succes
                 
         except Exception as e:
-            logger.error(f"Erreur annulation vente: {e}")
+            logger.error(f"Erreur annulation vente: {e}", exc_info=True)
             return False, f"Erreur: {str(e)}"
+
+    def _get_categorie_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
+        """Récupère le compte de vente de classe 3 par défaut (ex: 3000) en cas de fallback"""
+        try:
+            cursor.execute("""
+                SELECT c.id 
+                FROM categories_comptables c
+                INNER JOIN plan_categorie pc ON c.id = pc.categorie_id
+                INNER JOIN plans_comptables p ON pc.plan_id = p.id
+                WHERE p.utilisateur_id = %s 
+                  AND c.numero LIKE '3%%' 
+                  AND c.actif = TRUE 
+                ORDER BY c.numero 
+                LIMIT 1
+            """, (user_id,))
+            res = cursor.fetchone()
+            return res['id'] if res else None
+        except Exception as e:
+            logger.error(f"Erreur récupération compte vente par défaut: {e}")
+            return None
 
     def add_payment(self, receipt_id: int, data: Dict) -> Optional[int]:
         """Ajoute un paiement à un reçu existant"""
@@ -19199,6 +19298,7 @@ class POSComptaMapping:
         self.db = db
 
     def set_mapping(self, user_id: int, type_taxe_id: int, compte_vente_id: int) -> bool:
+        """Mappe un type de taxe POS vers un compte comptable (3001 ou 2030)"""
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
@@ -19210,7 +19310,20 @@ class POSComptaMapping:
                 """, (user_id, type_taxe_id, compte_vente_id))
                 return True
         except Exception as e:
-            logger.error(f"Erreur set_mapping compta POS: {e}")
+            logger.error(f"Erreur set_mapping: {e}")
+            return False
+
+    def is_compte_passif(self, compte_id: int) -> bool:
+        """Détecte si le compte mappé est un compte de passif (classe 2 = bons cadeaux)"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT numero FROM categories_comptables WHERE id = %s
+                """, (compte_id,))
+                res = cursor.fetchone()
+                return res and str(res['numero']).startswith('2')
+        except Exception as e:
+            logger.error(f"Erreur is_compte_passif: {e}")
             return False
 
     def get_compte_vente_by_taxe(self, user_id: int, type_taxe_id: int) -> Optional[int]:
@@ -19246,6 +19359,19 @@ class POSComptaMapping:
             logger.error(f"Erreur get_all_mappings: {e}")
             return []
 
+    def update_mapping(self, mapping_id: int, compte_vente_id: int) -> bool:
+            """Met à jour uniquement le compte d'un mapping existant"""
+            try:
+                with self.db.get_cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE pos_compta_mapping_tva 
+                        SET compte_vente_id = %s
+                        WHERE id = %s
+                    """, (compte_vente_id, mapping_id))
+                    return cursor.rowcount > 0
+            except Exception as e:
+                logger.error(f"Erreur update_mapping: {e}")
+                return False
 
 class POSComptabilisation:
     def __init__(self, db):
@@ -19257,60 +19383,54 @@ class POSComptabilisation:
     def get_a_comptabiliser(self, user_id: int, pdv_id: int = None, date_from: str = None, date_to: str = None, mode: str = 'jour') -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
+                compte_defaut = self._get_compte_vente_defaut(cursor, user_id)
                 if mode == 'jour':
                     query = """
                         SELECT 
                             DATE_FORMAT(r.date, '%%Y-%%m-%%d') as date_jour,
                             pm.id as mode_paiement_id,
                             pm.nom as mode_paiement_nom,
-                            pm.compte_tresorerie_id,
                             pm.compte_bancaire_id,
+                            pm.compte_tresorerie_id,
                             pm.compte_frais_service_id,
                             pm.frais_pourcentage,
                             pm.frais_fixe,
+                            -- 🎯 Regroupement par TYPE de taxe (pas par taux)
+                            pat.type_taxe_id,
+                            typ.nom as type_taxe_nom,
                             COALESCE(mct.compte_vente_id, %s) as compte_vente_id,
+                            cvente.numero as compte_vente_numero,
+                            cvente.nom as compte_vente_nom,
                             COUNT(DISTINCT r.id) as nb_tickets,
-                            SUM(ri.total_ligne / (1 + (COALESCE(at.taux, 0) / 100))) as total_ht,
-                            SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(at.taux, 0) / 100)))) as total_tva,
+                            -- Calcul HT et TVA basé sur le taux historique de la ligne
+                            SUM(ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100))) as total_ht,
+                            SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100)))) as total_tva,
                             SUM(ri.total_ligne) as total_ttc
                         FROM pos_receipts r
                         JOIN pos_payments p ON r.id = p.receipt_id
                         JOIN pos_modes_paiement pm ON p.mode_paiement_id = pm.id
                         JOIN pos_receipt_items ri ON r.id = ri.receipt_id
                         LEFT JOIN pos_article_taxes pat ON ri.article_id = pat.article_id AND pat.est_actuelle = TRUE
-                        LEFT JOIN pos_taux_taxes at ON pat.type_taxe_id = at.type_taxe_id
-                        LEFT JOIN pos_compta_mapping_tva mct ON pat.type_taxe_id = mct.type_taxe_id AND mct.utilisateur_id = %s
-                        WHERE r.utilisateur_id = %s 
-                          AND (r.comptabilise = FALSE OR r.etat_comptable = 'non_comptabilise')
-                          AND r.status = 'Fermé'
-                    """
-                    # Récupération compte par défaut au besoin
-                    compte_defaut = self._get_compte_vente_defaut(cursor, user_id)
-                    params = [compte_defaut, user_id, user_id]
-
-                    if pdv_id:
-                        query += " AND r.pdv = %s"
-                        params.append(pdv_id)
-                    if date_from:
-                        query += " AND DATE(r.date) >= %s"
-                        params.append(date_from)
-                    if date_to:
-                        query += " AND DATE(r.date) <= %s"
-                        params.append(date_to)
-
-                    query += """
+                        LEFT JOIN pos_types_taxes typ ON pat.type_taxe_id = typ.id
+                        LEFT JOIN pos_compta_mapping_tva mct ON pat.type_taxe_id = mct.type_taxe_id AND mct.utilisateur_id = r.utilisateur_id
+                        LEFT JOIN categories_comptables cvente ON COALESCE(mct.compte_vente_id, %s) = cvente.id
+                        WHERE r.utilisateur_id = %s  
+                        AND (r.comptabilise = FALSE OR r.etat_comptable = 'non_comptabilise')
+                        AND r.status = 'Fermé'
+                        AND r.receipt_type = 'Vente'
                         GROUP BY 
-                            DATE_FORMAT(r.date, '%%Y-%%m-%%d'), pm.id, pm.nom, pm.compte_tresorerie_id,
-                            pm.compte_bancaire_id, pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe,
+                            DATE_FORMAT(r.date, '%%Y-%%m-%%d'), 
+                            pm.id, pm.nom, pm.compte_bancaire_id, pm.compte_tresorerie_id,
+                            pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe,
+                            pat.type_taxe_id, typ.nom,
                             COALESCE(mct.compte_vente_id, %s)
-                        ORDER BY date_jour DESC, pm.nom
+                        ORDER BY date_jour DESC, pm.nom, typ.nom
                     """
-                    params.append(compte_defaut)
-                    cursor.execute(query, params)
+                    cursor.execute(query, (compte_defaut, compte_defaut, user_id, compte_defaut))
                     return cursor.fetchall()
                     
                 else:
-                    compte_defaut = self._get_compte_vente_defaut(cursor, user_id)
+                    
                     query = """
                         SELECT 
                             r.id, r.recu_numero, 
@@ -19365,110 +19485,98 @@ class POSComptabilisation:
         raise ValueError(f"Format de date non reconnu pour date_ecriture: {raw!r}")
 
     def comptabiliser_selection(self, user_id: int, items_a_comptabiliser: List[Dict]) -> Tuple[bool, str]:
-        """Génère les écritures comptables pour la sélection transmise."""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                nb_ecritures_creees = 0
-
+                nb_ecritures = 0
+                
                 for item in items_a_comptabiliser:
-                    est_agregat = 'date_jour' in item and 'nb_tickets' in item
-                    raw_date = item.get('date_jour') or item.get('date')
+                    date_ecriture = POSComptabilisation._parse_date_ecriture(
+                        item.get('date_jour') or item.get('date')
+                    )
                     
-                    try:
-                        date_ecriture = POSComptabilisation._parse_date_ecriture(raw_date)
-                    except ValueError as e:
-                        logger.error(f"Date invalide pour l'item {item}: {e}")
-                        continue
-
+                    compte_vente_id = item.get('compte_vente_id')
+                    compte_bancaire_id = item.get('compte_tresorerie_id') or item.get('compte_bancaire_id')
                     total_ht = float(item.get('total_ht', 0))
                     total_tva = float(item.get('total_tva', 0))
                     total_ttc = float(item.get('total_ttc', 0))
                     
-                    compte_bancaire_id = item.get('compte_bancaire_id')
-                    compte_frais_id = item.get('compte_frais_service_id')
-                    frais_pct = float(item.get('frais_pourcentage', 0) or 0)
-                    frais_fixe = float(item.get('frais_fixe', 0) or 0)
-                    
-                    # On privilégie le compte de vente mappé ou la catégorie de trésorerie
-                    categorie_id = item.get('compte_vente_id') or item.get('compte_tresorerie_id') or self._get_compte_vente_defaut(cursor, user_id)
-                    
-                    reference = f"JOURNAL-{date_ecriture}" if est_agregat else item.get('recu_numero')
-                    description = f"Ventes POS {item.get('mode_paiement_nom')} - {date_ecriture}" if est_agregat else f"Vente POS {item.get('recu_numero')}"
-
                     if not compte_bancaire_id:
-                        logger.warning(f"Mode de paiement sans compte bancaire/trésorerie configuré pour {reference}")
+                        logger.warning(f"Mode de paiement sans compte configuré")
                         continue
-
-                    # 1. ÉCRITURE PRINCIPALE : Recette
-                    data_vente = {
-                        'date_ecriture': date_ecriture,
-                        'compte_bancaire_id': compte_bancaire_id,
-                        'categorie_id': categorie_id,
-                        'montant': total_ttc,
-                        'montant_htva': total_ht,
-                        'devise': 'CHF',
-                        'description': description,
-                        'reference': reference,
-                        'type_ecriture': 'recette',
-                        'tva_taux': round((total_tva / total_ht * 100), 2) if total_ht > 0 else 0,
-                        'tva_montant': total_tva,
-                        'utilisateur_id': user_id,
-                        'statut': 'validée',
-                        'type_ecriture_comptable': 'principale'
-                    }
                     
-                    succes = self.modele_ecriture.create(self.modele_categorie, data_vente)
-                    if not succes:
-                        raise Exception(f"Échec création écriture vente {reference}")
-                    nb_ecritures_creees += 1
-
-                    # 2. ÉCRITURE SECONDAIRE : Frais de service (TPE / Twint)
-                    montant_frais = (total_ttc * (frais_pct / 100)) + frais_fixe
-                    if montant_frais > 0.01 and compte_frais_id:
-                        data_frais = {
+                    # 🎯 DÉTECTION AUTOMATIQUE : Est-ce un achat de crédit (bon cadeau) ?
+                    is_credit = self.modele_categorie.is_compte_passif(compte_vente_id)
+                    
+                    if is_credit:
+                        # === FLUX B : Achat de bon cadeau ===
+                        # Pas de TVA, tout va sur le passif 2030
+                        data_vente = {
                             'date_ecriture': date_ecriture,
                             'compte_bancaire_id': compte_bancaire_id,
-                            'categorie_id': compte_frais_id,
-                            'montant': montant_frais,
-                            'montant_htva': montant_frais,
+                            'categorie_id': compte_vente_id,  # 2030
+                            'montant': total_ttc,
+                            'montant_htva': total_ttc,  # Pas de distinction HT/TVA
                             'devise': 'CHF',
-                            'description': f"Frais de service sur {description}",
-                            'reference': f"{reference}-FRAIS",
-                            'type_ecriture': 'depense',
-                            'tva_taux': 0,
+                            'description': f"Achat crédit POS {item.get('type_taxe_nom')} - {item.get('mode_paiement_nom')}",
+                            'reference': f"JOURNAL-{date_ecriture}-CREDIT-{item.get('type_taxe_id')}",
+                            'type_ecriture': 'recette',
+                            'tva_taux': 0,  # 🎯 TVA à 0
                             'tva_montant': 0,
                             'utilisateur_id': user_id,
                             'statut': 'validée',
                             'type_ecriture_comptable': 'principale'
                         }
-                        if self.modele_ecriture.create(self.modele_categorie, data_frais):
-                            nb_ecritures_creees += 1
-
-                    # 3. Marquer comme comptabilisé
-                    if est_agregat:
-                        cursor.execute("""
-                            UPDATE pos_receipts r
-                            JOIN pos_payments p ON r.id = p.receipt_id
-                            SET r.etat_comptable = 'comptabilise', r.comptabilise = 1, r.date_comptabilisation = %s
-                            WHERE DATE(r.date) = %s 
-                              AND p.mode_paiement_id = %s 
-                              AND r.utilisateur_id = %s 
-                              AND r.status = 'Fermé'
-                        """, (date_ecriture, date_ecriture, item['mode_paiement_id'], user_id))
                     else:
-                        ticket_id = item.get('id')
-                        if ticket_id:
-                            cursor.execute("""
-                                UPDATE pos_receipts 
-                                SET etat_comptable = 'comptabilise', comptabilise = 1, date_comptabilisation = %s 
-                                WHERE id = %s AND utilisateur_id = %s
-                            """, (date_ecriture, ticket_id, user_id))
-
-                return True, f"{nb_ecritures_creees} écriture(s) générée(s) avec succès."
-
+                        # === FLUX A : Vente normale ===
+                        # La TVA sera générée automatiquement via categorie_complementaire_id de 3001
+                        data_vente = {
+                            'date_ecriture': date_ecriture,
+                            'compte_bancaire_id': compte_bancaire_id,
+                            'categorie_id': compte_vente_id,  # 3001
+                            'montant': total_ttc,
+                            'montant_htva': total_ht,
+                            'devise': 'CHF',
+                            'description': f"Ventes POS {item.get('type_taxe_nom')} - {item.get('mode_paiement_nom')}",
+                            'reference': f"JOURNAL-{date_ecriture}-{item.get('type_taxe_id')}",
+                            'type_ecriture': 'recette',
+                            'tva_taux': round((total_tva / total_ht * 100), 2) if total_ht > 0 else 0,
+                            'tva_montant': total_tva,
+                            'utilisateur_id': user_id,
+                            'statut': 'validée',
+                            'type_ecriture_comptable': 'principale'
+                        }
+                    
+                    succes, msg = self.modele_ecriture.create(self.modele_categorie, data_vente)
+                    if succes:
+                        nb_ecritures += 1
+                    
+                    # Gestion des frais de service (uniquement pour ventes normales)
+                    if not is_credit:
+                        montant_frais = (total_ttc * (float(item.get('frais_pourcentage', 0) or 0) / 100)) + float(item.get('frais_fixe', 0) or 0)
+                        if montant_frais > 0.01 and item.get('compte_frais_service_id'):
+                            data_frais = {
+                                'date_ecriture': date_ecriture,
+                                'compte_bancaire_id': compte_bancaire_id,
+                                'categorie_id': item['compte_frais_service_id'],
+                                'montant': montant_frais,
+                                'montant_htva': montant_frais,
+                                'devise': 'CHF',
+                                'description': f"Frais de service - {item.get('mode_paiement_nom')}",
+                                'reference': f"JOURNAL-{date_ecriture}-FRAIS",
+                                'type_ecriture': 'depense',
+                                'tva_taux': 0,
+                                'tva_montant': 0,
+                                'utilisateur_id': user_id,
+                                'statut': 'validée',
+                                'type_ecriture_comptable': 'principale'
+                            }
+                            if self.modele_ecriture.create(self.modele_categorie, data_frais):
+                                nb_ecritures += 1
+                
+                return True, f"{nb_ecritures} écriture(s) générée(s)"
         except Exception as e:
-            logger.error(f"Erreur comptabilisation sélection: {e}", exc_info=True)
-            return False, f"Erreur système: {str(e)}"
+            logger.error(f"Erreur comptabilisation: {e}", exc_info=True)
+            return False, f"Erreur: {str(e)}"
 
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
             """Récupère le compte de vente de classe 3 par défaut (3000)"""
@@ -19677,7 +19785,6 @@ class PeriodeTravailPOS:
         ventes nettes, espèces et ventilation par mode de paiement.
         """
         try:
-            import logging
             logger = logging.getLogger(__name__)
 
             with self.db.get_cursor(dictionary=True) as cursor:
@@ -19953,6 +20060,7 @@ class MouvementCaissePOS:
                 return cursor.fetchall()
         except:
             return []
+
 class ModelManager:
     def __init__(self, db):
         self._db = db

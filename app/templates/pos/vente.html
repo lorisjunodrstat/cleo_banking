@@ -385,19 +385,39 @@ button{cursor:pointer; border:none; background:none}
 </div></div>
 {# ---------- Modale : paiement ---------- #}
 <div class="modal" id="modalPay"><div class="box" style="max-width: 560px;">
-  <button class="close" onclick="closeModal('modalPay')">✕</button>
+  <button class="close" onclick="closeModal('modalPay'); resetGiftCardState()">✕</button>
   <h2>Paiement — <span id="payTotalModal">CHF 0.00</span></h2>
   
-  {# ✅ NOUVEAU : Résumé des articles du ticket #}
+  {# ✅ NOUVEAU : Section de saisie du Bon Cadeau / Abonnement #}
+  <div id="giftCardSection" style="display:none; margin: 10px 0; padding: 12px; background: #fff3cd; border: 1px solid #ffe08a; border-radius: 6px;">
+    <label style="font-size:13px; font-weight:600; color:#856404; display:block; margin-bottom:6px;">
+      🎫 Code du Bon Cadeau / Abonnement
+    </label>
+    <div style="display:flex; gap:8px;">
+      <input type="text" id="giftCardCodeInput" placeholder="Ex: BC-A1B2C3D4" 
+             style="flex:1; padding:8px; border:1px solid #ccc; border-radius:4px; font-size:14px;">
+      <button type="button" onclick="attachGiftCardToPayment()" 
+              style="padding:8px 12px; background:#856404; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">
+        Associer
+      </button>
+    </div>
+    <div id="giftCardStatus" style="font-size:12px; margin-top:6px; color:#856404;"></div>
+    {# Champ caché pour stocker l'ID du bon une fois associé #}
+    <input type="hidden" id="currentGiftCardId">
+  </div>
+
+  {# Résumé des articles du ticket #}
   <div style="max-height: 150px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; border: 1px solid #e9ecef;">
     <div id="payTicketItems" style="color: #666;">Chargement...</div>
   </div>
 
   <div class="modes" id="modesButtons"></div>
   <div id="payLines"></div>
-  <div class="field"><label>Pourboire (CHF)</label><input type="number" step="0.05" id="tips" value="0"></div>
+  
+  <div class="field"><label>Pourboire (CHF)</label><input type="number" step="0.05" id="tips" value="0" oninput="renderPayments()"></div>
+  
   <div class="row" style="display:flex;justify-content:space-between;margin:8px 0">
-    <span>Sous-total TTC</span><b>CHF <span id="payTotalTTC">0.00</span></b>
+      <span>Sous-total TTC</span><b>CHF <span id="payTotalTTC">0.00</span></b>
   </div>
   <div id="payTaxesDetail" style="font-size:12px; color:#888; margin:4px 0;"></div>
   <div class="row" style="display:flex;justify-content:space-between;margin:8px 0">
@@ -1199,7 +1219,9 @@ async function resumeDbTicket(id){
     }).join('');
     $('payTicketItems').innerHTML = itemsHtml || '<div style="text-align:center">Aucun article</div>';
 
-    $('modesButtons').innerHTML = MODES.map(m => `<button type="button" onclick="addPayment(${m.id})">${m.nom}</button>`).join('');
+    $('modesButtons').innerHTML = MODES.map(m => 
+    `<button type="button" data-mode-id="${m.id}" onclick="addPayment(${m.id})">${m.nom}</button>`
+).join('');
     $('tips').value = 0; 
     $('tips').oninput = renderPayments;
     addPayment(MODES[0] ? MODES[0].id : null);
@@ -1213,6 +1235,30 @@ async function resumeDbTicket(id){
 
   function addPayment(modeId){
     if(!modeId) return;
+    
+    const mode = MODES.find(m => m.id === modeId);
+    if (!mode) return;
+
+    // ✅ DÉTECTION : Est-ce un mode de paiement de type "Crédit" ?
+    // On vérifie le nom ou un éventuel flag 'est_credit' envoyé par le backend
+    const isCredit = mode.est_credit || 
+                     mode.nom.toLowerCase().includes('bon cadeau') || 
+                     mode.nom.toLowerCase().includes('abonnement') || 
+                     mode.nom.toLowerCase().includes('crédit');
+
+    if (isCredit) {
+        // Afficher la section de saisie du code
+        $('giftCardSection').style.display = 'block';
+        $('giftCardCodeInput').value = '';
+        $('currentGiftCardId').value = '';
+        $('giftCardStatus').textContent = 'Veuillez saisir le code avant d\'ajouter ce paiement.';
+        $('giftCardCodeInput').focus();
+        
+        // On ne l'ajoute pas encore au tableau payments, on attend que l'utilisateur associe le code
+        return; 
+    }
+
+    // Pour les modes normaux (Espèces, Carte, etc.)
     if (payments.some(p => p.mode_paiement_id === modeId)) return;
     
     const due = totalDue();
@@ -1226,7 +1272,7 @@ async function resumeDbTicket(id){
     
     payments.push({ mode_paiement_id: modeId, montant: rest });
     renderPayments();
-  }
+}
 
   function renderPayments(){
     const due = totalDue();
@@ -1283,9 +1329,19 @@ async function resumeDbTicket(id){
             prix_unitaire: l.prix,
             commentaire: l.commentaire || '',
             modificateurs: l.modificateurs || '',
-            tva_breakdown: l.tva_breakdown || [] // ✅ NOUVEAU
+            tva_breakdown: l.tva_breakdown || [] 
         })),
-        payments: pays,
+        // ✅ MODIFICATION : Inclure bon_cadeau_code s'il existe
+        payments: pays.map(p => {
+            const paymentData = { 
+                mode_paiement_id: p.mode_paiement_id, 
+                montant: p.montant 
+            };
+            if (p.bon_cadeau_code) {
+                paymentData.bon_cadeau_code = p.bon_cadeau_code;
+            }
+            return paymentData;
+        }),
         tips: parseFloat($('tips').value)||0,
         nom_ticket: ticket.nom,
         commentaire: ticket.commentaire || '',
@@ -1293,7 +1349,7 @@ async function resumeDbTicket(id){
         discount_id: parseInt($('discountSelect').value) || null,
         id_client: ticket.client ? ticket.client.id : null,
         nom_du_client: ticket.client ? ticket.client.nom_client : '',
-    };
+      };
     
     try {
         const r = await fetch(URL_PAY, { 

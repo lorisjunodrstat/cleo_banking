@@ -20,16 +20,18 @@
                             <th style="width: 40px;">
                                 <input type="checkbox" id="selectAll" class="form-check-input" title="Tout sélectionner">
                             </th>
-                            <th>Date / Période</th>
+                            <th>Date</th>
                             <th>Mode de Paiement</th>
+                            <th>Type de Taxe POS</th> <!-- ✅ NOUVEAU -->
                             <th class="text-center">Nb Tickets</th>
+                            <th class="text-end">Total HT</th> <!-- ✅ NOUVEAU -->
+                            <th class="text-end">Total TVA</th> <!-- ✅ NOUVEAU -->
                             <th class="text-end">Total TTC</th>
-                            <th class="text-end">Frais Estimés</th>
-                            <th>Compte de Destination</th>
+                            <th>Compte Cible</th> <!-- ✅ MODIFIÉ -->
                         </tr>
                     </thead>
                     <tbody>
-                         {% for item in a_comptabiliser %}
+                        {% for item in a_comptabiliser %}
                         <tr>
                             <td>
                                 <input type="checkbox" name="selection" class="item-check form-check-input" 
@@ -40,42 +42,54 @@
                                 {{ d.strftime('%d.%m.%Y') if d is not string else d }}
                             </td>
                             <td><span class="badge bg-secondary">{{ item.mode_paiement_nom }}</span></td>
-                            <td class="text-center">{{ item.nb_tickets or 1 }}</td>
-                            <td class="text-end fw-bold">CHF {{ "%.2f"|format(item.total_ttc) }}</td>
-                            <td class="text-end" style="color: #e53935;">
-                                {% set frais = (item.total_ttc * (item.frais_pourcentage or 0) / 100) + (item.frais_fixe or 0) %}
-                                {% if frais > 0 %}CHF {{ "%.2f"|format(frais) }}{% else %}-{% endif %}
+                            
+                            <!-- ✅ NOUVEAU : Affichage du type de taxe (ex: Alimentaire, Pas de TVA) -->
+                            <td>
+                                <span class="badge bg-info text-dark">
+                                    {{ item.type_taxe_nom or 'Non spécifié' }}
+                                </span>
                             </td>
-                                                        <td>
-                                {# 1. Trouver le mode de paiement correspondant à l'élément en cours #}
-                                {% set mp = modes_paiement | selectattr("id", "equalto", item.mode_paiement_id) | first %}
-                                
-                                {# 2. Afficher le compte si le mode est trouvé et configuré #}
-                                {% if mp %}
-                                    {% if mp.compte_tresorerie_numero %}
-                                        {# Cas où la route utilise get_all_with_comptes #}
-                                        <span class="badge bg-info text-dark">{{ mp.compte_tresorerie_numero }}</span> 
-                                        {{ mp.compte_tresorerie_nom }}
-                                    {% elif mp.compte_tresorerie_id and cat_dict and mp.compte_tresorerie_id in cat_dict %}
-                                        {# Cas où la route construit cat_dict #}
-                                        <span class="badge bg-info text-dark">{{ cat_dict[mp.compte_tresorerie_id].numero }}</span> 
-                                        {{ cat_dict[mp.compte_tresorerie_id].nom }}
+                            
+                            <td class="text-center">{{ item.nb_tickets or 1 }}</td>
+                            
+                            <!-- ✅ NOUVEAU : Détail HT -->
+                            <td class="text-end text-muted">{{ "%.2f"|format(item.total_ht or 0) }}</td>
+                            
+                            <!-- ✅ NOUVEAU : Détail TVA -->
+                            <td class="text-end text-muted">{{ "%.2f"|format(item.total_tva or 0) }}</td>
+                            
+                            <td class="text-end fw-bold">CHF {{ "%.2f"|format(item.total_ttc) }}</td>
+                            
+                            <!-- ✅ MODIFIÉ : Compte Cible avec indicateur visuel intelligent -->
+                            <td>
+                                {% if item.compte_vente_numero %}
+                                    {% set num_str = item.compte_vente_numero | string %}
+                                    
+                                    {% if num_str.startswith('2') %}
+                                        <!-- Compte de Passif (ex: 2030 Acomptes) -->
+                                        <span class="badge bg-warning text-dark" title="Compte de Passif (Acomptes/Crédits clients)">
+                                            <i class="bi bi-wallet2"></i> {{ item.compte_vente_numero }} - {{ item.compte_vente_nom }}
+                                        </span>
+                                    {% elif num_str.startswith('3') %}
+                                        <!-- Compte de Produit (ex: 3001 Ventes) -->
+                                        <span class="badge bg-success" title="Compte de Produit (Chiffre d'affaires)">
+                                            <i class="bi bi-graph-up"></i> {{ item.compte_vente_numero }} - {{ item.compte_vente_nom }}
+                                        </span>
                                     {% else %}
-                                        <span class="text-warning">
-                                            <i class="bi bi-exclamation-triangle"></i> Non configuré
+                                        <span class="badge bg-secondary">
+                                            {{ item.compte_vente_numero }} - {{ item.compte_vente_nom }}
                                         </span>
                                     {% endif %}
                                 {% else %}
-                                    {# Cas où le mode de paiement a été supprimé ou est introuvable #}
-                                    <span class="text-muted">
-                                        <i class="bi bi-question-circle"></i> Mode inconnu
+                                    <span class="text-warning">
+                                        <i class="bi bi-exclamation-triangle"></i> Non configuré
                                     </span>
                                 {% endif %}
                             </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="7" class="text-center text-muted py-5">
+                            <td colspan="9" class="text-center text-muted py-5">
                                 <i class="bi bi-check-circle fs-1 d-block mb-3 text-success"></i>
                                 <h5>Tout est à jour !</h5>
                                 <p class="mb-0">Aucune écriture en attente de comptabilisation pour ce mode.</p>
@@ -90,7 +104,7 @@
                 <button type="button" class="btn btn-outline-secondary" onclick="window.history.back()">
                     <i class="bi bi-arrow-left me-1"></i> Annuler
                 </button>
-                <button type="button" class="btn btn-success btn-lg" onclick="comptabiliserSelection()" id="btnCompta">
+                <button type="button" class="btn btn-success btn-lg" onclick="comptabiliserSelection()" id="btnCompta" disabled>
                     <i class="bi bi-check-lg me-1"></i> Comptabiliser la sélection (<span id="countSelected" class="fw-bold">0</span>)
                 </button>
             </div>
@@ -106,7 +120,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const countEl = document.getElementById('countSelected');
     const btnCompta = document.getElementById('btnCompta');
 
-    // Gestion de la sélection globale
+    function updateCount() {
+        const count = document.querySelectorAll('.item-check:checked').length;
+        if (countEl) countEl.textContent = count;
+        if (btnCompta) btnCompta.disabled = (count === 0);
+    }
+
     if (selectAll) {
         selectAll.addEventListener('change', function(e) {
             document.querySelectorAll('.item-check').forEach(cb => cb.checked = e.target.checked);
@@ -114,32 +133,15 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Gestion de la sélection individuelle
     document.querySelectorAll('.item-check').forEach(cb => {
         cb.addEventListener('change', function() {
-            // Désélectionner "Tout sélectionner" si un élément est décoché
-            if (!this.checked && selectAll) {
-                selectAll.checked = false;
-            }
+            if (!this.checked && selectAll) selectAll.checked = false;
             updateCount();
         });
     });
 
-    function updateCount() {
-        const count = document.querySelectorAll('.item-check:checked').length;
-        if (countEl) {
-            countEl.textContent = count;
-        }
-        // Désactiver le bouton si rien n'est sélectionné
-        if (btnCompta) {
-            btnCompta.disabled = (count === 0);
-        }
-    }
-
-    // Initialiser l'état du bouton au chargement
     updateCount();
 
-    // Fonction globale pour l'appel AJAX
     window.comptabiliserSelection = async function() {
         const checkedBoxes = document.querySelectorAll('.item-check:checked');
         if (checkedBoxes.length === 0) {
@@ -153,7 +155,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const selection = Array.from(checkedBoxes).map(cb => JSON.parse(cb.value));
         
-        // Afficher un indicateur de chargement
         const originalText = btnCompta.innerHTML;
         btnCompta.disabled = true;
         btnCompta.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Traitement en cours...';
@@ -167,17 +168,18 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const data = await response.json();
             if (data.success) {
+                // Utilisation d'une alerte douce ou redirection propre
                 alert("✅ " + data.message);
-                window.location.reload(); // Recharger pour voir les éléments retirés
+                window.location.reload();
             } else {
                 alert("❌ Erreur: " + data.message);
                 btnCompta.disabled = false;
                 btnCompta.innerHTML = originalText;
-                updateCount(); // Restaurer l'état du bouton
+                updateCount();
             }
         } catch (error) {
             console.error("Erreur réseau:", error);
-            alert("❌ Erreur réseau lors de la comptabilisation. Vérifiez votre connexion.");
+            alert("❌ Erreur réseau lors de la comptabilisation.");
             btnCompta.disabled = false;
             btnCompta.innerHTML = originalText;
             updateCount();
