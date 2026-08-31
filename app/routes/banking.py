@@ -146,8 +146,11 @@ def about():
 @bp.route('/dashboard')
 @login_required  # Empêche l'accès aux utilisateurs non connectés
 def main_dashboard():
+    maintenant = datetime.now()
     # Rendu du fichier 'dashboard.html' situé à la racine du dossier templates/
-    return render_template('dashboard.html')
+    return render_template('dashboard.html', maintenant=maintenant)
+
+
 ####################################################################################
 ####################################################################################
 ###########################      Banques           #################################

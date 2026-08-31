@@ -136,6 +136,9 @@
         <div>
             <h2 class="fw-bold mb-1">Bonjour, {{ current_user.nom }} 👋</h2>
             <p class="mb-0 text-white-50">Bienvenue sur votre tableau de bord centralized.</p>
+            {% if maintenant %}
+            <p class="mb-0 text-white-50"> Nous sommes le {{ maintenant }}</p>
+            {% endif %}
         </div>
         <div>
             <span class="badge bg-white text-dark px-3 py-2 rounded-pill fw-semibold">
