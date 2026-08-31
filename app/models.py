@@ -19618,7 +19618,16 @@ class POSComptabilisation:
                             'type_ecriture_comptable': 'principale'
                         }
                     
-                    succes, msg = self.modele_ecriture.create(self.modele_categorie, data_vente)
+                    resultat = self.modele_ecriture.create(self.modele_categorie, data_vente)
+
+                    # Si create() retourne un tuple (succes, msg)
+                    if isinstance(resultat, tuple):
+                        succes, msg = resultat
+                    else:
+                        # Si create() retourne juste un booléen
+                        succes = resultat
+                        msg = "OK" if succes else "Erreur"
+
                     if succes:
                         nb_ecritures += 1
                     
@@ -19642,7 +19651,13 @@ class POSComptabilisation:
                                 'statut': 'validée',
                                 'type_ecriture_comptable': 'principale'
                             }
-                            if self.modele_ecriture.create(self.modele_categorie, data_frais):
+                            resultat_frais = self.modele_ecriture.create(self.modele_categorie, data_frais)
+                            if isinstance(resultat_frais, tuple):
+                                succes_frais, _ = resultat_frais
+                            else:
+                                succes_frais = resultat_frais
+
+                            if succes_frais:
                                 nb_ecritures += 1
                 
                 return True, f"{nb_ecritures} écriture(s) générée(s)"
