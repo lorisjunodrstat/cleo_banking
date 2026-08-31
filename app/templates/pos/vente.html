@@ -765,11 +765,11 @@ function confirmAddArticle(){
     const qty = parseInt($('maQty').value || 1);
     const commentaire = $('maCommentaire').value.trim();
     
-    // On utilise la fonction de sécurité pour le taux de l'article
     const tauxArticleBase = safeParseTaux(a.taux_taxe);
     
     let modsSimples = [];
     let optionsTauxDifferents = [];
+    let optionsMemeTaux = []; // ✅ NOUVEAU : pour les options avec le même taux
     let modsAffichage = [];
     
     if (varianteId && sel) {
@@ -785,39 +785,62 @@ function confirmAddArticle(){
         prixBase += prixMod;
     });
     
-    // 3. Options de modificateurs (ventilation TVA)
+    // 3. Options de modificateurs
     document.querySelectorAll('.maModOpt:checked').forEach(o => {
         let prixOption = parseFloat(o.dataset.prix) || 0;
-        
-        // ✅ ICI : On utilise la fonction de sécurité pour tauxOption et tauxParent
         let tauxOption = safeParseTaux(o.dataset.tauxTva);
         let tauxParent = safeParseTaux(o.dataset.tauxParent);
-        
-        // Si l'option a un taux > 0, on le prend, sinon on hérite du parent
         let tauxFinal = (tauxOption > 0) ? tauxOption : tauxParent;
+        
         modsAffichage.push(o.value);
         
+        // ✅ CORRECTION : On ajoute TOUJOURS le prix de l'option, peu importe le taux
         if (tauxFinal !== tauxArticleBase) {
-            // On soustrait le prix de l'option du prix du menu car elle est déjà incluse
-            prixBase -= prixOption; 
+            // L'option a un taux TVA différent, on la met dans tva_breakdown séparé
             optionsTauxDifferents.push({ nom: o.value, prix: prixOption, taux: tauxFinal });
+        } else {
+            // L'option a le même taux que l'article, on l'ajoute simplement au prix
+            optionsMemeTaux.push({ nom: o.value, prix: prixOption });
+            prixBase += prixOption; // ✅ CORRECTION : on ajoute le prix de l'option
         }
     });
     
     // 4. Construction du breakdown TVA
     let tva_breakdown = [];
+    
+    // Ajouter l'article avec son prix de base (incluant mods simples et options même taux)
     if (prixBase > 0) {
-        tva_breakdown.push({ description: a.nom_article, montant_ttc: prixBase, taux: tauxArticleBase });
+        // On calcule le montant TTC correspondant à la part de l'article
+        // mais attention : si on a des options avec le même taux, elles sont incluses dans prixBase
+        // et donc dans le montant TTC de l'article
+        tva_breakdown.push({ 
+            description: a.nom_article, 
+            montant_ttc: prixBase, 
+            taux: tauxArticleBase 
+        });
     }
+    
+    // Ajouter les options avec taux différent (montant TTC séparé)
     optionsTauxDifferents.forEach(opt => {
-        tva_breakdown.push({ description: opt.nom, montant_ttc: opt.prix, taux: opt.taux });
+        tva_breakdown.push({ 
+            description: opt.nom, 
+            montant_ttc: opt.prix, 
+            taux: opt.taux 
+        });
     });
     
     // 5. Prix final pour l'affichage sur le ticket
+    // prixBase contient déjà : article + mods simples + options même taux
+    // On ajoute les options avec taux différent
     let finalDisplayPrice = prixBase + optionsTauxDifferents.reduce((sum, opt) => sum + opt.prix, 0);
     
     const modificateursStr = modsAffichage.join(', ');
-    const modificateursData = { varianteId, modsSimples, optionsTauxDifferents };
+    const modificateursData = { 
+        varianteId, 
+        modsSimples, 
+        optionsTauxDifferents,
+        optionsMemeTaux // ✅ NOUVEAU
+    };
     const key = a.id + '_' + (varianteId || 0) + '_' + modificateursStr;
 
     // 6. Mise à jour ou ajout dans le ticket
@@ -834,6 +857,11 @@ function confirmAddArticle(){
         if (existing) {
             existing.qty += qty;
             if (commentaire) existing.commentaire = commentaire;
+            // ✅ On met à jour le prix et le breakdown au cas où les mods ont changé
+            existing.prix = finalDisplayPrice;
+            existing.tva_breakdown = tva_breakdown;
+            existing.modificateurs = modificateursStr;
+            existing.modificateursData = modificateursData;
         } else {
             ticket.lines.push({ 
                 key, article_id: a.id, variante_id: varianteId, nom: a.nom_article, 
@@ -847,6 +875,7 @@ function confirmAddArticle(){
     renderTicket(); 
     closeModal('modalArticle');
 }
+
 function toggleMobileMenu() {
   const menu = document.getElementById('mobileMenu');
   menu.style.display = menu.style.display === 'none' ? 'block' : 'none';

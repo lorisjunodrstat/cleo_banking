@@ -19460,7 +19460,7 @@ class POSComptabilisation:
                 if mode == 'jour':
                     query = """
                         SELECT 
-                            DATE_FORMAT(r.date, '%%Y-%%m-%%d') as date_jour,
+                            DATE_FORMAT(sub.date, '%%Y-%%m-%%d') as date_jour,
                             pm.id as mode_paiement_id,
                             pm.nom as mode_paiement_nom,
                             pm.compte_bancaire_id,
@@ -19468,36 +19468,49 @@ class POSComptabilisation:
                             pm.compte_frais_service_id,
                             pm.frais_pourcentage,
                             pm.frais_fixe,
-                            -- 🎯 Regroupement par TYPE de taxe (pas par taux)
-                            pat.type_taxe_id,
-                            typ.nom as type_taxe_nom,
-                            COALESCE(mct.compte_vente_id, %s) as compte_vente_id,
+                            sub.type_taxe_id,
+                            sub.type_taxe_nom,
+                            sub.compte_vente_id,
                             cvente.numero as compte_vente_numero,
                             cvente.nom as compte_vente_nom,
-                            COUNT(DISTINCT r.id) as nb_tickets,
-                            -- Calcul HT et TVA basé sur le taux historique de la ligne
-                            SUM(ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100))) as total_ht,
-                            SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100)))) as total_tva,
-                            SUM(ri.total_ligne) as total_ttc
-                        FROM pos_receipts r
-                        JOIN pos_payments p ON r.id = p.receipt_id
+                            COUNT(DISTINCT sub.receipt_id) as nb_tickets,
+                            -- 🎯 Prorata du HT et de la TVA basé sur la part du paiement
+                            SUM(sub.total_ht * (p.montant / NULLIF(sub.total_collecte, 0))) as total_ht,
+                            SUM(sub.total_tva * (p.montant / NULLIF(sub.total_collecte, 0))) as total_tva,
+                            -- Le montant TTC réel encaissé par ce mode de paiement
+                            SUM(p.montant) as total_ttc
+                        FROM (
+                            -- SOUS-REQUÊTE : Totaux par reçu et par type de taxe (évite le produit cartésien)
+                            SELECT 
+                                r.id as receipt_id,
+                                r.date,
+                                r.total_collecte,
+                                pat.type_taxe_id,
+                                typ.nom as type_taxe_nom,
+                                COALESCE(mct.compte_vente_id, %s) as compte_vente_id,
+                                SUM(ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100))) as total_ht,
+                                SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100)))) as total_tva
+                            FROM pos_receipts r
+                            JOIN pos_receipt_items ri ON r.id = ri.receipt_id
+                            LEFT JOIN pos_article_taxes pat ON ri.article_id = pat.article_id AND pat.est_actuelle = TRUE
+                            LEFT JOIN pos_types_taxes typ ON pat.type_taxe_id = typ.id
+                            LEFT JOIN pos_compta_mapping_tva mct ON pat.type_taxe_id = mct.type_taxe_id AND mct.utilisateur_id = r.utilisateur_id
+                            WHERE r.utilisateur_id = %s  
+                            AND (r.comptabilise = FALSE OR r.etat_comptable = 'non_comptabilise')
+                            AND r.status = 'Fermé'
+                            AND r.receipt_type IN ('Vente', 'Remboursement')
+                            GROUP BY r.id, r.date, r.total_collecte, pat.type_taxe_id, typ.nom, COALESCE(mct.compte_vente_id, %s)
+                        ) sub
+                        JOIN pos_payments p ON sub.receipt_id = p.receipt_id
                         JOIN pos_modes_paiement pm ON p.mode_paiement_id = pm.id
-                        JOIN pos_receipt_items ri ON r.id = ri.receipt_id
-                        LEFT JOIN pos_article_taxes pat ON ri.article_id = pat.article_id AND pat.est_actuelle = TRUE
-                        LEFT JOIN pos_types_taxes typ ON pat.type_taxe_id = typ.id
-                        LEFT JOIN pos_compta_mapping_tva mct ON pat.type_taxe_id = mct.type_taxe_id AND mct.utilisateur_id = r.utilisateur_id
-                        LEFT JOIN categories_comptables cvente ON COALESCE(mct.compte_vente_id, %s) = cvente.id
-                        WHERE r.utilisateur_id = %s  
-                        AND (r.comptabilise = FALSE OR r.etat_comptable = 'non_comptabilise')
-                        AND r.status = 'Fermé'
-                        AND r.receipt_type IN ('Vente', 'Remboursement')
+                        LEFT JOIN categories_comptables cvente ON sub.compte_vente_id = cvente.id
                         GROUP BY 
-                            DATE_FORMAT(r.date, '%%Y-%%m-%%d'), 
+                            DATE_FORMAT(sub.date, '%%Y-%%m-%%d'), 
                             pm.id, pm.nom, pm.compte_bancaire_id, pm.compte_tresorerie_id,
                             pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe,
-                            pat.type_taxe_id, typ.nom,
-                            COALESCE(mct.compte_vente_id, %s)
-                        ORDER BY date_jour DESC, pm.nom, typ.nom
+                            sub.type_taxe_id, sub.type_taxe_nom,
+                            sub.compte_vente_id
+                        ORDER BY date_jour DESC, pm.nom, sub.type_taxe_nom
                     """
                     cursor.execute(query, (compte_defaut, compte_defaut, user_id, compte_defaut))
                     return cursor.fetchall()
@@ -19505,8 +19518,9 @@ class POSComptabilisation:
                 else:
                     query = """
                         SELECT 
-                            r.id, r.recu_numero, 
-                            DATE_FORMAT(r.date, '%%Y-%%m-%%d %%H:%%i:%%s') as date,
+                            sub.receipt_id as id, 
+                            sub.recu_numero, 
+                            DATE_FORMAT(sub.date, '%%Y-%%m-%%d %%H:%%i:%%s') as date,
                             pm.id as mode_paiement_id,
                             pm.nom as mode_paiement_nom, 
                             pm.compte_tresorerie_id,
@@ -19514,24 +19528,37 @@ class POSComptabilisation:
                             pm.compte_frais_service_id, 
                             pm.frais_pourcentage, 
                             pm.frais_fixe,
-                            COALESCE(mct.compte_vente_id, %s) as compte_vente_id,
-                            SUM(ri.total_ligne / (1 + (COALESCE(at.taux, 0) / 100))) as total_ht,
-                            SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(at.taux, 0) / 100)))) as total_tva,
-                            SUM(ri.total_ligne) as total_ttc
-                        FROM pos_receipts r
-                        JOIN pos_payments p ON r.id = p.receipt_id
+                            sub.compte_vente_id,
+                            cvente.numero as compte_vente_numero,
+                            cvente.nom as compte_vente_nom,
+                            SUM(sub.total_ht * (p.montant / NULLIF(sub.total_collecte, 0))) as total_ht,
+                            SUM(sub.total_tva * (p.montant / NULLIF(sub.total_collecte, 0))) as total_tva,
+                            SUM(p.montant) as total_ttc
+                        FROM (
+                            SELECT 
+                                r.id as receipt_id,
+                                r.recu_numero,
+                                r.date,
+                                r.total_collecte,
+                                COALESCE(mct.compte_vente_id, %s) as compte_vente_id,
+                                SUM(ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100))) as total_ht,
+                                SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100)))) as total_tva
+                            FROM pos_receipts r
+                            JOIN pos_receipt_items ri ON r.id = ri.receipt_id
+                            LEFT JOIN pos_article_taxes pat ON ri.article_id = pat.article_id AND pat.est_actuelle = TRUE
+                            LEFT JOIN pos_compta_mapping_tva mct ON pat.type_taxe_id = mct.type_taxe_id AND mct.utilisateur_id = r.utilisateur_id
+                            WHERE r.utilisateur_id = %s 
+                              AND (r.comptabilise = FALSE OR r.etat_comptable = 'non_comptabilise')
+                              AND r.status = 'Fermé'
+                            GROUP BY r.id, r.recu_numero, r.date, r.total_collecte, COALESCE(mct.compte_vente_id, %s)
+                        ) sub
+                        JOIN pos_payments p ON sub.receipt_id = p.receipt_id
                         JOIN pos_modes_paiement pm ON p.mode_paiement_id = pm.id
-                        JOIN pos_receipt_items ri ON r.id = ri.receipt_id
-                        LEFT JOIN pos_article_taxes pat ON ri.article_id = pat.article_id AND pat.est_actuelle = TRUE
-                        LEFT JOIN pos_taux_taxes at ON pat.type_taxe_id = at.type_taxe_id
-                        LEFT JOIN pos_compta_mapping_tva mct ON pat.type_taxe_id = mct.type_taxe_id AND mct.utilisateur_id = %s
-                        WHERE r.utilisateur_id = %s 
-                          AND (r.comptabilise = FALSE OR r.etat_comptable = 'non_comptabilise')
-                          AND r.status = 'Fermé'
-                        GROUP BY r.id, r.recu_numero, r.date, pm.id, pm.nom, pm.compte_tresorerie_id, 
+                        LEFT JOIN categories_comptables cvente ON sub.compte_vente_id = cvente.id
+                        GROUP BY sub.receipt_id, sub.recu_numero, sub.date, pm.id, pm.nom, pm.compte_tresorerie_id, 
                                  pm.compte_bancaire_id, pm.compte_frais_service_id, pm.frais_pourcentage, 
-                                 pm.frais_fixe, COALESCE(mct.compte_vente_id, %s)
-                        ORDER BY r.date DESC
+                                 pm.frais_fixe, sub.compte_vente_id
+                        ORDER BY sub.date DESC
                     """
                     cursor.execute(query, (compte_defaut, user_id, user_id, compte_defaut))
                     return cursor.fetchall()
@@ -19539,7 +19566,6 @@ class POSComptabilisation:
         except Exception as e:
             logger.error(f"Erreur récupération données à comptabiliser: {e}", exc_info=True)
             return []
-
     @staticmethod
     def _parse_date_ecriture(raw):
         """Convertit une valeur date en objet date."""
@@ -19558,8 +19584,11 @@ class POSComptabilisation:
 
     def comptabiliser_selection(self, user_id: int, items_a_comptabiliser: List[Dict]) -> Tuple[bool, str]:
         try:
+            logger.info(f"📊 Items reçus pour comptabilisation : {len(items_a_comptabiliser)}")
+    
             with self.db.get_cursor(dictionary=True) as cursor:
                 nb_ecritures = 0
+                nb_sautés = 0
                 
                 for item in items_a_comptabiliser:
                     date_ecriture = POSComptabilisation._parse_date_ecriture(
@@ -19574,6 +19603,7 @@ class POSComptabilisation:
                     
                     if not compte_bancaire_id:
                         logger.warning(f"Mode de paiement sans compte configuré")
+                        nb_sautés += 1
                         continue
                     
                     # ✅ Détection passif via type_compte OU numéro classe 2
@@ -19641,7 +19671,8 @@ class POSComptabilisation:
                             # ✅ CORRECTION : create() retourne un bool
                             if self.modele_ecriture.create(self.modele_categorie, data_frais):
                                 nb_ecritures += 1
-                
+                logger.info(f"✅ Écritures créées : {nb_ecritures}, Sautées : {nb_sautés}")
+            
                 return True, f"{nb_ecritures} écriture(s) générée(s)"
         except Exception as e:
             logger.error(f"Erreur comptabilisation: {e}", exc_info=True)
