@@ -1043,10 +1043,18 @@ class DatabaseManager:
                     prix_supplement DECIMAL(10,2) DEFAULT 0,
                     description TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    taux_tva DECIMAL(5,2) DEFAULT NULL COMMENT 'Taux de TVA spécifique pour cette option',
+                    taux_tva DECIMAL(5,2) DEFAULT NULL COMMENT 'Taux de TVA spécifique pour cette option (NULL = hérite du parent)',
+                    type_option ENUM('redistribution', 'supplement', 'fixe_prix') DEFAULT 'redistribution' 
+                        COMMENT 'redistribution: répartit la TVA sans changer le prix | supplement: ajoute un supplément | fixe_prix: remplace le prix total',
+                    est_obligatoire BOOLEAN DEFAULT FALSE 
+                        COMMENT 'Si TRUE, l\'option doit obligatoirement être sélectionnée (ex: choix de la taille)',
+                    INDEX idx_utilisateur (utilisateur_id),
+                    INDEX idx_article (id_article),
+                    INDEX idx_modificateur (id_modificateur),
                     FOREIGN KEY (id_article) REFERENCES pos_articles(id) ON DELETE CASCADE,
-                    FOREIGN KEY (id_modificateur) REFERENCES pos_modificateurs(id) ON DELETE CASCADE
-                );""")
+                    FOREIGN KEY (id_modificateur) REFERENCES pos_modificateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (utilisateur_id) REFERENCES users(id) ON DELETE CASCADE
+                );"""
 
                 # ========================================================================
                 # TABLES DE LIAISON POS
@@ -17381,8 +17389,8 @@ class OptionModificateurPOS:
                 cursor.execute("""
                     INSERT INTO pos_options_modificateurs 
                     (utilisateur_id, nom_option, id_modificateur, id_article, 
-                     prix_supplement, description, taux_tva)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                     prix_supplement, description, taux_tva, type_option)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     user_id, 
                     data['nom_option'], 
@@ -17390,7 +17398,9 @@ class OptionModificateurPOS:
                     data.get('id_article'), 
                     data.get('prix_supplement', 0),
                     data.get('description', ''),
-                    data.get('taux_tva') # ✅ Peut être NULL
+                    data.get('taux_tva'),
+                    data.get('type_option', 'redistribution'), 
+                    data.get('est_obligatoire', False)
                 ))
                 return cursor.lastrowid
         except Exception as e:
@@ -17428,7 +17438,7 @@ class OptionModificateurPOS:
                 cursor.execute("""
                     UPDATE pos_options_modificateurs 
                     SET nom_option = %s, id_modificateur = %s, id_article = %s,
-                        prix_supplement = %s, description = %s, taux_tva = %s
+                        prix_supplement = %s, description = %s, taux_tva = %s, type_option = %s, est_obligatoire = %s
                     WHERE id = %s AND utilisateur_id = %s
                 """, (
                     data['nom_option'], 
@@ -17436,7 +17446,9 @@ class OptionModificateurPOS:
                     data.get('id_article'), 
                     data.get('prix_supplement', 0),
                     data.get('description', ''), 
-                    data.get('taux_tva'), # ✅ Peut être NULL
+                    data.get('taux_tva'),
+                    data.get('type_option', 'redistribution'), 
+                    data.get('est_obligatoire', False)
                     option_id, 
                     user_id
                 ))

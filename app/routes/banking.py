@@ -11343,69 +11343,62 @@ def pos_modifier_detail(mod_id):
     )
 
 
-@bp.route('/pos/modifier-option/<int:opt_id>/edit', methods=['GET', 'POST'])
+@bp.route('/pos/modifier-option/<int:option_id>/edit', methods=['GET', 'POST'])
 @login_required
-def pos_edit_modifier_option(opt_id):
-    option = g.models.option_modificateur_pos_model.get_by_id(opt_id, current_user.id)
+def pos_edit_modifier_option(option_id):
+    # Récupérer l'option existante
+    option = g.models.option_modificateur_pos_model.get_by_id(option_id, current_user.id)
     if not option:
-        flash('Option introuvable.', 'error')
+        flash('Option non trouvée.', 'error')
         return redirect(url_for('banking.pos_modifier_options'))
-
+    
     modifiers = g.models.modificateur_pos_model.get_all(current_user.id)
     articles = g.models.article_pos_model.get_all(current_user.id)
     
-    # ✅ Récupérer les types de taxes disponibles avec leur taux actuel
+    # Récupérer les types de taxes disponibles
     from datetime import date
     types_taxes_disponibles = g.models.taxe_pos_model.get_all_types(current_user.id, actif_only=True)
     for tt in types_taxes_disponibles:
         taux_info = g.models.taxe_pos_model.get_taux_for_date(tt['id'], date.today())
         tt['taux_actuel'] = taux_info['taux'] if taux_info else 0.00
     
-    # Récupérer le modificateur parent pour connaître sa TVA
-    parent_modifier = None
-    if option.get('id_modificateur'):
-        parent_modifier = g.models.modificateur_pos_model.get_by_id(option['id_modificateur'], current_user.id)
-
     if request.method == 'POST':
-        # ✅ Gestion de la TVA : vide = hérite du parent, sinon valeur spécifique
-        taux_tva_form = request.form.get('taux_tva', '').strip()
-        if taux_tva_form == '':
-            # Hérite de la TVA du modificateur parent sélectionné
-            parent_id = request.form.get('id_modificateur')
-            if parent_id:
-                parent = g.models.modificateur_pos_model.get_by_id(int(parent_id), current_user.id)
-                taux_tva = parent.get('taux_tva', 0.00) if parent else 0.00
-            else:
-                taux_tva = None
-        else:
-            taux_tva = safe_float(taux_tva_form)
+        type_option = request.form.get('type_option', 'redistribution')
+        est_obligatoire = request.form.get('est_obligatoire') == 'on'
         
-        g.models.option_modificateur_pos_model.update(opt_id, current_user.id, {
+        updated = g.models.option_modificateur_pos_model.update(option_id, current_user.id, {
             'nom_option': request.form.get('nom_option', '').strip(),
             'id_modificateur': int(request.form.get('id_modificateur')) if request.form.get('id_modificateur') else None,
             'id_article': int(request.form.get('id_article')) if request.form.get('id_article') else None,
-            'prix_supplement': safe_float(request.form.get('prix_supplement')),
+            'prix_supplement': safe_float(request.form.get('prix_supplement', '0')),
             'description': request.form.get('description', ''),
-            'taux_tva': taux_tva,
+            'taux_tva': safe_float(request.form.get('taux_tva')) if request.form.get('taux_tva') else None,
+            'type_option': type_option,  # ✅ NOUVEAU
+            'est_obligatoire': est_obligatoire  # ✅ NOUVEAU
         })
-        flash('Option modifiée !', 'success')
-        return redirect(url_for('banking.pos_modifier_options'))
+        
+        if updated:
+            flash('Option modifiée avec succès !', 'success')
+            return redirect(url_for('banking.pos_modifier_options'))
+        flash('Erreur lors de la modification.', 'error')
+    
+    return render_template('pos/edit_modifier_option.html', 
+                         option=option,
+                         modifiers=modifiers, 
+                         articles=articles,
+                         types_taxes_disponibles=types_taxes_disponibles)
 
-    return render_template(
-        'pos/edit_modifier_option.html', 
-        option=option, 
-        modifiers=modifiers, 
-        articles=articles,
-        parent_modifier=parent_modifier,
-        types_taxes_disponibles=types_taxes_disponibles  # ✅ Variable injectée
-    )
-
-@bp.route('/pos/modifier-option/<int:opt_id>/delete', methods=['POST'])
+@bp.route('/pos/modifier-option/<int:option_id>/delete', methods=['POST'])
 @login_required
-def pos_delete_modifier_option(opt_id):
-    g.models.option_modificateur_pos_model.delete(opt_id, current_user.id)
-    flash('Option supprimée.', 'success')
+def pos_delete_modifier_option(option_id):
+    success = g.models.option_modificateur_pos_model.delete(option_id, current_user.id)
+    if success:
+        flash('Option supprimée avec succès.', 'success')
+    else:
+        flash('Erreur lors de la suppression.', 'error')
     return redirect(url_for('banking.pos_modifier_options'))
+
+
 # --- ARTICLES ---
 @bp.route('/pos/articles')
 @login_required
@@ -11962,7 +11955,7 @@ def pos_create_modifier_option():
     modifiers = g.models.modificateur_pos_model.get_all(current_user.id)
     articles = g.models.article_pos_model.get_all(current_user.id)
     
-    # ✅ AJOUT : Récupérer les types de taxes disponibles
+    # Récupérer les types de taxes disponibles
     from datetime import date
     types_taxes_disponibles = g.models.taxe_pos_model.get_all_types(current_user.id, actif_only=True)
     for tt in types_taxes_disponibles:
@@ -11970,14 +11963,19 @@ def pos_create_modifier_option():
         tt['taux_actuel'] = taux_info['taux'] if taux_info else 0.00
     
     if request.method == 'POST':
-        # ... reste du code inchangé ...
+        # ✅ Récupérer les nouveaux champs
+        type_option = request.form.get('type_option', 'redistribution')
+        est_obligatoire = request.form.get('est_obligatoire') == 'on'
+        
         option_id = g.models.option_modificateur_pos_model.create(current_user.id, {
             'nom_option': request.form.get('nom_option', '').strip(),
             'id_modificateur': int(request.form.get('id_modificateur')) if request.form.get('id_modificateur') else None,
             'id_article': int(request.form.get('id_article')) if request.form.get('id_article') else None,
             'prix_supplement': safe_float(request.form.get('prix_supplement', '0')),
             'description': request.form.get('description', ''),
-            'taux_tva': safe_float(request.form.get('taux_tva')) if request.form.get('taux_tva') else None
+            'taux_tva': safe_float(request.form.get('taux_tva')) if request.form.get('taux_tva') else None,
+            'type_option': type_option,  # ✅ NOUVEAU
+            'est_obligatoire': est_obligatoire  # ✅ NOUVEAU
         })
         if option_id:
             flash('Option de modificateur créée avec succès !', 'success')
@@ -11987,7 +11985,7 @@ def pos_create_modifier_option():
     return render_template('pos/create_modifier_option.html', 
                          modifiers=modifiers, 
                          articles=articles,
-                         types_taxes_disponibles=types_taxes_disponibles)  # ✅ AJOUT
+                         types_taxes_disponibles=types_taxes_disponibles)
 
 @bp.route('/pos/article/<int:article_id>/modifiers', methods=['GET', 'POST'])
 @login_required
@@ -12013,6 +12011,7 @@ def pos_article_modifiers(article_id):
                          linked_modifier_ids=linked_modifier_ids)
 
                          # ============================================================
+
 # HISTORIQUE DES TAXES PAR ARTICLE
 # ============================================================
 

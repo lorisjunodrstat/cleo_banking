@@ -40,7 +40,6 @@
                         
                         <div class="col-md-6">
                             <label class="form-label">Taux de TVA (%)</label>
-                            <!-- ✅ CORRECTION ICI : Utilisation de types_taxes_disponibles -->
                             <select name="taux_tva" class="form-select" id="taux_tva_select">
                                 <option value="">-- Hériter du parent --</option>
                                 {% for type_taxe in types_taxes_disponibles %}
@@ -57,6 +56,42 @@
                                 {% else %}
                                     Vide = 0%
                                 {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ✅ NOUVEAU : Type d'option -->
+                    <div class="mb-3">
+                        <label class="form-label">Type d'option <span class="text-danger">*</span></label>
+                        <select name="type_option" class="form-select" required>
+                            <option value="redistribution" {% if option.type_option == 'redistribution' %}selected{% endif %}>
+                                🔄 Redistribution TVA - Répartit la TVA sans changer le prix
+                            </option>
+                            <option value="supplement" {% if option.type_option == 'supplement' %}selected{% endif %}>
+                                ➕ Supplément - Ajoute un supplément au prix
+                            </option>
+                            <option value="fixe_prix" {% if option.type_option == 'fixe_prix' %}selected{% endif %}>
+                                💰 Prix fixe - Remplace le prix total par le prix de l'option
+                            </option>
+                        </select>
+                        <div class="form-text">
+                            <strong>Redistribution :</strong> Ex: Bière dans un menu (TVA différente, prix inchangé)<br>
+                            <strong>Supplément :</strong> Ex: +1 CHF pour foie gras<br>
+                            <strong>Prix fixe :</strong> Ex: Abonnement avec plusieurs formules
+                        </div>
+                    </div>
+
+                    <!-- ✅ NOUVEAU : Option obligatoire -->
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="est_obligatoire" 
+                                   name="est_obligatoire" {% if option.est_obligatoire %}checked{% endif %}>
+                            <label class="form-check-label" for="est_obligatoire">
+                                Option obligatoire
+                            </label>
+                            <div class="form-text">
+                                Si coché, l'utilisateur doit obligatoirement sélectionner cette option
+                                (ex: choix de la taille S/M/L)
                             </div>
                         </div>
                     </div>
@@ -77,7 +112,7 @@
                         <button type="submit" class="btn btn-success">
                             <i class="bi bi-check-circle me-2"></i>Mettre à jour
                         </button>
-                        <a href="{{ url_for('banking.pos_modifier_detail', mod_id=option.id_modificateur) }}" class="btn btn-outline-secondary">
+                        <a href="{{ url_for('banking.pos_modifier_options') }}" class="btn btn-outline-secondary">
                             <i class="bi bi-x-circle me-2"></i>Annuler
                         </a>
                     </div>
@@ -94,11 +129,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const parentSelect = document.getElementById('parent_modifier');
     
     function getTauxTva() {
-        // Si une valeur est sélectionnée dans la liste des TVA, on la prend
         if (tauxTvaSelect.value !== '') {
             return parseFloat(tauxTvaSelect.value) || 0;
         }
-        // Sinon, on hérite du parent sélectionné
         const selectedParent = parentSelect.options[parentSelect.selectedIndex];
         return parseFloat(selectedParent.dataset.tva) || 0;
     }
@@ -107,7 +140,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const prixTtc = parseFloat(prixTtcInput.value) || 0;
         const tauxTva = getTauxTva();
         
-        // Extraction de la TVA du TTC
         const prixHt = prixTtc / (1 + tauxTva / 100);
         const tva = prixTtc - prixHt;
         
@@ -126,20 +158,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Écouteurs d'événements
     prixTtcInput.addEventListener('input', updateCalcul);
-    
     tauxTvaSelect.addEventListener('change', function() {
         updateHelpText();
         updateCalcul();
     });
-    
     parentSelect.addEventListener('change', function() {
         updateHelpText();
         updateCalcul();
     });
     
-    // Initialisation au chargement
     updateHelpText();
     updateCalcul();
 });

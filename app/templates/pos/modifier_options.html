@@ -21,7 +21,7 @@
 {% block content %}
 <!-- Stats rapides -->
 <div class="row mb-4">
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card shadow-sm border-start border-primary border-4">
             <div class="card-body">
                 <div class="text-muted small">Total modificateurs</div>
@@ -29,7 +29,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card shadow-sm border-start border-success border-4">
             <div class="card-body">
                 <div class="text-muted small">Total options</div>
@@ -37,7 +37,25 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm border-start border-warning border-4">
+            <div class="card-body">
+                <div class="text-muted small">Options obligatoires</div>
+                <div class="fs-3 fw-bold">
+                    {% set obligatoires = [] %}
+                    {% for item in modifiers_data %}
+                        {% for opt in item.options %}
+                            {% if opt.est_obligatoire %}
+                                {% set _ = obligatoires.append(1) %}
+                            {% endif %}
+                        {% endfor %}
+                    {% endfor %}
+                    {{ obligatoires|length }}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
         <div class="card shadow-sm border-start border-info border-4">
             <div class="card-body">
                 <div class="text-muted small">Moy. options/modificateur</div>
@@ -61,7 +79,7 @@
             <i class="bi bi-sliders me-2"></i>{{ item.modifier.nom_modificateur }}
             <span class="badge bg-primary ms-2">{{ item.options_count }} option{{ 's' if item.options_count > 1 else '' }}</span>
         </h5>
-        <a href="{{ url_for('banking.pos_create_modifier_option') }}" class="btn btn-sm btn-outline-success">
+        <a href="{{ url_for('banking.pos_create_modifier_option') }}?mod_id={{ item.modifier.id }}" class="btn btn-sm btn-outline-success">
             <i class="bi bi-plus-circle me-1"></i>Ajouter
         </a>
     </div>
@@ -71,17 +89,24 @@
             <table class="table table-hover mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th style="width: 40%">Nom de l'option</th>
+                        <th style="width: 25%">Nom de l'option</th>
                         <th>Article lié</th>
                         <th>Prix</th>
-                        <th>Description</th>
+                        <th>Type</th>
+                        <th>Obligatoire</th>
+                        <th>TVA</th>
                         <th class="text-end" style="width: 150px">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for option in item.options %}
                     <tr>
-                        <td><strong>{{ option.nom_option }}</strong></td>
+                        <td>
+                            <strong>{{ option.nom_option }}</strong>
+                            {% if option.description %}
+                                <br><small class="text-muted">{{ option.description[:50] }}{% if option.description|length > 50 %}...{% endif %}</small>
+                            {% endif %}
+                        </td>
                         <td>
                             {% if option.id_article %}
                                 {% set linked_article = articles_by_id.get(option.id_article) %}
@@ -90,14 +115,38 @@
                                 <span class="text-muted">-</span>
                             {% endif %}
                         </td>
-                        <td class="text-end">
+                        <td>
                             {% if option.prix_supplement and option.prix_supplement > 0 %}
                                 <span class="badge bg-warning text-dark">+CHF {{ "%.2f"|format(option.prix_supplement) }}</span>
                             {% else %}
                                 <span class="badge bg-success">Inclus</span>
                             {% endif %}
                         </td>
-                        <td class="text-muted">{{ option.description or '-' }}</td>
+                        <td>
+                            {% if option.type_option == 'redistribution' %}
+                                <span class="badge bg-info">🔄 Redistribution</span>
+                            {% elif option.type_option == 'supplement' %}
+                                <span class="badge bg-warning text-dark">➕ Supplément</span>
+                            {% elif option.type_option == 'fixe_prix' %}
+                                <span class="badge bg-primary">💰 Prix fixe</span>
+                            {% else %}
+                                <span class="badge bg-secondary">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if option.est_obligatoire %}
+                                <span class="badge bg-danger">⚠️ Obligatoire</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Optionnel</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if option.taux_tva %}
+                                <span class="badge bg-info">{{ option.taux_tva }}%</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Hérité</span>
+                            {% endif %}
+                        </td>
                         <td class="text-end">
                             <a href="{{ url_for('banking.pos_edit_modifier_option', opt_id=option.id) }}" 
                                class="btn btn-sm btn-outline-primary" title="Modifier">
