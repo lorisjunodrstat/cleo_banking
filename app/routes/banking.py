@@ -11469,27 +11469,43 @@ def pos_articles_list():
 @login_required
 def pos_create_article():
     categories = g.models.categorie_pos_model.get_all(current_user.id)
+    sous_categories = g.models.sous_categorie_pos_model.get_all(current_user.id)
     types_taxes = g.models.taxe_pos_model.get_all_types(current_user.id, actif_only=True)
     
-    
     if request.method == 'POST':
-        article_id = g.models.article_pos_model.create(current_user.id, {
-            'nom_article': request.form.get('nom_article'),
+        # ✅ Données complètes et cohérentes avec le modèle
+        article_data = {
+            'nom_article': request.form.get('nom_article', '').strip(),
             'id_categorie': int(request.form.get('id_categorie')),
+            'id_sous_categorie': int(request.form.get('id_sous_categorie')) if request.form.get('id_sous_categorie') else None,
             'prix_unitaire': safe_float(request.form.get('prix_unitaire', 0)),
             'cout_unitaire': safe_float(request.form.get('cout_unitaire', 0)),
-            'stock': int(request.form.get('stock', 0)),
+            'stock': int(safe_float(request.form.get('stock', 0))),
+            'stock_alerte': int(safe_float(request.form.get('stock_alerte', 0))),
             'description': request.form.get('description', ''),
-            'code_barre': request.form.get('code_barre', '')
-        })
+            'code_barre': request.form.get('code_barre', ''),
+            'vendu_type': request.form.get('vendu_type', 'piece'),
+            'is_variable_price': 'is_variable_price' in request.form,
+            'variante': 'variante' in request.form  # ✅ Ajout du champ manquant
+        }
+        
+        article_id = g.models.article_pos_model.create(current_user.id, article_data)
+        
         if article_id:
+            # ✅ Liaison au type de taxe
             type_taxe_id = request.form.get('type_taxe_id')
-            if type_taxe_id:
+            if type_taxe_id and type_taxe_id.isdigit():
                 g.models.taxe_pos_model.assigner_type_to_article(article_id, int(type_taxe_id))
+            
             flash('Article créé avec succès !', 'success')
             return redirect(url_for('banking.pos_articles_list'))
+        
         flash('Erreur lors de la création.', 'error')
-    return render_template('pos/create_article.html', categories=categories, types_taxes=types_taxes)
+    
+    return render_template('pos/create_article.html', 
+                         categories=categories, 
+                         sous_categories=sous_categories,
+                         types_taxes=types_taxes)
 
 @bp.route('/pos/articles/<int:article_id>/edit', methods=['GET', 'POST'])
 @login_required
@@ -11499,62 +11515,64 @@ def pos_edit_article(article_id):
         flash('Article non trouvé.', 'error')
         return redirect(url_for('banking.pos_articles_list'))
 
-    categories      = g.models.categorie_pos_model.get_all(current_user.id)
+    categories = g.models.categorie_pos_model.get_all(current_user.id)
     sous_categories = g.models.sous_categorie_pos_model.get_all(current_user.id)
     types_taxes = g.models.taxe_pos_model.get_all_types(current_user.id, actif_only=True)
-
-    all_modifiers   = g.models.modificateur_pos_model.get_all(current_user.id)
-    linked_mod_ids  = [m['id'] for m in g.models.article_pos_model.get_linked_modifiers(article_id)]
-    variantes       = g.models.variante_pos_model.get_by_article(article_id)
+    all_modifiers = g.models.modificateur_pos_model.get_all(current_user.id)
+    linked_mod_ids = [m['id'] for m in g.models.article_pos_model.get_linked_modifiers(article_id)]
+    variantes = g.models.variante_pos_model.get_by_article(article_id)
     
-    # Récupérer la taxe actuellement attribuée à l'article
+    # ✅ Récupérer la taxe actuellement attribuée
     type_taxe_actuel = g.models.taxe_pos_model.get_type_for_article(article_id)
     article['type_taxe_actuel'] = type_taxe_actuel
 
     if request.method == 'POST':
-        # Champs de base
+        # ✅ Données complètes et cohérentes
         data = {
-            'nom_article':       request.form.get('nom_article', '').strip(),
-            'id_categorie':      int(request.form.get('id_categorie')),
+            'nom_article': request.form.get('nom_article', '').strip(),
+            'id_categorie': int(request.form.get('id_categorie')),
             'id_sous_categorie': int(request.form.get('id_sous_categorie')) if request.form.get('id_sous_categorie') else None,
-            'prix_unitaire':     safe_float(request.form.get('prix_unitaire')),
-            'cout_unitaire':     safe_float(request.form.get('cout_unitaire')),
+            'prix_unitaire': safe_float(request.form.get('prix_unitaire')),
+            'cout_unitaire': safe_float(request.form.get('cout_unitaire')),
             'is_variable_price': 'is_variable_price' in request.form,
-            'description':       request.form.get('description', ''),
-            'vendu_type':        request.form.get('vendu_type', 'piece'),
-            'stock':             int(safe_float(request.form.get('stock', 0))),
-            'stock_alerte':      int(safe_float(request.form.get('stock_alerte', 0))),
-            
+            'description': request.form.get('description', ''),
+            'vendu_type': request.form.get('vendu_type', 'piece'),
+            'stock': int(safe_float(request.form.get('stock', 0))),
+            'stock_alerte': int(safe_float(request.form.get('stock_alerte', 0))),
+            'code_barre': request.form.get('code_barre', ''),
+            'variante': 'variante' in request.form  # ✅ Ajout du champ manquant
         }
+        
         g.models.article_pos_model.update(article_id, current_user.id, data)
 
         # Modificateurs
         selected_ids = [int(x) for x in request.form.getlist('modifier_ids') if x.isdigit()]
         g.models.article_pos_model.set_modifiers(article_id, selected_ids)
 
-        # Taxe
+        # ✅ Gestion de la taxe
         type_taxe_id = request.form.get('type_taxe_id')
-        if type_taxe_id:
+        if type_taxe_id and type_taxe_id.isdigit():
             g.models.taxe_pos_model.assigner_type_to_article(article_id, int(type_taxe_id))
         else:
             g.models.taxe_pos_model.desactiver_taxes_article(article_id)
 
         # Supprimer variantes cochées
         for vid in request.form.getlist('delete_variante'):
-            g.models.variante_pos_model.delete(int(vid), current_user.id)
+            if vid.isdigit():
+                g.models.variante_pos_model.delete(int(vid), current_user.id)
 
         # Ajouter nouvelles variantes
-        noms    = request.form.getlist('variante_nom')
-        prix    = request.form.getlist('variante_prix')
+        noms = request.form.getlist('variante_nom')
+        prix = request.form.getlist('variante_prix')
         options = request.form.getlist('variante_option')
         for i, nom in enumerate(noms):
             if nom.strip():
                 g.models.variante_pos_model.create(current_user.id, {
-                    'article_id':  article_id,
-                    'nom':         nom.strip(),
+                    'article_id': article_id,
+                    'nom': nom.strip(),
                     'option_name': options[i] if i < len(options) else '',
-                    'prix':        safe_float(prix[i]) if i < len(prix) else 0,
-                    'is_active':   True,
+                    'prix': safe_float(prix[i]) if i < len(prix) else 0,
+                    'is_active': True,
                 })
 
         flash('Article modifié avec succès !', 'success')
@@ -11562,11 +11580,15 @@ def pos_edit_article(article_id):
 
     return render_template(
         'pos/edit_article.html',
-           article=article, categories=categories, sous_categories=sous_categories,
-        types_taxes=types_taxes, all_modifiers=all_modifiers, # ✅ Variable renommée
-        linked_modifier_ids=linked_mod_ids, variantes=variantes, type_taxe_actuel=type_taxe_actuel
+        article=article, 
+        categories=categories, 
+        sous_categories=sous_categories,
+        types_taxes=types_taxes, 
+        all_modifiers=all_modifiers,
+        linked_modifier_ids=linked_mod_ids, 
+        variantes=variantes, 
+        type_taxe_actuel=type_taxe_actuel
     )
-
 @bp.route('/pos/articles/<int:article_id>/delete', methods=['POST'])
 @login_required
 def pos_delete_article(article_id):

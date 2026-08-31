@@ -17031,26 +17031,58 @@ class ArticlePOS:
                     INSERT INTO pos_articles 
                     (utilisateur_id, id_categorie, id_sous_categorie, nom_article, 
                      description, vendu_type, prix_unitaire, cout_unitaire, 
-                     stock, stock_alerte, is_variable_price, variante)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     stock, stock_alerte, is_variable_price, variante, code_barre)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     user_id,
                     data['id_categorie'],
                     data.get('id_sous_categorie'),
                     data['nom_article'],
-                    data.get('description'),
+                    data.get('description', ''),
                     data.get('vendu_type', 'piece'),
                     data.get('prix_unitaire', 0),
                     data.get('cout_unitaire', 0),
                     data.get('stock', 0),
                     data.get('stock_alerte', 0),
                     data.get('is_variable_price', False),
-                    data.get('variante')
+                    data.get('variante', False),
+                    data.get('code_barre', '')
                 ))
                 return cursor.lastrowid
         except Exception as e:
             logger.error(f"Erreur création article POS: {e}")
             return None
+
+    def update(self, article_id: int, user_id: int, data: Dict) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_articles 
+                    SET id_categorie = %s, id_sous_categorie = %s, nom_article = %s,
+                        description = %s, vendu_type = %s, prix_unitaire = %s,
+                        cout_unitaire = %s, stock = %s, stock_alerte = %s,
+                        is_variable_price = %s, variante = %s, code_barre = %s
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (
+                    data['id_categorie'], 
+                    data.get('id_sous_categorie'),
+                    data['nom_article'], 
+                    data.get('description', ''),
+                    data.get('vendu_type', 'piece'), 
+                    data.get('prix_unitaire', 0),
+                    data.get('cout_unitaire', 0), 
+                    data.get('stock', 0),
+                    data.get('stock_alerte', 0), 
+                    data.get('is_variable_price', False),
+                    data.get('variante', False),
+                    data.get('code_barre', ''),
+                    article_id, 
+                    user_id
+                ))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur mise à jour article: {e}")
+            return False
 
     def get_all(self, user_id: int, categorie_id: int = None) -> List[Dict]:
         try:
@@ -17123,28 +17155,7 @@ class ArticlePOS:
             logger.error(f"Erreur récupération modificateurs: {e}")
             return []
 
-    def update(self, article_id: int, user_id: int, data: Dict) -> bool:
-        try:
-            with self.db.get_cursor() as cursor:
-                cursor.execute("""
-                    UPDATE pos_articles 
-                    SET id_categorie = %s, id_sous_categorie = %s, nom_article = %s,
-                        description = %s, vendu_type = %s, prix_unitaire = %s,
-                        cout_unitaire = %s, stock = %s, stock_alerte = %s,
-                        is_variable_price = %s, variante = %s
-                    WHERE id = %s AND utilisateur_id = %s
-                """, (
-                    data['id_categorie'], data.get('id_sous_categorie'),
-                    data['nom_article'], data.get('description'),
-                    data.get('vendu_type', 'piece'), data.get('prix_unitaire', 0),
-                    data.get('cout_unitaire', 0), data.get('stock', 0),
-                    data.get('stock_alerte', 0), data.get('is_variable_price', False),
-                    data.get('variante'), article_id, user_id
-                ))
-                return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur mise à jour article: {e}")
-            return False
+  
 
     def update_stock(self, article_id: int, quantite: int) -> bool:
         """Met à jour le stock (peut être positif ou négatif)"""
