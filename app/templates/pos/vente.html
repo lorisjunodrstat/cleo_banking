@@ -385,7 +385,7 @@ button{cursor:pointer; border:none; background:none}
 </div></div>
 {# ---------- Modale : paiement ---------- #}
 <div class="modal" id="modalPay"><div class="box" style="max-width: 560px;">
-  <button class="close" onclick="closeModal('modalPay'); resetGiftCardState()">✕</button>
+  <button class="close" onclick="closeModal('modalPay');">✕</button>
   <h2>Paiement — <span id="payTotalModal">CHF 0.00</span></h2>
   
   {# ✅ NOUVEAU : Section de saisie du Bon Cadeau / Abonnement #}
@@ -396,10 +396,7 @@ button{cursor:pointer; border:none; background:none}
     <div style="display:flex; gap:8px;">
       <input type="text" id="giftCardCodeInput" placeholder="Ex: BC-A1B2C3D4" 
              style="flex:1; padding:8px; border:1px solid #ccc; border-radius:4px; font-size:14px;">
-      <button type="button" onclick="attachGiftCardToPayment()" 
-              style="padding:8px 12px; background:#856404; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">
-        Associer
-      </button>
+      
     </div>
     <div id="giftCardStatus" style="font-size:12px; margin-top:6px; color:#856404;"></div>
     {# Champ caché pour stocker l'ID du bon une fois associé #}
@@ -809,56 +806,85 @@ function confirmAddArticle(){
             prix: prixOption,
             taux: tauxFinal,
             type: typeOption,
-            modificateurIndex: modIndex,      // ✅ Sauvegarder l'index du modificateur
-            nomModificateur: nomModificateur  // ✅ Sauvegarder le nom du modificateur
+            modificateurIndex: modIndex,
+            nomModificateur: nomModificateur
         });
     });
     
-    // 4. Construction du breakdown TVA
-    let tva_breakdown = [];
+    // 4. Séparer les options par type
+    const optionsRedistribution = optionsData.filter(opt => opt.type === 'redistribution');
+    const optionsSupplement = optionsData.filter(opt => opt.type === 'supplement');
+    const optionsFixePrix = optionsData.filter(opt => opt.type === 'fixe_prix');
     
-    // Ajouter l'article avec son prix de base (incluant mods simples et options même taux)
-    if (prixBase > 0) {
-        // On calcule le montant TTC correspondant à la part de l'article
-        // mais attention : si on a des options avec le même taux, elles sont incluses dans prixBase
-        // et donc dans le montant TTC de l'article
-        tva_breakdown.push({ 
-            description: a.nom_article, 
-            montant_ttc: prixBase, 
-            taux: tauxArticleBase 
+    // 5. Construction du breakdown TVA et calcul du prix final
+    let tva_breakdown = [];
+    let finalDisplayPrice = prixBase;
+    
+    // Cas : Article à prix variable avec option fixe_prix
+    if (a.is_variable_price && optionsFixePrix.length > 0) {
+        const optionFixe = optionsFixePrix[0];
+        finalDisplayPrice = optionFixe.prix;
+        
+        tva_breakdown.push({
+            description: a.nom_article + ' (' + optionFixe.nom + ')',
+            montant_ttc: optionFixe.prix,
+            taux: optionFixe.taux
         });
+    } 
+    else {
+        // Cas normal : article + mods simples + suppléments
+        let totalSupplement = 0;
+        optionsSupplement.forEach(opt => {
+            totalSupplement += opt.prix;
+        });
+        
+        // Partie base avec le taux de l'article (article + mods simples + suppléments)
+        const montantBaseTTC = prixBase + totalSupplement;
+        if (montantBaseTTC > 0) {
+            tva_breakdown.push({
+                description: a.nom_article + (totalSupplement > 0 ? ' + suppléments' : ''),
+                montant_ttc: montantBaseTTC,
+                taux: tauxArticleBase
+            });
+        }
+        
+        // Options de redistribution avec leur propre taux (ne changent pas le prix total)
+        optionsRedistribution.forEach(opt => {
+            tva_breakdown.push({
+                description: opt.nom + ' (redistribution)',
+                montant_ttc: opt.prix,
+                taux: opt.taux
+            });
+        });
+        
+        // Prix total = base + suppléments (les redistributions ne changent pas le prix)
+        finalDisplayPrice = prixBase + totalSupplement;
     }
     
-    // Ajouter les options avec taux différent (montant TTC séparé)
-    optionsTauxDifferents.forEach(opt => {
-        tva_breakdown.push({ 
-            description: opt.nom, 
-            montant_ttc: opt.prix, 
-            taux: opt.taux 
-        });
-    });
-    
-    // 5. Prix final pour l'affichage sur le ticket
-    // prixBase contient déjà : article + mods simples + options même taux
-    // On ajoute les options avec taux différent
-    let finalDisplayPrice = prixBase + optionsTauxDifferents.reduce((sum, opt) => sum + opt.prix, 0);
-    
+    // 6. Construction du modificateursData
     const modificateursStr = modsAffichage.join(', ');
     const modificateursData = { 
-        varianteId, 
-        modsSimples, 
-        optionsTauxDifferents,
-        optionsMemeTaux // ✅ NOUVEAU
+        varianteId: varianteId,
+        modsSimples: modsSimples,
+        optionsData: optionsData
     };
     const key = a.id + '_' + (varianteId || 0) + '_' + modificateursStr;
 
-    // 6. Mise à jour ou ajout dans le ticket
+    // 7. Mise à jour ou ajout dans le ticket
     if (isEditing) {
         const idx = parseInt(editIndex);
         ticket.lines[idx] = { 
-            key, article_id: a.id, variante_id: varianteId, nom: a.nom_article, 
-            modificateurs: modificateursStr, modificateursData, prix: finalDisplayPrice, 
-            qty, taux: tauxArticleBase, commentaire, tva_breakdown 
+            key: key,
+            article_id: a.id,
+            variante_id: varianteId,
+            nom: a.nom_article,
+            modificateurs: modificateursStr,
+            modificateursData: modificateursData,
+            prix: finalDisplayPrice,
+            qty: qty,
+            taux: tauxArticleBase,
+            commentaire: commentaire,
+            tva_breakdown: tva_breakdown
         };
         delete $('modalArticle').dataset.editIndex;
     } else {
@@ -866,16 +892,23 @@ function confirmAddArticle(){
         if (existing) {
             existing.qty += qty;
             if (commentaire) existing.commentaire = commentaire;
-            // ✅ On met à jour le prix et le breakdown au cas où les mods ont changé
             existing.prix = finalDisplayPrice;
             existing.tva_breakdown = tva_breakdown;
             existing.modificateurs = modificateursStr;
             existing.modificateursData = modificateursData;
         } else {
             ticket.lines.push({ 
-                key, article_id: a.id, variante_id: varianteId, nom: a.nom_article, 
-                modificateurs: modificateursStr, modificateursData, prix: finalDisplayPrice, 
-                qty, taux: tauxArticleBase, commentaire, tva_breakdown 
+                key: key,
+                article_id: a.id,
+                variante_id: varianteId,
+                nom: a.nom_article,
+                modificateurs: modificateursStr,
+                modificateursData: modificateursData,
+                prix: finalDisplayPrice,
+                qty: qty,
+                taux: tauxArticleBase,
+                commentaire: commentaire,
+                tva_breakdown: tva_breakdown
             });
         }
     }
@@ -884,7 +917,6 @@ function confirmAddArticle(){
     renderTicket(); 
     closeModal('modalArticle');
 }
-
 function toggleMobileMenu() {
   const menu = document.getElementById('mobileMenu');
   menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
@@ -1181,7 +1213,6 @@ function chgQty(i,d){
   /* ---------- Tickets ouverts ---------- */
   function parkTicket(){
     if(!ticket.lines.length) return;
-    ticket.restaurant_option
     parked.push({
       ...ticket, 
       saved_at:new Date().toLocaleTimeString('fr-CH',{hour:'2-digit',minute:'2-digit'})
