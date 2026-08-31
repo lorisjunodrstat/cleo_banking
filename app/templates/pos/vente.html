@@ -778,12 +778,10 @@ function confirmAddArticle(){
     
     const qty = parseInt($('maQty').value || 1);
     const commentaire = $('maCommentaire').value.trim();
-    
     const tauxArticleBase = safeParseTaux(a.taux_taxe);
     
     let modsSimples = [];
-    let optionsTauxDifferents = [];
-    let optionsMemeTaux = []; // ✅ NOUVEAU : pour les options avec le même taux
+    let optionsData = [];
     let modsAffichage = [];
     
     if (varianteId && sel) {
@@ -805,18 +803,20 @@ function confirmAddArticle(){
         let tauxOption = safeParseTaux(o.dataset.tauxTva);
         let tauxParent = safeParseTaux(o.dataset.tauxParent);
         let tauxFinal = (tauxOption > 0) ? tauxOption : tauxParent;
+        let typeOption = o.dataset.typeOption || 'redistribution';
+        let modIndex = parseInt(o.dataset.modIndex) || 0;
+        let nomModificateur = o.dataset.nomModificateur || '';
         
         modsAffichage.push(o.value);
         
-        // ✅ CORRECTION : On ajoute TOUJOURS le prix de l'option, peu importe le taux
-        if (tauxFinal !== tauxArticleBase) {
-            // L'option a un taux TVA différent, on la met dans tva_breakdown séparé
-            optionsTauxDifferents.push({ nom: o.value, prix: prixOption, taux: tauxFinal });
-        } else {
-            // L'option a le même taux que l'article, on l'ajoute simplement au prix
-            optionsMemeTaux.push({ nom: o.value, prix: prixOption });
-            prixBase += prixOption; // ✅ CORRECTION : on ajoute le prix de l'option
-        }
+        optionsData.push({
+            nom: o.value,
+            prix: prixOption,
+            taux: tauxFinal,
+            type: typeOption,
+            modificateurIndex: modIndex,      // ✅ Sauvegarder l'index du modificateur
+            nomModificateur: nomModificateur  // ✅ Sauvegarder le nom du modificateur
+        });
     });
     
     // 4. Construction du breakdown TVA
@@ -919,24 +919,46 @@ function scrollToTicket() {
 }
 
 function renderTicket(){
-    $('ticketLines').innerHTML = ticket.lines.map((l,i) => `
-        <div class="line">
-            <div class="l1">
-                <span class="lname">${l.nom}</span>
-                <span class="lprice">${fmt(l.prix*l.qty)}</span>
+    $('ticketLines').innerHTML = ticket.lines.map((l,i) => {
+        // ✅ Afficher les modificateurs avec leur groupe
+        let modsDisplay = '';
+        if (l.modificateursData && l.modificateursData.optionsData && l.modificateursData.optionsData.length > 0) {
+            // Grouper les options par modificateur
+            const groupedOptions = {};
+            l.modificateursData.optionsData.forEach(opt => {
+                const key = opt.nomModificateur || 'Option';
+                if (!groupedOptions[key]) groupedOptions[key] = [];
+                groupedOptions[key].push(opt.nom);
+            });
+            
+            modsDisplay = Object.entries(groupedOptions).map(([modName, options]) => 
+                `<div style="color:#43A047; font-size:12px; font-style:italic; margin:2px 0;">
+                    📝 ${modName}: ${options.join(', ')}
+                </div>`
+            ).join('');
+        } else if (l.modificateurs) {
+            modsDisplay = `<div style="color:#43A047; font-size:12px; font-style:italic; margin:2px 0;">📝 ${l.modificateurs}</div>`;
+        }
+        
+        return `
+            <div class="line">
+                <div class="l1">
+                    <span class="lname">${l.nom}</span>
+                    <span class="lprice">${fmt(l.prix*l.qty)}</span>
+                </div>
+                ${modsDisplay}
+                ${l.commentaire ? `<div class="meta" style="margin:2px 0">💬 ${l.commentaire}</div>` : ''}
+                <div class="l2">
+                    <button class="qtybtn" onclick="chgQty(${i},-1)">−</button>
+                    <span>${l.qty}</span>
+                    <button class="qtybtn" onclick="chgQty(${i},1)">+</button>
+                    <span class="meta">${fmt(l.prix)} / unité (TTC)</span>
+                    <button class="qtybtn" onclick="editLine(${i})" title="Modifier les modificateurs" style="margin-left:auto">✏️</button>
+                    <button class="del" onclick="delLine(${i})">✕</button>
+                </div>
             </div>
-            ${l.modificateurs ? `<div style="margin:4px 0; color:#43A047; font-size:12px; font-style:italic; word-wrap: break-word; white-space: normal;">📝 ${l.modificateurs}</div>` : ''}
-            ${l.commentaire ? `<div class="meta" style="margin:2px 0">💬 ${l.commentaire}</div>` : ''}
-            <div class="l2">
-                <button class="qtybtn" onclick="chgQty(${i},-1)">−</button>
-                <span>${l.qty}</span>
-                <button class="qtybtn" onclick="chgQty(${i},1)">+</button>
-                <span class="meta">${fmt(l.prix)} / unité (TTC)</span>
-                <button class="qtybtn" onclick="editLine(${i})" title="Modifier les modificateurs" style="margin-left:auto">✏️</button>
-                <button class="del" onclick="delLine(${i})">✕</button>
-            </div>
-        </div>
-    `).join('') || '<p style="padding:20px;color:#888;text-align:center">Ticket vide</p>';
+        `;
+    }).join('') || '<p style="padding:20px;color:#888;text-align:center">Ticket vide</p>';
     
     const { totalTTC, tvaParTaux } = calculTVA();
     const reduction = calcReduction();
@@ -967,7 +989,6 @@ function renderTicket(){
 
     updateMobileTotal();
 }
-
 function editLine(index){
     const line = ticket.lines[index];
     if (!line) return;
@@ -986,41 +1007,73 @@ function editLine(index){
         $('maVariantes').innerHTML = '';
     }
     
-    // Restaurer les modificateurs cochés
+    // ✅ Restaurer les modificateurs avec identification unique
     $('maMods').innerHTML = (a.modificateurs||[]).length
         ? '<label style="font-size:13px;color:#888">Modificateurs</label>' +
-            a.modificateurs.map(m => {
-                if ((m.options||[]).length) {
-                    return `<div style="margin:6px 0;border:1px solid #eee;border-radius:8px;padding:10px">
-                        <div style="font-weight:600;font-size:14px;margin-bottom:4px">${m.nom_modificateur}</div>
-                        ${m.options.map(o => {
-                            let isChecked = false;
-                            if (line.modificateursData) {
-                                isChecked = line.modificateursData.optionsTauxDifferents.some(opt => opt.nom === o.nom_option) ||
-                                           line.modificateursData.modsSimples.some(mod => mod.nom === o.nom_option);
-                            }
-                            return `<label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;padding:8px 10px;border:1px solid #e8e8e8;border-radius:6px;cursor:pointer">
-                                <span>
-                                    <input type="checkbox" class="maModOpt" 
-                                           data-prix="${o.prix_supplement}" 
-                                           data-taux-tva="${o.taux_tva || ''}" 
-                                           data-taux-parent="${m.taux_tva || 0}"
-                                           value="${o.nom_option}" ${isChecked ? 'checked' : ''}> ${o.nom_option}
-                                </span>
-                                <span style="color:#888;font-size:13px">${o.prix_supplement > 0 ? '+' + fmt(o.prix_supplement) : ''}</span>
-                            </label>`;
-                        }).join('')}
-                    </div>`;
-                }
-                let isChecked = false;
-                if (line.modificateursData) {
-                    isChecked = line.modificateursData.modsSimples.some(mod => mod.nom === m.nom_modificateur);
-                }
-                return `<label style="display:block;margin:4px 0">
-                    <input type="checkbox" class="maMod" data-prix="${m.prix_modificateur}" data-taux-tva="${m.taux_tva || 0}" value="${m.nom_modificateur}" ${isChecked ? 'checked' : ''}> 
-                    ${m.nom_modificateur} (+${fmt(m.prix_modificateur)})
-                </label>`;
-            }).join('')
+          a.modificateurs.map((m, modIndex) => {
+              if ((m.options||[]).length) {
+                  return `<div style="margin:6px 0;border:1px solid #eee;border-radius:8px;padding:10px">
+                      <div style="font-weight:600;font-size:14px;margin-bottom:4px">
+                          ${m.nom_modificateur}
+                          <span style="font-size:11px;color:#888;font-weight:400;">(sélectionnez une option)</span>
+                      </div>
+                      ${m.options.map((o, optIndex) => {
+                          // ✅ Vérifier si cette option est sélectionnée dans la ligne
+                          let isChecked = false;
+                          if (line.modificateursData && line.modificateursData.optionsData) {
+                              // On compare par nom ET par modificateur
+                              isChecked = line.modificateursData.optionsData.some(opt => 
+                                  opt.nom === o.nom_option && 
+                                  opt.modificateurIndex === modIndex
+                              );
+                          }
+                          
+                          const uniqueId = `mod_${modIndex}_opt_${optIndex}`;
+                          const typeOption = o.type_option || 'redistribution';
+                          
+                          let prixDisplay = '';
+                          if (typeOption === 'redistribution' && o.prix_supplement > 0) {
+                              prixDisplay = `<span style="font-size:11px;color:#856404;">🔄 TVA: ${o.taux_tva || m.taux_tva || 0}%</span>`;
+                          } else if (typeOption === 'supplement' && o.prix_supplement > 0) {
+                              prixDisplay = `<span style="font-size:12px;color:#e53935;">+${fmt(o.prix_supplement)}</span>`;
+                          } else if (typeOption === 'fixe_prix' && o.prix_supplement > 0) {
+                              prixDisplay = `<span style="font-size:12px;color:#2e7d32;">💰 ${fmt(o.prix_supplement)}</span>`;
+                          }
+                          
+                          return `<label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;padding:8px 10px;border:1px solid #e8e8e8;border-radius:6px;cursor:pointer;">
+                              <span>
+                                  <input type="checkbox" 
+                                         class="maModOpt" 
+                                         data-mod-index="${modIndex}" 
+                                         data-opt-index="${optIndex}"
+                                         data-unique-id="${uniqueId}"
+                                         data-prix="${o.prix_supplement}" 
+                                         data-taux-tva="${o.taux_tva || ''}" 
+                                         data-taux-parent="${m.taux_tva || 0}"
+                                         data-type-option="${typeOption}"
+                                         data-nom-modificateur="${m.nom_modificateur}"
+                                         value="${o.nom_option}"
+                                         ${isChecked ? 'checked' : ''}> 
+                                  ${o.nom_option}
+                              </span>
+                              <span style="font-size:12px;color:#888;">
+                                  ${prixDisplay}
+                              </span>
+                          </label>`;
+                      }).join('')}
+                  </div>`;
+              }
+              // Modificateurs simples
+              let isChecked = false;
+              if (line.modificateursData) {
+                  isChecked = line.modificateursData.modsSimples.some(mod => mod.nom === m.nom_modificateur);
+              }
+              return `<label style="display:block;margin:4px 0;padding:8px;border:1px solid #e8e8e8;border-radius:6px">
+                  <input type="checkbox" class="maMod" data-prix="${m.prix_modificateur}" data-taux-tva="${m.taux_tva || 0}" value="${m.nom_modificateur}" ${isChecked ? 'checked' : ''}> 
+                  ${m.nom_modificateur} 
+                  <span style="font-size:12px;color:#888">(+${fmt(m.prix_modificateur)} | TVA: ${m.taux_tva || 0}%)</span>
+              </label>`;
+          }).join('')
         : '';
     
     $('maPrixWrap').style.display = a.is_variable_price ? 'block' : 'none';
@@ -1033,7 +1086,6 @@ function editLine(index){
     
     $('modalArticle').classList.add('show');
 }
-
 function chgQty(i,d){ 
     ticket.lines[i].qty += d; 
     if(ticket.lines[i].qty<=0) ticket.lines.splice(i,1); 
