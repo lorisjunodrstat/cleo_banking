@@ -695,63 +695,58 @@ function clickArticle(id){
         a.variantes.map(v => `<option value="${v.id}" data-prix="${v.prix}">${v.option_name||''} ${v.nom} (${fmt(v.prix)})</option>`).join('') + '</select>'
       : '';
     
-    // MODIFICATEURS AVEC OPTIONS - Affichage des taux TVA
-    // Dans clickArticle, pour l'affichage des options
-$('maMods').innerHTML = (a.modificateurs||[]).length
-    ? '<label style="font-size:13px;color:#888">Modificateurs</label>' +
-      a.modificateurs.map(m => {
-          if ((m.options||[]).length) {
-              // ✅ Récupérer les options depuis le modificateur
-              // Note : les options doivent être chargées depuis le backend via get_with_details
-              return `<div style="margin:6px 0;border:1px solid #eee;border-radius:8px;padding:10px">
-                  <div style="font-weight:600;font-size:14px;margin-bottom:4px">
-                      ${m.nom_modificateur} 
-                      ${m.est_obligatoire ? ' <span style="color:#e53935;font-size:12px">(obligatoire)</span>' : ''}
-                  </div>
-                  ${m.options.map(o => {
-                      let typeOption = o.type_option || 'redistribution';
-                      let isFixePrix = typeOption === 'fixe_prix' || a.is_variable_price;
-                      
-                      // Pour les articles à prix variable, on force le type fixe_prix
-                      if (a.is_variable_price) typeOption = 'fixe_prix';
-                      
-                      // ✅ Si c'est un prix fixe, on utilise un radio button
-                      const inputType = isFixePrix ? 'radio' : 'checkbox';
-                      const nameAttr = isFixePrix ? 'name="option_fixe_prix"' : '';
-                      
-                      return `<label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;padding:8px 10px;border:1px solid #e8e8e8;border-radius:6px;cursor:pointer;background:${o.est_obligatoire ? '#e8f5e9' : '#fff'}">
-                          <span>
-                              <input type="${inputType}" 
-                                     class="maModOpt" 
-                                     data-prix="${o.prix_supplement}" 
-                                     data-taux-tva="${o.taux_tva || ''}" 
-                                     data-taux-parent="${m.taux_tva || 0}"
-                                     data-type-option="${typeOption}"
-                                     data-est-obligatoire="${o.est_obligatoire || false}"
-                                     ${nameAttr}
-                                     value="${o.nom_option}"> 
-                              ${o.nom_option}
-                              ${o.est_obligatoire ? ' <span style="color:#e53935;font-size:12px">*</span>' : ''}
-                          </span>
-                          <span style="font-size:12px;color:#888">
-                              ${typeOption === 'redistribution' ? '🔄 Redistribution' : 
-                                typeOption === 'supplement' ? '➕ Supplément' : 
-                                '💰 Prix fixe'}
-                              ${o.prix_supplement > 0 ? ' | ' + fmt(o.prix_supplement) : ''}
-                              ${o.taux_tva ? ' | TVA: ' + o.taux_tva + '%' : ''}
-                          </span>
-                      </label>`;
-                  }).join('')}
-              </div>`;
-          }
-          // Modificateurs simples
-          return `<label style="display:block;margin:4px 0;padding:8px;border:1px solid #e8e8e8;border-radius:6px">
-              <input type="checkbox" class="maMod" data-prix="${m.prix_modificateur}" data-taux-tva="${m.taux_tva || 0}" value="${m.nom_modificateur}"> 
-              ${m.nom_modificateur} 
-              <span style="font-size:12px;color:#888">(+${fmt(m.prix_modificateur)} | TVA: ${m.taux_tva || 0}%)</span>
-          </label>`;
-      }).join('')
-    : '';
+    // ✅ CORRECTION : Supprimer les références à est_obligatoire
+    $('maMods').innerHTML = (a.modificateurs||[]).length
+        ? '<label style="font-size:13px;color:#888">Modificateurs</label>' +
+          a.modificateurs.map((m, modIndex) => {
+              if ((m.options||[]).length) {
+                  return `<div style="margin:6px 0;border:1px solid #eee;border-radius:8px;padding:10px">
+                      <div style="font-weight:600;font-size:14px;margin-bottom:4px">
+                          ${m.nom_modificateur}
+                      </div>
+                      ${m.options.map((o, optIndex) => {
+                          let typeOption = o.type_option || 'redistribution';
+                          const uniqueId = `mod_${modIndex}_opt_${optIndex}`;
+                          
+                          let prixDisplay = '';
+                          if (typeOption === 'redistribution' && o.prix_supplement > 0) {
+                              prixDisplay = `<span style="font-size:11px;color:#856404;">🔄 TVA: ${o.taux_tva || m.taux_tva || 0}%</span>`;
+                          } else if (typeOption === 'supplement' && o.prix_supplement > 0) {
+                              prixDisplay = `<span style="font-size:12px;color:#e53935;">+${fmt(o.prix_supplement)}</span>`;
+                          } else if (typeOption === 'fixe_prix' && o.prix_supplement > 0) {
+                              prixDisplay = `<span style="font-size:12px;color:#2e7d32;">💰 ${fmt(o.prix_supplement)}</span>`;
+                          }
+                          
+                          return `<label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;padding:8px 10px;border:1px solid #e8e8e8;border-radius:6px;cursor:pointer;">
+                              <span>
+                                  <input type="checkbox" 
+                                         class="maModOpt" 
+                                         data-mod-index="${modIndex}" 
+                                         data-opt-index="${optIndex}"
+                                         data-unique-id="${uniqueId}"
+                                         data-prix="${o.prix_supplement}" 
+                                         data-taux-tva="${o.taux_tva || ''}" 
+                                         data-taux-parent="${m.taux_tva || 0}"
+                                         data-type-option="${typeOption}"
+                                         data-nom-modificateur="${m.nom_modificateur}"
+                                         value="${o.nom_option}"> 
+                                  ${o.nom_option}
+                              </span>
+                              <span style="font-size:12px;color:#888;">
+                                  ${prixDisplay}
+                              </span>
+                          </label>`;
+                      }).join('')}
+                  </div>`;
+              }
+              // Modificateurs simples
+              return `<label style="display:block;margin:4px 0;padding:8px;border:1px solid #e8e8e8;border-radius:6px">
+                  <input type="checkbox" class="maMod" data-prix="${m.prix_modificateur}" data-taux-tva="${m.taux_tva || 0}" value="${m.nom_modificateur}"> 
+                  ${m.nom_modificateur} 
+                  <span style="font-size:12px;color:#888">(+${fmt(m.prix_modificateur)} | TVA: ${m.taux_tva || 0}%)</span>
+              </label>`;
+          }).join('')
+        : '';
     
     $('maPrixWrap').style.display = a.is_variable_price ? 'block' : 'none';
     $('maPrix').value = a.prix_unitaire || 0;
