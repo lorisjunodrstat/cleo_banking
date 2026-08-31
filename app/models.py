@@ -17389,8 +17389,8 @@ class OptionModificateurPOS:
                 cursor.execute("""
                     INSERT INTO pos_options_modificateurs 
                     (utilisateur_id, nom_option, id_modificateur, id_article, 
-                     prix_supplement, description, taux_tva, type_option)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                     prix_supplement, description, taux_tva, type_option, est_obligatoire)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     user_id, 
                     data['nom_option'], 
@@ -17399,13 +17399,39 @@ class OptionModificateurPOS:
                     data.get('prix_supplement', 0),
                     data.get('description', ''),
                     data.get('taux_tva'),
-                    data.get('type_option', 'redistribution'), 
+                    data.get('type_option', 'redistribution'),
                     data.get('est_obligatoire', False)
                 ))
                 return cursor.lastrowid
         except Exception as e:
             logger.error(f"Erreur création option modificateur: {e}")
             return None
+
+    def update(self, option_id: int, user_id: int, data: Dict) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE pos_options_modificateurs 
+                    SET nom_option = %s, id_modificateur = %s, id_article = %s,
+                        prix_supplement = %s, description = %s, taux_tva = %s,
+                        type_option = %s, est_obligatoire = %s
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (
+                    data['nom_option'],
+                    data.get('id_modificateur'),
+                    data.get('id_article'),
+                    data.get('prix_supplement', 0),
+                    data.get('description', ''),
+                    data.get('taux_tva'),
+                    data.get('type_option', 'redistribution'),
+                    data.get('est_obligatoire', False),
+                    option_id,
+                    user_id
+                ))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur update option: {e}")
+            return False
 
     def get_by_modifier(self, modificateur_id: int) -> List[Dict]:
         try:
@@ -17432,30 +17458,7 @@ class OptionModificateurPOS:
             logger.error(f"Erreur get option: {e}")
             return None
 
-    def update(self, option_id: int, user_id: int, data: Dict) -> bool:
-        try:
-            with self.db.get_cursor() as cursor:
-                cursor.execute("""
-                    UPDATE pos_options_modificateurs 
-                    SET nom_option = %s, id_modificateur = %s, id_article = %s,
-                        prix_supplement = %s, description = %s, taux_tva = %s, type_option = %s, est_obligatoire = %s
-                    WHERE id = %s AND utilisateur_id = %s
-                """, (
-                    data['nom_option'], 
-                    data.get('id_modificateur'),
-                    data.get('id_article'), 
-                    data.get('prix_supplement', 0),
-                    data.get('description', ''), 
-                    data.get('taux_tva'),
-                    data.get('type_option', 'redistribution'), 
-                    data.get('est_obligatoire', False)
-                    option_id, 
-                    user_id
-                ))
-                return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur update option: {e}")
-            return False
+
 
     def delete(self, option_id: int, user_id: int) -> bool:
         try:
