@@ -7043,6 +7043,7 @@ class CategorieComptable:
         except Error as e:
             logger.error(f"Erreur lors de la récupération des catégories comptables: {e}")
             return []
+
     def get_by_type_for_pos(self, type_compte: str, utilisateur_id: int) -> List[Dict]:
         """
         Récupère les catégories par type de compte, filtrées par le plan comptable de l'utilisateur.
@@ -7138,6 +7139,7 @@ class CategorieComptable:
         except Exception as e:
             logger.error(f"Erreur dans has_categorie_complementaire: {e}")
             return False
+
     def get_categorie_complementaire(self, categorie_id: int, utilisateur_id: int)-> List[Dict]:
         try:
             with self.db.get_cursor() as cursor:
@@ -7155,6 +7157,7 @@ class CategorieComptable:
         except Exception as e:
             logger.error(f'Erreur dans la recherche de catégorie complémentaire: {e}')
             return None
+
     def get_by_system_tag(self, tag: str, utilisateur_id: int) -> Optional[Dict]:
         """Exemple : Récupère automatiquement le compte bancaire configuré par Bexio"""
         try:
@@ -7169,6 +7172,27 @@ class CategorieComptable:
             logger.error(f"Erreur recherche par tag système {tag}: {e}")
             return None
 
+    def is_compte_passif(self, compte_id: int) -> bool:
+        """Détecte si le compte est un compte de passif (classe 2 = bons cadeaux)"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT type_compte, numero 
+                    FROM categories_comptables 
+                    WHERE id = %s
+                """, (compte_id,))
+                res = cursor.fetchone()
+                if not res:
+                    return False
+                # ✅ Double vérification : type_compte OU numéro qui commence par '2'
+                return (
+                    res.get('type_compte') == 'Passif' or 
+                    str(res.get('numero', '')).startswith('2')
+                )
+        except Exception as e:
+            logger.error(f"Erreur is_compte_passif: {e}")
+            return False
+        
 class EcritureComptable:
     """Modèle pour gérer les écritures comptables"""
 
@@ -19372,18 +19396,7 @@ class POSComptaMapping:
             logger.error(f"Erreur set_mapping: {e}")
             return False
 
-    def is_compte_passif(self, compte_id: int) -> bool:
-        """Détecte si le compte mappé est un compte de passif (classe 2 = bons cadeaux)"""
-        try:
-            with self.db.get_cursor() as cursor:
-                cursor.execute("""
-                    SELECT numero FROM categories_comptables WHERE id = %s
-                """, (compte_id,))
-                res = cursor.fetchone()
-                return res and str(res['numero']).startswith('2')
-        except Exception as e:
-            logger.error(f"Erreur is_compte_passif: {e}")
-            return False
+
 
     def get_compte_vente_by_taxe(self, user_id: int, type_taxe_id: int) -> Optional[int]:
         try:
@@ -19435,9 +19448,10 @@ class POSComptaMapping:
 class POSComptabilisation:
     def __init__(self, db):
         self.db = db
-        from app.models import EcritureComptable, CategorieComptable
+        from app.models import EcritureComptable, CategorieComptable, POSComptaMapping
         self.modele_ecriture = EcritureComptable(db)
         self.modele_categorie = CategorieComptable(db)
+        self.pos_compta_mapping = POSComptaMapping(db)
 
     def get_a_comptabiliser(self, user_id: int, pdv_id: int = None, date_from: str = None, date_to: str = None, mode: str = 'jour') -> List[Dict]:
         try:
@@ -19489,7 +19503,6 @@ class POSComptabilisation:
                     return cursor.fetchall()
                     
                 else:
-                    
                     query = """
                         SELECT 
                             r.id, r.recu_numero, 
@@ -19563,7 +19576,7 @@ class POSComptabilisation:
                         logger.warning(f"Mode de paiement sans compte configuré")
                         continue
                     
-                    # 🎯 DÉTECTION AUTOMATIQUE : Est-ce un achat de crédit (bon cadeau) ?
+                    # ✅ CORRECTION : Appel sur pos_compta_mapping au lieu de modele_categorie
                     is_credit = self.modele_categorie.is_compte_passif(compte_vente_id)
                     
                     if is_credit:
