@@ -1054,7 +1054,7 @@ class DatabaseManager:
                     FOREIGN KEY (id_article) REFERENCES pos_articles(id) ON DELETE CASCADE,
                     FOREIGN KEY (id_modificateur) REFERENCES pos_modificateurs(id) ON DELETE CASCADE,
                     FOREIGN KEY (utilisateur_id) REFERENCES users(id) ON DELETE CASCADE
-                );"""
+                );""")
 
                 # ========================================================================
                 # TABLES DE LIAISON POS
