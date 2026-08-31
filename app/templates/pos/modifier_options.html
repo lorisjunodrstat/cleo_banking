@@ -148,11 +148,13 @@
                             {% endif %}
                         </td>
                         <td class="text-end">
-                            <a href="{{ url_for('banking.pos_edit_modifier_option', opt_id=option.id) }}" 
+                            <!-- ✅ CORRECTION : option_id au lieu de opt_id -->
+                            <a href="{{ url_for('banking.pos_edit_modifier_option', option_id=option.id) }}" 
                                class="btn btn-sm btn-outline-primary" title="Modifier">
                                 <i class="bi bi-pencil"></i>
                             </a>
-                            <form method="POST" action="{{ url_for('banking.pos_delete_modifier_option', opt_id=option.id) }}" 
+                            <!-- ✅ CORRECTION : option_id au lieu de opt_id -->
+                            <form method="POST" action="{{ url_for('banking.pos_delete_modifier_option', option_id=option.id) }}" 
                                   style="display: inline;" 
                                   onsubmit="return confirm('Supprimer cette option ?')">
                                 <button type="submit" class="btn btn-sm btn-outline-danger" title="Supprimer">
