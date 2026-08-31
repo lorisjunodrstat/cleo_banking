@@ -1071,7 +1071,8 @@ function chgQty(i,d){
   async function saveOpenTicket(){
     if(!ticket.lines.length) return;
     
-    if(!ticket.nom) {
+    // ✅ Pour les tickets enregistrés (préparation), le nom est obligatoire
+    if(!ticket.nom || !ticket.nom.trim()) {
         const nom = prompt('Nom du ticket (ex: Table 5, Précommande…)');
         if(!nom || !nom.trim()) return;
         ticket.nom = nom.trim();
@@ -1087,7 +1088,7 @@ function chgQty(i,d){
             prix_unitaire: l.prix,
             commentaire: l.commentaire || '',
             modificateurs: l.modificateurs || '',
-            tva_breakdown: l.tva_breakdown || [] // ✅ NOUVEAU : sauvegarde du breakdown
+            tva_breakdown: l.tva_breakdown || []
         })),
         nom_ticket: ticket.nom,
         commentaire: ticket.commentaire || '',
@@ -1114,8 +1115,6 @@ function chgQty(i,d){
         alert('Erreur réseau: ' + e.message);
     }
 }
-
-
 
 
   /* ---------- Tickets ouverts ---------- */
@@ -1334,13 +1333,9 @@ async function resumeDbTicket(id){
   function rmPay(i){ payments.splice(i,1); renderPayments(); }
 
   async function submitPay(){
-    if(!ticket.nom) {
-        const nom = prompt('Nom du ticket (ex: Table 5, Commande Jean…)');
-        if(!nom || !nom.trim()) return;
-        ticket.nom = nom.trim();
-        save();
-        renderTicket();
-    }
+    // ✅ On vérifie si le ticket a un nom, mais on ne force pas la saisie
+    // Si pas de nom, on utilise "Vente directe" comme valeur par défaut pour le backend
+    const nomTicket = ticket.nom && ticket.nom.trim() ? ticket.nom.trim() : 'Vente directe';
     
     const due = totalDue();
     const pays = payments.filter(p => p.montant > 0.004);
@@ -1360,7 +1355,6 @@ async function resumeDbTicket(id){
             modificateurs: l.modificateurs || '',
             tva_breakdown: l.tva_breakdown || [] 
         })),
-        // ✅ MODIFICATION : Inclure bon_cadeau_code s'il existe
         payments: pays.map(p => {
             const paymentData = { 
                 mode_paiement_id: p.mode_paiement_id, 
@@ -1372,13 +1366,13 @@ async function resumeDbTicket(id){
             return paymentData;
         }),
         tips: parseFloat($('tips').value)||0,
-        nom_ticket: ticket.nom,
+        nom_ticket: nomTicket,  // Utilise le nom saisi ou "Vente directe"
         commentaire: ticket.commentaire || '',
         restaurant_option_id: parseInt($('restoOption').value) || null,
         discount_id: parseInt($('discountSelect').value) || null,
         id_client: ticket.client ? ticket.client.id : null,
         nom_du_client: ticket.client ? ticket.client.nom_client : '',
-      };
+    };
     
     try {
         const r = await fetch(URL_PAY, { 
@@ -1398,7 +1392,6 @@ async function resumeDbTicket(id){
         alert('Erreur réseau: ' + e.message);
     }
 }
-
 
   /* ---------- Fermeture de caisse ---------- */
   async function openClosePeriodModal(){
