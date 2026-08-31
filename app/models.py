@@ -1051,9 +1051,8 @@ class DatabaseManager:
                     INDEX idx_modificateur (id_modificateur),
                     FOREIGN KEY (id_article) REFERENCES pos_articles(id) ON DELETE CASCADE,
                     FOREIGN KEY (id_modificateur) REFERENCES pos_modificateurs(id) ON DELETE CASCADE,
-                    FOREIGN KEY (utilisateur_id) REFERENCES users(id) ON DELETE CASCADE
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
                 );""")
-
                 # ========================================================================
                 # TABLES DE LIAISON POS
                 # ========================================================================
@@ -17412,7 +17411,7 @@ class OptionModificateurPOS:
                     UPDATE pos_options_modificateurs 
                     SET nom_option = %s, id_modificateur = %s, id_article = %s,
                         prix_supplement = %s, description = %s, taux_tva = %s,
-                        type_option = %s, est_obligatoire = %s
+                        type_option = %s
                     WHERE id = %s AND utilisateur_id = %s
                 """, (
                     data['nom_option'],
@@ -17422,7 +17421,6 @@ class OptionModificateurPOS:
                     data.get('description', ''),
                     data.get('taux_tva'),
                     data.get('type_option', 'redistribution'),
-                    data.get('est_obligatoire', False),
                     option_id,
                     user_id
                 ))

@@ -60,7 +60,7 @@
                         </div>
                     </div>
 
-                    <!-- ✅ NOUVEAU : Type d'option -->
+                    <!-- ✅ Type d'option -->
                     <div class="mb-3">
                         <label class="form-label">Type d'option <span class="text-danger">*</span></label>
                         <select name="type_option" class="form-select" required>
@@ -80,21 +80,8 @@
                             <strong>Prix fixe :</strong> Ex: Abonnement avec plusieurs formules
                         </div>
                     </div>
-
-                    <!-- ✅ NOUVEAU : Option obligatoire -->
-                    <div class="mb-3">
-                        <div class="form-check">
-                            <input type="checkbox" class="form-check-input" id="est_obligatoire" 
-                                   name="est_obligatoire" {% if option.est_obligatoire %}checked{% endif %}>
-                            <label class="form-check-label" for="est_obligatoire">
-                                Option obligatoire
-                            </label>
-                            <div class="form-text">
-                                Si coché, l'utilisateur doit obligatoirement sélectionner cette option
-                                (ex: choix de la taille S/M/L)
-                            </div>
-                        </div>
-                    </div>
+                    
+                    <!-- ✅ SECTION SUPPRIMÉE : Option obligatoire -->
                     
                     <div class="alert alert-info" id="calcul_ttc">
                         <strong>Détail du calcul :</strong><br>

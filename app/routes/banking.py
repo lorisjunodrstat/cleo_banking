@@ -11364,7 +11364,7 @@ def pos_edit_modifier_option(option_id):
     
     if request.method == 'POST':
         type_option = request.form.get('type_option', 'redistribution')
-        est_obligatoire = request.form.get('est_obligatoire') == 'on'
+        # ✅ SUPPRIMER est_obligatoire
         
         updated = g.models.option_modificateur_pos_model.update(option_id, current_user.id, {
             'nom_option': request.form.get('nom_option', '').strip(),
@@ -11373,8 +11373,7 @@ def pos_edit_modifier_option(option_id):
             'prix_supplement': safe_float(request.form.get('prix_supplement', '0')),
             'description': request.form.get('description', ''),
             'taux_tva': safe_float(request.form.get('taux_tva')) if request.form.get('taux_tva') else None,
-            'type_option': type_option,  # ✅ NOUVEAU
-            'est_obligatoire': est_obligatoire  # ✅ NOUVEAU
+            'type_option': type_option
         })
         
         if updated:
