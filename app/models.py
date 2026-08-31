@@ -17386,8 +17386,8 @@ class OptionModificateurPOS:
                 cursor.execute("""
                     INSERT INTO pos_options_modificateurs 
                     (utilisateur_id, nom_option, id_modificateur, id_article, 
-                     prix_supplement, description, taux_tva, type_option, est_obligatoire)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     prix_supplement, description, taux_tva, type_option)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     user_id, 
                     data['nom_option'], 
@@ -17397,7 +17397,6 @@ class OptionModificateurPOS:
                     data.get('description', ''),
                     data.get('taux_tva'),
                     data.get('type_option', 'redistribution'),
-                    data.get('est_obligatoire', False)
                 ))
                 return cursor.lastrowid
         except Exception as e:
