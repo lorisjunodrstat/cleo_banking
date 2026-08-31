@@ -19576,35 +19576,31 @@ class POSComptabilisation:
                         logger.warning(f"Mode de paiement sans compte configuré")
                         continue
                     
-                    # ✅ CORRECTION : Appel sur pos_compta_mapping au lieu de modele_categorie
+                    # ✅ Détection passif via type_compte OU numéro classe 2
                     is_credit = self.modele_categorie.is_compte_passif(compte_vente_id)
                     
                     if is_credit:
-                        # === FLUX B : Achat de bon cadeau ===
-                        # Pas de TVA, tout va sur le passif 2030
                         data_vente = {
                             'date_ecriture': date_ecriture,
                             'compte_bancaire_id': compte_bancaire_id,
-                            'categorie_id': compte_vente_id,  # 2030
+                            'categorie_id': compte_vente_id,
                             'montant': total_ttc,
-                            'montant_htva': total_ttc,  # Pas de distinction HT/TVA
+                            'montant_htva': total_ttc,
                             'devise': 'CHF',
                             'description': f"Achat crédit POS {item.get('type_taxe_nom')} - {item.get('mode_paiement_nom')}",
                             'reference': f"JOURNAL-{date_ecriture}-CREDIT-{item.get('type_taxe_id')}",
                             'type_ecriture': 'recette',
-                            'tva_taux': 0,  # 🎯 TVA à 0
+                            'tva_taux': 0,
                             'tva_montant': 0,
                             'utilisateur_id': user_id,
                             'statut': 'validée',
                             'type_ecriture_comptable': 'principale'
                         }
                     else:
-                        # === FLUX A : Vente normale ===
-                        # La TVA sera générée automatiquement via categorie_complementaire_id de 3001
                         data_vente = {
                             'date_ecriture': date_ecriture,
                             'compte_bancaire_id': compte_bancaire_id,
-                            'categorie_id': compte_vente_id,  # 3001
+                            'categorie_id': compte_vente_id,
                             'montant': total_ttc,
                             'montant_htva': total_ht,
                             'devise': 'CHF',
@@ -19618,17 +19614,8 @@ class POSComptabilisation:
                             'type_ecriture_comptable': 'principale'
                         }
                     
-                    resultat = self.modele_ecriture.create(self.modele_categorie, data_vente)
-
-                    # Si create() retourne un tuple (succes, msg)
-                    if isinstance(resultat, tuple):
-                        succes, msg = resultat
-                    else:
-                        # Si create() retourne juste un booléen
-                        succes = resultat
-                        msg = "OK" if succes else "Erreur"
-
-                    if succes:
+                    # ✅ CORRECTION : create() retourne un bool, pas un tuple
+                    if self.modele_ecriture.create(self.modele_categorie, data_vente):
                         nb_ecritures += 1
                     
                     # Gestion des frais de service (uniquement pour ventes normales)
@@ -19651,20 +19638,15 @@ class POSComptabilisation:
                                 'statut': 'validée',
                                 'type_ecriture_comptable': 'principale'
                             }
-                            resultat_frais = self.modele_ecriture.create(self.modele_categorie, data_frais)
-                            if isinstance(resultat_frais, tuple):
-                                succes_frais, _ = resultat_frais
-                            else:
-                                succes_frais = resultat_frais
-
-                            if succes_frais:
+                            # ✅ CORRECTION : create() retourne un bool
+                            if self.modele_ecriture.create(self.modele_categorie, data_frais):
                                 nb_ecritures += 1
                 
                 return True, f"{nb_ecritures} écriture(s) générée(s)"
         except Exception as e:
             logger.error(f"Erreur comptabilisation: {e}", exc_info=True)
             return False, f"Erreur: {str(e)}"
-
+        
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
             """Récupère le compte de vente de classe 3 par défaut (3000)"""
             try:
