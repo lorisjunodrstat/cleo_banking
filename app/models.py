@@ -1046,8 +1046,6 @@ class DatabaseManager:
                     taux_tva DECIMAL(5,2) DEFAULT NULL COMMENT 'Taux de TVA spécifique pour cette option (NULL = hérite du parent)',
                     type_option ENUM('redistribution', 'supplement', 'fixe_prix') DEFAULT 'redistribution' 
                         COMMENT 'redistribution: répartit la TVA sans changer le prix | supplement: ajoute un supplément | fixe_prix: remplace le prix total',
-                    est_obligatoire BOOLEAN DEFAULT FALSE 
-                        COMMENT 'Si TRUE, l\'option doit obligatoirement être sélectionnée (ex: choix de la taille)',
                     INDEX idx_utilisateur (utilisateur_id),
                     INDEX idx_article (id_article),
                     INDEX idx_modificateur (id_modificateur),
