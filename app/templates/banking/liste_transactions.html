@@ -442,6 +442,9 @@ body.modal-open {
 </div>
 
 <script>
+// Stocker l'URL de base pour l'annulation
+const ANNULER_URL_BASE = "{{ url_for('banking.annuler_transfert_externe', transfert_id=0) }}".replace('/0', '');
+
 document.addEventListener('DOMContentLoaded', function () {
     // Récupérer les éléments
     const modalElement = document.getElementById('editTransactionModal');
@@ -576,12 +579,15 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // Gestion des boutons d'annulation
+    // Gestion des boutons d'annulation - CORRIGÉ
     document.querySelectorAll('.cancel-btn').forEach(btn => {
         btn.addEventListener('click', function () {
             if (confirm('Êtes-vous sûr de vouloir annuler ce transfert ?')) {
                 const transfertId = this.dataset.id;
-                fetch('{{ url_for("banking.annuler_transfert_externe") }}/' + transfertId, {
+                // Construire l'URL manuellement avec l'ID
+                const url = ANNULER_URL_BASE + '/' + transfertId;
+                
+                fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 })
