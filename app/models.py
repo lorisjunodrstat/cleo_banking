@@ -8778,6 +8778,7 @@ class EcritureComptable:
     def get_with_filters(self, user_id: int, date_from: str = None, date_to: str = None,
                         statut: str = None, id_contact: int = None, compte_id: int = None,
                         categorie_id: int = None, type_ecriture: str = None, type_ecriture_comptable: str = None,
+                        date_created_from: str = None, date_created_to: str = None,
                         limit: int = 100) -> List[Dict]:
         """Récupère les écritures avec tous les filtres combinés"""
         ecritures = []
@@ -8817,6 +8818,12 @@ class EcritureComptable:
                 if type_ecriture_comptable:
                     query += " AND e.type_ecriture_comptable = %s"
                     params.append(type_ecriture_comptable)
+                if date_created_from:
+                    query += " AND e.created_at >= %s"
+                    params.append(date_from)
+                if date_created_to:
+                    query += " AND e.created_at <= %s"
+                    params.append(date_to)
 
 
                 query += " ORDER BY e.date_ecriture DESC LIMIT %s"

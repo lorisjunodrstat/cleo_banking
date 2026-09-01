@@ -3814,6 +3814,8 @@ def liste_ecritures():
     statut = request.args.get('statut', 'tous')
     type_ecriture = request.args.get('type_ecriture', 'tous')
     type_ecriture_comptable = request.args.get('type_ecriture_comptable', 'tous')
+    date_created_from = request.args.get('date_created_from')
+    date_created_to = request.args.get('date_created_to')
     
     # Définition des options disponibles
     types_ecriture_disponibles = [
@@ -3847,6 +3849,8 @@ def liste_ecritures():
         'categorie_id': int(categorie_id) if categorie_id and categorie_id.isdigit() else None,
         'type_ecriture': type_ecriture if type_ecriture != 'tous' else None,
         'type_ecriture_comptable': type_ecriture_comptable if type_ecriture_comptable != 'tous' else None,
+        'date_created_from': date_created_from,
+        'date_created_to': date_created_to,
         'limit': 1000
     }
     

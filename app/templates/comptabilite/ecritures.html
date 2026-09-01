@@ -352,6 +352,16 @@
                         {% endfor %}
                     </select>
                 </div>
+                <div class="col-md-3">
+                    <label for="date_created_from" class="form-label">Date création de début</label>
+                    <input type="date" id="date_created_from" name="date_created_from" class="form-control"
+                        value="{{ date_created_from or '' }}">
+                </div>
+
+                <div class="col-md-3">
+                    <label for="date_created_to" class="form-label">Date création de fin</label>
+                    <input type="date" id="date_created_to" name="date_created_to" class="form-control" value="{{ date_created_to or '' }}">
+                </div>
 
                 <div class="col-md-12">
                     <div class="d-flex gap-2">
