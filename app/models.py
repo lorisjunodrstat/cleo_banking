@@ -3776,18 +3776,28 @@ class TransactionFinanciere:
             return False, "Le montant doit être positif"
         if not iban_dest or len(iban_dest.strip()) < 15:
             return False, "IBAN destination invalide"
+        
         # Utiliser la date actuelle si non spécifiée
         if date_transaction is None:
             date_transaction = datetime.now()
+        
         try:
-            # L'ensemble de l'opération est géré dans une seule transaction 'with'
             with self.db.get_cursor() as cursor:
-                # Vérifier l'appartenance du compte
+                # Vérifier l'existence du compte
                 if not self._verifier_existence_compte_with_cursor(cursor, source_type, source_id):
                     return False, "Compte source non trouvé ou non autorisé"
-                # Insérer la transaction de débit
+                
+                # ✅ CORRECTION : Appel COMPLET à _inserer_transaction_with_cursor
                 success, message, transaction_id = self._inserer_transaction_with_cursor(
-                    cursor, source_type, source_id, 'transfert_exter
+                    cursor,
+                    source_type,
+                    source_id,
+                    'transfert_externe',
+                    montant,
+                    description,
+                    user_id,
+                    date_transaction,
+                    True  # validate_balance
                 )
 
                 if not success:
@@ -3801,18 +3811,20 @@ class TransactionFinanciere:
                 ) VALUES (%s, %s, %s, %s, %s, %s, 'pending', NOW())
                 """
                 cursor.execute(query_ordre, (
-                    transaction_id, iban_dest.strip().upper(),
+                    transaction_id, 
+                    iban_dest.strip().upper(),
                     bic_dest.strip().upper() if bic_dest else '',
-                    nom_dest.strip(), float(montant), devise
+                    nom_dest.strip(), 
+                    float(montant), 
+                    devise
                 ))
 
                 return True, "Ordre de transfert externe créé avec succès"
 
         except Exception as e:
-            # Le rollback est géré automatiquement par le bloc 'with'
             logger.error(f"Erreur transfert externe: {e}")
             return False, f"Erreur lors du transfert externe: {str(e)}"
-
+        
     def get_historique_compte(self, compte_type: str, compte_id: int, user_id: int,
                             date_from: str = None, date_to: str = None,
                             limit: int = 50) -> List[Dict]:
@@ -19504,11 +19516,66 @@ class POSComptabilisation:
         self.modele_categorie = CategorieComptable(db)
         self.pos_compta_mapping = POSComptaMapping(db)
 
-    def get_a_comptabiliser(self, user_id: int, pdv_id: int = None, date_from: str = None, date_to: str = None, mode: str = 'jour') -> List[Dict]:
+    def get_a_comptabiliser(self, user_id: int, pdv_id: int = None, 
+                            date_from: str = None, date_to: str = None, 
+                            mode: str = 'jour',
+                            only_without_transaction: bool = False) -> List[Dict]:
+        """
+        Récupère les données POS à comptabiliser.
+        
+        Args:
+            user_id: ID de l'utilisateur
+            pdv_id: ID du point de vente (optionnel)
+            date_from: Date de début (YYYY-MM-DD)
+            date_to: Date de fin (YYYY-MM-DD)
+            mode: 'jour' (agrégé par jour) ou 'ticket' (par ticket)
+            only_without_transaction: Si True, exclut les reçus qui ont déjà 
+                                    une transaction bancaire liée
+        
+        Returns:
+            Liste de dictionnaires avec les données à comptabiliser
+        """
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 compte_defaut = self._get_compte_vente_defaut(cursor, user_id)
+                
+                # Condition WHERE de base commune aux deux modes
+                where_base = """
+                    WHERE r.utilisateur_id = %s  
+                    AND (COALESCE(r.comptabilise, 0) = 0 
+                        OR COALESCE(r.etat_comptable, 'non_comptabilise') = 'non_comptabilise')
+                    AND r.status = 'Fermé'
+                    AND r.receipt_type IN ('Vente', 'Remboursement')
+                """
+                params_base = [user_id]
+                
+                # Filtre optionnel : exclure les reçus avec transaction bancaire existante
+                if only_without_transaction:
+                    where_base += """
+                    AND NOT EXISTS (
+                        SELECT 1 FROM transactions t_banc 
+                        WHERE t_banc.receipt_id = r.id 
+                        AND t_banc.utilisateur_id = r.utilisateur_id
+                    )
+                    """
+                
+                # Filtres de date optionnels
+                if date_from:
+                    where_base += " AND DATE(r.date) >= %s"
+                    params_base.append(date_from)
+                if date_to:
+                    where_base += " AND DATE(r.date) <= %s"
+                    params_base.append(date_to)
+                
+                # Filtre PDV optionnel
+                if pdv_id:
+                    where_base += " AND r.pdv_id = %s"
+                    params_base.append(pdv_id)
+                
                 if mode == 'jour':
+                    # ============================================
+                    # MODE JOUR : Agrégation par jour + mode de paiement + type de taxe
+                    # ============================================
                     query = """
                         SELECT 
                             DATE_FORMAT(sub.date, '%%Y-%%m-%%d') as date_jour,
@@ -19529,9 +19596,13 @@ class POSComptabilisation:
                             SUM(sub.total_ht * (p.montant / NULLIF(sub.total_collecte, 0))) as total_ht,
                             SUM(sub.total_tva * (p.montant / NULLIF(sub.total_collecte, 0))) as total_tva,
                             -- Le montant TTC réel encaissé par ce mode de paiement
-                            SUM(p.montant) as total_ttc
+                            SUM(p.montant) as total_ttc,
+                            -- 🆕 Indicateur : au moins un reçu du groupe a-t-il une transaction bancaire ?
+                            MAX(sub.has_transaction_bancaire) as has_transaction_bancaire,
+                            -- 🆕 Liste des receipt_ids du groupe (pour liaison ultérieure)
+                            GROUP_CONCAT(DISTINCT sub.receipt_id) as receipt_ids
                         FROM (
-                            -- SOUS-REQUÊTE : Totaux par reçu et par type de taxe (évite le produit cartésien)
+                            -- SOUS-REQUÊTE : Totaux par reçu et par type de taxe
                             SELECT 
                                 r.id as receipt_id,
                                 r.date,
@@ -19540,16 +19611,19 @@ class POSComptabilisation:
                                 typ.nom as type_taxe_nom,
                                 COALESCE(mct.compte_vente_id, %s) as compte_vente_id,
                                 SUM(ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100))) as total_ht,
-                                SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100)))) as total_tva
+                                SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100)))) as total_tva,
+                                -- 🆕 Détection de transaction bancaire existante
+                                CASE WHEN EXISTS (
+                                    SELECT 1 FROM transactions t_banc 
+                                    WHERE t_banc.receipt_id = r.id 
+                                    AND t_banc.utilisateur_id = r.utilisateur_id
+                                ) THEN 1 ELSE 0 END as has_transaction_bancaire
                             FROM pos_receipts r
                             JOIN pos_receipt_items ri ON r.id = ri.receipt_id
                             LEFT JOIN pos_article_taxes pat ON ri.article_id = pat.article_id AND pat.est_actuelle = TRUE
                             LEFT JOIN pos_types_taxes typ ON pat.type_taxe_id = typ.id
                             LEFT JOIN pos_compta_mapping_tva mct ON pat.type_taxe_id = mct.type_taxe_id AND mct.utilisateur_id = r.utilisateur_id
-                            WHERE r.utilisateur_id = %s  
-                            AND (r.comptabilise = FALSE OR r.etat_comptable = 'non_comptabilise')
-                            AND r.status = 'Fermé'
-                            AND r.receipt_type IN ('Vente', 'Remboursement')
+                            """ + where_base + """
                             GROUP BY r.id, r.date, r.total_collecte, pat.type_taxe_id, typ.nom, COALESCE(mct.compte_vente_id, %s)
                         ) sub
                         JOIN pos_payments p ON sub.receipt_id = p.receipt_id
@@ -19563,10 +19637,14 @@ class POSComptabilisation:
                             sub.compte_vente_id
                         ORDER BY date_jour DESC, pm.nom, sub.type_taxe_nom
                     """
-                    cursor.execute(query, (compte_defaut, compte_defaut, user_id, compte_defaut))
+                    params = [compte_defaut] + params_base + [compte_defaut]
+                    cursor.execute(query, params)
                     return cursor.fetchall()
-                    
+                            
                 else:
+                    # ============================================
+                    # MODE TICKET : Détail par ticket + mode de paiement
+                    # ============================================
                     query = """
                         SELECT 
                             sub.receipt_id as id, 
@@ -19584,7 +19662,11 @@ class POSComptabilisation:
                             cvente.nom as compte_vente_nom,
                             SUM(sub.total_ht * (p.montant / NULLIF(sub.total_collecte, 0))) as total_ht,
                             SUM(sub.total_tva * (p.montant / NULLIF(sub.total_collecte, 0))) as total_tva,
-                            SUM(p.montant) as total_ttc
+                            SUM(p.montant) as total_ttc,
+                            -- 🆕 Indicateur de transaction bancaire existante
+                            sub.has_transaction_bancaire,
+                            -- 🆕 ID du reçu pour liaison avec transaction
+                            sub.receipt_id
                         FROM (
                             SELECT 
                                 r.id as receipt_id,
@@ -19593,30 +19675,37 @@ class POSComptabilisation:
                                 r.total_collecte,
                                 COALESCE(mct.compte_vente_id, %s) as compte_vente_id,
                                 SUM(ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100))) as total_ht,
-                                SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100)))) as total_tva
+                                SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100)))) as total_tva,
+                                -- 🆕 Détection de transaction bancaire existante
+                                CASE WHEN EXISTS (
+                                    SELECT 1 FROM transactions t_banc 
+                                    WHERE t_banc.receipt_id = r.id 
+                                    AND t_banc.utilisateur_id = r.utilisateur_id
+                                ) THEN 1 ELSE 0 END as has_transaction_bancaire
                             FROM pos_receipts r
                             JOIN pos_receipt_items ri ON r.id = ri.receipt_id
                             LEFT JOIN pos_article_taxes pat ON ri.article_id = pat.article_id AND pat.est_actuelle = TRUE
                             LEFT JOIN pos_compta_mapping_tva mct ON pat.type_taxe_id = mct.type_taxe_id AND mct.utilisateur_id = r.utilisateur_id
-                            WHERE r.utilisateur_id = %s 
-                              AND (r.comptabilise = FALSE OR r.etat_comptable = 'non_comptabilise')
-                              AND r.status = 'Fermé'
+                            """ + where_base + """
                             GROUP BY r.id, r.recu_numero, r.date, r.total_collecte, COALESCE(mct.compte_vente_id, %s)
                         ) sub
                         JOIN pos_payments p ON sub.receipt_id = p.receipt_id
                         JOIN pos_modes_paiement pm ON p.mode_paiement_id = pm.id
                         LEFT JOIN categories_comptables cvente ON sub.compte_vente_id = cvente.id
-                        GROUP BY sub.receipt_id, sub.recu_numero, sub.date, pm.id, pm.nom, pm.compte_tresorerie_id, 
-                                 pm.compte_bancaire_id, pm.compte_frais_service_id, pm.frais_pourcentage, 
-                                 pm.frais_fixe, sub.compte_vente_id
+                        GROUP BY sub.receipt_id, sub.recu_numero, sub.date, pm.id, pm.nom, 
+                                pm.compte_tresorerie_id, pm.compte_bancaire_id, 
+                                pm.compte_frais_service_id, pm.frais_pourcentage, 
+                                pm.frais_fixe, sub.compte_vente_id, sub.has_transaction_bancaire
                         ORDER BY sub.date DESC
                     """
-                    cursor.execute(query, (compte_defaut, user_id, user_id, compte_defaut))
+                    params = [compte_defaut] + params_base + [compte_defaut]
+                    cursor.execute(query, params)
                     return cursor.fetchall()
-                    
+                            
         except Exception as e:
             logger.error(f"Erreur récupération données à comptabiliser: {e}", exc_info=True)
             return []
+    
     @staticmethod
     def _parse_date_ecriture(raw):
         """Convertit une valeur date en objet date."""
@@ -19635,100 +19724,77 @@ class POSComptabilisation:
 
     def comptabiliser_selection(self, user_id: int, items_a_comptabiliser: List[Dict]) -> Tuple[bool, str]:
         try:
+            from app.models import TransactionFinanciere
+            transaction_model = TransactionFinanciere(self.db)
+            
             logger.info(f"📊 Items reçus pour comptabilisation : {len(items_a_comptabiliser)}")
-    
+            
             with self.db.get_cursor(dictionary=True) as cursor:
                 nb_ecritures = 0
+                nb_transactions = 0
                 nb_sautés = 0
                 
                 for item in items_a_comptabiliser:
                     date_ecriture = POSComptabilisation._parse_date_ecriture(
                         item.get('date_jour') or item.get('date')
                     )
-                    
+                    receipt_id = item.get('receipt_id')  # ← NOUVEAU : ID du reçu
                     compte_vente_id = item.get('compte_vente_id')
                     compte_bancaire_id = item.get('compte_tresorerie_id') or item.get('compte_bancaire_id')
-                    total_ht = float(item.get('total_ht', 0))
-                    total_tva = float(item.get('total_tva', 0))
                     total_ttc = float(item.get('total_ttc', 0))
                     
                     if not compte_bancaire_id:
-                        logger.warning(f"Mode de paiement sans compte configuré")
                         nb_sautés += 1
                         continue
                     
-                    # ✅ Détection passif via type_compte OU numéro classe 2
-                    is_credit = self.modele_categorie.is_compte_passif(compte_vente_id)
+                    # 1. Écriture comptable (comme avant)
+                    data_vente = {
+                        'date_ecriture': date_ecriture,
+                        'compte_bancaire_id': compte_bancaire_id,
+                        'categorie_id': compte_vente_id,
+                        'montant': total_ttc,
+                        'montant_htva': float(item.get('total_ht', total_ttc)),
+                        'devise': 'CHF',
+                        'description': f"Ventes POS {item.get('type_taxe_nom')} - {item.get('mode_paiement_nom')}",
+                        'reference': f"JOURNAL-{date_ecriture}-{item.get('type_taxe_id')}",
+                        'type_ecriture': 'recette',
+                        'tva_taux': round((float(item.get('total_tva', 0)) / float(item.get('total_ht', total_ttc)) * 100), 2) if float(item.get('total_ht', total_ttc)) > 0 else 0,
+                        'tva_montant': float(item.get('total_tva', 0)),
+                        'utilisateur_id': user_id,
+                        'statut': 'validée',
+                        'type_ecriture_comptable': 'principale'
+                    }
                     
-                    if is_credit:
-                        data_vente = {
-                            'date_ecriture': date_ecriture,
-                            'compte_bancaire_id': compte_bancaire_id,
-                            'categorie_id': compte_vente_id,
-                            'montant': total_ttc,
-                            'montant_htva': total_ttc,
-                            'devise': 'CHF',
-                            'description': f"Achat crédit POS {item.get('type_taxe_nom')} - {item.get('mode_paiement_nom')}",
-                            'reference': f"JOURNAL-{date_ecriture}-CREDIT-{item.get('type_taxe_id')}",
-                            'type_ecriture': 'recette',
-                            'tva_taux': 0,
-                            'tva_montant': 0,
-                            'utilisateur_id': user_id,
-                            'statut': 'validée',
-                            'type_ecriture_comptable': 'principale'
-                        }
-                    else:
-                        data_vente = {
-                            'date_ecriture': date_ecriture,
-                            'compte_bancaire_id': compte_bancaire_id,
-                            'categorie_id': compte_vente_id,
-                            'montant': total_ttc,
-                            'montant_htva': total_ht,
-                            'devise': 'CHF',
-                            'description': f"Ventes POS {item.get('type_taxe_nom')} - {item.get('mode_paiement_nom')}",
-                            'reference': f"JOURNAL-{date_ecriture}-{item.get('type_taxe_id')}",
-                            'type_ecriture': 'recette',
-                            'tva_taux': round((total_tva / total_ht * 100), 2) if total_ht > 0 else 0,
-                            'tva_montant': total_tva,
-                            'utilisateur_id': user_id,
-                            'statut': 'validée',
-                            'type_ecriture_comptable': 'principale'
-                        }
-                    
-                    # ✅ CORRECTION : create() retourne un bool, pas un tuple
                     if self.modele_ecriture.create(self.modele_categorie, data_vente):
                         nb_ecritures += 1
                     
-                    # Gestion des frais de service (uniquement pour ventes normales)
-                    if not is_credit:
-                        montant_frais = (total_ttc * (float(item.get('frais_pourcentage', 0) or 0) / 100)) + float(item.get('frais_fixe', 0) or 0)
-                        if montant_frais > 0.01 and item.get('compte_frais_service_id'):
-                            data_frais = {
-                                'date_ecriture': date_ecriture,
-                                'compte_bancaire_id': compte_bancaire_id,
-                                'categorie_id': item['compte_frais_service_id'],
-                                'montant': montant_frais,
-                                'montant_htva': montant_frais,
-                                'devise': 'CHF',
-                                'description': f"Frais de service - {item.get('mode_paiement_nom')}",
-                                'reference': f"JOURNAL-{date_ecriture}-FRAIS",
-                                'type_ecriture': 'depense',
-                                'tva_taux': 0,
-                                'tva_montant': 0,
-                                'utilisateur_id': user_id,
-                                'statut': 'validée',
-                                'type_ecriture_comptable': 'principale'
-                            }
-                            # ✅ CORRECTION : create() retourne un bool
-                            if self.modele_ecriture.create(self.modele_categorie, data_frais):
-                                nb_ecritures += 1
-                logger.info(f"✅ Écritures créées : {nb_ecritures}, Sautées : {nb_sautés}")
-            
-                return True, f"{nb_ecritures} écriture(s) générée(s)"
+                    # 2. 🆕 Transaction bancaire liée au reçu (si receipt_id fourni)
+                    if receipt_id and total_ttc > 0:
+                        success, msg, tx_id = transaction_model._inserer_transaction_with_cursor(
+                            cursor=cursor,
+                            compte_type='compte_principal',
+                            compte_id=compte_bancaire_id,
+                            type_transaction='depot',
+                            montant=Decimal(str(total_ttc)),
+                            description=f"Vente POS - Reçu #{receipt_id} - {item.get('mode_paiement_nom')}",
+                            user_id=user_id,
+                            date_transaction=datetime.combine(date_ecriture, datetime.min.time()),
+                            validate_balance=False,
+                            receipt_id=receipt_id  # ← NOUVEAU : lien vers le reçu
+                        )
+                        if success:
+                            nb_transactions += 1
+                            logger.info(f"✅ Transaction {tx_id} créée pour reçu {receipt_id}")
+                        else:
+                            logger.warning(f"⚠️ Échec création transaction pour reçu {receipt_id}: {msg}")
+                
+                logger.info(f"✅ Écritures: {nb_ecritures}, Transactions: {nb_transactions}, Sautées: {nb_sautés}")
+                return True, f"{nb_ecritures} écriture(s) et {nb_transactions} transaction(s) générée(s)"
+        
         except Exception as e:
             logger.error(f"Erreur comptabilisation: {e}", exc_info=True)
             return False, f"Erreur: {str(e)}"
-        
+    
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
             """Récupère le compte de vente de classe 3 par défaut (3000)"""
             try:
