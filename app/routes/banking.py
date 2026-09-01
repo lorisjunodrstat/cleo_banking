@@ -3912,6 +3912,8 @@ def liste_ecritures():
         contact_selectionne=id_contact,
         date_from=date_from,
         date_to=date_to,
+        date_created_from=date_created_from,
+        date_created_to=date_created_to,
         categorie_id=categorie_id,
         show_link_modal=show_link_modal,
         ecriture_link=ecriture_link,
