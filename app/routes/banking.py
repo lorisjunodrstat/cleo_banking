@@ -4338,38 +4338,8 @@ def modifier_categorie(categorie_id):
     
     return render_template('categories/modifier_categorie.html', categorie=categorie)
 
-@bp.route('/categorie/dissocier-transaction', methods=['POST'])
-@login_required
-def dissocier_categorie_transaction():
-    """Dissocie une catégorie (ou toutes) d'une transaction."""
-    transaction_id = request.form.get('transaction_id', type=int)
-    categorie_id = request.form.get('categorie_id', type=int)
-    referrer = request.referrer or url_for('banking.banking_dashboard')
 
-    if not transaction_id:
-        flash("Transaction non spécifiée.", "warning")
-        return redirect(referrer)
 
-    # 1. Vérification de la transaction (existence + sécurité utilisateur)
-    tx = g.models.transaction_financiere_model.get_transaction_by_id(transaction_id)
-    if not tx or tx.get('owner_user_id') != current_user.id:
-        flash("Transaction non trouvée ou non autorisée.", "error")
-        return redirect(referrer)
-
-    # 2. Appel du modèle
-    # Remarque : categorie_id peut être passé pour dissocier une catégorie précise ou omis pour tout retirer
-    success, message = g.models.categorie_transaction_model.dissocier_categorie_transaction(
-        transaction_id=transaction_id,
-        user_id=current_user.id,
-        categorie_id=categorie_id
-    )
-
-    if success:
-        flash("La catégorie a bien été retirée de la transaction.", "success")
-    else:
-        flash(message, "error")
-
-    return redirect(referrer) 
 @bp.route('/categorie/<int:categorie_id>/supprimer', methods=['POST'])
 @login_required
 def supprimer_categorie(categorie_id):
@@ -4517,6 +4487,9 @@ def dissocier_categorie_transaction():
     flash(message, "success" if success else "error")
     return redirect(referrer)
 
+
+
+    return redirect(referrer) 
 @bp.route('/categorie/associer-transaction-multiple', methods=['POST'])
 @login_required
 def associer_categorie_transaction_multiple():
