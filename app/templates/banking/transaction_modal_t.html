@@ -36,7 +36,7 @@
                                     <p><strong>Référence :</strong>
                                         <span class="text-muted">{{ t.reference or '-' }}</span>
                                     </p>
-                                    <p>Date de création : {{ mv.created_at if mv.created_at else 'date_indisponible' }}</p>
+                                    <p>Date de création : {{ t.created_at if t.created_at else 'date_indisponible' }}</p>
                                     <p><strong>Référence de transfert :</strong>
                                         <span class="text-muted">{{ t.reference_transfert or '-' }}</span>
                                     </p>
