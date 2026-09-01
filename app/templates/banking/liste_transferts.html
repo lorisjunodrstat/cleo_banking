@@ -434,23 +434,29 @@ body.modal-open {
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // Récupérer les éléments
     const modalElement = document.getElementById('editTransactionModal');
-    // Instance Bootstrap réutilisable (évite la création multiple qui fait trembler la page)
-    const bsModal = bootstrap.Modal.getOrCreateInstance(modalElement);
-
+    const form = document.getElementById('transactionForm');
     const typeSelect = document.getElementById('typeTransaction');
     const compteIdSelect = document.getElementById('compteId');
     const sousCompteIdSelect = document.getElementById('sousCompteId');
     const compteDestIdSelect = document.getElementById('compteDestId');
     const sousCompteDestIdSelect = document.getElementById('sousCompteDestId');
     const destinationFields = document.getElementById('destinationFields');
+    const modalTitle = document.querySelector('#editTransactionModal .modal-title');
+    
+    // Variables pour contrôler l'état
+    let isEditing = false;
+    let isInitialized = false;
 
+    // Fonction pour mettre à jour la visibilité des champs de destination
     function updateFieldsVisibility() {
         const type = typeSelect.value;
         const isTransfert = type === 'transfert_vers_sous_compte' || type === 'transfert_depuis_sous_compte';
         destinationFields.style.display = isTransfert ? 'flex' : 'none';
     }
 
+    // Fonction pour filtrer les sous-comptes
     function filterSousComptes(selectElement, compteId) {
         const options = selectElement.querySelectorAll('option');
         options.forEach(option => {
@@ -463,6 +469,43 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // Fonction pour réinitialiser le formulaire
+    function resetForm() {
+        form.reset();
+        document.getElementById('transactionId').value = '';
+        isEditing = false;
+        modalTitle.innerHTML = '<i class="fas fa-plus me-2"></i> Nouvelle transaction';
+        updateFieldsVisibility();
+        filterSousComptes(sousCompteIdSelect, '');
+        filterSousComptes(sousCompteDestIdSelect, '');
+    }
+
+    // Fonction pour charger les données d'une transaction
+    function loadTransactionData(btn) {
+        document.getElementById('transactionId').value = btn.dataset.id;
+        document.getElementById('typeTransaction').value = btn.dataset.type;
+        document.getElementById('montant').value = btn.dataset.montant;
+        document.getElementById('description').value = btn.dataset.description;
+        document.getElementById('reference').value = btn.dataset.reference;
+        
+        const compteSourceId = btn.dataset.compteSourceId;
+        const compteDestId = btn.dataset.compteDestId;
+        
+        document.getElementById('compteId').value = compteSourceId;
+        document.getElementById('sousCompteId').value = btn.dataset.sousCompteSourceId;
+        document.getElementById('compteDestId').value = compteDestId;
+        document.getElementById('sousCompteDestId').value = btn.dataset.sousCompteDestId;
+        
+        // Filtrer les sous-comptes
+        filterSousComptes(sousCompteIdSelect, compteSourceId);
+        filterSousComptes(sousCompteDestIdSelect, compteDestId);
+        
+        isEditing = true;
+        modalTitle.innerHTML = '<i class="fas fa-pen me-2"></i> Éditer la transaction';
+        updateFieldsVisibility();
+    }
+
+    // Initialiser les événements des selects
     compteIdSelect.addEventListener('change', function () {
         filterSousComptes(sousCompteIdSelect, this.value);
         sousCompteIdSelect.value = "";
@@ -474,50 +517,55 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     typeSelect.addEventListener('change', updateFieldsVisibility);
-    updateFieldsVisibility();
 
-    // Boutons d'édition
-    document.querySelectorAll('.edit-btn').forEach(btn => {
-        btn.addEventListener('click', function () {
-            document.getElementById('transactionId').value = this.dataset.id;
-            document.getElementById('typeTransaction').value = this.dataset.type;
-            document.getElementById('montant').value = this.dataset.montant;
-            document.getElementById('description').value = this.dataset.description;
-            document.getElementById('reference').value = this.dataset.reference;
-            
-            const compteSourceId = this.dataset.compteSourceId;
-            const compteDestId = this.dataset.compteDestId;
-            
-            document.getElementById('compteId').value = compteSourceId;
-            document.getElementById('sousCompteId').value = this.dataset.sousCompteSourceId;
-            document.getElementById('compteDestId').value = compteDestId;
-            document.getElementById('sousCompteDestId').value = this.dataset.sousCompteDestId;
-            
-            filterSousComptes(sousCompteIdSelect, compteSourceId);
-            filterSousComptes(sousCompteDestIdSelect, compteDestId);
-            updateFieldsVisibility();
-            
-            document.querySelector('#editTransactionModal .modal-title').innerHTML = 
-                '<i class="fas fa-pen me-2"></i> Éditer la transaction';
-            
-            bsModal.show();
-        });
-    });
-
-    // Réinitialisation lors de l'ouverture (Bouton "Nouvelle transaction")
+    // Gestionnaire pour l'ouverture du modal
     modalElement.addEventListener('show.bs.modal', function (event) {
-        if (event.relatedTarget) { // Si déclenché par un bouton (comme le bouton "+ Nouvelle transaction")
-            document.getElementById('transactionForm').reset();
-            document.getElementById('transactionId').value = '';
-            document.querySelector('#editTransactionModal .modal-title').innerHTML = 
-                '<i class="fas fa-plus me-2"></i> Nouvelle transaction';
-            updateFieldsVisibility();
-            filterSousComptes(sousCompteIdSelect, '');
-            filterSousComptes(sousCompteDestIdSelect, '');
+        const relatedTarget = event.relatedTarget;
+        
+        // Si c'est un bouton d'édition
+        if (relatedTarget && relatedTarget.classList.contains('edit-btn')) {
+            loadTransactionData(relatedTarget);
+        } 
+        // Si c'est le bouton "Nouvelle transaction" ou autre déclencheur
+        else if (relatedTarget && relatedTarget.dataset.bsTarget === '#editTransactionModal') {
+            resetForm();
+        }
+        // Cas où le modal est ouvert programmatiquement sans relatedTarget
+        else if (!isInitialized) {
+            resetForm();
+            isInitialized = true;
         }
     });
 
-    // Bouton annuler (transferts en attente)
+    // Éviter les problèmes de double initialisation
+    modalElement.addEventListener('hidden.bs.modal', function () {
+        // Réinitialiser l'état lorsque le modal est fermé
+        isInitialized = false;
+    });
+
+    // Gestion des boutons d'édition
+    document.querySelectorAll('.edit-btn').forEach(btn => {
+        // Supprimer les anciens écouteurs pour éviter les doublons
+        btn.removeEventListener('click', function() {});
+        
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            // Charger les données et ouvrir le modal
+            loadTransactionData(this);
+            
+            // Récupérer l'instance du modal et l'ouvrir
+            const modal = bootstrap.Modal.getInstance(modalElement);
+            if (modal) {
+                modal.show();
+            } else {
+                // Créer une nouvelle instance si elle n'existe pas
+                const newModal = new bootstrap.Modal(modalElement);
+                newModal.show();
+            }
+        });
+    });
+
+    // Gestion des boutons d'annulation
     document.querySelectorAll('.cancel-btn').forEach(btn => {
         btn.addEventListener('click', function () {
             if (confirm('Êtes-vous sûr de vouloir annuler ce transfert ?')) {
@@ -539,6 +587,24 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
             }
         });
+    });
+
+    // Gestion de la soumission du formulaire
+    form.addEventListener('submit', function(e) {
+        // Le formulaire sera soumis normalement
+        // Mais on peut ajouter une validation si nécessaire
+        console.log('Formulaire soumis');
+    });
+
+    // Appliquer la visibilité initiale
+    updateFieldsVisibility();
+
+    // Nettoyer l'instance du modal pour éviter les conflits
+    window.addEventListener('beforeunload', function() {
+        const modal = bootstrap.Modal.getInstance(modalElement);
+        if (modal) {
+            modal.dispose();
+        }
     });
 });
 </script>
