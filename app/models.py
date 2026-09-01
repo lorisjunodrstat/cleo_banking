@@ -420,6 +420,7 @@ class DatabaseManager:
                     description TEXT,
                     reference VARCHAR(100),
                     utilisateur_id INT NOT NULL,
+                    receipt_id INT NULL,
                     date_transaction DATETIME NOT NULL,
                     solde_apres DECIMAL(15,2),
                     statut_comptable ENUM('a_comptabiliser', 'comptabilise', 'ne_pas_comptabiliser') DEFAULT 'a_comptabiliser',
@@ -430,7 +431,8 @@ class DatabaseManager:
                     FOREIGN KEY (sous_compte_source_id) REFERENCES sous_comptes(id),
                     FOREIGN KEY (compte_destination_id) REFERENCES comptes_principaux(id),
                     FOREIGN KEY (sous_compte_destination_id) REFERENCES sous_comptes(id),
-                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id)
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id),
+                    INDEX idx_receipt_id (receipt_id)
                 );""")
 
                 cursor.execute("""
