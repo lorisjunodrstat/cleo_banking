@@ -780,7 +780,7 @@ function confirmAddArticle(){
         modsAffichage.push(sel.selectedOptions[0].textContent.trim());
     }
     
-    // 2. Modificateurs simples
+    // 2. Modificateurs simples (toujours ajoutés au prix)
     document.querySelectorAll('.maMod:checked').forEach(m => {
         let prixMod = parseFloat(m.dataset.prix) || 0;
         let tauxMod = safeParseTaux(m.dataset.tauxTva) || tauxArticleBase;
@@ -820,7 +820,7 @@ function confirmAddArticle(){
     let tva_breakdown = [];
     let finalDisplayPrice = prixBase;
     
-    // Cas : Article à prix variable avec option fixe_prix
+    // 🔑 CAS 3 : Article à prix variable avec option fixe_prix (ex: abonnement)
     if (a.is_variable_price && optionsFixePrix.length > 0) {
         const optionFixe = optionsFixePrix[0];
         finalDisplayPrice = optionFixe.prix;
@@ -832,7 +832,9 @@ function confirmAddArticle(){
         });
     } 
     else {
-        // Cas normal : article + mods simples + suppléments
+        // 🔑 CAS 1 & 2 : Article normal
+        
+        // Calcul des suppléments (ils s'ajoutent au prix)
         let totalSupplement = 0;
         optionsSupplement.forEach(opt => {
             totalSupplement += opt.prix;
@@ -848,7 +850,8 @@ function confirmAddArticle(){
             });
         }
         
-        // Options de redistribution avec leur propre taux (ne changent pas le prix total)
+        // 🔑 CAS 1 : Options de redistribution (ne changent pas le prix total)
+        // Elles servent uniquement à répartir la TVA sur une partie du prix
         optionsRedistribution.forEach(opt => {
             tva_breakdown.push({
                 description: opt.nom + ' (redistribution)',
@@ -866,7 +869,11 @@ function confirmAddArticle(){
     const modificateursData = { 
         varianteId: varianteId,
         modsSimples: modsSimples,
-        optionsData: optionsData
+        optionsData: optionsData,
+        // ✅ On ajoute le type d'option principal pour le débogage
+        typePrincipal: optionsFixePrix.length > 0 ? 'fixe_prix' : 
+                       (optionsSupplement.length > 0 ? 'supplement' : 
+                        (optionsRedistribution.length > 0 ? 'redistribution' : 'aucun'))
     };
     const key = a.id + '_' + (varianteId || 0) + '_' + modificateursStr;
 
@@ -884,7 +891,8 @@ function confirmAddArticle(){
             qty: qty,
             taux: tauxArticleBase,
             commentaire: commentaire,
-            tva_breakdown: tva_breakdown
+            tva_breakdown: tva_breakdown,
+            is_variable_price: a.is_variable_price
         };
         delete $('modalArticle').dataset.editIndex;
     } else {
@@ -908,7 +916,8 @@ function confirmAddArticle(){
                 qty: qty,
                 taux: tauxArticleBase,
                 commentaire: commentaire,
-                tva_breakdown: tva_breakdown
+                tva_breakdown: tva_breakdown,
+                is_variable_price: a.is_variable_price
             });
         }
     }

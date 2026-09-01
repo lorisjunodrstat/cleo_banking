@@ -2296,7 +2296,7 @@ class TransactionFinanciere:
 
     def _inserer_transaction(self, compte_type: str, compte_id: int, type_transaction: str,
                             montant: Decimal, description: str, user_id: int,
-                            date_transaction: datetime, validate_balance: bool = True) -> Tuple[bool, str, Optional[int]]:
+                            date_transaction: datetime, validate_balance: bool = True, receipt_id: int = None) -> Tuple[bool, str, Optional[int]]:
         """Insère une transaction avec calcul intelligent du solde et mise à jour des transactions suivantes"""
         logger.info(f"Insertion de la transaction de type '{type_transaction}'")
         try:
@@ -2330,16 +2330,17 @@ class TransactionFinanciere:
                     query = """
                     INSERT INTO transactions
                     (compte_principal_id, type_transaction, montant, description, 
-                    utilisateur_id, date_transaction, solde_apres, reference)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    utilisateur_id, date_transaction, solde_apres, reference, receipt_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """
                     cursor.execute(query, (compte_id, type_transaction, montant,#float(montant)
                                         description, user_id, date_transaction, 
-                                        solde_apres, reference_transfert))#float(solde_apres)
+                                        solde_apres, reference_transfert, receipt_id))#float(solde_apres)
                 else:
                     query = """
                     INSERT INTO transactions
-                    (sous_compte_id, type_transaction, montant, description, utilisateur_id, date_transaction, solde_apres, reference_transfert)
+                    (sous_compte_id, type_transaction, montant, description, 
+                    utilisateur_id, date_transaction, solde_apres, reference_transfert)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """
                     cursor.execute(query, (compte_id, type_transaction, montant,#float(montant),
@@ -2845,6 +2846,7 @@ class TransactionFinanciere:
                     t.date_transaction,
                     t.solde_apres,
                     t.reference_transfert,
+                    t.receipt_id,
                     sc.nom_sous_compte as sous_compte_source,
                     sc_dest.nom_sous_compte as sous_compte_dest
                 FROM transactions t
@@ -2897,6 +2899,7 @@ class TransactionFinanciere:
                     t.sous_compte_id,
                     t.compte_destination_id,
                     t.sous_compte_destination_id,
+                    t.receipt_id,
                     cp.nom_compte as nom_compte_source,
                     cp_dest.nom_compte as nom_compte_dest,
                     sc.nom_sous_compte as nom_sous_compte_source,
@@ -3026,7 +3029,8 @@ class TransactionFinanciere:
                     cursor, compte_type, compte_id, 'depot', montant,
                     description, user_id, date_transaction, False,
                     compte_destination_id=compte_destination_id,
-                    sous_compte_destination_id=sous_compte_destinatin_id
+                    sous_compte_destination_id=sous_compte_destinatin_id,
+                    receipt_id=None
                 )
                 return success, message
         except Exception as e:
@@ -3049,7 +3053,8 @@ class TransactionFinanciere:
         try:
             with self.db.get_cursor(dictionary=True, commit=True) as cursor:
                 success, message, _ = self._inserer_transaction_with_cursor(cursor,
-                                                                            compte_type, compte_id, 'retrait', montant, description, user_id, date_transaction, False)
+                                                                            compte_type, compte_id, 'retrait', 
+                                                                            montant, description, user_id, date_transaction, False, receipt_id=None)
             return success, message
         except Exception as e:
             logger.error(f"Erreur création retrait: {e}")
@@ -3248,7 +3253,7 @@ class TransactionFinanciere:
     def _inserer_transaction_with_cursor(self, cursor, compte_type: str, compte_id: int, type_transaction: str,
                     montant: Decimal, description: str, user_id: int,
                     date_transaction: datetime, validate_balance: bool = True, reference_transfert: str = None,
-                    compte_destination_id: int = None, sous_compte_destination_id: int = None) -> Tuple[bool, str, Optional[int]]:
+                    compte_destination_id: int = None, sous_compte_destination_id: int = None, receipt_id: int = None) -> Tuple[bool, str, Optional[int]]:
         """
         Insère une transaction dans la base de données et met à jour les soldes.
         """
@@ -3327,15 +3332,15 @@ class TransactionFinanciere:
             (compte_principal_id, sous_compte_id, type_transaction, montant, description,
             utilisateur_id, date_transaction, solde_apres, reference,
             compte_destination_id, sous_compte_destination_id,
-            compte_source_id, sous_compte_source_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            compte_source_id, sous_compte_source_id, receipt_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
 
             cursor.execute(query, (
                 compte_principal_id, sous_compte_id, type_transaction, float(montant),
                 description, user_id, date_transaction, float(solde_apres), reference_transfert,
                 compte_destination_id, sous_compte_destination_id,
-                compte_source_id, sous_compte_source_id
+                compte_source_id, sous_compte_source_id, receipt_id
             ))
 
             transaction_id = cursor.lastrowid
@@ -3547,14 +3552,14 @@ class TransactionFinanciere:
                 # 1. Transaction de DÉBIT sur le compte source
                 success, message, debit_tx_id = self._inserer_transaction_with_cursor(
                     cursor, source_type, source_id, 'transfert_sortant', montant,
-                    desc_complete, user_id, date_transaction, True
+                    desc_complete, user_id, date_transaction, True, None
                 )
                 if not success:
                     return False, f"Erreur transaction débit: {message}"
                 # 2. Transaction de CRÉDIT sur le compte destination
                 success, message, credit_tx_id = self._inserer_transaction_with_cursor(
                     cursor, dest_type, dest_id, 'transfert_entrant', montant,
-                    desc_complete, user_id, date_transaction,  False
+                    desc_complete, user_id, date_transaction,  False, None
                 )
                 if not success:
                     return False, f"Erreur transaction crédit: {message}"
@@ -3634,7 +3639,8 @@ class TransactionFinanciere:
                     user_id=user_id,
                     date_transaction=date_transaction,
                     validate_balance=True,  # Vérifie le solde
-                    reference_transfert=reference_transfert
+                    reference_transfert=reference_transfert,
+                    receipt_id=None
                 )
                 if not success:
                     return False, f"Erreur débit compte principal: {message}"
@@ -3650,7 +3656,8 @@ class TransactionFinanciere:
                     user_id=user_id,
                     date_transaction=date_transaction,
                     validate_balance=False,  # Pas besoin de vérifier ici — on vient de débiter
-                    reference_transfert=reference_transfert
+                    reference_transfert=reference_transfert,
+                    receipt_id=None
                 )
                 if not success:
                     return False, f"Erreur crédit sous-compte: {message}"
@@ -3714,7 +3721,8 @@ class TransactionFinanciere:
                     user_id=user_id,
                     date_transaction=date_transaction,
                     validate_balance=True,
-                    reference_transfert=reference_transfert
+                    reference_transfert=reference_transfert,
+                    receipt_id=None
                 )
                 if not success:
                     return False, f"Erreur débit sous-compte: {message}"
@@ -3730,7 +3738,8 @@ class TransactionFinanciere:
                     user_id=user_id,
                     date_transaction=date_transaction,
                     validate_balance=False,
-                    reference_transfert=reference_transfert
+                    reference_transfert=reference_transfert,
+                    receipt_id=None
                 )
                 if not success:
                     return False, f"Erreur crédit compte principal: {message}"
@@ -3778,8 +3787,7 @@ class TransactionFinanciere:
                     return False, "Compte source non trouvé ou non autorisé"
                 # Insérer la transaction de débit
                 success, message, transaction_id = self._inserer_transaction_with_cursor(
-                    cursor, source_type, source_id, 'transfert_externe', montant,
-                    description, user_id, date_transaction, True
+                    cursor, source_type, source_id, 'transfert_exter
                 )
 
                 if not success:
@@ -4213,7 +4221,36 @@ class TransactionFinanciere:
         except Exception as e:
             logger.error(f"Erreur récupération transaction: {e}")
             return None
-
+        
+    def get_transactions_by_receipt(self, receipt_id: int, user_id: int) -> List[Dict]:
+        """Récupère toutes les transactions liées à un reçu POS donné"""
+        try:
+            with self.db.get_cursor() as cursor:
+                query = """
+                SELECT 
+                    t.*,
+                    cp.nom_compte as compte_principal_nom,
+                    sc.nom_sous_compte as sous_compte_nom
+                FROM transactions t
+                LEFT JOIN comptes_principaux cp ON t.compte_principal_id = cp.id
+                LEFT JOIN sous_comptes sc ON t.sous_compte_id = sc.id
+                WHERE t.receipt_id = %s
+                AND (cp.utilisateur_id = %s OR t.utilisateur_id = %s)
+                ORDER BY t.date_transaction ASC, t.id ASC
+                """
+                cursor.execute(query, (receipt_id, user_id, user_id))
+                transactions = cursor.fetchall()
+                
+                for tx in transactions:
+                    tx['montant'] = Decimal(str(tx['montant']))
+                    if tx['solde_apres'] is not None:
+                        tx['solde_apres'] = Decimal(str(tx['solde_apres']))
+                
+                return transactions
+        except Exception as e:
+            logger.error(f"Erreur récupération transactions pour reçu {receipt_id}: {e}")
+            return []
+    
     def get_solde_courant(self, compte_type: str, compte_id: int, user_id: int) -> Decimal:
         """Récupère le solde courant d'un compte"""
         try:
@@ -18112,7 +18149,8 @@ class ReceiptPOS:
                             description=f"Vente POS {recu_numero} - {nom_mode}",
                             user_id=user_id, 
                             date_transaction=datetime.now(), 
-                            validate_balance=False
+                            validate_balance=False, 
+                            receipt_id=receipt_id 
                         )
                         
                         # On garde la première transaction ID pour la lier au reçu (compatibilité)
@@ -18145,7 +18183,8 @@ class ReceiptPOS:
                                 description=f"Vente POS {recu_numero} - {mode_defaut['nom']}",
                                 user_id=user_id, 
                                 date_transaction=datetime.now(), 
-                                validate_balance=False
+                                validate_balance=False,
+                                receipt_id=receipt_id 
                             )
                 
                 # Mise à jour du reçu avec la transaction principale (pour compatibilité)
@@ -18399,7 +18438,8 @@ class ReceiptPOS:
                         description=f"Annulation vente {receipt['recu_numero']} - {raison}",
                         user_id=user_id,
                         date_transaction=datetime.now(),
-                        validate_balance=False
+                        validate_balance=False,
+                        receipt_id=None
                     )
                     if not success:
                         return False, f"Erreur remboursement bancaire : {msg}"
@@ -18528,7 +18568,8 @@ class ReceiptPOS:
                     description=f"Encaissement POS {recu_numero} ({pdv_info['nom_pdv']})",
                     user_id=user_id,
                     date_transaction=datetime.now(),
-                    validate_balance=False
+                    validate_balance=False,
+                    receipt_id=None
                 )
 
                 if success and transaction_id:
@@ -20097,7 +20138,8 @@ class MouvementCaissePOS:
                         description=f"Retrait caisse période {periode_id}",
                         user_id=user_id,
                         date_transaction=date_op,  # ✅ Date historique
-                        validate_balance=False
+                        validate_balance=False,
+                        receipt_id=None
                     )
                     if not success:
                         return False, f"Retrait enregistré mais erreur transaction: {msg}"
@@ -20145,7 +20187,8 @@ class MouvementCaissePOS:
                         description=f"Dépôt caisse période {periode_id}",
                         user_id=user_id,
                         date_transaction=date_op,  # ✅ Date historique
-                        validate_balance=True
+                        validate_balance=True,
+                        receipt_id=None
                     )
                     if not success:
                         return False, f"Dépôt enregistré mais erreur transaction: {msg}"
