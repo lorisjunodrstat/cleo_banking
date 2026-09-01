@@ -1,207 +1,611 @@
 {% extends "base.html" %}
 
 {% block title %}Transactions et transferts{% endblock %}
+
 {% block content %}
-<h2>Transactions / Transferts</h2>
-<div class="row">
-  <div class="card">
-    <div class="card-header">
-      <h1>Filtres des transactions/transferts</h1>
-    </div>
-    <div classs="card-body">
-      <form method="get" action="{{ url_for('banking.liste_transferts') }}" class="mb-3">
-        <div class="row gy-2 gx-2 align-items-end">
-          <div class="col-auto"><label>Date de :</label>
-            <input type="date" name="date_from" value="{{ date_from or '' }}">
-          </div>
-          <div class="col-auto"><label>À :</label>
-            <input type="date" name="date_to" value="{{ date_to or '' }}">
-          </div>
-      
-          <div class="col-auto"><label>Compte origine :</label>
-            <select name="compte_id">
-              <option value="">Tous</option>
-              {% for c in comptes | sort(attribute='nom_compte')%}
-              <option value="{{ c.id }}" {% if compte_source_filter|int==c.id %}selected{% endif %}>
-                {{ c.nom_compte }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-      
-          <div class="col-auto"><label>Compte destination :</label>
-            <select name="compte_dest_id">
-              <option value="">Tous</option>
-              {% for c in comptes | sort(attribute='nom_compte') %}
-              <option value="{{ c.id }}" {% if compte_dest_filter|int==c.id %}selected{% endif %}>
-                {{ c.nom_compte }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-      
-          <div class="col-auto"><label>Sous‑compte origine :</label>
-            <select name="sous_compte_id">
-              <option value="">Tous</option>
-              {% for sc in sous_comptes | sort(attribute='nom_sous_compte') %}
-              <option value="{{ sc.id }}" {% if sc_filter|int==sc.id %}selected{% endif %}>
-                {{ sc.nom_sous_compte }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-      
-          <div class="col-auto"><label>Sous‑compte destination :</label>
-            <select name="sous_compte_dest_id">x
-              <option value="">Tous</option>
-              {% for sc in sous_comptes | sort(attribute='nom_sous_compte') %}
-              <option value="{{ sc.id }}" {% if dest_sc_filter|int==sc.id %}selected{% endif %}>
-                {{ sc.nom_sous_compte }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-      
-          <div class="col-auto"><label>Référence :</label>
-            <select name="reference">
-              <option value="">Toutes</option>
-              {% set refs = transactions|map(attribute='reference')|unique|list %}
-              {% for r in refs if r %}
-              <option value="{{ r }}" {% if ref_filter==r %}selected{% endif %}>{{ r }}</option>
-              {% endfor %}
-            </select>
-          </div>
-      
-          <div class="col-auto"><label>Recherche texte :</label>
-            <input type="text" name="text_search" placeholder="mot-clé" value="{{ text_search or '' }}">
-          </div>
-      
-          <div class="col-auto">
-            <button type="submit" class="btn btn-primary">Filtrer</button>
-          </div>
+<style>
+    html {
+    overflow-y: scroll !important;
+}
+
+body.modal-open {
+    padding-right: 0 !important;
+    overflow: hidden !important;
+}
+</style>
+<div class="container-fluid">
+    <!-- En-tête de page -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">
+                <i class="fas fa-exchange-alt me-2 text-primary"></i>
+                Transactions / Transferts
+            </h2>
+            <p class="text-muted small mb-0">
+                Gérez l'ensemble de vos opérations financières
+            </p>
         </div>
-      </form>
-      <a href="{{ url_for('banking.liste_transferts',
-          date_from=date_from, date_to=date_to,
-          compte_id=compte_source_filter, compte_dest_id=compte_dest_filter,
-          sous_compte_id=sc_filter, sous_compte_destination_id=dest_sc_filter,
-          reference=ref_filter, q=text_search,
-          page=page, export='csv') }}" class="btn btn-outline-secondary mb-3">Exporter CSV ancien</a>      
-      <div class="d-flex justify-content-between mb-3">
-        <a href="{{ url_for('banking.liste_transferts',
-              date_from=date_from, date_to=date_to,
-              compte_id=compte_source_filter, sous_compte_id=sc_filter,
-              sous_compte_destination_id=dest_sc_filter,
-              reference=ref_filter, q=text_search,
-              page=page, export='csv') }}" class="btn btn-outline-secondary">Exporter en CSV</a>
-      
-        <!-- Bouton pour créer une nouvelle transaction -->
-        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editTransactionModal">
-          Créer une transaction
-        </button>
-      </div>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('banking.liste_transactions',
+                date_from=date_from, date_to=date_to,
+                compte_source_id=compte_source_filter,
+                compte_dest_id=compte_dest_filter,
+                sous_compte_source_id=sc_source_filter,
+                sous_compte_dest_id=sc_dest_filter,
+                type_transaction=type_filter,
+                export='csv') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-file-csv me-1"></i> Exporter CSV
+            </a>
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editTransactionModal">
+                <i class="fas fa-plus me-1"></i> Nouvelle transaction
+            </button>
+        </div>
     </div>
-  </div>
-</div>
-<div class="row">
-  <div class="card">
-    <div class="card-header">
-      <h2>Résultat</h2>
+
+    <!-- Filtres -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <form method="get" action="{{ url_for('banking.liste_transactions') }}">
+                <div class="row g-3 align-items-end">
+                    <!-- Dates -->
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold text-muted">Période</label>
+                        <div class="input-group">
+                            <input type="date" name="date_from" value="{{ date_from or '' }}" 
+                                   class="form-control form-control-sm" placeholder="Date de">
+                            <span class="input-group-text">→</span>
+                            <input type="date" name="date_to" value="{{ date_to or '' }}" 
+                                   class="form-control form-control-sm" placeholder="Date à">
+                        </div>
+                    </div>
+
+                    <!-- Comptes -->
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold text-muted">Compte source</label>
+                        <select name="compte_source_id" class="form-select form-select-sm">
+                            <option value="">Tous</option>
+                            {% for c in comptes | sort(attribute='nom_compte') %}
+                            <option value="{{ c.id }}" {% if compte_source_filter|int==c.id %}selected{% endif %}>
+                                {{ c.nom_compte }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold text-muted">Compte destination</label>
+                        <select name="compte_dest_id" class="form-select form-select-sm">
+                            <option value="">Tous</option>
+                            {% for c in comptes | sort(attribute='nom_compte') %}
+                            <option value="{{ c.id }}" {% if compte_dest_filter|int==c.id %}selected{% endif %}>
+                                {{ c.nom_compte }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Sous-comptes -->
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold text-muted">Sous-compte source</label>
+                        <select name="sous_compte_source_id" class="form-select form-select-sm">
+                            <option value="">Tous</option>
+                            {% for sc in sous_comptes | sort(attribute='nom_sous_compte') %}
+                            <option value="{{ sc.id }}" {% if sc_source_filter|int==sc.id %}selected{% endif %}>
+                                {{ sc.nom_sous_compte }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold text-muted">Sous-compte dest.</label>
+                        <select name="sous_compte_dest_id" class="form-select form-select-sm">
+                            <option value="">Tous</option>
+                            {% for sc in sous_comptes | sort(attribute='nom_sous_compte') %}
+                            <option value="{{ sc.id }}" {% if sc_dest_filter|int==sc.id %}selected{% endif %}>
+                                {{ sc.nom_sous_compte }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Type -->
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold text-muted">Type</label>
+                        <select name="type_transaction" class="form-select form-select-sm">
+                            <option value="">Tous</option>
+                            <option value="depot" {% if type_filter=="depot" %}selected{% endif %}>Dépôt</option>
+                            <option value="retrait" {% if type_filter=="retrait" %}selected{% endif %}>Retrait</option>
+                            <option value="transfert" {% if type_filter=="transfert" %}selected{% endif %}>Transfert</option>
+                            <option value="transfert_interne" {% if type_filter=="transfert_interne" %}selected{% endif %}>
+                                Transfert Interne
+                            </option>
+                            <option value="transfert_externe" {% if type_filter=="transfert_externe" %}selected{% endif %}>
+                                Transfert Externe
+                            </option>
+                        </select>
+                    </div>
+
+                    <!-- Bouton filtre -->
+                    <div class="col-md-1">
+                        <button type="submit" class="btn btn-primary btn-sm w-100">
+                            <i class="fas fa-filter me-1"></i> Filtrer
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
     </div>
-    <div class="card-body">
-      <table class="table table-striped">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Type</th>
-            <th>Description</th>
-            <th>Montant</th>
-            <th>Compte / Sous‑compte</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for t in transactions %}
-          <tr>
-            <td>{{ t.date_transaction.strftime('%d/%m/%Y %H:%M') }}</td>
-            <td>{{ t.type_transaction.replace('_',' ').capitalize() }}</td>
-            <td>{{ t.description or '-' }}</td>
-            <td
-              class="{{ 'text-success' if t.type_transaction in ['depot','transfert_depuis_sous_compte'] else 'text-danger' }}">
-              {{ ('+' if t.type_transaction in ['depot','transfert_depuis_sous_compte'] else '-') }}{{
-              "%.2f"|format(t.montant) }} CHF
-            </td>
-            <td>
-              {% if t.type_transaction=='transfert_vers_sous_compte' %}
-              Vers {{ t.nom_sous_compte_destination }}
-              {% elif t.type_transaction=='transfert_depuis_sous_compte' %}
-              Depuis {{ t.nom_sous_compte }}
-              {% else %}
-              Compte principal
-              {% endif %}
-            </td>
-            <td>
-              <!--<a href="{{ url_for('banking.modifier_transfert', transfert_id=t.id) }}" class="btn btn-sm btn-outline-primary">
-                Éditer
-              </a>-->
-              <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal"
-                data-bs-target="#modalTransaction{{ t.id }}">
-                <i class="fas fa-edit"></i> Gérer
-              </button>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <!-- Inclusion des modals de transaction -->
-      {% if transactions %}
-      {% for t in transactions %}
-      {% include "banking/transaction_modal_t.html" %}
-      {% endfor %}
-      {% endif %}
-      
-      {% if pages > 1 %}
-      <nav aria-label="Pagination" class="mt-3">
-        <ul class="pagination">
-          {% if page > 1 %}
-          <li class="page-item">
-            <a class="page-link" href="{{ url_for('banking.liste_transferts',
-                     date_from=date_from, date_to=date_to,
-                     sort_by=sort_by, order=order,
-                     page=page-1,
-                     compte_id=compte_source_filter, compte_dest_id=compte_dest_filter,
-                     sous_compte_id=sc_filter,
-                     sous_compte_destination_id=dest_sc_filter,
-                     reference=ref_filter, q=text_search) }}">« Précédent</a>
-          </li>
-          {% endif %}
-      
-          <li class="page-item disabled">
-            <span class="page-link">Page {{ page }} / {{ pages }}</span>
-          </li>
-      
-          {% if page < pages %} <li class="page-item">
-            <a class="page-link" href="{{ url_for('banking.liste_transferts',
-                     date_from=date_from, date_to=date_to,
-                     sort_by=sort_by, order=order,
-                     page=page+1,
-                     compte_id=compte_source_filter, compte_dest_id=compte_dest_filter,
-                     sous_compte_id=sc_filter,
-                     sous_compte_destination_id=dest_sc_filter,
-                     reference=ref_filter, q=text_search) }}">Suivant »</a>
+
+    <!-- Tableau des transactions -->
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="py-3 px-3">
+                                <i class="far fa-calendar-alt me-1"></i> Date
+                            </th>
+                            <th class="py-3">Type</th>
+                            <th class="py-3">Description</th>
+                            <th class="py-3 text-end">Montant</th>
+                            <th class="py-3">Source</th>
+                            <th class="py-3">Destination</th>
+                            <th class="py-3 text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for t in transactions %}
+                        <tr>
+                            <td class="py-2 px-3 text-nowrap">
+                                <small>{{ t.date_transaction.strftime('%d/%m/%Y %H:%M') }}</small>
+                            </td>
+                            <td>
+                                {% set type_badge = {
+                                    'depot': 'success',
+                                    'retrait': 'danger',
+                                    'transfert': 'info',
+                                    'transfert_interne': 'primary',
+                                    'transfert_externe': 'warning'
+                                } %}
+                                <span class="badge bg-{{ type_badge.get(t.type_transaction, 'secondary') }}">
+                                    {{ t.type_transaction.replace('_',' ').capitalize() }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="text-truncate d-inline-block" style="max-width: 150px;">
+                                    {{ t.description or '-' }}
+                                </span>
+                            </td>
+                            <td class="text-end fw-bold 
+                                {% if t.type_transaction in ['depot','transfert_depuis_sous_compte',
+                                   'transfert_interne_vers_principal', 'transfert_externe_entrant'] %}
+                                    text-success
+                                {% else %}
+                                    text-danger
+                                {% endif %}">
+                                {% if t.type_transaction in ['depot','transfert_depuis_sous_compte',
+                                   'transfert_interne_vers_principal', 'transfert_externe_entrant'] %}
+                                    +
+                                {% else %}
+                                    −
+                                {% endif %}
+                                {{ "%.2f"|format(t.montant) }}
+                                <small class="text-muted">CHF</small>
+                            </td>
+                            <td>
+                                <div class="small">
+                                    {% if t.compte_source_id %}
+                                        <span class="text-primary">{{ t.nom_compte_source }}</span>
+                                        {% if t.nom_sous_compte_source %}
+                                            <br><span class="text-muted">↳ {{ t.nom_sous_compte_source }}</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">{{ t.nom_source_externe or 'Externe' }}</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td>
+                                <div class="small">
+                                    {% if t.compte_dest_id %}
+                                        <span class="text-primary">{{ t.nom_compte_dest }}</span>
+                                        {% if t.nom_sous_compte_dest %}
+                                            <br><span class="text-muted">↳ {{ t.nom_sous_compte_dest }}</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">{{ t.nom_dest_externe or 'Externe' }}</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary edit-btn" 
+                                            data-id="{{ t.id }}"
+                                            data-type="{{ t.type_transaction }}"
+                                            data-montant="{{ t.montant }}"
+                                            data-description="{{ t.description or '' }}"
+                                            data-reference="{{ t.reference or '' }}"
+                                            data-compte-source-id="{{ t.compte_source_id or '' }}"
+                                            data-sous-compte-source-id="{{ t.sous_compte_source_id or '' }}"
+                                            data-compte-dest-id="{{ t.compte_dest_id or '' }}"
+                                            data-sous-compte-dest-id="{{ t.sous_compte_dest_id or '' }}"
+                                            data-statut="{{ t.statut or '' }}"
+                                            title="Éditer">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    {% if t.statut == 'pending' %}
+                                    <button class="btn btn-outline-danger cancel-btn" 
+                                            data-id="{{ t.id }}"
+                                            title="Annuler">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center py-4">
+                                <div class="text-muted">
+                                    <i class="fas fa-inbox fa-2x d-block mb-2"></i>
+                                    Aucune transaction trouvée
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if pages > 1 %}
+    <nav aria-label="Pagination" class="mt-4">
+        <ul class="pagination justify-content-center">
+            {% if page > 1 %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('banking.liste_transactions',
+                    date_from=date_from, date_to=date_to,
+                    compte_source_id=compte_source_filter,
+                    compte_dest_id=compte_dest_filter,
+                    sous_compte_source_id=sc_source_filter,
+                    sous_compte_dest_id=sc_dest_filter,
+                    type_transaction=type_filter,
+                    page=page-1) }}">
+                    <i class="fas fa-chevron-left"></i> Précédent
+                </a>
+            </li>
+            {% endif %}
+
+            {% for p in range(1, pages + 1) %}
+                {% if p == page %}
+                <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+                {% elif p == 1 or p == pages or (p >= page - 2 and p <= page + 2) %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('banking.liste_transactions',
+                        date_from=date_from, date_to=date_to,
+                        compte_source_id=compte_source_filter,
+                        compte_dest_id=compte_dest_filter,
+                        sous_compte_source_id=sc_source_filter,
+                        sous_compte_dest_id=sc_dest_filter,
+                        type_transaction=type_filter,
+                        page=p) }}">{{ p }}</a>
+                </li>
+                {% elif p == page - 3 or p == page + 3 %}
+                <li class="page-item disabled"><span class="page-link">…</span></li>
+                {% endif %}
+            {% endfor %}
+
+            {% if page < pages %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('banking.liste_transactions',
+                    date_from=date_from, date_to=date_to,
+                    compte_source_id=compte_source_filter,
+                    compte_dest_id=compte_dest_filter,
+                    sous_compte_source_id=sc_source_filter,
+                    sous_compte_dest_id=sc_dest_filter,
+                    type_transaction=type_filter,
+                    page=page+1) }}">
+                    Suivant <i class="fas fa-chevron-right"></i>
+                </a>
             </li>
             {% endif %}
         </ul>
-      </nav>
-      {% endif %}
-    </div>
-  </div>
+    </nav>
+    {% endif %}
 </div>
 
+<!-- Modal unique pour éditer/créer une transaction -->
+<div class="modal fade" id="editTransactionModal" tabindex="-1" aria-labelledby="editTransactionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="editTransactionModalLabel">
+                    <i class="fas fa-pen me-2"></i> Éditer la transaction
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="transactionForm" method="post" action="{{ url_for('banking.manage_transaction') }}">
+                <div class="modal-body">
+                    <input type="hidden" name="transaction_id" id="transactionId">
 
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label for="typeTransaction" class="form-label fw-bold">
+                                <i class="fas fa-tag me-1"></i> Type de transaction
+                            </label>
+                            <select class="form-select" id="typeTransaction" name="type_transaction" required>
+                                <option value="depot">Dépôt</option>
+                                <option value="retrait">Retrait</option>
+                                <option value="transfert_vers_sous_compte">Transfert vers sous-compte</option>
+                                <option value="transfert_depuis_sous_compte">Transfert depuis sous-compte</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="montant" class="form-label fw-bold">
+                                <i class="fas fa-money-bill-wave me-1"></i> Montant (CHF)
+                            </label>
+                            <input type="number" step="0.01" class="form-control" id="montant" name="montant" required placeholder="0.00">
+                        </div>
+                    </div>
 
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label for="compteId" class="form-label fw-bold">
+                                <i class="fas fa-arrow-right me-1"></i> Compte source
+                            </label>
+                            <select class="form-select" id="compteId" name="compte_id">
+                                <option value="">Sélectionner...</option>
+                                {% for c in comptes %}
+                                <option value="{{ c.id }}">{{ c.nom_compte }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="sousCompteId" class="form-label fw-bold">
+                                <i class="fas fa-layer-group me-1"></i> Sous-compte source
+                            </label>
+                            <select class="form-select" id="sousCompteId" name="sous_compte_id">
+                                <option value="">Sélectionner...</option>
+                                {% for sc in sous_comptes %}
+                                <option value="{{ sc.id }}" data-compte-id="{{ sc.compte_principal_id }}">
+                                    {{ sc.nom_sous_compte }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
 
+                    <div class="row g-3 mb-3" id="destinationFields">
+                        <div class="col-md-6">
+                            <label for="compteDestId" class="form-label fw-bold">
+                                <i class="fas fa-arrow-left me-1"></i> Compte destination
+                            </label>
+                            <select class="form-select" id="compteDestId" name="compte_dest_id">
+                                <option value="">Sélectionner...</option>
+                                {% for c in comptes %}
+                                <option value="{{ c.id }}">{{ c.nom_compte }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="sousCompteDestId" class="form-label fw-bold">
+                                <i class="fas fa-layer-group me-1"></i> Sous-compte destination
+                            </label>
+                            <select class="form-select" id="sousCompteDestId" name="sous_compte_dest_id">
+                                <option value="">Sélectionner...</option>
+                                {% for sc in sous_comptes %}
+                                <option value="{{ sc.id }}" data-compte-id="{{ sc.compte_principal_id }}">
+                                    {{ sc.nom_sous_compte }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
 
+                    <div class="mb-3">
+                        <label for="description" class="form-label fw-bold">
+                            <i class="fas fa-align-left me-1"></i> Description
+                        </label>
+                        <textarea class="form-control" id="description" name="description" rows="2" placeholder="Description..."></textarea>
+                    </div>
 
+                    <div class="mb-3">
+                        <label for="reference" class="form-label fw-bold">
+                            <i class="fas fa-hashtag me-1"></i> Référence
+                        </label>
+                        <input type="text" class="form-control" id="reference" name="reference" placeholder="Référence...">
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-1"></i> Annuler
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i> Enregistrer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // Récupérer les éléments
+    const modalElement = document.getElementById('editTransactionModal');
+    const form = document.getElementById('transactionForm');
+    const typeSelect = document.getElementById('typeTransaction');
+    const compteIdSelect = document.getElementById('compteId');
+    const sousCompteIdSelect = document.getElementById('sousCompteId');
+    const compteDestIdSelect = document.getElementById('compteDestId');
+    const sousCompteDestIdSelect = document.getElementById('sousCompteDestId');
+    const destinationFields = document.getElementById('destinationFields');
+    const modalTitle = document.querySelector('#editTransactionModal .modal-title');
+    
+    // Variables pour contrôler l'état
+    let isEditing = false;
+    let isInitialized = false;
+
+    // Fonction pour mettre à jour la visibilité des champs de destination
+    function updateFieldsVisibility() {
+        const type = typeSelect.value;
+        const isTransfert = type === 'transfert_vers_sous_compte' || type === 'transfert_depuis_sous_compte';
+        destinationFields.style.display = isTransfert ? 'flex' : 'none';
+    }
+
+    // Fonction pour filtrer les sous-comptes
+    function filterSousComptes(selectElement, compteId) {
+        const options = selectElement.querySelectorAll('option');
+        options.forEach(option => {
+            if (option.value === "") {
+                option.style.display = 'block';
+            } else {
+                const optionCompteId = option.getAttribute('data-compte-id');
+                option.style.display = (optionCompteId === compteId) ? 'block' : 'none';
+            }
+        });
+    }
+
+    // Fonction pour réinitialiser le formulaire
+    function resetForm() {
+        form.reset();
+        document.getElementById('transactionId').value = '';
+        isEditing = false;
+        modalTitle.innerHTML = '<i class="fas fa-plus me-2"></i> Nouvelle transaction';
+        updateFieldsVisibility();
+        filterSousComptes(sousCompteIdSelect, '');
+        filterSousComptes(sousCompteDestIdSelect, '');
+    }
+
+    // Fonction pour charger les données d'une transaction
+    function loadTransactionData(btn) {
+        document.getElementById('transactionId').value = btn.dataset.id;
+        document.getElementById('typeTransaction').value = btn.dataset.type;
+        document.getElementById('montant').value = btn.dataset.montant;
+        document.getElementById('description').value = btn.dataset.description;
+        document.getElementById('reference').value = btn.dataset.reference;
+        
+        const compteSourceId = btn.dataset.compteSourceId;
+        const compteDestId = btn.dataset.compteDestId;
+        
+        document.getElementById('compteId').value = compteSourceId;
+        document.getElementById('sousCompteId').value = btn.dataset.sousCompteSourceId;
+        document.getElementById('compteDestId').value = compteDestId;
+        document.getElementById('sousCompteDestId').value = btn.dataset.sousCompteDestId;
+        
+        // Filtrer les sous-comptes
+        filterSousComptes(sousCompteIdSelect, compteSourceId);
+        filterSousComptes(sousCompteDestIdSelect, compteDestId);
+        
+        isEditing = true;
+        modalTitle.innerHTML = '<i class="fas fa-pen me-2"></i> Éditer la transaction';
+        updateFieldsVisibility();
+    }
+
+    // Initialiser les événements des selects
+    compteIdSelect.addEventListener('change', function () {
+        filterSousComptes(sousCompteIdSelect, this.value);
+        sousCompteIdSelect.value = "";
+    });
+
+    compteDestIdSelect.addEventListener('change', function () {
+        filterSousComptes(sousCompteDestIdSelect, this.value);
+        sousCompteDestIdSelect.value = "";
+    });
+
+    typeSelect.addEventListener('change', updateFieldsVisibility);
+
+    // Gestionnaire pour l'ouverture du modal
+    modalElement.addEventListener('show.bs.modal', function (event) {
+        const relatedTarget = event.relatedTarget;
+        
+        // Si c'est un bouton d'édition
+        if (relatedTarget && relatedTarget.classList.contains('edit-btn')) {
+            loadTransactionData(relatedTarget);
+        } 
+        // Si c'est le bouton "Nouvelle transaction" ou autre déclencheur
+        else if (relatedTarget && relatedTarget.dataset.bsTarget === '#editTransactionModal') {
+            resetForm();
+        }
+        // Cas où le modal est ouvert programmatiquement sans relatedTarget
+        else if (!isInitialized) {
+            resetForm();
+            isInitialized = true;
+        }
+    });
+
+    // Éviter les problèmes de double initialisation
+    modalElement.addEventListener('hidden.bs.modal', function () {
+        // Réinitialiser l'état lorsque le modal est fermé
+        isInitialized = false;
+    });
+
+    // Gestion des boutons d'édition
+    document.querySelectorAll('.edit-btn').forEach(btn => {
+        // Supprimer les anciens écouteurs pour éviter les doublons
+        btn.removeEventListener('click', function() {});
+        
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            // Charger les données et ouvrir le modal
+            loadTransactionData(this);
+            
+            // Récupérer l'instance du modal et l'ouvrir
+            const modal = bootstrap.Modal.getInstance(modalElement);
+            if (modal) {
+                modal.show();
+            } else {
+                // Créer une nouvelle instance si elle n'existe pas
+                const newModal = new bootstrap.Modal(modalElement);
+                newModal.show();
+            }
+        });
+    });
+
+    // Gestion des boutons d'annulation
+    document.querySelectorAll('.cancel-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            if (confirm('Êtes-vous sûr de vouloir annuler ce transfert ?')) {
+                const transfertId = this.dataset.id;
+                fetch('{{ url_for("banking.annuler_transfert_externe") }}/' + transfertId, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        alert('Erreur lors de l\'annulation : ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('Erreur réseau : ' + error);
+                });
+            }
+        });
+    });
+
+    // Gestion de la soumission du formulaire
+    form.addEventListener('submit', function(e) {
+        // Le formulaire sera soumis normalement
+        // Mais on peut ajouter une validation si nécessaire
+        console.log('Formulaire soumis');
+    });
+
+    // Appliquer la visibilité initiale
+    updateFieldsVisibility();
+
+    // Nettoyer l'instance du modal pour éviter les conflits
+    window.addEventListener('beforeunload', function() {
+        const modal = bootstrap.Modal.getInstance(modalElement);
+        if (modal) {
+            modal.dispose();
+        }
+    });
+});
+</script>
 {% endblock %}
