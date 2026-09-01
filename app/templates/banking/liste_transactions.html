@@ -327,7 +327,8 @@ body.modal-open {
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form id="transactionForm" method="post" action="{{ url_for('banking.manage_transaction') }}">
+            <!-- Suppression de l'attribut action pour gestion dynamique -->
+            <form id="transactionForm" method="post">
                 <div class="modal-body">
                     <input type="hidden" name="transaction_id" id="transactionId">
 
@@ -475,6 +476,8 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('transactionId').value = '';
         isEditing = false;
         modalTitle.innerHTML = '<i class="fas fa-plus me-2"></i> Nouvelle transaction';
+        // Définir l'action pour la création
+        form.action = '{{ url_for("banking.create_transaction") }}';
         updateFieldsVisibility();
         filterSousComptes(sousCompteIdSelect, '');
         filterSousComptes(sousCompteDestIdSelect, '');
@@ -482,7 +485,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Fonction pour charger les données d'une transaction
     function loadTransactionData(btn) {
-        document.getElementById('transactionId').value = btn.dataset.id;
+        const transactionId = btn.dataset.id;
+        document.getElementById('transactionId').value = transactionId;
         document.getElementById('typeTransaction').value = btn.dataset.type;
         document.getElementById('montant').value = btn.dataset.montant;
         document.getElementById('description').value = btn.dataset.description;
@@ -496,7 +500,9 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('compteDestId').value = compteDestId;
         document.getElementById('sousCompteDestId').value = btn.dataset.sousCompteDestId;
         
-        // Filtrer les sous-comptes
+        // Définir l'action pour l'édition
+        form.action = '{{ url_for("banking.update_transaction", transaction_id=0) }}'.replace('/0', '/' + transactionId);
+        
         filterSousComptes(sousCompteIdSelect, compteSourceId);
         filterSousComptes(sousCompteDestIdSelect, compteDestId);
         
@@ -589,11 +595,24 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // Gestion de la soumission du formulaire
+    // Gestion de la soumission du formulaire - Validation supplémentaire
     form.addEventListener('submit', function(e) {
-        // Le formulaire sera soumis normalement
-        // Mais on peut ajouter une validation si nécessaire
-        console.log('Formulaire soumis');
+        // Vérifier si l'action est définie
+        if (!form.action) {
+            e.preventDefault();
+            alert('Erreur: L\'action du formulaire n\'est pas définie');
+            return false;
+        }
+        
+        // Validation supplémentaire : vérifier que le montant est positif
+        const montant = parseFloat(document.getElementById('montant').value);
+        if (isNaN(montant) || montant <= 0) {
+            e.preventDefault();
+            alert('Le montant doit être un nombre positif');
+            return false;
+        }
+        
+        console.log('Formulaire soumis vers:', form.action);
     });
 
     // Appliquer la visibilité initiale
