@@ -207,7 +207,7 @@
                             <th class="py-3">Source</th>
                             <th class="py-3">Destination</th>
                             <th class="py-3">Catégorie</th>
-                            <th class="py-3 text-center" style="min-width: 160px;">Actions</th>
+                            <th class="py-3 text-center" style="min-width: 220px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -278,7 +278,7 @@
                             </td>
                             <td>
                                 {% set categorie = t.categorie_nom or 'Non catégorisée' %}
-                                <span class="badge bg-light text-dark">{{ categorie }}</span>
+                                <span class="badge bg-light text-dark" id="categorie-label-{{ t.id }}">{{ categorie }}</span>
                             </td>
                             <td class="text-center">
                                 <div class="btn-group btn-group-sm">
@@ -295,22 +295,42 @@
                                             data-sous-compte-dest-id="{{ t.sous_compte_destination_id or '' }}"
                                             data-statut="{{ t.statut or '' }}"
                                             data-date="{{ t.date_transaction.isoformat() if t.date_transaction else '' }}"
+                                            data-created-at="{{ t.created_at.isoformat() if t.created_at else '' }}"
                                             title="Éditer">
                                         <i class="fas fa-edit"></i>
                                     </button>
 
-                                    <!-- Bouton Catégoriser -->
+                                    <!-- Bouton Catégoriser (Associer) -->
                                     <button class="btn btn-outline-info categoriser-btn" 
                                             data-id="{{ t.id }}"
                                             data-categorie="{{ t.categorie_nom or '' }}"
-                                            title="Catégoriser">
+                                            data-categorie-id="{{ t.categorie_id or '' }}"
+                                            title="Associer une catégorie">
                                         <i class="fas fa-tag"></i>
+                                    </button>
+
+                                    <!-- Bouton Modifier la catégorie -->
+                                    <button class="btn btn-outline-warning modifier-categorie-btn" 
+                                            data-id="{{ t.id }}"
+                                            data-categorie="{{ t.categorie_nom or '' }}"
+                                            data-categorie-id="{{ t.categorie_id or '' }}"
+                                            title="Modifier la catégorie">
+                                        <i class="fas fa-pencil-alt"></i>
+                                    </button>
+
+                                    <!-- Bouton Dissocier la catégorie -->
+                                    <button class="btn btn-outline-danger dissocier-categorie-btn" 
+                                            data-id="{{ t.id }}"
+                                            data-categorie-id="{{ t.categorie_id or '' }}"
+                                            title="Dissocier la catégorie"
+                                            {% if not t.categorie_id %}style="display:none;"{% endif %}>
+                                        <i class="fas fa-unlink"></i>
                                     </button>
 
                                     <!-- Bouton Supprimer -->
                                     <button class="btn btn-outline-danger delete-btn" 
                                             data-id="{{ t.id }}"
-                                            title="Supprimer">
+                                            title="Supprimer la transaction">
                                         <i class="fas fa-trash"></i>
                                     </button>
 
@@ -408,65 +428,174 @@
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <form id="editForm" method="post">
+            <form id="editForm" method="post" action="">
                 <div class="modal-body">
                     <input type="hidden" name="transaction_id" id="editTransactionId">
                     <input type="hidden" name="action" value="modifier">
 
+                    <!-- Date de création (lecture seule) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-muted">
+                            <i class="far fa-clock me-1"></i> Date de création
+                        </label>
+                        <div class="form-control bg-light" id="editCreatedAt" style="cursor: default; color: #6c757d;">
+                            <span class="text-muted">Non disponible</span>
+                        </div>
+                        <small class="text-muted">Cette date ne peut pas être modifiée.</small>
+                    </div>
+
+                    <hr>
+
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">Montant (CHF)</label>
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-money-bill-wave me-1"></i> Montant (CHF)
+                            </label>
                             <input type="number" step="0.01" class="form-control" id="editMontant" name="nouveau_montant" required>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">Date</label>
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-calendar-alt me-1"></i> Date de transaction
+                            </label>
                             <input type="datetime-local" class="form-control" id="editDate" name="nouvelle_date">
                         </div>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Description</label>
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-align-left me-1"></i> Description
+                        </label>
                         <textarea class="form-control" id="editDescription" name="nouvelle_description" rows="2"></textarea>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Référence</label>
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-hashtag me-1"></i> Référence
+                        </label>
                         <input type="text" class="form-control" id="editReference" name="nouvelle_reference">
+                    </div>
+
+                    <!-- Type de transaction (lecture seule) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-muted">
+                            <i class="fas fa-tag me-1"></i> Type de transaction
+                        </label>
+                        <div class="form-control bg-light" id="editType" style="cursor: default; color: #6c757d;">
+                            <span class="text-muted">Non disponible</span>
+                        </div>
+                    </div>
+
+                    <!-- Statut (lecture seule) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-muted">
+                            <i class="fas fa-info-circle me-1"></i> Statut
+                        </label>
+                        <div class="form-control bg-light" id="editStatut" style="cursor: default; color: #6c757d;">
+                            <span class="text-muted">Non disponible</span>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer bg-light">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
-                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-1"></i> Annuler
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i> Enregistrer
+                    </button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- Modal Catégoriser -->
+<!-- Modal Associer Catégorie -->
 <div class="modal fade" id="categoriserModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-info text-white">
                 <h5 class="modal-title">
-                    <i class="fas fa-tag me-2"></i> Catégoriser la transaction
+                    <i class="fas fa-tag me-2"></i> Associer une catégorie
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <form id="categoriserForm" method="post" action="{{ url_for('banking.associer_categorie_transaction') }}">
+            <form id="categoriserForm" method="post" action="{{ url_for('categorie.associer_categorie_transaction') }}">
                 <div class="modal-body">
                     <input type="hidden" name="transaction_id" id="categoriserTransactionId">
                     <div class="mb-3">
                         <label class="form-label fw-bold">Catégorie</label>
                         <select class="form-select" name="categorie_id" id="categoriserSelect" required>
                             <option value="">Sélectionner une catégorie...</option>
-                            <!-- Les catégories seront chargées via AJAX ou passées depuis le backend -->
+                            {% for cat in categories %}
+                            <option value="{{ cat.id }}">{{ cat.nom }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                 </div>
                 <div class="modal-footer bg-light">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
                     <button type="submit" class="btn btn-info text-white">Associer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Modifier Catégorie -->
+<div class="modal fade" id="modifierCategorieModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title">
+                    <i class="fas fa-pencil-alt me-2"></i> Modifier la catégorie
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="modifierCategorieForm" method="post" action="{{ url_for('categorie.update_associer_categorie_transaction') }}">
+                <div class="modal-body">
+                    <input type="hidden" name="transaction_id" id="modifierCategorieTransactionId">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Nouvelle catégorie</label>
+                        <select class="form-select" name="_nouvelle_categorie_id" id="modifierCategorieSelect" required>
+                            <option value="">Sélectionner une catégorie...</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat.id }}">{{ cat.nom }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="alert alert-info small">
+                        <i class="fas fa-info-circle me-1"></i>
+                        La catégorie actuelle sera remplacée par la nouvelle sélectionnée.
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-warning">Modifier</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Dissocier Catégorie -->
+<div class="modal fade" id="dissocierCategorieModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-unlink me-2"></i> Dissocier la catégorie
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="dissocierCategorieForm" method="post" action="{{ url_for('categorie.dissocier_categorie_transaction') }}">
+                <div class="modal-body">
+                    <input type="hidden" name="transaction_id" id="dissocierCategorieTransactionId">
+                    <input type="hidden" name="categorie_id" id="dissocierCategorieId">
+                    <p>Êtes-vous sûr de vouloir dissocier la catégorie de cette transaction ?</p>
+                    <p class="text-muted small">La transaction sera marquée comme "Non catégorisée".</p>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-danger">Dissocier</button>
                 </div>
             </form>
         </div>
@@ -483,7 +612,7 @@
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <form id="deleteForm" method="post">
+            <form id="deleteForm" method="post" action="">
                 <div class="modal-body">
                     <input type="hidden" name="transaction_id" id="deleteTransactionId">
                     <p>Êtes-vous sûr de vouloir supprimer cette transaction ?</p>
@@ -502,60 +631,122 @@
 // Stocker l'URL de base pour l'annulation
 const ANNULER_URL_BASE = "{{ url_for('banking.annuler_transfert_externe', transfert_id=0) }}".replace('/0', '');
 
+// Fonction pour formater une date ISO en format lisible
+function formatDate(isoDate) {
+    if (!isoDate) return 'Non disponible';
+    try {
+        const date = new Date(isoDate);
+        return date.toLocaleString('fr-CH', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    } catch (e) {
+        return isoDate;
+    }
+}
+
+// Fonction pour formater le type de transaction
+function formatType(type) {
+    if (!type) return 'Non disponible';
+    return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+// Fonction pour formater le statut
+function formatStatut(statut) {
+    if (!statut) return 'Non disponible';
+    const statuts = {
+        'pending': 'En attente',
+        'completed': 'Complétée',
+        'cancelled': 'Annulée',
+        'failed': 'Échouée'
+    };
+    return statuts[statut] || statut;
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     // --- Gestion du modal d'édition ---
     document.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', function () {
-            document.getElementById('editTransactionId').value = this.dataset.id;
+            const transactionId = this.dataset.id;
+            
+            // Remplir les champs modifiables
+            document.getElementById('editTransactionId').value = transactionId;
             document.getElementById('editMontant').value = this.dataset.montant;
             document.getElementById('editDescription').value = this.dataset.description || '';
             document.getElementById('editReference').value = this.dataset.reference || '';
             
+            // Date de transaction
             if (this.dataset.date) {
                 const date = new Date(this.dataset.date);
                 document.getElementById('editDate').value = date.toISOString().slice(0, 16);
             }
             
-            document.getElementById('editForm').action = '{{ url_for("banking.modifier_transfert", transfert_id=0) }}'.replace('/0', '/' + this.dataset.id);
+            // Date de création (lecture seule)
+            const createdAtElement = document.getElementById('editCreatedAt');
+            if (this.dataset.createdAt) {
+                createdAtElement.innerHTML = `<span class="text-primary">${formatDate(this.dataset.createdAt)}</span>`;
+            } else {
+                createdAtElement.innerHTML = '<span class="text-muted">Non disponible</span>';
+            }
+            
+            // Type (lecture seule)
+            document.getElementById('editType').innerHTML = `<span class="text-primary">${formatType(this.dataset.type)}</span>`;
+            
+            // Statut (lecture seule)
+            document.getElementById('editStatut').innerHTML = `<span class="text-primary">${formatStatut(this.dataset.statut)}</span>`;
+            
+            // Définir l'action du formulaire
+            document.getElementById('editForm').action = '{{ url_for("banking.modifier_transfert", transfert_id=0) }}'.replace('/0', '/' + transactionId);
             
             const modal = new bootstrap.Modal(document.getElementById('editTransactionModal'));
             modal.show();
         });
     });
 
-    // --- Gestion du modal de catégorisation ---
+    // --- Gestion de l'association de catégorie ---
     document.querySelectorAll('.categoriser-btn').forEach(btn => {
         btn.addEventListener('click', function () {
             document.getElementById('categoriserTransactionId').value = this.dataset.id;
-            
-            // Charger les catégories via AJAX
-            fetch('/categorie/liste')
-                .then(response => response.json())
-                .then(data => {
-                    const select = document.getElementById('categoriserSelect');
-                    select.innerHTML = '<option value="">Sélectionner une catégorie...</option>';
-                    data.categories.forEach(cat => {
-                        const option = document.createElement('option');
-                        option.value = cat.id;
-                        option.textContent = cat.nom;
-                        if (cat.id == this.dataset.categorieId) {
-                            option.selected = true;
-                        }
-                        select.appendChild(option);
-                    });
-                })
-                .catch(() => {
-                    // Fallback : utiliser les catégories du backend
-                    const select = document.getElementById('categoriserSelect');
-                    select.innerHTML = `
-                        <option value="">Sélectionner...</option>
-                        {% for cat in categories %}
-                        <option value="{{ cat.id }}">{{ cat.nom }}</option>
-                        {% endfor %}
-                    `;
-                });
+            document.getElementById('categoriserSelect').value = '';
             
             const modal = new bootstrap.Modal(document.getElementById('categoriserModal'));
+            modal.show();
+        });
+    });
+
+    // --- Gestion de la modification de catégorie ---
+    document.querySelectorAll('.modifier-categorie-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const transactionId = this.dataset.id;
+            const categorieId = this.dataset.categorieId;
+            
+            document.getElementById('modifierCategorieTransactionId').value = transactionId;
+            document.getElementById('modifierCategorieSelect').value = categorieId || '';
+            
+            const modal = new bootstrap.Modal(document.getElementById('modifierCategorieModal'));
+            modal.show();
+        });
+    });
+
+    // --- Gestion de la dissociation de catégorie ---
+    document.querySelectorAll('.dissocier-categorie-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const transactionId = this.dataset.id;
+            const categorieId = this.dataset.categorieId;
+            
+            if (!categorieId) {
+                alert('Cette transaction n\'a pas de catégorie à dissocier.');
+                return;
+            }
+            
+            document.getElementById('dissocierCategorieTransactionId').value = transactionId;
+            document.getElementById('dissocierCategorieId').value = categorieId;
+            
+            const modal = new bootstrap.Modal(document.getElementById('dissocierCategorieModal'));
             modal.show();
         });
     });
