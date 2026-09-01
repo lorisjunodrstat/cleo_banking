@@ -8820,10 +8820,10 @@ class EcritureComptable:
                     params.append(type_ecriture_comptable)
                 if date_created_from:
                     query += " AND e.created_at >= %s"
-                    params.append(date_from)
+                    params.append(date_created_from)
                 if date_created_to:
                     query += " AND e.created_at <= %s"
-                    params.append(date_to)
+                    params.append(date_created_to)
 
 
                 query += " ORDER BY e.date_ecriture DESC LIMIT %s"
