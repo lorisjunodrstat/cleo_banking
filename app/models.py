@@ -2902,6 +2902,7 @@ class TransactionFinanciere:
                     t.compte_destination_id,
                     t.sous_compte_destination_id,
                     t.receipt_id,
+                    t.created_at,
                     cp.nom_compte as nom_compte_source,
                     cp_dest.nom_compte as nom_compte_dest,
                     sc.nom_sous_compte as nom_sous_compte_source,
