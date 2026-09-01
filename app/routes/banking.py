@@ -2256,7 +2256,7 @@ def liste_transferts():
         per_page=per_page)
 
     pages = (total + per_page - 1) // per_page
-
+    categories = g.model.categorie_transaction_model.get_categories_utilisateur(user_id)
         # Export CSV
     if request.args.get('export') == 'csv':
         mouv, _ = g.models.transaction_financiere_model.get_all_user_transactions(
@@ -2331,6 +2331,7 @@ def liste_transferts():
         'banking/liste_transactions.html', # Nom de la nouvelle page unifiée
         transactions=mouvements, # Renommé pour correspondre à la page HTML
         comptes=comptes,
+        categories=categories,
         sous_comptes=sous_comptes,
         page=page,
         pages=pages,
