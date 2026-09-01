@@ -451,7 +451,15 @@ def banking_compte_detail(compte_id):
     categories_par_transaction = g.models.categorie_transaction_model.get_categories_pour_plusieurs_transactions(
         mouvement_ids, 
             user_id
-)
+    )
+    for m in mouvements:
+        cats = categories_par_transaction.get(m['id'], [])
+        if cats:
+            m['categorie_id'] = cats[0]['id']
+            m['categorie_nom'] = cats[0]['nom']
+        else:
+            m['categorie_id'] = None
+            m['categorie_nom'] = None
     
     # Utiliser les statistiques corrigées plutôt que le calcul manuel
     stats_compte = g.models.transaction_financiere_model.get_statistiques_compte(
