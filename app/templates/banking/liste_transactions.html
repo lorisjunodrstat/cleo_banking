@@ -5,14 +5,15 @@
 {% block content %}
 <style>
     html {
-    overflow-y: scroll !important;
-}
+        overflow-y: scroll !important;
+    }
 
-body.modal-open {
-    padding-right: 0 !important;
-    overflow: hidden !important;
-}
+    body.modal-open {
+        padding-right: 0 !important;
+        overflow: hidden !important;
+    }
 </style>
+
 <div class="container-fluid">
     <!-- En-tête de page -->
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -22,10 +23,10 @@ body.modal-open {
                 Transactions / Transferts
             </h2>
             <p class="text-muted small mb-0">
-                Gérez l'ensemble de vos opérations financières
+                Consultez et gérez l'ensemble de vos opérations financières
             </p>
         </div>
-        <div class="d-flex gap-2">
+        <div>
             <a href="{{ url_for('banking.liste_transferts',
                 date_from=date_from, date_to=date_to,
                 compte_source_id=compte_source_filter,
@@ -36,9 +37,6 @@ body.modal-open {
                 export='csv') }}" class="btn btn-outline-secondary">
                 <i class="fas fa-file-csv me-1"></i> Exporter CSV
             </a>
-            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editTransactionModal">
-                <i class="fas fa-plus me-1"></i> Nouvelle transaction
-            </button>
         </div>
     </div>
 
@@ -62,7 +60,7 @@ body.modal-open {
                     <!-- Comptes -->
                     <div class="col-md-2">
                         <label class="form-label small fw-bold text-muted">Compte source</label>
-                        <select name="compte_source_id" class="form-select form-select-sm">
+                        <select name="compte_id" class="form-select form-select-sm">
                             <option value="">Tous</option>
                             {% for c in comptes | sort(attribute='nom_compte') %}
                             <option value="{{ c.id }}" {% if compte_source_filter|int==c.id %}selected{% endif %}>
@@ -87,7 +85,7 @@ body.modal-open {
                     <!-- Sous-comptes -->
                     <div class="col-md-2">
                         <label class="form-label small fw-bold text-muted">Sous-compte source</label>
-                        <select name="sous_compte_source_id" class="form-select form-select-sm">
+                        <select name="sous_compte_id" class="form-select form-select-sm">
                             <option value="">Tous</option>
                             {% for sc in sous_comptes | sort(attribute='nom_sous_compte') %}
                             <option value="{{ sc.id }}" {% if sc_source_filter|int==sc.id %}selected{% endif %}>
@@ -112,28 +110,84 @@ body.modal-open {
                     <!-- Type -->
                     <div class="col-md-2">
                         <label class="form-label small fw-bold text-muted">Type</label>
-                        <select name="type_transaction" class="form-select form-select-sm">
+                        <select name="type_transfert" class="form-select form-select-sm">
                             <option value="">Tous</option>
                             <option value="depot" {% if type_filter=="depot" %}selected{% endif %}>Dépôt</option>
                             <option value="retrait" {% if type_filter=="retrait" %}selected{% endif %}>Retrait</option>
-                            <option value="transfert" {% if type_filter=="transfert" %}selected{% endif %}>Transfert</option>
-                            <option value="transfert_interne" {% if type_filter=="transfert_interne" %}selected{% endif %}>
-                                Transfert Interne
+                            <option value="transfert_entrant" {% if type_filter=="transfert_entrant" %}selected{% endif %}>
+                                Transfert Entrant
+                            </option>
+                            <option value="transfert_sortant" {% if type_filter=="transfert_sortant" %}selected{% endif %}>
+                                Transfert Sortant
                             </option>
                             <option value="transfert_externe" {% if type_filter=="transfert_externe" %}selected{% endif %}>
                                 Transfert Externe
+                            </option>
+                            <option value="transfert_compte_vers_sous" {% if type_filter=="transfert_compte_vers_sous" %}selected{% endif %}>
+                                Vers sous-compte
+                            </option>
+                            <option value="transfert_sous_vers_compte" {% if type_filter=="transfert_sous_vers_compte" %}selected{% endif %}>
+                                Depuis sous-compte
                             </option>
                         </select>
                     </div>
 
                     <!-- Bouton filtre -->
-                    <div class="col-md-1">
+                    <div class="col-md-2">
                         <button type="submit" class="btn btn-primary btn-sm w-100">
                             <i class="fas fa-filter me-1"></i> Filtrer
                         </button>
                     </div>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Statistiques rapides -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body py-2">
+                    <div class="d-flex justify-content-between">
+                        <span>Total entrées</span>
+                        <span class="fw-bold">
+                            {{ "%.2f"|format(transactions|selectattr('type_transaction', 'in', ['depot', 'transfert_entrant', 'transfert_sous_vers_compte'])|sum(attribute='montant')|float) }} CHF
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-danger text-white">
+                <div class="card-body py-2">
+                    <div class="d-flex justify-content-between">
+                        <span>Total sorties</span>
+                        <span class="fw-bold">
+                            {{ "%.2f"|format(transactions|selectattr('type_transaction', 'in', ['retrait', 'transfert_sortant', 'transfert_externe', 'transfert_compte_vers_sous'])|sum(attribute='montant')|float) }} CHF
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body py-2">
+                    <div class="d-flex justify-content-between">
+                        <span>Nombre transactions</span>
+                        <span class="fw-bold">{{ transactions|length }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-secondary text-white">
+                <div class="card-body py-2">
+                    <div class="d-flex justify-content-between">
+                        <span>En attente</span>
+                        <span class="fw-bold">{{ transactions|selectattr('statut', 'eq', 'pending')|list|length }}</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -152,7 +206,8 @@ body.modal-open {
                             <th class="py-3 text-end">Montant</th>
                             <th class="py-3">Source</th>
                             <th class="py-3">Destination</th>
-                            <th class="py-3 text-center">Actions</th>
+                            <th class="py-3">Catégorie</th>
+                            <th class="py-3 text-center" style="min-width: 160px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -165,28 +220,31 @@ body.modal-open {
                                 {% set type_badge = {
                                     'depot': 'success',
                                     'retrait': 'danger',
-                                    'transfert': 'info',
-                                    'transfert_interne': 'primary',
-                                    'transfert_externe': 'warning'
+                                    'transfert_entrant': 'primary',
+                                    'transfert_sortant': 'warning',
+                                    'transfert_externe': 'info',
+                                    'transfert_compte_vers_sous': 'secondary',
+                                    'transfert_sous_vers_compte': 'secondary'
                                 } %}
                                 <span class="badge bg-{{ type_badge.get(t.type_transaction, 'secondary') }}">
                                     {{ t.type_transaction.replace('_',' ').capitalize() }}
                                 </span>
+                                {% if t.statut == 'pending' %}
+                                <span class="badge bg-warning text-dark">En attente</span>
+                                {% endif %}
                             </td>
                             <td>
-                                <span class="text-truncate d-inline-block" style="max-width: 150px;">
+                                <span class="text-truncate d-inline-block" style="max-width: 150px;" title="{{ t.description or '-' }}">
                                     {{ t.description or '-' }}
                                 </span>
                             </td>
                             <td class="text-end fw-bold 
-                                {% if t.type_transaction in ['depot','transfert_depuis_sous_compte',
-                                   'transfert_interne_vers_principal', 'transfert_externe_entrant'] %}
+                                {% if t.type_transaction in ['depot','transfert_entrant','transfert_sous_vers_compte'] %}
                                     text-success
                                 {% else %}
                                     text-danger
                                 {% endif %}">
-                                {% if t.type_transaction in ['depot','transfert_depuis_sous_compte',
-                                   'transfert_interne_vers_principal', 'transfert_externe_entrant'] %}
+                                {% if t.type_transaction in ['depot','transfert_entrant','transfert_sous_vers_compte'] %}
                                     +
                                 {% else %}
                                     −
@@ -196,8 +254,8 @@ body.modal-open {
                             </td>
                             <td>
                                 <div class="small">
-                                    {% if t.compte_source_id %}
-                                        <span class="text-primary">{{ t.nom_compte_source }}</span>
+                                    {% if t.compte_principal_id %}
+                                        <span class="text-primary">{{ t.nom_compte_source or t.nom_compte_principal or 'Compte' }}</span>
                                         {% if t.nom_sous_compte_source %}
                                             <br><span class="text-muted">↳ {{ t.nom_sous_compte_source }}</span>
                                         {% endif %}
@@ -208,8 +266,8 @@ body.modal-open {
                             </td>
                             <td>
                                 <div class="small">
-                                    {% if t.compte_dest_id %}
-                                        <span class="text-primary">{{ t.nom_compte_dest }}</span>
+                                    {% if t.compte_destination_id %}
+                                        <span class="text-primary">{{ t.nom_compte_dest or 'Compte' }}</span>
                                         {% if t.nom_sous_compte_dest %}
                                             <br><span class="text-muted">↳ {{ t.nom_sous_compte_dest }}</span>
                                         {% endif %}
@@ -218,24 +276,47 @@ body.modal-open {
                                     {% endif %}
                                 </div>
                             </td>
+                            <td>
+                                {% set categorie = t.categorie_nom or 'Non catégorisée' %}
+                                <span class="badge bg-light text-dark">{{ categorie }}</span>
+                            </td>
                             <td class="text-center">
                                 <div class="btn-group btn-group-sm">
+                                    <!-- Bouton Éditer -->
                                     <button class="btn btn-outline-primary edit-btn" 
                                             data-id="{{ t.id }}"
                                             data-type="{{ t.type_transaction }}"
                                             data-montant="{{ t.montant }}"
                                             data-description="{{ t.description or '' }}"
                                             data-reference="{{ t.reference or '' }}"
-                                            data-compte-source-id="{{ t.compte_source_id or '' }}"
-                                            data-sous-compte-source-id="{{ t.sous_compte_source_id or '' }}"
-                                            data-compte-dest-id="{{ t.compte_dest_id or '' }}"
-                                            data-sous-compte-dest-id="{{ t.sous_compte_dest_id or '' }}"
+                                            data-compte-source-id="{{ t.compte_principal_id or t.sous_compte_id or '' }}"
+                                            data-sous-compte-source-id="{{ t.sous_compte_id or '' }}"
+                                            data-compte-dest-id="{{ t.compte_destination_id or '' }}"
+                                            data-sous-compte-dest-id="{{ t.sous_compte_destination_id or '' }}"
                                             data-statut="{{ t.statut or '' }}"
+                                            data-date="{{ t.date_transaction.isoformat() if t.date_transaction else '' }}"
                                             title="Éditer">
                                         <i class="fas fa-edit"></i>
                                     </button>
+
+                                    <!-- Bouton Catégoriser -->
+                                    <button class="btn btn-outline-info categoriser-btn" 
+                                            data-id="{{ t.id }}"
+                                            data-categorie="{{ t.categorie_nom or '' }}"
+                                            title="Catégoriser">
+                                        <i class="fas fa-tag"></i>
+                                    </button>
+
+                                    <!-- Bouton Supprimer -->
+                                    <button class="btn btn-outline-danger delete-btn" 
+                                            data-id="{{ t.id }}"
+                                            title="Supprimer">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+
+                                    <!-- Bouton Annuler (si en attente) -->
                                     {% if t.statut == 'pending' %}
-                                    <button class="btn btn-outline-danger cancel-btn" 
+                                    <button class="btn btn-outline-warning cancel-btn" 
                                             data-id="{{ t.id }}"
                                             title="Annuler">
                                         <i class="fas fa-times"></i>
@@ -246,7 +327,7 @@ body.modal-open {
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="7" class="text-center py-4">
+                            <td colspan="8" class="text-center py-4">
                                 <div class="text-muted">
                                     <i class="fas fa-inbox fa-2x d-block mb-2"></i>
                                     Aucune transaction trouvée
@@ -317,124 +398,100 @@ body.modal-open {
     {% endif %}
 </div>
 
-<!-- Modal unique pour éditer/créer une transaction -->
-<div class="modal fade" id="editTransactionModal" tabindex="-1" aria-labelledby="editTransactionModalLabel" aria-hidden="true">
+<!-- Modal Éditer -->
+<div class="modal fade" id="editTransactionModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title" id="editTransactionModalLabel">
+                <h5 class="modal-title">
                     <i class="fas fa-pen me-2"></i> Éditer la transaction
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <!-- Formulaire avec action dynamique -->
-            <form id="transactionForm" method="post">
+            <form id="editForm" method="post">
                 <div class="modal-body">
-                    <input type="hidden" name="transaction_id" id="transactionId">
-                    <input type="hidden" name="action" id="formAction" value="modifier">
+                    <input type="hidden" name="transaction_id" id="editTransactionId">
+                    <input type="hidden" name="action" value="modifier">
 
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
-                            <label for="typeTransaction" class="form-label fw-bold">
-                                <i class="fas fa-tag me-1"></i> Type de transaction
-                            </label>
-                            <select class="form-select" id="typeTransaction" name="type_transaction" required>
-                                <option value="depot">Dépôt</option>
-                                <option value="retrait">Retrait</option>
-                                <option value="transfert_vers_sous_compte">Transfert vers sous-compte</option>
-                                <option value="transfert_depuis_sous_compte">Transfert depuis sous-compte</option>
-                            </select>
+                            <label class="form-label fw-bold">Montant (CHF)</label>
+                            <input type="number" step="0.01" class="form-control" id="editMontant" name="nouveau_montant" required>
                         </div>
                         <div class="col-md-6">
-                            <label for="montant" class="form-label fw-bold">
-                                <i class="fas fa-money-bill-wave me-1"></i> Montant (CHF)
-                            </label>
-                            <input type="number" step="0.01" class="form-control" id="montant" name="nouveau_montant" required placeholder="0.00">
-                        </div>
-                    </div>
-
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-6">
-                            <label for="compteId" class="form-label fw-bold">
-                                <i class="fas fa-arrow-right me-1"></i> Compte source
-                            </label>
-                            <select class="form-select" id="compteId" name="compte_id">
-                                <option value="">Sélectionner...</option>
-                                {% for c in comptes %}
-                                <option value="{{ c.id }}">{{ c.nom_compte }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label for="sousCompteId" class="form-label fw-bold">
-                                <i class="fas fa-layer-group me-1"></i> Sous-compte source
-                            </label>
-                            <select class="form-select" id="sousCompteId" name="sous_compte_id">
-                                <option value="">Sélectionner...</option>
-                                {% for sc in sous_comptes %}
-                                <option value="{{ sc.id }}" data-compte-id="{{ sc.compte_principal_id }}">
-                                    {{ sc.nom_sous_compte }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="row g-3 mb-3" id="destinationFields">
-                        <div class="col-md-6">
-                            <label for="compteDestId" class="form-label fw-bold">
-                                <i class="fas fa-arrow-left me-1"></i> Compte destination
-                            </label>
-                            <select class="form-select" id="compteDestId" name="compte_dest_id">
-                                <option value="">Sélectionner...</option>
-                                {% for c in comptes %}
-                                <option value="{{ c.id }}">{{ c.nom_compte }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label for="sousCompteDestId" class="form-label fw-bold">
-                                <i class="fas fa-layer-group me-1"></i> Sous-compte destination
-                            </label>
-                            <select class="form-select" id="sousCompteDestId" name="sous_compte_dest_id">
-                                <option value="">Sélectionner...</option>
-                                {% for sc in sous_comptes %}
-                                <option value="{{ sc.id }}" data-compte-id="{{ sc.compte_principal_id }}">
-                                    {{ sc.nom_sous_compte }}
-                                </option>
-                                {% endfor %}
-                            </select>
+                            <label class="form-label fw-bold">Date</label>
+                            <input type="datetime-local" class="form-control" id="editDate" name="nouvelle_date">
                         </div>
                     </div>
 
                     <div class="mb-3">
-                        <label for="description" class="form-label fw-bold">
-                            <i class="fas fa-align-left me-1"></i> Description
-                        </label>
-                        <textarea class="form-control" id="description" name="nouvelle_description" rows="2" placeholder="Description..."></textarea>
+                        <label class="form-label fw-bold">Description</label>
+                        <textarea class="form-control" id="editDescription" name="nouvelle_description" rows="2"></textarea>
                     </div>
 
                     <div class="mb-3">
-                        <label for="reference" class="form-label fw-bold">
-                            <i class="fas fa-hashtag me-1"></i> Référence
-                        </label>
-                        <input type="text" class="form-control" id="reference" name="nouvelle_reference" placeholder="Référence...">
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="nouvelleDate" class="form-label fw-bold">
-                            <i class="fas fa-calendar me-1"></i> Date de transaction
-                        </label>
-                        <input type="datetime-local" class="form-control" id="nouvelleDate" name="nouvelle_date">
+                        <label class="form-label fw-bold">Référence</label>
+                        <input type="text" class="form-control" id="editReference" name="nouvelle_reference">
                     </div>
                 </div>
                 <div class="modal-footer bg-light">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                        <i class="fas fa-times me-1"></i> Annuler
-                    </button>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-save me-1"></i> Enregistrer
-                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Catégoriser -->
+<div class="modal fade" id="categoriserModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-tag me-2"></i> Catégoriser la transaction
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="categoriserForm" method="post" action="{{ url_for('categorie.associer_categorie_transaction') }}">
+                <div class="modal-body">
+                    <input type="hidden" name="transaction_id" id="categoriserTransactionId">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Catégorie</label>
+                        <select class="form-select" name="categorie_id" id="categoriserSelect" required>
+                            <option value="">Sélectionner une catégorie...</option>
+                            <!-- Les catégories seront chargées via AJAX ou passées depuis le backend -->
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-info text-white">Associer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Supprimer -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle me-2"></i> Confirmer la suppression
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="deleteForm" method="post">
+                <div class="modal-body">
+                    <input type="hidden" name="transaction_id" id="deleteTransactionId">
+                    <p>Êtes-vous sûr de vouloir supprimer cette transaction ?</p>
+                    <p class="text-danger small">Cette action est irréversible !</p>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-danger">Supprimer</button>
                 </div>
             </form>
         </div>
@@ -446,145 +503,79 @@ body.modal-open {
 const ANNULER_URL_BASE = "{{ url_for('banking.annuler_transfert_externe', transfert_id=0) }}".replace('/0', '');
 
 document.addEventListener('DOMContentLoaded', function () {
-    // Récupérer les éléments
-    const modalElement = document.getElementById('editTransactionModal');
-    const form = document.getElementById('transactionForm');
-    const typeSelect = document.getElementById('typeTransaction');
-    const compteIdSelect = document.getElementById('compteId');
-    const sousCompteIdSelect = document.getElementById('sousCompteId');
-    const compteDestIdSelect = document.getElementById('compteDestId');
-    const sousCompteDestIdSelect = document.getElementById('sousCompteDestId');
-    const destinationFields = document.getElementById('destinationFields');
-    const modalTitle = document.querySelector('#editTransactionModal .modal-title');
-    const transactionIdInput = document.getElementById('transactionId');
-    const formActionInput = document.getElementById('formAction');
-    
-    // Variables pour contrôler l'état
-    let isEditing = false;
-    let isInitialized = false;
-
-    // Fonction pour mettre à jour la visibilité des champs de destination
-    function updateFieldsVisibility() {
-        const type = typeSelect.value;
-        const isTransfert = type === 'transfert_vers_sous_compte' || type === 'transfert_depuis_sous_compte';
-        destinationFields.style.display = isTransfert ? 'flex' : 'none';
-    }
-
-    // Fonction pour filtrer les sous-comptes
-    function filterSousComptes(selectElement, compteId) {
-        const options = selectElement.querySelectorAll('option');
-        options.forEach(option => {
-            if (option.value === "") {
-                option.style.display = 'block';
-            } else {
-                const optionCompteId = option.getAttribute('data-compte-id');
-                option.style.display = (optionCompteId == compteId) ? 'block' : 'none';
-            }
-        });
-    }
-
-    // Fonction pour réinitialiser le formulaire (Nouvelle transaction)
-    function resetForm() {
-        form.reset();
-        transactionIdInput.value = '';
-        isEditing = false;
-        modalTitle.innerHTML = '<i class="fas fa-plus me-2"></i> Nouvelle transaction';
-        // Pour une nouvelle transaction, on utilise la route banking_transfert
-        form.action = '{{ url_for("banking.banking_transfert") }}';
-        formActionInput.value = 'create';
-        updateFieldsVisibility();
-        filterSousComptes(sousCompteIdSelect, '');
-        filterSousComptes(sousCompteDestIdSelect, '');
-    }
-
-    // Fonction pour charger les données d'une transaction (Édition)
-    function loadTransactionData(btn) {
-        const transactionId = btn.dataset.id;
-        transactionIdInput.value = transactionId;
-        document.getElementById('typeTransaction').value = btn.dataset.type;
-        document.getElementById('montant').value = btn.dataset.montant;
-        document.getElementById('description').value = btn.dataset.description;
-        document.getElementById('reference').value = btn.dataset.reference;
-        
-        const compteSourceId = btn.dataset.compteSourceId;
-        const compteDestId = btn.dataset.compteDestId;
-        
-        document.getElementById('compteId').value = compteSourceId;
-        document.getElementById('sousCompteId').value = btn.dataset.sousCompteSourceId;
-        document.getElementById('compteDestId').value = compteDestId;
-        document.getElementById('sousCompteDestId').value = btn.dataset.sousCompteDestId;
-        
-        // Pour l'édition, on utilise la route modifier_transfert avec l'ID
-        form.action = '{{ url_for("banking.modifier_transfert", transfert_id=0) }}'.replace('/0', '/' + transactionId);
-        formActionInput.value = 'modifier';
-        
-        filterSousComptes(sousCompteIdSelect, compteSourceId);
-        filterSousComptes(sousCompteDestIdSelect, compteDestId);
-        
-        isEditing = true;
-        modalTitle.innerHTML = '<i class="fas fa-pen me-2"></i> Éditer la transaction';
-        updateFieldsVisibility();
-    }
-
-    // Initialiser les événements des selects
-    compteIdSelect.addEventListener('change', function () {
-        filterSousComptes(sousCompteIdSelect, this.value);
-        sousCompteIdSelect.value = "";
-    });
-
-    compteDestIdSelect.addEventListener('change', function () {
-        filterSousComptes(sousCompteDestIdSelect, this.value);
-        sousCompteDestIdSelect.value = "";
-    });
-
-    typeSelect.addEventListener('change', updateFieldsVisibility);
-
-    // Gestionnaire pour l'ouverture du modal
-    modalElement.addEventListener('show.bs.modal', function (event) {
-        const relatedTarget = event.relatedTarget;
-        
-        // Si c'est un bouton d'édition
-        if (relatedTarget && relatedTarget.classList.contains('edit-btn')) {
-            loadTransactionData(relatedTarget);
-        } 
-        // Si c'est le bouton "Nouvelle transaction" ou autre déclencheur
-        else if (relatedTarget && relatedTarget.dataset.bsTarget === '#editTransactionModal') {
-            resetForm();
-        }
-        // Cas où le modal est ouvert programmatiquement sans relatedTarget
-        else if (!isInitialized) {
-            resetForm();
-            isInitialized = true;
-        }
-    });
-
-    // Éviter les problèmes de double initialisation
-    modalElement.addEventListener('hidden.bs.modal', function () {
-        isInitialized = false;
-    });
-
-    // Gestion des boutons d'édition
+    // --- Gestion du modal d'édition ---
     document.querySelectorAll('.edit-btn').forEach(btn => {
-        btn.addEventListener('click', function (e) {
-            e.preventDefault();
-            loadTransactionData(this);
+        btn.addEventListener('click', function () {
+            document.getElementById('editTransactionId').value = this.dataset.id;
+            document.getElementById('editMontant').value = this.dataset.montant;
+            document.getElementById('editDescription').value = this.dataset.description || '';
+            document.getElementById('editReference').value = this.dataset.reference || '';
             
-            const modal = bootstrap.Modal.getInstance(modalElement);
-            if (modal) {
-                modal.show();
-            } else {
-                const newModal = new bootstrap.Modal(modalElement);
-                newModal.show();
+            if (this.dataset.date) {
+                const date = new Date(this.dataset.date);
+                document.getElementById('editDate').value = date.toISOString().slice(0, 16);
             }
+            
+            document.getElementById('editForm').action = '{{ url_for("banking.modifier_transfert", transfert_id=0) }}'.replace('/0', '/' + this.dataset.id);
+            
+            const modal = new bootstrap.Modal(document.getElementById('editTransactionModal'));
+            modal.show();
         });
     });
 
-    // Gestion des boutons d'annulation - CORRIGÉ
+    // --- Gestion du modal de catégorisation ---
+    document.querySelectorAll('.categoriser-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            document.getElementById('categoriserTransactionId').value = this.dataset.id;
+            
+            // Charger les catégories via AJAX
+            fetch('/categorie/liste')
+                .then(response => response.json())
+                .then(data => {
+                    const select = document.getElementById('categoriserSelect');
+                    select.innerHTML = '<option value="">Sélectionner une catégorie...</option>';
+                    data.categories.forEach(cat => {
+                        const option = document.createElement('option');
+                        option.value = cat.id;
+                        option.textContent = cat.nom;
+                        if (cat.id == this.dataset.categorieId) {
+                            option.selected = true;
+                        }
+                        select.appendChild(option);
+                    });
+                })
+                .catch(() => {
+                    // Fallback : utiliser les catégories du backend
+                    const select = document.getElementById('categoriserSelect');
+                    select.innerHTML = `
+                        <option value="">Sélectionner...</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat.id }}">{{ cat.nom }}</option>
+                        {% endfor %}
+                    `;
+                });
+            
+            const modal = new bootstrap.Modal(document.getElementById('categoriserModal'));
+            modal.show();
+        });
+    });
+
+    // --- Gestion du modal de suppression ---
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            document.getElementById('deleteTransactionId').value = this.dataset.id;
+            document.getElementById('deleteForm').action = '{{ url_for("banking.supprimer_transfert", transfert_id=0) }}'.replace('/0', '/' + this.dataset.id);
+            
+            const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+            modal.show();
+        });
+    });
+
+    // --- Gestion de l'annulation ---
     document.querySelectorAll('.cancel-btn').forEach(btn => {
         btn.addEventListener('click', function () {
             if (confirm('Êtes-vous sûr de vouloir annuler ce transfert ?')) {
                 const transfertId = this.dataset.id;
-                // Construire l'URL manuellement avec l'ID
                 const url = ANNULER_URL_BASE + '/' + transfertId;
                 
                 fetch(url, {
@@ -605,31 +596,6 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     });
-
-    // Gestion de la soumission du formulaire
-    form.addEventListener('submit', function(e) {
-        // Vérifier si l'action est définie
-        if (!form.action) {
-            e.preventDefault();
-            alert('Erreur: L\'action du formulaire n\'est pas définie');
-            return false;
-        }
-        
-        // Validation supplémentaire : vérifier que le montant est positif
-        const montant = parseFloat(document.getElementById('montant').value);
-        if (isNaN(montant) || montant <= 0) {
-            e.preventDefault();
-            alert('Le montant doit être un nombre positif');
-            return false;
-        }
-        
-        console.log('Formulaire soumis vers:', form.action);
-        console.log('Action:', formActionInput.value);
-        console.log('Transaction ID:', transactionIdInput.value);
-    });
-
-    // Appliquer la visibilité initiale
-    updateFieldsVisibility();
 });
 </script>
 {% endblock %}
