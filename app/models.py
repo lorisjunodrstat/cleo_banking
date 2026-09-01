@@ -19740,28 +19740,45 @@ class POSComptabilisation:
                     date_ecriture = POSComptabilisation._parse_date_ecriture(
                         item.get('date_jour') or item.get('date')
                     )
-                    receipt_id = item.get('receipt_id')  # ← NOUVEAU : ID du reçu
-                    compte_vente_id = item.get('compte_vente_id')
-                    compte_bancaire_id = item.get('compte_tresorerie_id') or item.get('compte_bancaire_id')
+                    
+                    # ✅ CORRECTION CRITIQUE : Ne jamais mélanger ces deux IDs !
+                    # 1. L'ID du compte bancaire RÉEL (table comptes_principaux) -> Requis pour la FK
+                    id_compte_bancaire_reel = item.get('compte_bancaire_id')
+                    
+                    # 2. L'ID du compte COMPTABLE (table categories_comptables, ex: 3001, 2030)
+                    id_categorie_comptable = item.get('compte_tresorerie_id') or item.get('compte_vente_id')
+                    
+                    total_ht = float(item.get('total_ht', 0))
+                    total_tva = float(item.get('total_tva', 0))
                     total_ttc = float(item.get('total_ttc', 0))
                     
-                    if not compte_bancaire_id:
+                    # Vérification stricte : sans compte bancaire réel, la FK échouera
+                    if not id_compte_bancaire_reel:
+                        logger.warning(f"⚠️ Sauté : Mode '{item.get('mode_paiement_nom')}' n'a pas de compte bancaire réel (comptes_principaux) configuré.")
+                        nb_sautés += 1
+                        continue
+
+                    if not id_categorie_comptable:
+                        logger.warning(f"⚠️ Sauté : Pas de compte comptable (categorie_id) trouvé.")
                         nb_sautés += 1
                         continue
                     
-                    # 1. Écriture comptable (comme avant)
+                    # Détection passif (ex: 2030)
+                    is_credit = self.modele_categorie.is_compte_passif(id_categorie_comptable)
+                    
+                    # ✅ Construction du dictionnaire pour EcritureComptable.create()
                     data_vente = {
                         'date_ecriture': date_ecriture,
-                        'compte_bancaire_id': compte_bancaire_id,
-                        'categorie_id': compte_vente_id,
+                        'compte_bancaire_id': id_compte_bancaire_reel,  # ✅ FK vers comptes_principaux.id
+                        'categorie_id': id_categorie_comptable,          # ✅ FK vers categories_comptables.id
                         'montant': total_ttc,
-                        'montant_htva': float(item.get('total_ht', total_ttc)),
+                        'montant_htva': total_ttc if is_credit else total_ht,
                         'devise': 'CHF',
-                        'description': f"Ventes POS {item.get('type_taxe_nom')} - {item.get('mode_paiement_nom')}",
-                        'reference': f"JOURNAL-{date_ecriture}-{item.get('type_taxe_id')}",
+                        'description': f"Achat crédit POS {item.get('type_taxe_nom')} - {item.get('mode_paiement_nom')}" if is_credit else f"Ventes POS {item.get('type_taxe_nom')} - {item.get('mode_paiement_nom')}",
+                        'reference': f"JOURNAL-{date_ecriture}-{'CREDIT-' if is_credit else ''}{item.get('type_taxe_id')}",
                         'type_ecriture': 'recette',
-                        'tva_taux': round((float(item.get('total_tva', 0)) / float(item.get('total_ht', total_ttc)) * 100), 2) if float(item.get('total_ht', total_ttc)) > 0 else 0,
-                        'tva_montant': float(item.get('total_tva', 0)),
+                        'tva_taux': 0 if is_credit else (round((total_tva / total_ht * 100), 2) if total_ht > 0 else 0),
+                        'tva_montant': 0 if is_credit else total_tva,
                         'utilisateur_id': user_id,
                         'statut': 'validée',
                         'type_ecriture_comptable': 'principale'
@@ -19770,33 +19787,35 @@ class POSComptabilisation:
                     if self.modele_ecriture.create(self.modele_categorie, data_vente):
                         nb_ecritures += 1
                     
-                    # 2. 🆕 Transaction bancaire liée au reçu (si receipt_id fourni)
-                    if receipt_id and total_ttc > 0:
-                        success, msg, tx_id = transaction_model._inserer_transaction_with_cursor(
-                            cursor=cursor,
-                            compte_type='compte_principal',
-                            compte_id=compte_bancaire_id,
-                            type_transaction='depot',
-                            montant=Decimal(str(total_ttc)),
-                            description=f"Vente POS - Reçu #{receipt_id} - {item.get('mode_paiement_nom')}",
-                            user_id=user_id,
-                            date_transaction=datetime.combine(date_ecriture, datetime.min.time()),
-                            validate_balance=False,
-                            receipt_id=receipt_id  # ← NOUVEAU : lien vers le reçu
-                        )
-                        if success:
-                            nb_transactions += 1
-                            logger.info(f"✅ Transaction {tx_id} créée pour reçu {receipt_id}")
-                        else:
-                            logger.warning(f"⚠️ Échec création transaction pour reçu {receipt_id}: {msg}")
+                    # Gestion des frais de service (uniquement pour ventes normales)
+                    if not is_credit:
+                        montant_frais = (total_ttc * (float(item.get('frais_pourcentage', 0) or 0) / 100)) + float(item.get('frais_fixe', 0) or 0)
+                        if montant_frais > 0.01 and item.get('compte_frais_service_id'):
+                            data_frais = {
+                                'date_ecriture': date_ecriture,
+                                'compte_bancaire_id': id_compte_bancaire_reel, # ✅ Toujours le compte bancaire réel
+                                'categorie_id': item['compte_frais_service_id'],
+                                'montant': montant_frais,
+                                'montant_htva': montant_frais,
+                                'devise': 'CHF',
+                                'description': f"Frais de service - {item.get('mode_paiement_nom')}",
+                                'reference': f"JOURNAL-{date_ecriture}-FRAIS",
+                                'type_ecriture': 'depense',
+                                'tva_taux': 0,
+                                'tva_montant': 0,
+                                'utilisateur_id': user_id,
+                                'statut': 'validée',
+                                'type_ecriture_comptable': 'principale'
+                            }
+                            if self.modele_ecriture.create(self.modele_categorie, data_frais):
+                                nb_ecritures += 1
                 
                 logger.info(f"✅ Écritures: {nb_ecritures}, Transactions: {nb_transactions}, Sautées: {nb_sautés}")
                 return True, f"{nb_ecritures} écriture(s) et {nb_transactions} transaction(s) générée(s)"
-        
+                
         except Exception as e:
             logger.error(f"Erreur comptabilisation: {e}", exc_info=True)
             return False, f"Erreur: {str(e)}"
-    
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
             """Récupère le compte de vente de classe 3 par défaut (3000)"""
             try:
