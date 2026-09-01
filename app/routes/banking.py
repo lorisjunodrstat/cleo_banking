@@ -2227,9 +2227,10 @@ def liste_transferts():
     #montant_max = request.args.get('montant_max')
     #compte_ou_sous_compte_id = request.args.get('compte_ou_sous_compte_id')
     # Récupération des comptes et sous-comptes pour les filtres
-    comptes = g.models.compte_model.get_by_user_id(user_id)
+    comptes = g.models.compte_model.get_all_accounts(user_id)
+    comptes_user = g.models.compte_model.get_by_user_id(user_id)
     sous_comptes = []
-    for c in comptes:
+    for c in comptes_user:
         sous_comptes += g.models.sous_compte_model.get_by_compte_principal_id(c['id'])
 
     # Récupération des mouvements financiers avec filtres

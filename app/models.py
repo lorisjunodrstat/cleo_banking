@@ -3846,6 +3846,7 @@ class TransactionFinanciere:
                     t.reference,
                     t.date_transaction,
                     t.solde_apres,
+                    t.created_at,
                     -- Sous-comptes
                     sc.nom_sous_compte as sous_compte_source,
                     sc_dest.nom_sous_compte as sous_compte_dest,
