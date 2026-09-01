@@ -12,7 +12,7 @@
             </div>
 
             <div class="modal-body">
-                <!-- === 1. Formulaire de MODIFICATION === -->
+                <!-- === 1. FORMULAIRE DE MODIFICATION DES INFOS === -->
                 <form method="POST" action="{{ url_for('banking.modifier_transfert', transfert_id=mv.id) }}"
                     class="needs-validation" novalidate>
                     <input type="hidden" name="action" value="modifier">
@@ -30,12 +30,8 @@
                                         {% elif mv.compte_source %}{{ mv.compte_source }}
                                         {% else %}Inconnu{% endif %}
                                     </p>
-                                    <p><strong>Référence :</strong>
-                                        <span class="text-muted">{{ mv.reference or '-' }}</span>
-                                    </p>
-                                    <p><strong>Référence de transfert :</strong>
-                                        <span class="text-muted">{{ mv.reference_transfert or '-' }}</span>
-                                    </p>
+                                    <p><strong>Référence :</strong> <span class="text-muted">{{ mv.reference or '-' }}</span></p>
+                                    <p><strong>Référence de transfert :</strong> <span class="text-muted">{{ mv.reference_transfert or '-' }}</span></p>
                                     <p>Date de création : {{ mv.created_at if mv.created_at else 'date_indisponible' }}</p>
                                 </div>
                             </div>
@@ -69,14 +65,12 @@
                                     name="nouveau_montant" value="{{ '%.2f'|format(mv.montant) }}" required>
                                 <span class="input-group-text">{{ compte.devise }}</span>
                             </div>
-                            <div class="invalid-feedback">Veuillez entrer un montant valide.</div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label for="nouvelle_date{{ mv.id }}" class="form-label">Date *</label>
                             <input type="datetime-local" class="form-control" id="nouvelle_date{{ mv.id }}"
                                 name="nouvelle_date" value="{{ mv.date_transaction.strftime('%Y-%m-%dT%H:%M') if mv.date_transaction else '' }}"
                                 required>
-                            <div class="invalid-feedback">Veuillez entrer une date valide.</div>
                         </div>
                     </div>
 
@@ -92,23 +86,24 @@
                             name="nouvelle_reference" maxlength="50" value="{{ mv.reference or '' }}">
                     </div>
 
-                    <div class="d-flex justify-content-end">
+                    <div class="d-flex justify-content-end mb-3">
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-save me-1"></i> Enregistrer les modifications
                         </button>
                     </div>
                 </form>
 
-                <!-- === 2. Formulaire de GESTION DE CATÉGORIE === -->
+                <!-- === 2. GESTION DE LA CATÉGORIE (MODIFICATION & DISSOCIATION) === -->
                 <div class="mt-4 pt-3 border-top">
-                    <h6 class="text-muted mb-3"><i class="fas fa-tags me-1"></i> Catégorisation</h6>
+                    <h6 class="text-muted mb-3"><i class="fas fa-tags me-1"></i> Gestion de la catégorie</h6>
                     
                     {% if mv.categorie_id %}
-                        <!-- Option A : Si UNE catégorie existe déjà (Mise à jour) -->
-                        <form method="POST" action="{{ url_for('banking.update_associer_categorie_transaction') }}" class="mb-2">
+                        <!-- CAS A : La transaction a DÉJÀ une catégorie -> Formulaire de Mise à jour -->
+                        <form method="POST" action="{{ url_for('banking.update_associer_categorie_transaction') }}" class="mb-3">
                             <input type="hidden" name="transaction_id" value="{{ mv.id }}">
+                            
                             <div class="mb-3">
-                                <label for="categorie_select_{{ mv.id }}" class="form-label">Changer de catégorie</label>
+                                <label for="categorie_select_{{ mv.id }}" class="form-label">Changer la catégorie :</label>
                                 <select class="form-select" id="categorie_select_{{ mv.id }}" name="_nouvelle_categorie_id" required>
                                     {% for cat in liste_categories | sort(attribute='nom') %}
                                     <option value="{{ cat.id }}" {% if cat.id == mv.categorie_id %}selected{% endif %}>
@@ -118,40 +113,41 @@
                                 </select>
                             </div>
                             <button type="submit" class="btn btn-outline-primary btn-sm">
-                                <i class="fas fa-sync me-1"></i> Modifier la catégorie
+                                <i class="fas fa-sync me-1"></i> Mettre à jour la catégorie
                             </button>
                         </form>
 
-                        <!-- Formulaire rapide de Dissociation -->
+                        <!-- Bouton dédié pour Dissocier complètement -->
                         <form method="POST" action="{{ url_for('banking.dissocier_categorie_transaction') }}" class="d-inline">
                             <input type="hidden" name="transaction_id" value="{{ mv.id }}">
                             <input type="hidden" name="categorie_id" value="{{ mv.categorie_id }}">
-                            <button type="submit" class="btn btn-outline-warning btn-sm">
-                                <i class="fas fa-unlink me-1"></i> Retirer la catégorie
+                            <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('Retirer la catégorie de cette transaction ?')">
+                                <i class="fas fa-unlink me-1"></i> Supprimer la catégorie
                             </button>
                         </form>
 
                     {% else %}
-                        <!-- Option B : Si AUCUNE catégorie n'est associée (Première association) -->
+                        <!-- CAS B : Aucune catégorie associée -> Formulaire d'association simple -->
                         <form method="POST" action="{{ url_for('banking.associer_categorie_transaction') }}">
                             <input type="hidden" name="transaction_id" value="{{ mv.id }}">
+                            
                             <div class="mb-3">
-                                <label for="categorie_select_{{ mv.id }}" class="form-label">Associer une catégorie</label>
+                                <label for="categorie_select_{{ mv.id }}" class="form-label">Associer une catégorie :</label>
                                 <select class="form-select" id="categorie_select_{{ mv.id }}" name="categorie_id" required>
-                                    <option value="" disabled selected>-- Choisir une catégorie --</option>
+                                    <option value="" disabled selected>-- Sélectionner une catégorie --</option>
                                     {% for cat in liste_categories | sort(attribute='nom') %}
                                     <option value="{{ cat.id }}">{{ cat.nom }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
                             <button type="submit" class="btn btn-outline-success btn-sm">
-                                <i class="fas fa-plus me-1"></i> Associer la catégorie
+                                <i class="fas fa-plus me-1"></i> Appliquer la catégorie
                             </button>
                         </form>
                     {% endif %}
                 </div>
 
-                <!-- === 3. Formulaire de SUPPRESSION === -->
+                <!-- === 3. FORMULAIRE DE SUPPRESSION DE LA TRANSACTION === -->
                 <form method="POST" action="{{ url_for('banking.supprimer_transfert', transfert_id=mv.id) }}"
                     class="mt-4 pt-3 border-top"
                     onsubmit="return confirm('⚠️ Êtes-vous sûr de vouloir supprimer cette transaction ?\nCette action est irréversible.')">
@@ -163,7 +159,6 @@
                 </form>
             </div>
 
-            <!-- Pied de page -->
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
             </div>
