@@ -4386,33 +4386,96 @@ def transactions_par_categorie(categorie_id):
 
 
 
+
 @bp.route('/categorie/associer-transaction', methods=['POST'])
 @login_required
 def associer_categorie_transaction():
-    """Associe une catégorie à une transaction via formulaire HTML classique."""
+    """Associe une catégorie à une transaction."""
     transaction_id = request.form.get('transaction_id', type=int)
     categorie_id = request.form.get('categorie_id', type=int)
-    
+    referrer = request.referrer or url_for('banking.banking_dashboard')
+
     if not transaction_id or not categorie_id:
         flash("Veuillez sélectionner une transaction et une catégorie.", "warning")
-        return redirect(request.referrer or url_for('banking.banking_dashboard'))
+        return redirect(referrer)
 
-    # Vérifier que la transaction existe et appartient à l'utilisateur
+    # Vérification de l'existence et propriété de la transaction
     tx = g.models.transaction_financiere_model.get_transaction_by_id(transaction_id)
     if not tx or tx.get('owner_user_id') != current_user.id:
         flash("Transaction non trouvée ou non autorisée.", "error")
-        return redirect(request.referrer or url_for('banking.banking_dashboard'))
+        return redirect(referrer)
 
     success, message = g.models.categorie_transaction_model.associer_categorie_transaction(
         transaction_id, categorie_id, current_user.id
     )
     
-    if success:
-        flash("Catégorie associée avec succès.", "success")
-    else:
-        flash(message, "error")
+    flash(message, "success" if success else "error")
+    return redirect(referrer)
+
+
+@bp.route('/categorie/modifier-association-transaction', methods=['POST'])
+@login_required
+def update_associer_categorie_transaction():
+    """Met à jour la catégorie associée à une transaction."""
+    transaction_id = request.form.get('transaction_id', type=int)
+    nouvelle_categorie_id = request.form.get('_nouvelle_categorie_id', type=int)
+    referrer = request.referrer or url_for('banking.banking_dashboard')
+
+    if not transaction_id or not nouvelle_categorie_id:
+        flash("Veuillez sélectionner une transaction et une nouvelle catégorie.", "warning")
+        return redirect(referrer)
+
+    # Vérification transaction
+    tx = g.models.transaction_financiere_model.get_transaction_by_id(transaction_id)
+    if not tx or tx.get('owner_user_id') != current_user.id:
+        flash("Transaction non trouvée ou non autorisée.", "error")
+        return redirect(referrer)
+
+    # Vérification catégorie actuelle
+    categorie_actuelle = g.models.categorie_transaction_model.get_categorie_for_transaction(transaction_id, current_user.id)
     
-    return redirect(request.referrer)
+    if not categorie_actuelle:
+        flash("Aucune catégorie n'est actuellement associée à cette transaction.", "warning")
+        return redirect(referrer)
+
+    if categorie_actuelle.get('id') == nouvelle_categorie_id:
+        flash("La catégorie sélectionnée est identique à la catégorie actuelle.", "info")
+        return redirect(referrer)
+
+    success, message = g.models.categorie_transaction_model.update_associer_categorie_transaction(
+        nouvelle_categorie_id, transaction_id, current_user.id
+    )
+    
+    flash(message, "success" if success else "error")
+    return redirect(referrer)
+
+
+@bp.route('/categorie/dissocier-transaction', methods=['POST'])
+@login_required
+def dissocier_categorie_transaction():
+    """Dissocie une (ou toutes les) catégorie(s) d'une transaction."""
+    transaction_id = request.form.get('transaction_id', type=int)
+    categorie_id = request.form.get('categorie_id', type=int)  # Optionnel
+    referrer = request.referrer or url_for('banking.banking_dashboard')
+
+    if not transaction_id:
+        flash("Transaction non spécifiée.", "warning")
+        return redirect(referrer)
+
+    # Vérification transaction
+    tx = g.models.transaction_financiere_model.get_transaction_by_id(transaction_id)
+    if not tx or tx.get('owner_user_id') != current_user.id:
+        flash("Transaction non trouvée ou non autorisée.", "error")
+        return redirect(referrer)
+
+    success, message = g.models.categorie_transaction_model.dissocier_categorie_transaction(
+        transaction_id=transaction_id, 
+        user_id=current_user.id, 
+        categorie_id=categorie_id
+    )
+    
+    flash(message, "success" if success else "error")
+    return redirect(referrer)
 
 @bp.route('/categorie/associer-transaction-multiple', methods=['POST'])
 @login_required

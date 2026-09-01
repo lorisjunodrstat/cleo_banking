@@ -1,4 +1,5 @@
 <!-- banking/transaction_modal.html -->
+
 <div class="modal fade" id="modalTransaction{{ mv.id }}" tabindex="-1"
     aria-labelledby="modalTransactionLabel{{ mv.id }}" aria-hidden="true">
     <div class="modal-dialog modal-lg">
@@ -11,8 +12,9 @@
                     aria-label="Close"></button>
             </div>
 
+            <!-- DEUX FORMULAIRES SÉPARÉS DANS LE MODAL-BODY -->
             <div class="modal-body">
-                <!-- === 1. Formulaire de MODIFICATION === -->
+                <!-- === Formulaire de MODIFICATION === -->
                 <form method="POST" action="{{ url_for('banking.modifier_transfert', transfert_id=mv.id) }}"
                     class="needs-validation" novalidate>
                     <input type="hidden" name="action" value="modifier">
@@ -46,15 +48,16 @@
                                     <h6 class="card-title text-muted">Montant & Solde</h6>
                                     <p><strong>Montant :</strong>
                                         <span class="{{ 'text-success' if mv.montant > 0 else 'text-danger' }}">
-                                            {{ '+' if mv.montant > 0 else '' }}{{ "%.2f"|format(mv.montant) }} {{ compte.devise }}
+                                            {{ '+' if mv.montant > 0 else '' }}{{ "%.2f"|format(mv.montant) }} {{
+                                            compte.devise }}
                                         </span>
                                     </p>
-                                    <p><strong>Solde Actuel :</strong>
-                                        <span class="{{ 'text-success' if mv.solde_apres > 0 else 'text-danger' }}">
-                                            {{ '%.2f'|format(mv.solde_apres) }} {% if compte.devise %}{{ compte.devise }}{% else %} CHF{% endif %}
-                                        </span>
+                                    <p><strong>Solde Actuel</strong>
+                                    <span class="{{ 'text-success' if mv.solde_apres > 0 else 'text-danger' }}">
+                                        {{ '%.2f'|format(mv.solde_apres) }} {% if compte.devise %}{{ compte.devise }}{% else %} CHF{% endif %}
+                                    </span>
                                     </p>
-                                    <p><strong>Date :</strong> {{ mv.date_transaction.strftime('%d/%m/%Y %H:%M') if mv.date_transaction else '-' }}</p>
+                                    <p><strong>Date :</strong> {{ mv.date_transaction.strftime('%d/%m/%Y %H:%M') }}</p>
                                 </div>
                             </div>
                         </div>
@@ -74,7 +77,7 @@
                         <div class="col-md-6 mb-3">
                             <label for="nouvelle_date{{ mv.id }}" class="form-label">Date *</label>
                             <input type="datetime-local" class="form-control" id="nouvelle_date{{ mv.id }}"
-                                name="nouvelle_date" value="{{ mv.date_transaction.strftime('%Y-%m-%dT%H:%M') if mv.date_transaction else '' }}"
+                                name="nouvelle_date" value="{{ mv.date_transaction.strftime('%Y-%m-%dT%H:%M') }}"
                                 required>
                             <div class="invalid-feedback">Veuillez entrer une date valide.</div>
                         </div>
@@ -92,66 +95,15 @@
                             name="nouvelle_reference" maxlength="50" value="{{ mv.reference or '' }}">
                     </div>
 
-                    <div class="d-flex justify-content-end">
+                    <!-- Bouton Enregistrer DANS le formulaire de modification -->
+                    <div class="d-flex justify-content-end mt-4">
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-save me-1"></i> Enregistrer les modifications
                         </button>
                     </div>
                 </form>
 
-                <!-- === 2. Formulaire de GESTION DE CATÉGORIE === -->
-                <div class="mt-4 pt-3 border-top">
-                    <h6 class="text-muted mb-3"><i class="fas fa-tags me-1"></i> Catégorisation</h6>
-                    
-                    {% if mv.categorie_id %}
-                        <!-- Option A : Si UNE catégorie existe déjà (Mise à jour) -->
-                        <form method="POST" action="{{ url_for('banking.update_associer_categorie_transaction') }}" class="mb-2">
-                            <input type="hidden" name="transaction_id" value="{{ mv.id }}">
-                            <div class="mb-3">
-                                <label for="categorie_select_{{ mv.id }}" class="form-label">Changer de catégorie</label>
-                                <select class="form-select" id="categorie_select_{{ mv.id }}" name="_nouvelle_categorie_id" required>
-                                    {% for cat in liste_categories | sort(attribute='nom') %}
-                                    <option value="{{ cat.id }}" {% if cat.id == mv.categorie_id %}selected{% endif %}>
-                                        {{ cat.nom }}
-                                    </option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <button type="submit" class="btn btn-outline-primary btn-sm">
-                                <i class="fas fa-sync me-1"></i> Modifier la catégorie
-                            </button>
-                        </form>
-
-                        <!-- Formulaire rapide de Dissociation -->
-                        <form method="POST" action="{{ url_for('banking.dissocier_categorie_transaction') }}" class="d-inline">
-                            <input type="hidden" name="transaction_id" value="{{ mv.id }}">
-                            <input type="hidden" name="categorie_id" value="{{ mv.categorie_id }}">
-                            <button type="submit" class="btn btn-outline-warning btn-sm">
-                                <i class="fas fa-unlink me-1"></i> Retirer la catégorie
-                            </button>
-                        </form>
-
-                    {% else %}
-                        <!-- Option B : Si AUCUNE catégorie n'est associée (Première association) -->
-                        <form method="POST" action="{{ url_for('banking.associer_categorie_transaction') }}">
-                            <input type="hidden" name="transaction_id" value="{{ mv.id }}">
-                            <div class="mb-3">
-                                <label for="categorie_select_{{ mv.id }}" class="form-label">Associer une catégorie</label>
-                                <select class="form-select" id="categorie_select_{{ mv.id }}" name="categorie_id" required>
-                                    <option value="" disabled selected>-- Choisir une catégorie --</option>
-                                    {% for cat in liste_categories | sort(attribute='nom') %}
-                                    <option value="{{ cat.id }}">{{ cat.nom }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <button type="submit" class="btn btn-outline-success btn-sm">
-                                <i class="fas fa-plus me-1"></i> Associer la catégorie
-                            </button>
-                        </form>
-                    {% endif %}
-                </div>
-
-                <!-- === 3. Formulaire de SUPPRESSION === -->
+                <!-- === Formulaire de SUPPRESSION (séparé, pas imbriqué) === -->
                 <form method="POST" action="{{ url_for('banking.supprimer_transfert', transfert_id=mv.id) }}"
                     class="mt-4 pt-3 border-top"
                     onsubmit="return confirm('⚠️ Êtes-vous sûr de vouloir supprimer cette transaction ?\nCette action est irréversible.')">
@@ -163,10 +115,30 @@
                 </form>
             </div>
 
-            <!-- Pied de page -->
+            <!-- Pied de page simplifié : juste le bouton Annuler -->
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
             </div>
+            <!-- === Formulaire d'ASSOCIATION DE CATÉGORIE (séparé) === -->
+            <form method="POST" action="{{ url_for('banking.associer_categorie_transaction') }}"
+                class="mt-4 pt-3 border-top">
+                <input type="hidden" name="transaction_id" value="{{ mv.id }}">
+
+                <div class="mb-3">
+                    <label for="categorie_select_{{ mv.id }}" class="form-label">Associer une catégorie</label>
+                    <select class="form-select" id="categorie_select_{{ mv.id }}" name="categorie_id">
+                        <option value="">Aucune (désassocier)</option>
+                        {% for cat in liste_categories | sort(attribute='nom') %}
+                        <option value="{{ cat.id }}">{{ cat.nom }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="d-flex justify-content-start">
+                    <button type="submit" class="btn btn-outline-primary">
+                        <i class="fas fa-tags me-1"></i> Appliquer la catégorie
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
