@@ -538,35 +538,57 @@ class DatabaseManager:
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS ecritures_comptables (
                     id INT AUTO_INCREMENT PRIMARY KEY,
-                    transaction_id INT,
+                    transaction_id INT NULL,
                     date_ecriture DATE NOT NULL,
                     compte_bancaire_id INT NOT NULL,
-                    sous_compte_id INT,
+                    sous_compte_id INT NULL,
                     categorie_id INT NOT NULL,
                     montant DECIMAL(15,2) NOT NULL,
                     montant_htva DECIMAL(15,2) NOT NULL,
                     devise VARCHAR(3) DEFAULT 'CHF',
                     description TEXT,
-                    id_contact INT,
+                    id_contact INT NULL,
                     reference VARCHAR(100),
                     type_ecriture ENUM('depense', 'recette') NOT NULL,
-                    tva_taux DECIMAL(5,2),
-                    tva_montant DECIMAL(15,2),
+                    tva_taux DECIMAL(5,2) DEFAULT 0.00,
+                    tva_montant DECIMAL(15,2) DEFAULT 0.00,
                     utilisateur_id INT NOT NULL,
-                    justificatif_url VARCHAR(255),
-                    statut ENUM('pending', 'validée', 'rejetée') DEFAULT 'pending',
+                    
+                    -- 📎 Champs pour les fichiers joints (attendus par get_fichier / send_file)
+                    fichier_path VARCHAR(255) NULL COMMENT 'Chemin relatif ou absolu vers le fichier',
+                    fichier_nom_original VARCHAR(255) NULL COMMENT 'Nom du fichier lors de l\'upload',
+                    fichier_type_mime VARCHAR(100) NULL COMMENT 'Ex: application/pdf, image/jpeg',
+                    
+                    -- 🔄 Statut étendu pour supporter le soft delete de votre code Python
+                    statut ENUM('pending', 'validée', 'rejetée', 'supprimée') DEFAULT 'pending',
                     date_validation TIMESTAMP NULL,
+                    
+                    -- ⏱️ Audit
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    
+                    -- 🔗 Hiérarchie (Écritures principales / complémentaires)
                     ecriture_principale_id INT NULL,
                     type_ecriture_comptable VARCHAR(20) DEFAULT 'principale' NOT NULL,
-                    FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id),
-                    FOREIGN KEY (sous_compte_id) REFERENCES sous_comptes(id),
-                    FOREIGN KEY (categorie_id) REFERENCES categories_comptables(id),
-                    FOREIGN KEY (id_contact) REFERENCES contacts(id_contact),
-                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id),
-                    FOREIGN KEY (transaction_id) REFERENCES transactions(id),
-                    FOREIGN KEY (ecriture_principale_id) REFERENCES ecritures_comptables(id)
-                );""")
+                    
+                    -- 🔒 Contraintes de clés étrangères avec règles de cascade
+                    FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id) ON DELETE CASCADE,
+                    FOREIGN KEY (sous_compte_id) REFERENCES sous_comptes(id) ON DELETE SET NULL,
+                    FOREIGN KEY (categorie_id) REFERENCES categories_comptables(id) ON DELETE RESTRICT,
+                    FOREIGN KEY (id_contact) REFERENCES contacts(id_contact) ON DELETE SET NULL,
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
+                    FOREIGN KEY (ecriture_principale_id) REFERENCES ecritures_comptables(id) ON DELETE CASCADE,
+                    
+                    -- ⚡ Index pour optimiser les requêtes de filtrage et les jointures
+                    INDEX idx_utilisateur_id (utilisateur_id),
+                    INDEX idx_transaction_id (transaction_id),
+                    INDEX idx_date_ecriture (date_ecriture),
+                    INDEX idx_categorie_id (categorie_id),
+                    INDEX idx_statut (statut),
+                    INDEX idx_ecriture_principale_id (ecriture_principale_id),
+                    INDEX idx_compte_bancaire_id (compte_bancaire_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;""")
 
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS regles_ecritures (
@@ -9184,16 +9206,13 @@ class EcritureComptable:
     def ajouter_fichier(self, ecriture_id: int, user_id: int, fichier) -> Tuple[bool, str]:
         """Ajoute un fichier joint à une écriture comptable (stockage filesystem)."""
         try:
-            # Vérifications de base
+            # 1. Vérifications de base
             if not fichier or fichier.filename == '':
                 return False, "Aucun fichier sélectionné"
 
             logger.info(f"Tentative d'upload - Fichier: {fichier.filename}, Taille: {fichier.content_length}")
 
-            # Vérifier le dossier d'upload
-            logger.info(f"Chemin upload folder: {self.upload_folder}")
-            logger.info(f"Dossier existe: {os.path.exists(self.upload_folder)}")
-
+            # 2. Vérification et création du dossier d'upload
             if not os.path.exists(self.upload_folder):
                 try:
                     os.makedirs(self.upload_folder, exist_ok=True)
@@ -9202,80 +9221,75 @@ class EcritureComptable:
                     logger.error(f"Erreur création dossier: {e}")
                     return False, f"Erreur création dossier: {str(e)}"
 
-            # Vérifier les permissions
+            # 3. Vérification des permissions d'écriture
             if not os.access(self.upload_folder, os.W_OK):
                 logger.error(f"Pas de permission d'écriture dans: {self.upload_folder}")
-                return False, "Pas de permission d'écriture"
+                return False, "Pas de permission d'écriture sur le serveur"
 
+            # 4. Vérification du type de fichier
             if not self._allowed_file(fichier.filename):
-                return False, "Type de fichier non autorisé"
+                return False, "Type de fichier non autorisé (formats acceptés: pdf, png, jpg, jpeg, gif, bmp, webp)"
 
-            # Lire le fichier
+            # 5. Lecture et validation de la taille du fichier
             fichier_data = fichier.read()
-            logger.info(f"Fichier lu - Taille données: {len(fichier_data)} bytes")
-
             if len(fichier_data) == 0:
-                return False, "Fichier vide"
+                return False, "Le fichier est vide"
 
-            max_size = 10 * 1024 * 1024
+            max_size = 10 * 1024 * 1024  # 10 Mo
             if len(fichier_data) > max_size:
-                return False, "Fichier trop volumineux (max 10MB)"
+                return False, f"Fichier trop volumineux (max {max_size // (1024*1024)} Mo)"
 
+            # 6. Vérification en base de données (propriété de l'écriture)
             with self.db.get_cursor() as cursor:
-                # Vérifier que l'écriture appartient à l'utilisateur
                 cursor.execute(
                     "SELECT id FROM ecritures_comptables WHERE id = %s AND utilisateur_id = %s",
                     (ecriture_id, user_id)
                 )
                 if not cursor.fetchone():
-                    return False, "Écriture non trouvée ou non autorisée"
+                    return False, "Écriture non trouvée ou vous n'êtes pas autorisé à la modifier"
 
-                # Générer un nom de fichier unique
+                # 7. Génération d'un nom de fichier unique et sécurisé
                 nouveau_nom = self._generate_filename(ecriture_id, fichier.filename, user_id)
                 file_path = self._get_file_path(nouveau_nom)
 
-                logger.info(f"Chemin complet du fichier: {file_path}")
-                logger.info(f"Nom généré: {nouveau_nom}")
-
-                # Sauvegarder le fichier sur le filesystem
+                # 8. Sauvegarde du fichier sur le filesystem
                 try:
                     with open(file_path, 'wb') as f:
                         f.write(fichier_data)
-                    logger.info(f"Fichier sauvegardé avec succès: {file_path}")
 
-                    # Vérifier que le fichier a bien été écrit
-                    if os.path.exists(file_path):
-                        file_size = os.path.getsize(file_path)
-                        logger.info(f"Fichier vérifié - Taille sur disk: {file_size} bytes")
-                    else:
-                        logger.error("Fichier non trouvé après écriture!")
-                        return False, "Erreur lors de l'écriture du fichier"
+                    # Vérification post-écriture (sécurité accrue)
+                    if not os.path.exists(file_path) or os.path.getsize(file_path) != len(fichier_data):
+                        logger.error("Incohérence après écriture du fichier sur le disque!")
+                        return False, "Erreur lors de l'écriture physique du fichier"
 
                 except Exception as e:
-                    logger.error(f"Erreur écriture fichier: {e}")
-                    return False, f"Erreur écriture fichier: {str(e)}"
+                    logger.error(f"Erreur écriture fichier sur disque: {e}")
+                    return False, f"Erreur lors de l'enregistrement du fichier: {str(e)}"
 
-                # Mettre à jour la base de données
+                # 9. Mise à jour de la base de données (Correspond aux nouvelles colonnes)
                 cursor.execute("""
                     UPDATE ecritures_comptables
-                    SET nom_fichier = %s, justificatif_url = %s, type_mime = %s, taille_fichier = %s
+                    SET nom_fichier = %s,
+                        justificatif_url = %s,
+                        type_mime = %s,
+                        taille_fichier = %s
                     WHERE id = %s AND utilisateur_id = %s
                 """, (
-                    fichier.filename,
-                    nouveau_nom,
-                    fichier.content_type,
-                    len(fichier_data),
+                    fichier.filename,          # nom_fichier (nom original pour l'affichage UI)
+                    nouveau_nom,               # justificatif_url (nom unique sur le disque)
+                    fichier.content_type,      # type_mime (ex: 'application/pdf')
+                    len(fichier_data),         # taille_fichier (en octets)
                     ecriture_id,
                     user_id
                 ))
 
-                logger.info(f"Base de données mise à jour pour écriture {ecriture_id}")
+                logger.info(f"✅ Fichier joint ajouté avec succès pour l'écriture {ecriture_id}")
                 return True, "Fichier joint ajouté avec succès"
 
         except Exception as e:
-            logger.error(f"Erreur ajout fichier écriture {ecriture_id}: {e}")
-            return False, f"Erreur lors de l'ajout du fichier: {str(e)}"
-
+            logger.error(f"Erreur critique ajout fichier écriture {ecriture_id}: {e}", exc_info=True)
+            return False, f"Erreur interne lors de l'ajout du fichier: {str(e)}"
+        
     def get_fichier(self, ecriture_id: int, user_id: int) -> Optional[Dict]:
         """
         Récupère les informations du fichier joint d'une écriture.
@@ -19763,36 +19777,50 @@ class POSComptabilisation:
                         item.get('date_jour') or item.get('date')
                     )
                     
-                    # ✅ CORRECTION CRITIQUE : Ne jamais mélanger ces deux IDs !
-                    # 1. L'ID du compte bancaire RÉEL (table comptes_principaux) -> Requis pour la FK
+                    # ============================================================
+                    # 1. COMPTE BANCAIRE RÉEL (Groupe 1 - Trésorerie)
+                    # ============================================================
+                    # C'est le compte où l'argent entre physiquement
                     id_compte_bancaire_reel = item.get('compte_bancaire_id')
                     
-                    # 2. L'ID du compte COMPTABLE (table categories_comptables, ex: 3001, 2030)
-                    id_categorie_comptable = item.get('compte_tresorerie_id') or item.get('compte_vente_id')
+                    if not id_compte_bancaire_reel:
+                        logger.warning(f"⚠️ Sauté : Mode '{item.get('mode_paiement_nom')}' sans compte bancaire (Groupe 1)")
+                        nb_sautés += 1
+                        continue
                     
+                    # ============================================================
+                    # 2. COMPTE COMPTABLE DE DESTINATION (Groupe 3 ou 2)
+                    # ============================================================
+                    # C'est le compte_tresorerie_id du mode de paiement
+                    # Il pointe déjà vers 3001, 3002, ou 2030 selon la config
+                    id_compte_comptable_destination = item.get('compte_tresorerie_id')
+                    
+                    if not id_compte_comptable_destination:
+                        logger.warning(f"⚠️ Sauté : Mode '{item.get('mode_paiement_nom')}' sans compte comptable (Groupe 3/2)")
+                        nb_sautés += 1
+                        continue
+                    
+                    # ============================================================
+                    # 3. DÉTECTION AUTOMATIQUE DU TYPE (Passif ou non)
+                    # ============================================================
+                    # Si le compte de destination est un passif (ex: 2030), 
+                    # c'est un bon cadeau/abonnement
+                    is_credit = self.modele_categorie.is_compte_passif(id_compte_comptable_destination)
+                    
+                    # ============================================================
+                    # 4. CALCUL DES MONTANTS
+                    # ============================================================
                     total_ht = float(item.get('total_ht', 0))
                     total_tva = float(item.get('total_tva', 0))
                     total_ttc = float(item.get('total_ttc', 0))
                     
-                    # Vérification stricte : sans compte bancaire réel, la FK échouera
-                    if not id_compte_bancaire_reel:
-                        logger.warning(f"⚠️ Sauté : Mode '{item.get('mode_paiement_nom')}' n'a pas de compte bancaire réel (comptes_principaux) configuré.")
-                        nb_sautés += 1
-                        continue
-
-                    if not id_categorie_comptable:
-                        logger.warning(f"⚠️ Sauté : Pas de compte comptable (categorie_id) trouvé.")
-                        nb_sautés += 1
-                        continue
-                    
-                    # Détection passif (ex: 2030)
-                    is_credit = self.modele_categorie.is_compte_passif(id_categorie_comptable)
-                    
-                    # ✅ Construction du dictionnaire pour EcritureComptable.create()
+                    # ============================================================
+                    # 5. CRÉATION DE L'ÉCRITURE COMPTABLE
+                    # ============================================================
                     data_vente = {
                         'date_ecriture': date_ecriture,
-                        'compte_bancaire_id': id_compte_bancaire_reel,  # ✅ FK vers comptes_principaux.id
-                        'categorie_id': id_categorie_comptable,          # ✅ FK vers categories_comptables.id
+                        'compte_bancaire_id': id_compte_bancaire_reel,           # Groupe 1 (ex: 1000)
+                        'categorie_id': id_compte_comptable_destination,         # Groupe 3 (3001) ou 2 (2030)
                         'montant': total_ttc,
                         'montant_htva': total_ttc if is_credit else total_ht,
                         'devise': 'CHF',
@@ -19808,14 +19836,17 @@ class POSComptabilisation:
                     
                     if self.modele_ecriture.create(self.modele_categorie, data_vente):
                         nb_ecritures += 1
+                        logger.info(f"✅ Écriture créée : Banque={id_compte_bancaire_reel} → Catégorie={id_compte_comptable_destination} ({'Passif' if is_credit else 'Revenu'})")
                     
-                    # Gestion des frais de service (uniquement pour ventes normales)
+                    # ============================================================
+                    # 6. GESTION DES FRAIS DE SERVICE (uniquement pour ventes normales)
+                    # ============================================================
                     if not is_credit:
                         montant_frais = (total_ttc * (float(item.get('frais_pourcentage', 0) or 0) / 100)) + float(item.get('frais_fixe', 0) or 0)
                         if montant_frais > 0.01 and item.get('compte_frais_service_id'):
                             data_frais = {
                                 'date_ecriture': date_ecriture,
-                                'compte_bancaire_id': id_compte_bancaire_reel, # ✅ Toujours le compte bancaire réel
+                                'compte_bancaire_id': id_compte_bancaire_reel,
                                 'categorie_id': item['compte_frais_service_id'],
                                 'montant': montant_frais,
                                 'montant_htva': montant_frais,
@@ -19831,13 +19862,59 @@ class POSComptabilisation:
                             }
                             if self.modele_ecriture.create(self.modele_categorie, data_frais):
                                 nb_ecritures += 1
+                    
+                    # ============================================================
+                    # 7. CRÉATION DE LA TRANSACTION BANCAIRE
+                    # ============================================================
+                    receipt_ids_str = item.get('receipt_ids')
+                    if receipt_ids_str:
+                        receipt_ids = [int(rid.strip()) for rid in str(receipt_ids_str).split(',') if rid.strip().isdigit()]
+                        montant_par_recu = Decimal(str(total_ttc)) / len(receipt_ids) if receipt_ids else Decimal('0')
+                        
+                        for receipt_id in receipt_ids:
+                            success, msg, tx_id = transaction_model._inserer_transaction_with_cursor(
+                                cursor=cursor,
+                                compte_type='compte_principal',
+                                compte_id=id_compte_bancaire_reel,
+                                type_transaction='depot',
+                                montant=montant_par_recu,
+                                description=f"Vente POS - Reçu #{receipt_id} - {item.get('mode_paiement_nom')}",
+                                user_id=user_id,
+                                date_transaction=datetime.combine(date_ecriture, datetime.min.time()),
+                                validate_balance=False,
+                                receipt_id=receipt_id
+                            )
+                            if success:
+                                nb_transactions += 1
                 
-                logger.info(f"✅ Écritures: {nb_ecritures}, Transactions: {nb_transactions}, Sautées: {nb_sautés}")
+                # ============================================================
+                # 8. MARQUER LES REÇUS COMME COMPTABILISÉS
+                # ============================================================
+                if nb_ecritures > 0:
+                    tous_receipt_ids = set()
+                    for item in items_a_comptabiliser:
+                        r_ids = item.get('receipt_ids')
+                        if r_ids:
+                            for rid in str(r_ids).split(','):
+                                if rid.strip().isdigit():
+                                    tous_receipt_ids.add(int(rid.strip()))
+                    
+                    if tous_receipt_ids:
+                        placeholders = ','.join(['%s'] * len(tous_receipt_ids))
+                        cursor.execute(f"""
+                            UPDATE pos_receipts 
+                            SET comptabilise = TRUE, etat_comptable = 'comptabilise', date_comptabilisation = NOW()
+                            WHERE id IN ({placeholders})
+                        """, list(tous_receipt_ids))
+                        logger.info(f"✅ {len(tous_receipt_ids)} reçus marqués comme comptabilisés")
+                
+                logger.info(f"✅ Résumé : Écritures={nb_ecritures}, Transactions={nb_transactions}, Sautées={nb_sautés}")
                 return True, f"{nb_ecritures} écriture(s) et {nb_transactions} transaction(s) générée(s)"
                 
         except Exception as e:
             logger.error(f"Erreur comptabilisation: {e}", exc_info=True)
             return False, f"Erreur: {str(e)}"
+        
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
             """Récupère le compte de vente de classe 3 par défaut (3000)"""
             try:
