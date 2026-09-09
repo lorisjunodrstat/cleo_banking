@@ -24,6 +24,10 @@
                             <th>Mode de Paiement</th>
                             <th>Type de Taxe POS</th> <!-- ✅ NOUVEAU -->
                             <th class="text-center">Nb Tickets</th>
+                            <th class="text-end">Compte Bancaire</th> <!-- ✅ NOUVEAU -->
+                            <th class="text-end">Compte groupe 1</th> <!-- ✅ NOUVEAU -->
+                            <th class="text-end">Compte Groupe 3</th> <!-- ✅ NOUVEAU -->
+                            <th class="text-end">Compte Frais de service</th> <!-- ✅ NOUVEAU -->
                             <th class="text-end">Total HT</th> <!-- ✅ NOUVEAU -->
                             <th class="text-end">Total TVA</th> <!-- ✅ NOUVEAU -->
                             <th class="text-end">Total TTC</th>
@@ -51,7 +55,10 @@
                             </td>
                             
                             <td class="text-center">{{ item.nb_tickets or 1 }}</td>
-                            
+                            <td class="text-end text-muted">{{ item.compte_bancaire_id or 'Non configuré' }}</td>
+                            <td class="text-end text-muted">{{ item.compte_tresorerie_id or 'Non configuré' }}</td>
+                            <td class="text-end text-muted">{{ item.compte_vente_id or 'Non configuré' }} - {{ item.compte_vente_nom or 'Non spécifié' }}</td>
+                            <td class="text-end text-muted">{{ item.compte_frais_service_id or 'Non configuré' }}</td>
                             <!-- ✅ NOUVEAU : Détail HT -->
                             <td class="text-end text-muted">{{ "%.2f"|format(item.total_ht or 0) }}</td>
                             
