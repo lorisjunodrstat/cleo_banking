@@ -19764,7 +19764,7 @@ class POSComptabilisation:
                 nb_transactions = 0
                 nb_sautés = 0
                 
-                for item in items_a_comptabiliser:
+                for idx, item in enumerate(items_a_comptabiliser):
                     date_ecriture = POSComptabilisation._parse_date_ecriture(
                         item.get('date_jour') or item.get('date')
                     )
@@ -19772,38 +19772,76 @@ class POSComptabilisation:
                     mode_nom = item.get('mode_paiement_nom', 'Inconnu')
                     
                     # ============================================================
-                    # ÉTAPE 1 : Trouver le compte_bancaire_id (Trésorerie réelle)
+                    # ÉTAPE 1 : Récupération des 3 comptes distincts
                     # ============================================================
-                    compte_bancaire_id = item.get('compte_bancaire_id')
-                    compte_bancaire_nom = item.get('compte_bancaire_nom', 'NON CONFIGURÉ')
-                    
-                    if not compte_bancaire_id:
-                        logger.warning(f"⚠️ SAUTÉ : Mode '{mode_nom}' n'a ni compte bancaire, ni compte de fallback sur le PDV.")
-                        nb_sautés += 1
-                        continue
-                    
-                    # ============================================================
-                    # ÉTAPE 2 : Trouver le compte de vente (Groupe 3) et créer les écritures
-                    # ============================================================
-                    compte_vente_id = item.get('compte_vente_id')
-                    compte_vente_nom = f"{item.get('compte_vente_numero')} - {item.get('compte_vente_nom')}"
-                    
-                    if not compte_vente_id:
-                        logger.warning(f"⚠️ SAUTÉ : Pas de compte de vente mappé pour la taxe de '{mode_nom}'.")
-                        nb_sautés += 1
-                        continue
+                    id_compte_bancaire_reel = item.get('compte_bancaire_id')
+                    id_compte_tresorerie = item.get('compte_tresorerie_id')
+                    id_compte_vente = item.get('compte_vente_id')
                     
                     total_ht = float(item.get('total_ht', 0))
                     total_tva = float(item.get('total_tva', 0))
                     total_ttc = float(item.get('total_ttc', 0))
                     
-                    is_credit = self.modele_categorie.is_compte_passif(compte_vente_id)
+                    # 🔍 LOG DÉTAILLÉ
+                    logger.info(f"🔍 Item {idx}: mode={mode_nom}, compte_bancaire={id_compte_bancaire_reel}, "
+                            f"compte_tresorerie={id_compte_tresorerie}, compte_vente={id_compte_vente}, "
+                            f"total_ttc={total_ttc}")
                     
+                    # Vérifications de sécurité
+                    if not id_compte_bancaire_reel:
+                        logger.warning(f"⚠️ SAUTÉ : Mode '{mode_nom}' sans compte bancaire réel configuré.")
+                        nb_sautés += 1
+                        continue
+                    
+                    if not id_compte_tresorerie:
+                        logger.warning(f"⚠️ SAUTÉ : Mode '{mode_nom}' sans compte de trésorerie (Groupe 1) configuré.")
+                        nb_sautés += 1
+                        continue
+
+                    if not id_compte_vente:
+                        logger.warning(f"⚠️ SAUTÉ : Pas de compte de vente (Groupe 3) mappé pour la taxe.")
+                        nb_sautés += 1
+                        continue
+                    
+                    # Détection passif (ex: 2030 pour les bons cadeaux)
+                    is_credit = self.modele_categorie.is_compte_passif(id_compte_vente)
+                    
+                    # ============================================================
+                    # ÉTAPE 2 : CRÉATION DES ÉCRITURES COMPTABLES
+                    # ============================================================
+                    
+                    # A. ÉCRITURE DE TRÉSORERIE (Groupe 1)
+                    data_tresorerie = {
+                        'date_ecriture': date_ecriture,
+                        'compte_bancaire_id': id_compte_bancaire_reel,
+                        'categorie_id': id_compte_tresorerie,
+                        'montant': total_ttc,
+                        'montant_htva': total_ttc,
+                        'devise': 'CHF',
+                        'description': f"Encaissement POS {mode_nom}",
+                        'reference': f"JOURNAL-{date_ecriture}-TRESO-{idx}",
+                        'type_ecriture': 'recette',
+                        'tva_taux': 0,
+                        'tva_montant': 0,
+                        'utilisateur_id': user_id,
+                        'statut': 'validée',
+                        'type_ecriture_comptable': 'principale'
+                    }
+                    
+                    if self.modele_ecriture.create(self.modele_categorie, data_tresorerie):
+                        nb_ecritures += 1
+                        logger.info(f"✅ Écriture Trésorerie créée : Catégorie {id_compte_tresorerie} (Groupe 1)")
+                    else:
+                        logger.error(f"❌ Échec création écriture Trésorerie")
+                        nb_sautés += 1
+                        continue
+
+                    # B. ÉCRITURE DE VENTE / PASSIF (Groupe 3 ou 2)
                     data_vente = {
                         'date_ecriture': date_ecriture,
-                        'compte_bancaire_id': compte_bancaire_id,
-                        'categorie_id': compte_vente_id,
-                        'montant': total_ttc,
+                        'compte_bancaire_id': id_compte_bancaire_reel,
+                        'categorie_id': id_compte_vente,
+                        'montant': total_ttc if is_credit else total_ht,
                         'montant_htva': total_ttc if is_credit else total_ht,
                         'devise': 'CHF',
                         'description': f"Achat crédit POS {item.get('type_taxe_nom')} - {mode_nom}" if is_credit else f"Ventes POS {item.get('type_taxe_nom')} - {mode_nom}",
@@ -19818,19 +19856,15 @@ class POSComptabilisation:
                     
                     if self.modele_ecriture.create(self.modele_categorie, data_vente):
                         nb_ecritures += 1
-                        logger.info(f"✅ Écriture créée : Débit {compte_bancaire_nom} / Crédit {compte_vente_nom} ({total_ttc} CHF)")
-                    else:
-                        logger.error(f"❌ Échec création écriture pour {mode_nom} vers {compte_vente_nom}")
-                        nb_sautés += 1
-                        continue 
+                        logger.info(f"✅ Écriture Vente/Passif créée : Catégorie {id_compte_vente} (Groupe 3/2)")
                     
-                    # Gestion des frais de service
+                    # C. Gestion des frais de service
                     if not is_credit:
                         montant_frais = (total_ttc * (float(item.get('frais_pourcentage', 0) or 0) / 100)) + float(item.get('frais_fixe', 0) or 0)
                         if montant_frais > 0.01 and item.get('compte_frais_service_id'):
                             data_frais = {
                                 'date_ecriture': date_ecriture,
-                                'compte_bancaire_id': compte_bancaire_id,
+                                'compte_bancaire_id': id_compte_bancaire_reel,
                                 'categorie_id': item['compte_frais_service_id'],
                                 'montant': montant_frais,
                                 'montant_htva': montant_frais,
@@ -19846,49 +19880,74 @@ class POSComptabilisation:
                             }
                             if self.modele_ecriture.create(self.modele_categorie, data_frais):
                                 nb_ecritures += 1
-                    
+
                     # ============================================================
-                    # ÉTAPE 3 : Créer la transaction bancaire ET LIER AU REÇU 🆕
+                    # ÉTAPE 3 : CRÉATION DE LA TRANSACTION BANCAIRE
                     # ============================================================
                     receipt_ids_str = item.get('receipt_ids')
+                    logger.info(f"🔍 Item {idx}: receipt_ids_str={receipt_ids_str}")
+                    
                     if receipt_ids_str and total_ttc > 0:
-                        receipt_ids = [int(rid.strip()) for rid in str(receipt_ids_str).split(',') if rid.strip().isdigit()]
-                        montant_par_recu = Decimal(str(total_ttc)) / len(receipt_ids) if receipt_ids else Decimal('0')
+                        # Parser les receipt_ids
+                        try:
+                            receipt_ids = [int(rid.strip()) for rid in str(receipt_ids_str).split(',') if rid.strip().isdigit()]
+                        except Exception as e:
+                            logger.error(f"❌ Erreur parsing receipt_ids: {receipt_ids_str} - {e}")
+                            receipt_ids = []
                         
-                        for receipt_id in receipt_ids:
-                            # Vérification d'idempotence
-                            cursor.execute("""
-                                SELECT id FROM transactions 
-                                WHERE receipt_id = %s AND compte_principal_id = %s AND utilisateur_id = %s
-                            """, (receipt_id, compte_bancaire_id, user_id))
+                        logger.info(f"🔍 Item {idx}: receipt_ids parsés={receipt_ids}")
+                        
+                        if receipt_ids:
+                            montant_par_recu = Decimal(str(total_ttc)) / len(receipt_ids)
+                            logger.info(f"🔍 Item {idx}: montant_par_recu={montant_par_recu}")
                             
-                            if cursor.fetchone() is None:
-                                success, msg, tx_id = transaction_model._inserer_transaction_with_cursor(
-                                    cursor=cursor,
-                                    compte_type='compte_principal',
-                                    compte_id=compte_bancaire_id,
-                                    type_transaction='depot',
-                                    montant=montant_par_recu,
-                                    description=f"Vente POS - Reçu #{receipt_id} - {mode_nom}",
-                                    user_id=user_id,
-                                    date_transaction=datetime.combine(date_ecriture, datetime.min.time()),
-                                    validate_balance=False,
-                                    receipt_id=receipt_id
-                                )
-                                if success:
-                                    nb_transactions += 1
-                                    
-                                    # 🆕 NOUVEAU CRUCIAL : Mettre à jour la table pos_receipts avec l'ID de la transaction créée
-                                    cursor.execute("""
-                                        UPDATE pos_receipts 
-                                        SET transaction_id = %s, 
-                                            compte_bancaire_id = %s
-                                        WHERE id = %s
-                                    """, (tx_id, compte_bancaire_id, receipt_id))
-                                    
-                                    logger.info(f"🔗 Reçu {receipt_id} lié avec succès à la transaction {tx_id} (Compte: {compte_bancaire_id})")
+                            for receipt_id in receipt_ids:
+                                # 🔍 LOG avant vérification
+                                logger.info(f"🔍 Vérification transaction existante pour receipt_id={receipt_id}, compte={id_compte_bancaire_reel}")
+                                
+                                # Vérification d'idempotence
+                                cursor.execute("""
+                                    SELECT id FROM transactions 
+                                    WHERE receipt_id = %s AND compte_principal_id = %s AND utilisateur_id = %s
+                                """, (receipt_id, id_compte_bancaire_reel, user_id))
+                                
+                                existing_tx = cursor.fetchone()
+                                
+                                if existing_tx:
+                                    logger.info(f"ℹ️ Transaction existante trouvée pour reçu {receipt_id}: ID={existing_tx['id']}")
                                 else:
-                                    logger.warning(f"⚠️ Échec transaction pour reçu {receipt_id}: {msg}")
+                                    logger.info(f"🔍 Création transaction pour reçu {receipt_id} sur compte {id_compte_bancaire_reel}")
+                                    
+                                    success, msg, tx_id = transaction_model._inserer_transaction_with_cursor(
+                                        cursor=cursor,
+                                        compte_type='compte_principal',
+                                        compte_id=id_compte_bancaire_reel,
+                                        type_transaction='depot',
+                                        montant=montant_par_recu,
+                                        description=f"Vente POS - Reçu #{receipt_id} - {mode_nom}",
+                                        user_id=user_id,
+                                        date_transaction=datetime.combine(date_ecriture, datetime.min.time()),
+                                        validate_balance=False,
+                                        receipt_id=receipt_id
+                                    )
+                                    
+                                    if success:
+                                        nb_transactions += 1
+                                        logger.info(f"✅ Transaction {tx_id} créée pour reçu {receipt_id}")
+                                        
+                                        # Mettre à jour pos_receipts
+                                        cursor.execute("""
+                                            UPDATE pos_receipts 
+                                            SET transaction_id = %s, compte_bancaire_id = %s
+                                            WHERE id = %s
+                                        """, (tx_id, id_compte_bancaire_reel, receipt_id))
+                                        logger.info(f"🔗 Reçu {receipt_id} lié à la transaction {tx_id}")
+                                    else:
+                                        logger.error(f"❌ Échec création transaction pour reçu {receipt_id}: {msg}")
+                        else:
+                            logger.warning(f"⚠️ Item {idx}: Aucun receipt_id valide après parsing")
+                    else:
+                        logger.warning(f"⚠️ Item {idx}: Pas de receipt_ids_str ou total_ttc=0")
                 
                 # ============================================================
                 # ÉTAPE 4 : Marquer les reçus comme comptabilisés
@@ -19906,12 +19965,10 @@ class POSComptabilisation:
                         placeholders = ','.join(['%s'] * len(tous_receipt_ids))
                         cursor.execute(f"""
                             UPDATE pos_receipts 
-                            SET comptabilise = TRUE, 
-                                etat_comptable = 'comptabilise', 
-                                date_comptabilisation = NOW()
+                            SET comptabilise = TRUE, etat_comptable = 'comptabilise', date_comptabilisation = NOW()
                             WHERE id IN ({placeholders})
                         """, list(tous_receipt_ids))
-                        logger.info(f"✅ {len(tous_receipt_ids)} reçus marqués comme 'comptabilise'")
+                        logger.info(f"✅ {len(tous_receipt_ids)} reçus marqués comme comptabilisés")
                 
                 logger.info(f"✅ Résumé final : Écritures={nb_ecritures}, Transactions={nb_transactions}, Sautées={nb_sautés}")
                 return True, f"{nb_ecritures} écriture(s) et {nb_transactions} transaction(s) générée(s)"
@@ -19919,7 +19976,7 @@ class POSComptabilisation:
         except Exception as e:
             logger.error(f"Erreur comptabilisation: {e}", exc_info=True)
             return False, f"Erreur: {str(e)}"
-
+    
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
             """Récupère le compte de vente de classe 3 par défaut (3000)"""
             try:
