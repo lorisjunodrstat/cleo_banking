@@ -19774,17 +19774,16 @@ class POSComptabilisation:
                     # ============================================================
                     # ÉTAPE 1 : Trouver le compte_bancaire_id (Trésorerie réelle)
                     # ============================================================
-                    # Grâce au COALESCE dans get_a_comptabiliser, c'est déjà résolu !
                     compte_bancaire_id = item.get('compte_bancaire_id')
                     compte_bancaire_nom = item.get('compte_bancaire_nom', 'NON CONFIGURÉ')
                     
                     if not compte_bancaire_id:
-                        logger.warning(f"⚠️ SAUTÉ : Mode '{mode_nom}' n'a ni compte bancaire, ni compte de fallback sur le PDV. (Compte: {compte_bancaire_nom})")
+                        logger.warning(f"⚠️ SAUTÉ : Mode '{mode_nom}' n'a ni compte bancaire, ni compte de fallback sur le PDV.")
                         nb_sautés += 1
                         continue
                     
                     # ============================================================
-                    # ÉTAPE 2 : Trouver le compte de vente (Groupe 3) et créer les écritures (Principale + TVA)
+                    # ÉTAPE 2 : Trouver le compte de vente (Groupe 3) et créer les écritures
                     # ============================================================
                     compte_vente_id = item.get('compte_vente_id')
                     compte_vente_nom = f"{item.get('compte_vente_numero')} - {item.get('compte_vente_nom')}"
@@ -19798,13 +19797,12 @@ class POSComptabilisation:
                     total_tva = float(item.get('total_tva', 0))
                     total_ttc = float(item.get('total_ttc', 0))
                     
-                    # Détection passif (ex: 2030 pour les bons cadeaux)
                     is_credit = self.modele_categorie.is_compte_passif(compte_vente_id)
                     
                     data_vente = {
                         'date_ecriture': date_ecriture,
-                        'compte_bancaire_id': compte_bancaire_id, # ✅ Lie l'écriture au compte de trésorerie réel (Groupe 1)
-                        'categorie_id': compte_vente_id,          # ✅ Lie l'écriture au compte de vente (Groupe 3)
+                        'compte_bancaire_id': compte_bancaire_id,
+                        'categorie_id': compte_vente_id,
                         'montant': total_ttc,
                         'montant_htva': total_ttc if is_credit else total_ht,
                         'devise': 'CHF',
@@ -19818,16 +19816,15 @@ class POSComptabilisation:
                         'type_ecriture_comptable': 'principale'
                     }
                     
-                    # ✅ Cette méthode crée l'écriture principale ET gère automatiquement la TVA (secondaire)
                     if self.modele_ecriture.create(self.modele_categorie, data_vente):
                         nb_ecritures += 1
                         logger.info(f"✅ Écriture créée : Débit {compte_bancaire_nom} / Crédit {compte_vente_nom} ({total_ttc} CHF)")
                     else:
                         logger.error(f"❌ Échec création écriture pour {mode_nom} vers {compte_vente_nom}")
                         nb_sautés += 1
-                        continue # On ne crée pas la transaction si l'écriture a échoué
+                        continue 
                     
-                    # Gestion des frais de service (uniquement pour ventes normales)
+                    # Gestion des frais de service
                     if not is_credit:
                         montant_frais = (total_ttc * (float(item.get('frais_pourcentage', 0) or 0) / 100)) + float(item.get('frais_fixe', 0) or 0)
                         if montant_frais > 0.01 and item.get('compte_frais_service_id'):
@@ -19851,7 +19848,7 @@ class POSComptabilisation:
                                 nb_ecritures += 1
                     
                     # ============================================================
-                    # ÉTAPE 3 : Créer la transaction bancaire (Mouvement de fonds)
+                    # ÉTAPE 3 : Créer la transaction bancaire ET LIER AU REÇU 🆕
                     # ============================================================
                     receipt_ids_str = item.get('receipt_ids')
                     if receipt_ids_str and total_ttc > 0:
@@ -19869,7 +19866,7 @@ class POSComptabilisation:
                                 success, msg, tx_id = transaction_model._inserer_transaction_with_cursor(
                                     cursor=cursor,
                                     compte_type='compte_principal',
-                                    compte_id=compte_bancaire_id, # ✅ Utilise le même compte résolu à l'étape 1
+                                    compte_id=compte_bancaire_id,
                                     type_transaction='depot',
                                     montant=montant_par_recu,
                                     description=f"Vente POS - Reçu #{receipt_id} - {mode_nom}",
@@ -19880,6 +19877,16 @@ class POSComptabilisation:
                                 )
                                 if success:
                                     nb_transactions += 1
+                                    
+                                    # 🆕 NOUVEAU CRUCIAL : Mettre à jour la table pos_receipts avec l'ID de la transaction créée
+                                    cursor.execute("""
+                                        UPDATE pos_receipts 
+                                        SET transaction_id = %s, 
+                                            compte_bancaire_id = %s
+                                        WHERE id = %s
+                                    """, (tx_id, compte_bancaire_id, receipt_id))
+                                    
+                                    logger.info(f"🔗 Reçu {receipt_id} lié avec succès à la transaction {tx_id} (Compte: {compte_bancaire_id})")
                                 else:
                                     logger.warning(f"⚠️ Échec transaction pour reçu {receipt_id}: {msg}")
                 
@@ -19899,10 +19906,12 @@ class POSComptabilisation:
                         placeholders = ','.join(['%s'] * len(tous_receipt_ids))
                         cursor.execute(f"""
                             UPDATE pos_receipts 
-                            SET comptabilise = TRUE, etat_comptable = 'comptabilise', date_comptabilisation = NOW()
+                            SET comptabilise = TRUE, 
+                                etat_comptable = 'comptabilise', 
+                                date_comptabilisation = NOW()
                             WHERE id IN ({placeholders})
                         """, list(tous_receipt_ids))
-                        logger.info(f"✅ {len(tous_receipt_ids)} reçus marqués comme comptabilisés")
+                        logger.info(f"✅ {len(tous_receipt_ids)} reçus marqués comme 'comptabilise'")
                 
                 logger.info(f"✅ Résumé final : Écritures={nb_ecritures}, Transactions={nb_transactions}, Sautées={nb_sautés}")
                 return True, f"{nb_ecritures} écriture(s) et {nb_transactions} transaction(s) générée(s)"
@@ -19910,6 +19919,7 @@ class POSComptabilisation:
         except Exception as e:
             logger.error(f"Erreur comptabilisation: {e}", exc_info=True)
             return False, f"Erreur: {str(e)}"
+
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
             """Récupère le compte de vente de classe 3 par défaut (3000)"""
             try:
