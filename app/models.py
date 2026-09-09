@@ -19555,29 +19555,13 @@ class POSComptabilisation:
         self.pos_compta_mapping = POSComptaMapping(db)
 
     def get_a_comptabiliser(self, user_id: int, pdv_id: int = None, 
-                        date_from: str = None, date_to: str = None, 
-                        mode: str = 'jour',
-                        only_without_transaction: bool = False) -> List[Dict]:
-        """
-        Récupère les données POS à comptabiliser.
-        
-        Args:
-            user_id: ID de l'utilisateur
-            pdv_id: ID du point de vente (optionnel)
-            date_from: Date de début (YYYY-MM-DD)
-            date_to: Date de fin (YYYY-MM-DD)
-            mode: 'jour' (agrégé par jour) ou 'ticket' (par ticket)
-            only_without_transaction: Si True, exclut les reçus qui ont déjà 
-                                    une transaction bancaire liée
-        
-        Returns:
-            Liste de dictionnaires avec les données à comptabiliser
-        """
+                            date_from: str = None, date_to: str = None, 
+                            mode: str = 'jour',
+                            only_without_transaction: bool = False) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 compte_defaut = self._get_compte_vente_defaut(cursor, user_id)
                 
-                # Condition WHERE de base commune aux deux modes
                 where_base = """
                     WHERE r.utilisateur_id = %s  
                     AND (COALESCE(r.comptabilise, 0) = 0 
@@ -19587,7 +19571,6 @@ class POSComptabilisation:
                 """
                 params_base = [user_id]
                 
-                # Filtre optionnel : exclure les reçus avec transaction bancaire existante
                 if only_without_transaction:
                     where_base += """
                     AND NOT EXISTS (
@@ -19597,31 +19580,31 @@ class POSComptabilisation:
                     )
                     """
                 
-                # Filtres de date optionnels
                 if date_from:
                     where_base += " AND DATE(r.date) >= %s"
                     params_base.append(date_from)
                 if date_to:
                     where_base += " AND DATE(r.date) <= %s"
                     params_base.append(date_to)
-                
-                # Filtre PDV optionnel
                 if pdv_id:
                     where_base += " AND r.pdv_id = %s"
                     params_base.append(pdv_id)
                 
                 if mode == 'jour':
-                    # ============================================
-                    # MODE JOUR : Agrégation par jour + mode de paiement + type de taxe
-                    # ============================================
                     query = """
                         SELECT 
                             DATE_FORMAT(sub.date, '%%Y-%%m-%%d') as date_jour,
                             pm.id as mode_paiement_id,
                             pm.nom as mode_paiement_nom,
-                            -- ✅ CORRECTION : Fallback vers le compte bancaire du PDV
-                            COALESCE(pm.compte_bancaire_id, pdv.compte_bancaire_id) as compte_bancaire_id,
+                            
+                            -- 🎯 RÉSOLUTION DU COMPTE BANCAIRE (Mode de paiement OU Fallback PDV)
+                            COALESCE(pm.compte_bancaire_id, sub.compte_bancaire_pdv) as compte_bancaire_id,
+                            cb.nom_compte as compte_bancaire_nom, -- ✅ NOUVEAU : Nom pour le debug
+                            
                             pm.compte_tresorerie_id,
+                            ctres.numero as compte_tresorerie_numero, -- ✅ NOUVEAU
+                            ctres.nom as compte_tresorerie_nom,       -- ✅ NOUVEAU
+                            
                             pm.compte_frais_service_id,
                             pm.frais_pourcentage,
                             pm.frais_fixe,
@@ -19631,28 +19614,23 @@ class POSComptabilisation:
                             cvente.numero as compte_vente_numero,
                             cvente.nom as compte_vente_nom,
                             COUNT(DISTINCT sub.receipt_id) as nb_tickets,
-                            -- 🎯 Prorata du HT et de la TVA basé sur la part du paiement
                             SUM(sub.total_ht * (p.montant / NULLIF(sub.total_collecte, 0))) as total_ht,
                             SUM(sub.total_tva * (p.montant / NULLIF(sub.total_collecte, 0))) as total_tva,
-                            -- Le montant TTC réel encaissé par ce mode de paiement
                             SUM(p.montant) as total_ttc,
-                            -- 🆕 Indicateur : au moins un reçu du groupe a-t-il une transaction bancaire ?
                             MAX(sub.has_transaction_bancaire) as has_transaction_bancaire,
-                            -- 🆕 Liste des receipt_ids du groupe (pour liaison ultérieure)
                             GROUP_CONCAT(DISTINCT sub.receipt_id) as receipt_ids
                         FROM (
-                            -- SOUS-REQUÊTE : Totaux par reçu et par type de taxe
                             SELECT 
                                 r.id as receipt_id,
                                 r.date,
                                 r.total_collecte,
-                                r.pdv,  -- ✅ AJOUT : Nom du PDV pour la jointure
+                                r.pdv,
+                                pdv.compte_bancaire_id as compte_bancaire_pdv, -- ✅ NOUVEAU : Remonté pour le COALESCE
                                 pat.type_taxe_id,
                                 typ.nom as type_taxe_nom,
                                 COALESCE(mct.compte_vente_id, %s) as compte_vente_id,
                                 SUM(ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100))) as total_ht,
                                 SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100)))) as total_tva,
-                                -- 🆕 Détection de transaction bancaire existante
                                 CASE WHEN EXISTS (
                                     SELECT 1 FROM transactions t_banc 
                                     WHERE t_banc.receipt_id = r.id 
@@ -19663,30 +19641,31 @@ class POSComptabilisation:
                             LEFT JOIN pos_article_taxes pat ON ri.article_id = pat.article_id AND pat.est_actuelle = TRUE
                             LEFT JOIN pos_types_taxes typ ON pat.type_taxe_id = typ.id
                             LEFT JOIN pos_compta_mapping_tva mct ON pat.type_taxe_id = mct.type_taxe_id AND mct.utilisateur_id = r.utilisateur_id
+                            LEFT JOIN pos_points_de_vente pdv ON pdv.nom_pdv = r.pdv -- ✅ NOUVEAU : Jointure pour le fallback
                             """ + where_base + """
-                            GROUP BY r.id, r.date, r.total_collecte, r.pdv, pat.type_taxe_id, typ.nom, COALESCE(mct.compte_vente_id, %s)
+                            GROUP BY r.id, r.date, r.total_collecte, r.pdv, pdv.compte_bancaire_id, pat.type_taxe_id, typ.nom, COALESCE(mct.compte_vente_id, %s)
                         ) sub
                         JOIN pos_payments p ON sub.receipt_id = p.receipt_id
                         JOIN pos_modes_paiement pm ON p.mode_paiement_id = pm.id
-                        -- ✅ AJOUT : Jointure avec pos_points_de_vente pour le fallback
-                        LEFT JOIN pos_points_de_vente pdv ON pdv.nom_pdv = sub.pdv
                         LEFT JOIN categories_comptables cvente ON sub.compte_vente_id = cvente.id
+                        -- ✅ NOUVEAUX JOINTURES POUR LES NOMS
+                        LEFT JOIN comptes_principaux cb ON cb.id = COALESCE(pm.compte_bancaire_id, sub.compte_bancaire_pdv)
+                        LEFT JOIN categories_comptables ctres ON ctres.id = pm.compte_tresorerie_id
                         GROUP BY 
                             DATE_FORMAT(sub.date, '%%Y-%%m-%%d'), 
-                            pm.id, pm.nom, pm.compte_bancaire_id, pm.compte_tresorerie_id,
+                            pm.id, pm.nom, pm.compte_bancaire_id, sub.compte_bancaire_pdv, pm.compte_tresorerie_id,
+                            ctres.numero, ctres.nom, cb.nom_compte,
                             pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe,
                             sub.type_taxe_id, sub.type_taxe_nom,
-                            sub.compte_vente_id, pdv.compte_bancaire_id
+                            sub.compte_vente_id
                         ORDER BY date_jour DESC, pm.nom, sub.type_taxe_nom
                     """
                     params = [compte_defaut] + params_base + [compte_defaut]
                     cursor.execute(query, params)
                     return cursor.fetchall()
-                            
-                else:
-                    # ============================================
-                    # MODE TICKET : Détail par ticket + mode de paiement
-                    # ============================================
+                
+                else: # mode 'ticket'
+                    # (Même logique de jointure appliquée au mode ticket pour la cohérence)
                     query = """
                         SELECT 
                             sub.receipt_id as id, 
@@ -19694,9 +19673,14 @@ class POSComptabilisation:
                             DATE_FORMAT(sub.date, '%%Y-%%m-%%d %%H:%%i:%%s') as date,
                             pm.id as mode_paiement_id,
                             pm.nom as mode_paiement_nom, 
+                            
+                            COALESCE(pm.compte_bancaire_id, sub.compte_bancaire_pdv) as compte_bancaire_id,
+                            cb.nom_compte as compte_bancaire_nom,
+                            
                             pm.compte_tresorerie_id,
-                            -- ✅ CORRECTION : Fallback vers le compte bancaire du PDV
-                            COALESCE(pm.compte_bancaire_id, pdv.compte_bancaire_id) as compte_bancaire_id,
+                            ctres.numero as compte_tresorerie_numero,
+                            ctres.nom as compte_tresorerie_nom,
+                            
                             pm.compte_frais_service_id, 
                             pm.frais_pourcentage, 
                             pm.frais_fixe,
@@ -19706,9 +19690,7 @@ class POSComptabilisation:
                             SUM(sub.total_ht * (p.montant / NULLIF(sub.total_collecte, 0))) as total_ht,
                             SUM(sub.total_tva * (p.montant / NULLIF(sub.total_collecte, 0))) as total_tva,
                             SUM(p.montant) as total_ttc,
-                            -- 🆕 Indicateur de transaction bancaire existante
                             sub.has_transaction_bancaire,
-                            -- 🆕 ID du reçu pour liaison avec transaction
                             sub.receipt_id
                         FROM (
                             SELECT 
@@ -19716,11 +19698,11 @@ class POSComptabilisation:
                                 r.recu_numero,
                                 r.date,
                                 r.total_collecte,
-                                r.pdv,  -- ✅ AJOUT : Nom du PDV pour la jointure
+                                r.pdv,
+                                pdv.compte_bancaire_id as compte_bancaire_pdv,
                                 COALESCE(mct.compte_vente_id, %s) as compte_vente_id,
                                 SUM(ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100))) as total_ht,
                                 SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100)))) as total_tva,
-                                -- 🆕 Détection de transaction bancaire existante
                                 CASE WHEN EXISTS (
                                     SELECT 1 FROM transactions t_banc 
                                     WHERE t_banc.receipt_id = r.id 
@@ -19730,19 +19712,20 @@ class POSComptabilisation:
                             JOIN pos_receipt_items ri ON r.id = ri.receipt_id
                             LEFT JOIN pos_article_taxes pat ON ri.article_id = pat.article_id AND pat.est_actuelle = TRUE
                             LEFT JOIN pos_compta_mapping_tva mct ON pat.type_taxe_id = mct.type_taxe_id AND mct.utilisateur_id = r.utilisateur_id
+                            LEFT JOIN pos_points_de_vente pdv ON pdv.nom_pdv = r.pdv
                             """ + where_base + """
-                            GROUP BY r.id, r.recu_numero, r.date, r.total_collecte, r.pdv, COALESCE(mct.compte_vente_id, %s)
+                            GROUP BY r.id, r.recu_numero, r.date, r.total_collecte, r.pdv, pdv.compte_bancaire_id, COALESCE(mct.compte_vente_id, %s)
                         ) sub
                         JOIN pos_payments p ON sub.receipt_id = p.receipt_id
                         JOIN pos_modes_paiement pm ON p.mode_paiement_id = pm.id
-                        -- ✅ AJOUT : Jointure avec pos_points_de_vente pour le fallback
-                        LEFT JOIN pos_points_de_vente pdv ON pdv.nom_pdv = sub.pdv
                         LEFT JOIN categories_comptables cvente ON sub.compte_vente_id = cvente.id
+                        LEFT JOIN comptes_principaux cb ON cb.id = COALESCE(pm.compte_bancaire_id, sub.compte_bancaire_pdv)
+                        LEFT JOIN categories_comptables ctres ON ctres.id = pm.compte_tresorerie_id
                         GROUP BY sub.receipt_id, sub.recu_numero, sub.date, pm.id, pm.nom, 
-                                pm.compte_tresorerie_id, pm.compte_bancaire_id, 
+                                pm.compte_tresorerie_id, pm.compte_bancaire_id, sub.compte_bancaire_pdv,
+                                cb.nom_compte, ctres.numero, ctres.nom,
                                 pm.compte_frais_service_id, pm.frais_pourcentage, 
-                                pm.frais_fixe, sub.compte_vente_id, sub.has_transaction_bancaire,
-                                pdv.compte_bancaire_id
+                                pm.frais_fixe, sub.compte_vente_id, sub.has_transaction_bancaire
                         ORDER BY sub.date DESC
                     """
                     params = [compte_defaut] + params_base + [compte_defaut]
@@ -19774,7 +19757,7 @@ class POSComptabilisation:
             from app.models import TransactionFinanciere
             transaction_model = TransactionFinanciere(self.db)
             
-            logger.info(f"📊 Items reçus pour comptabilisation : {len(items_a_comptabiliser)}")
+            logger.info(f"📊 Début comptabilisation de {len(items_a_comptabiliser)} éléments")
             
             with self.db.get_cursor(dictionary=True) as cursor:
                 nb_ecritures = 0
@@ -19786,39 +19769,46 @@ class POSComptabilisation:
                         item.get('date_jour') or item.get('date')
                     )
                     
-                    # 1. Récupération des IDs (on garde uniquement ce qui est utile)
-                    id_compte_bancaire_reel = item.get('compte_bancaire_id')  # Groupe 1 (ex: 111 Concardis)
-                    id_compte_vente = item.get('compte_vente_id')             # Groupe 3 (ex: 3001 ou 3002)
+                    mode_nom = item.get('mode_paiement_nom', 'Inconnu')
+                    
+                    # ============================================================
+                    # ÉTAPE 1 : Trouver le compte_bancaire_id (Trésorerie réelle)
+                    # ============================================================
+                    # Grâce au COALESCE dans get_a_comptabiliser, c'est déjà résolu !
+                    compte_bancaire_id = item.get('compte_bancaire_id')
+                    compte_bancaire_nom = item.get('compte_bancaire_nom', 'NON CONFIGURÉ')
+                    
+                    if not compte_bancaire_id:
+                        logger.warning(f"⚠️ SAUTÉ : Mode '{mode_nom}' n'a ni compte bancaire, ni compte de fallback sur le PDV. (Compte: {compte_bancaire_nom})")
+                        nb_sautés += 1
+                        continue
+                    
+                    # ============================================================
+                    # ÉTAPE 2 : Trouver le compte de vente (Groupe 3) et créer les écritures (Principale + TVA)
+                    # ============================================================
+                    compte_vente_id = item.get('compte_vente_id')
+                    compte_vente_nom = f"{item.get('compte_vente_numero')} - {item.get('compte_vente_nom')}"
+                    
+                    if not compte_vente_id:
+                        logger.warning(f"⚠️ SAUTÉ : Pas de compte de vente mappé pour la taxe de '{mode_nom}'.")
+                        nb_sautés += 1
+                        continue
                     
                     total_ht = float(item.get('total_ht', 0))
                     total_tva = float(item.get('total_tva', 0))
                     total_ttc = float(item.get('total_ttc', 0))
                     
-                    # Vérifications de sécurité
-                    if not id_compte_bancaire_reel:
-                        logger.warning(f"⚠️ Sauté : Pas de compte bancaire réel configuré pour {item.get('mode_paiement_nom')}")
-                        nb_sautés += 1
-                        continue
+                    # Détection passif (ex: 2030 pour les bons cadeaux)
+                    is_credit = self.modele_categorie.is_compte_passif(compte_vente_id)
                     
-                    if not id_compte_vente:
-                        logger.warning(f"⚠️ Sauté : Pas de compte de vente mappé pour la taxe {item.get('type_taxe_nom')}")
-                        nb_sautés += 1
-                        continue
-                    
-                    # Détection passif (ex: 2030 pour bons cadeaux)
-                    is_credit = self.modele_categorie.is_compte_passif(id_compte_vente)
-                    
-                    # ============================================================
-                    # ÉTAPE A : CRÉATION DE L'ÉCRITURE COMPTABLE (Groupe 1 + Groupe 3 + TVA)
-                    # ============================================================
                     data_vente = {
                         'date_ecriture': date_ecriture,
-                        'compte_bancaire_id': id_compte_bancaire_reel,  # Débit (Groupe 1)
-                        'categorie_id': id_compte_vente,                 # Crédit (Groupe 3 ou 2)
+                        'compte_bancaire_id': compte_bancaire_id, # ✅ Lie l'écriture au compte de trésorerie réel (Groupe 1)
+                        'categorie_id': compte_vente_id,          # ✅ Lie l'écriture au compte de vente (Groupe 3)
                         'montant': total_ttc,
                         'montant_htva': total_ttc if is_credit else total_ht,
                         'devise': 'CHF',
-                        'description': f"Achat crédit POS {item.get('type_taxe_nom')} - {item.get('mode_paiement_nom')}" if is_credit else f"Ventes POS {item.get('type_taxe_nom')} - {item.get('mode_paiement_nom')}",
+                        'description': f"Achat crédit POS {item.get('type_taxe_nom')} - {mode_nom}" if is_credit else f"Ventes POS {item.get('type_taxe_nom')} - {mode_nom}",
                         'reference': f"JOURNAL-{date_ecriture}-{'CREDIT-' if is_credit else ''}{item.get('type_taxe_id')}",
                         'type_ecriture': 'recette',
                         'tva_taux': 0 if is_credit else (round((total_tva / total_ht * 100), 2) if total_ht > 0 else 0),
@@ -19828,22 +19818,27 @@ class POSComptabilisation:
                         'type_ecriture_comptable': 'principale'
                     }
                     
+                    # ✅ Cette méthode crée l'écriture principale ET gère automatiquement la TVA (secondaire)
                     if self.modele_ecriture.create(self.modele_categorie, data_vente):
                         nb_ecritures += 1
-                        logger.info(f"✅ Écriture comptable créée : Débit {id_compte_bancaire_reel} / Crédit {id_compte_vente}")
+                        logger.info(f"✅ Écriture créée : Débit {compte_bancaire_nom} / Crédit {compte_vente_nom} ({total_ttc} CHF)")
+                    else:
+                        logger.error(f"❌ Échec création écriture pour {mode_nom} vers {compte_vente_nom}")
+                        nb_sautés += 1
+                        continue # On ne crée pas la transaction si l'écriture a échoué
                     
-                    # Gestion des frais de service (si applicable)
+                    # Gestion des frais de service (uniquement pour ventes normales)
                     if not is_credit:
                         montant_frais = (total_ttc * (float(item.get('frais_pourcentage', 0) or 0) / 100)) + float(item.get('frais_fixe', 0) or 0)
                         if montant_frais > 0.01 and item.get('compte_frais_service_id'):
                             data_frais = {
                                 'date_ecriture': date_ecriture,
-                                'compte_bancaire_id': id_compte_bancaire_reel,
+                                'compte_bancaire_id': compte_bancaire_id,
                                 'categorie_id': item['compte_frais_service_id'],
                                 'montant': montant_frais,
                                 'montant_htva': montant_frais,
                                 'devise': 'CHF',
-                                'description': f"Frais de service - {item.get('mode_paiement_nom')}",
+                                'description': f"Frais de service - {mode_nom}",
                                 'reference': f"JOURNAL-{date_ecriture}-FRAIS",
                                 'type_ecriture': 'depense',
                                 'tva_taux': 0,
@@ -19854,9 +19849,9 @@ class POSComptabilisation:
                             }
                             if self.modele_ecriture.create(self.modele_categorie, data_frais):
                                 nb_ecritures += 1
-
+                    
                     # ============================================================
-                    # ÉTAPE B : CRÉATION DE LA TRANSACTION FINANCIÈRE (Mise à jour du solde)
+                    # ÉTAPE 3 : Créer la transaction bancaire (Mouvement de fonds)
                     # ============================================================
                     receipt_ids_str = item.get('receipt_ids')
                     if receipt_ids_str and total_ttc > 0:
@@ -19864,20 +19859,20 @@ class POSComptabilisation:
                         montant_par_recu = Decimal(str(total_ttc)) / len(receipt_ids) if receipt_ids else Decimal('0')
                         
                         for receipt_id in receipt_ids:
-                            # Vérifier si la transaction existe déjà pour éviter les doublons
+                            # Vérification d'idempotence
                             cursor.execute("""
                                 SELECT id FROM transactions 
                                 WHERE receipt_id = %s AND compte_principal_id = %s AND utilisateur_id = %s
-                            """, (receipt_id, id_compte_bancaire_reel, user_id))
+                            """, (receipt_id, compte_bancaire_id, user_id))
                             
                             if cursor.fetchone() is None:
                                 success, msg, tx_id = transaction_model._inserer_transaction_with_cursor(
                                     cursor=cursor,
                                     compte_type='compte_principal',
-                                    compte_id=id_compte_bancaire_reel,
+                                    compte_id=compte_bancaire_id, # ✅ Utilise le même compte résolu à l'étape 1
                                     type_transaction='depot',
                                     montant=montant_par_recu,
-                                    description=f"Vente POS - Reçu #{receipt_id} - {item.get('mode_paiement_nom')}",
+                                    description=f"Vente POS - Reçu #{receipt_id} - {mode_nom}",
                                     user_id=user_id,
                                     date_transaction=datetime.combine(date_ecriture, datetime.min.time()),
                                     validate_balance=False,
@@ -19885,15 +19880,36 @@ class POSComptabilisation:
                                 )
                                 if success:
                                     nb_transactions += 1
-                                    logger.info(f"✅ Transaction {tx_id} créée pour reçu {receipt_id} sur compte {id_compte_bancaire_reel}")
+                                else:
+                                    logger.warning(f"⚠️ Échec transaction pour reçu {receipt_id}: {msg}")
                 
-                logger.info(f"✅ Résumé : Écritures={nb_ecritures}, Transactions={nb_transactions}, Sautées={nb_sautés}")
+                # ============================================================
+                # ÉTAPE 4 : Marquer les reçus comme comptabilisés
+                # ============================================================
+                if nb_ecritures > 0:
+                    tous_receipt_ids = set()
+                    for item in items_a_comptabiliser:
+                        r_ids = item.get('receipt_ids')
+                        if r_ids:
+                            for rid in str(r_ids).split(','):
+                                if rid.strip().isdigit():
+                                    tous_receipt_ids.add(int(rid.strip()))
+                    
+                    if tous_receipt_ids:
+                        placeholders = ','.join(['%s'] * len(tous_receipt_ids))
+                        cursor.execute(f"""
+                            UPDATE pos_receipts 
+                            SET comptabilise = TRUE, etat_comptable = 'comptabilise', date_comptabilisation = NOW()
+                            WHERE id IN ({placeholders})
+                        """, list(tous_receipt_ids))
+                        logger.info(f"✅ {len(tous_receipt_ids)} reçus marqués comme comptabilisés")
+                
+                logger.info(f"✅ Résumé final : Écritures={nb_ecritures}, Transactions={nb_transactions}, Sautées={nb_sautés}")
                 return True, f"{nb_ecritures} écriture(s) et {nb_transactions} transaction(s) générée(s)"
                 
         except Exception as e:
             logger.error(f"Erreur comptabilisation: {e}", exc_info=True)
             return False, f"Erreur: {str(e)}"
-
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
             """Récupère le compte de vente de classe 3 par défaut (3000)"""
             try:

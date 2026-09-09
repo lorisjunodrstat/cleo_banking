@@ -55,8 +55,8 @@
                             </td>
                             
                             <td class="text-center">{{ item.nb_tickets or 1 }}</td>
-                            <td class="text-end text-muted">{{ item.compte_bancaire_id or 'Non configuré' }}</td>
-                            <td class="text-end text-muted">{{ item.compte_tresorerie_id or 'Non configuré' }}</td>
+                            <td class="text-end text-muted">{{ item.compte_bancaire_id or 'Non configuré' }} - {{ item.compte_bancaire_nom or 'Non spécifié' }}</td>
+                            <td class="text-end text-muted">{{ item.compte_tresorerie_id or 'Non configuré' }} - {{ item.compte_tresorerie_nom or 'Non spécifié' }}</td>
                             <td class="text-end text-muted">{{ item.compte_vente_id or 'Non configuré' }} - {{ item.compte_vente_nom or 'Non spécifié' }}</td>
                             <td class="text-end text-muted">{{ item.compte_frais_service_id or 'Non configuré' }}</td>
                             <!-- ✅ NOUVEAU : Détail HT -->
