@@ -536,60 +536,61 @@ class DatabaseManager:
                 );""")
 
                 cursor.execute("""
-                CREATE TABLE IF NOT EXISTS ecritures_comptables (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    transaction_id INT NULL,
-                    date_ecriture DATE NOT NULL,
-                    compte_bancaire_id INT NOT NULL,
-                    sous_compte_id INT NULL,
-                    categorie_id INT NOT NULL,
-                    montant DECIMAL(15,2) NOT NULL,
-                    montant_htva DECIMAL(15,2) NOT NULL,
-                    devise VARCHAR(3) DEFAULT 'CHF',
-                    description TEXT,
-                    id_contact INT NULL,
-                    reference VARCHAR(100),
-                    type_ecriture ENUM('depense', 'recette') NOT NULL,
-                    tva_taux DECIMAL(5,2) DEFAULT 0.00,
-                    tva_montant DECIMAL(15,2) DEFAULT 0.00,
-                    utilisateur_id INT NOT NULL,
-                    
-                    -- 📎 Champs pour les fichiers joints (attendus par get_fichier / send_file)
-                    fichier_path VARCHAR(255) NULL COMMENT 'Chemin relatif ou absolu vers le fichier',
-                    fichier_nom_original VARCHAR(255) NULL COMMENT 'Nom du fichier lors de l\'upload',
-                    fichier_type_mime VARCHAR(100) NULL COMMENT 'Ex: application/pdf, image/jpeg',
-                    
-                    -- 🔄 Statut étendu pour supporter le soft delete de votre code Python
-                    statut ENUM('pending', 'validée', 'rejetée', 'supprimée') DEFAULT 'pending',
-                    date_validation TIMESTAMP NULL,
-                    
-                    -- ⏱️ Audit
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    
-                    -- 🔗 Hiérarchie (Écritures principales / complémentaires)
-                    ecriture_principale_id INT NULL,
-                    type_ecriture_comptable VARCHAR(20) DEFAULT 'principale' NOT NULL,
-                    
-                    -- 🔒 Contraintes de clés étrangères avec règles de cascade
-                    FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id) ON DELETE CASCADE,
-                    FOREIGN KEY (sous_compte_id) REFERENCES sous_comptes(id) ON DELETE SET NULL,
-                    FOREIGN KEY (categorie_id) REFERENCES categories_comptables(id) ON DELETE RESTRICT,
-                    FOREIGN KEY (id_contact) REFERENCES contacts(id_contact) ON DELETE SET NULL,
-                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                    FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
-                    FOREIGN KEY (ecriture_principale_id) REFERENCES ecritures_comptables(id) ON DELETE CASCADE,
-                    
-                    -- ⚡ Index pour optimiser les requêtes de filtrage et les jointures
-                    INDEX idx_utilisateur_id (utilisateur_id),
-                    INDEX idx_transaction_id (transaction_id),
-                    INDEX idx_date_ecriture (date_ecriture),
-                    INDEX idx_categorie_id (categorie_id),
-                    INDEX idx_statut (statut),
-                    INDEX idx_ecriture_principale_id (ecriture_principale_id),
-                    INDEX idx_compte_bancaire_id (compte_bancaire_id)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;""")
-
+                    CREATE TABLE IF NOT EXISTS ecritures_comptables (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        transaction_id INT NULL,
+                        date_ecriture DATE NOT NULL,
+                        compte_bancaire_id INT NOT NULL,
+                        sous_compte_id INT NULL,
+                        categorie_id INT NOT NULL,
+                        montant DECIMAL(15,2) NOT NULL,
+                        montant_htva DECIMAL(15,2) NOT NULL,
+                        devise VARCHAR(3) DEFAULT 'CHF',
+                        description TEXT,
+                        id_contact INT NULL,
+                        reference VARCHAR(100),
+                        type_ecriture ENUM('depense', 'recette') NOT NULL,
+                        tva_taux DECIMAL(5,2) DEFAULT 0.00,
+                        tva_montant DECIMAL(15,2) DEFAULT 0.00,
+                        utilisateur_id INT NOT NULL,
+                        
+                        -- 📎 Champs pour les fichiers joints
+                        fichier_path VARCHAR(255) NULL COMMENT 'Chemin relatif ou absolu vers le fichier',
+                        fichier_nom_original VARCHAR(255) NULL COMMENT 'Nom du fichier lors de de l''upload',
+                        fichier_type_mime VARCHAR(100) NULL COMMENT 'Ex: application/pdf, image/jpeg',
+                        
+                        -- 🔄 Statut étendu pour supporter le soft delete
+                        statut ENUM('pending', 'validée', 'rejetée', 'supprimée') DEFAULT 'pending',
+                        date_validation TIMESTAMP NULL,
+                        
+                        -- ⏱️ Audit
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        
+                        -- 🔗 Hiérarchie
+                        ecriture_principale_id INT NULL,
+                        type_ecriture_comptable VARCHAR(20) DEFAULT 'principale' NOT NULL,
+                        
+                        -- 🔒 Contraintes de clés étrangères
+                        FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id) ON DELETE CASCADE,
+                        FOREIGN KEY (sous_compte_id) REFERENCES sous_comptes(id) ON DELETE SET NULL,
+                        FOREIGN KEY (categorie_id) REFERENCES categories_comptables(id) ON DELETE RESTRICT,
+                        FOREIGN KEY (id_contact) REFERENCES contacts(id_contact) ON DELETE SET NULL,
+                        FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                        FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
+                        FOREIGN KEY (ecriture_principale_id) REFERENCES ecritures_comptables(id) ON DELETE CASCADE,
+                        
+                        -- ⚡ Index
+                        INDEX idx_utilisateur_id (utilisateur_id),
+                        INDEX idx_transaction_id (transaction_id),
+                        INDEX idx_date_ecriture (date_ecriture),
+                        INDEX idx_categorie_id (categorie_id),
+                        INDEX idx_statut (statut),
+                        INDEX idx_ecriture_principale_id (ecriture_principale_id),
+                        INDEX idx_compte_bancaire_id (compte_bancaire_id)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                """)
+                
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS regles_ecritures (
                     id INT AUTO_INCREMENT PRIMARY KEY,
