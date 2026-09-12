@@ -99,7 +99,7 @@
                                     {% endif %}
                                 </td>
                                 <td class="text-end">
-                                    <a href="{{ url_for('banking.pos_edit_modifier_option', opt_id=option.id) }}" class="btn btn-sm btn-outline-primary">
+                                    <a href="{{ url_for('banking.pos_edit_modifier_option', option_id=option.id) }}" class="btn btn-sm btn-outline-primary">
                                         <i class="bi bi-pencil"></i>
                                     </a>
                                     <form method="POST" action="{{ url_for('banking.pos_modifier_detail', mod_id=modifier.id) }}" style="display: inline;" onsubmit="return confirm('Supprimer cette option ?')">
