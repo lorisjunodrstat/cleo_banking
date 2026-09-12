@@ -636,37 +636,44 @@ function calculTVA() {
     ARTICLES = d.articles; 
     CATS = d.categories;
 
-    // ✅ DEBUG : Afficher les données reçues pour vérifier les intitulés et la TVA
-    console.log(" DONNÉES BRUTES REÇUES DU BACKEND:", d);
-    
-    // Chercher spécifiquement le Menu et la Bière pour voir leur structure
-    const menu = ARTICLES.find(a => a.nom_article && a.nom_article.toLowerCase().includes('menu'));
-    const biere = ARTICLES.find(a => a.nom_article && a.nom_article.toLowerCase().includes('biere'));
-    
-    console.log("🔍 ARTICLE 'MENU' REÇU:", menu);
-    console.log("🔍 ARTICLE 'BIERE' REÇU:", biere);
-
-    // ✅ CORRECTION PRÉVENTIVE : Si le backend envoie 'taux' au lieu de 'taux_taxe', on le corrige ici
+    // Correction préventive des taux de TVA
     ARTICLES.forEach(a => {
-        if (a.taux === undefined && a.taux_taxe === undefined) {
-            console.warn("⚠️ Attention: L'article", a.nom_article, "n'a pas de taux de TVA défini !");
-        }
-        // Si le backend renvoie 'taux' mais que le frontend attend 'taux_taxe'
         if (a.taux !== undefined && a.taux_taxe === undefined) {
             a.taux_taxe = a.taux;
         }
     });
 
+    // Correction : on accepte nom_categorie OU nom
     CATS.forEach(c => { 
       const o = document.createElement('option'); 
       o.value = c.id; 
-      o.textContent = c.nom_categorie; 
+      o.textContent = c.nom_categorie || c.nom || 'Catégorie'; 
       $('catFilter').appendChild(o); 
     });
+    
     renderArticles(); 
     renderTicket();
+    
     $('catFilter').onchange = renderArticles;
     $('search').oninput = renderArticles;
+  }
+
+  function renderArticles(){
+    const cat = $('catFilter').value, q = $('search').value.toLowerCase();
+    
+    // Correction : on vérifie à la fois id_categorie et categorie_id
+    const list = ARTICLES.filter(a => {
+        const matchCat = !cat || a.id_categorie == cat || a.categorie_id == cat;
+        const matchSearch = !q || (a.nom_article||'').toLowerCase().includes(q);
+        return matchCat && matchSearch;
+    });
+    
+    $('articlesList').innerHTML = list.map(a => `
+      <div class="art-row" onclick="clickArticle(${a.id})">
+        <div class="art-thumb"></div>
+        <div class="art-name">${a.nom_article}</div>
+        <div class="art-price">${a.is_variable_price ? '—' : fmt(a.prix_unitaire)}</div>
+      </div>`).join('') || '<p style="padding:20px;color:#888">Aucun article.</p>';
   }
 
   function renderArticles(){
@@ -763,7 +770,9 @@ function confirmAddArticle(){
     let prixBase = a.is_variable_price ? parseFloat($('maPrix').value || 0) : parseFloat(a.prix_unitaire || 0);
     let varianteId = null;
     const sel = $('maVar');
-    if (sel){ 
+    
+    // ✅ CORRECTION : Vérification plus robuste de l'existence de l'option sélectionnée
+    if (sel && sel.selectedOptions && sel.selectedOptions.length > 0){ 
         varianteId = parseInt(sel.value); 
         prixBase = parseFloat(sel.selectedOptions[0].dataset.prix || prixBase); 
     }
@@ -793,8 +802,11 @@ function confirmAddArticle(){
     document.querySelectorAll('.maModOpt:checked').forEach(o => {
         let prixOption = parseFloat(o.dataset.prix) || 0;
         let tauxOption = safeParseTaux(o.dataset.tauxTva);
-        let tauxParent = safeParseTaux(o.dataset.tauxParent);
-        let tauxFinal = (tauxOption > 0) ? tauxOption : tauxParent;
+        let tauxArticleBaseLocal = safeParseTaux(a.taux_taxe); // On récupère le taux de l'article
+        
+        // ✅ CORRECTION CRITIQUE : Si l'option n'a pas de taux, on prend celui de l'article, PAS celui du groupe modificateur
+        let tauxFinal = (tauxOption > 0) ? tauxOption : tauxArticleBaseLocal;
+        
         let typeOption = o.dataset.typeOption || 'redistribution';
         let modIndex = parseInt(o.dataset.modIndex) || 0;
         let nomModificateur = o.dataset.nomModificateur || '';
@@ -870,7 +882,7 @@ function confirmAddArticle(){
         varianteId: varianteId,
         modsSimples: modsSimples,
         optionsData: optionsData,
-        // ✅ On ajoute le type d'option principal pour le débogage
+        // On ajoute le type d'option principal pour le débogage
         typePrincipal: optionsFixePrix.length > 0 ? 'fixe_prix' : 
                        (optionsSupplement.length > 0 ? 'supplement' : 
                         (optionsRedistribution.length > 0 ? 'redistribution' : 'aucun'))
@@ -894,7 +906,8 @@ function confirmAddArticle(){
             tva_breakdown: tva_breakdown,
             is_variable_price: a.is_variable_price
         };
-        delete $('modalArticle').dataset.editIndex;
+        // ✅ CORRECTION : Utiliser removeAttribute au lieu de delete sur dataset pour éviter les blocages
+        $('modalArticle').removeAttribute('data-edit-index');
     } else {
         const existing = ticket.lines.find(l => l.key === key);
         if (existing) {
@@ -926,6 +939,7 @@ function confirmAddArticle(){
     renderTicket(); 
     closeModal('modalArticle');
 }
+
 function toggleMobileMenu() {
   const menu = document.getElementById('mobileMenu');
   menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
