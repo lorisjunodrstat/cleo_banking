@@ -182,8 +182,10 @@
         </div>
     </div>
 
-    <!-- Résumé des filtres actifs -->
-    {% if compte_selectionne or date_from or date_to or contact_selectionne or categorie_id or statut_selectionne != 'tous' %}
+    <!-- ============================================ -->
+    <!-- RÉSUMÉ DES FILTRES ACTIFS (avec tous les paramètres) -->
+    <!-- ============================================ -->
+    {% if compte_selectionne or date_from or date_to or contact_selectionne or categorie_id or statut_selectionne != 'tous' or type_ecriture_selectionne != 'tous' or type_ecriture_comptable_selectionne != 'tous' or date_created_from or date_created_to %}
     <div class="active-filters">
         <h6 class="mb-2">Filtres actifs :</h6>
         <div class="d-flex flex-wrap gap-2">
@@ -195,7 +197,11 @@
                     date_to=date_to, 
                     id_contact=contact_selectionne, 
                     categorie_id=categorie_id, 
-                    statut=statut_selectionne) }}" class="text-white ms-1">&times;</a>
+                    statut=statut_selectionne,
+                    type_ecriture=type_ecriture_selectionne,
+                    type_ecriture_comptable=type_ecriture_comptable_selectionne,
+                    date_created_from=date_created_from,
+                    date_created_to=date_created_to) }}" class="text-white ms-1">&times;</a>
             </span>
             {% endif %}
 
@@ -207,7 +213,11 @@
                     date_to=date_to, 
                     id_contact=contact_selectionne, 
                     categorie_id=categorie_id, 
-                    statut=statut_selectionne) }}" class="text-white ms-1">&times;</a>
+                    statut=statut_selectionne,
+                    type_ecriture=type_ecriture_selectionne,
+                    type_ecriture_comptable=type_ecriture_comptable_selectionne,
+                    date_created_from=date_created_from,
+                    date_created_to=date_created_to) }}" class="text-white ms-1">&times;</a>
             </span>
             {% endif %}
 
@@ -219,7 +229,11 @@
                     date_from=date_from, 
                     id_contact=contact_selectionne, 
                     categorie_id=categorie_id, 
-                    statut=statut_selectionne) }}" class="text-white ms-1">&times;</a>
+                    statut=statut_selectionne,
+                    type_ecriture=type_ecriture_selectionne,
+                    type_ecriture_comptable=type_ecriture_comptable_selectionne,
+                    date_created_from=date_created_from,
+                    date_created_to=date_created_to) }}" class="text-white ms-1">&times;</a>
             </span>
             {% endif %}
 
@@ -231,7 +245,11 @@
                     date_from=date_from, 
                     date_to=date_to, 
                     categorie_id=categorie_id, 
-                    statut=statut_selectionne) }}" class="text-white ms-1">&times;</a>
+                    statut=statut_selectionne,
+                    type_ecriture=type_ecriture_selectionne,
+                    type_ecriture_comptable=type_ecriture_comptable_selectionne,
+                    date_created_from=date_created_from,
+                    date_created_to=date_created_to) }}" class="text-white ms-1">&times;</a>
             </span>
             {% endif %}
 
@@ -243,7 +261,11 @@
                     date_from=date_from, 
                     date_to=date_to, 
                     id_contact=contact_selectionne, 
-                    statut=statut_selectionne) }}" class="text-white ms-1">&times;</a>
+                    statut=statut_selectionne,
+                    type_ecriture=type_ecriture_selectionne,
+                    type_ecriture_comptable=type_ecriture_comptable_selectionne,
+                    date_created_from=date_created_from,
+                    date_created_to=date_created_to) }}" class="text-white ms-1">&times;</a>
             </span>
             {% endif %}
 
@@ -255,14 +277,84 @@
                     date_from=date_from, 
                     date_to=date_to, 
                     id_contact=contact_selectionne, 
-                    categorie_id=categorie_id) }}" class="text-white ms-1">&times;</a>
+                    categorie_id=categorie_id,
+                    type_ecriture=type_ecriture_selectionne,
+                    type_ecriture_comptable=type_ecriture_comptable_selectionne,
+                    date_created_from=date_created_from,
+                    date_created_to=date_created_to) }}" class="text-white ms-1">&times;</a>
+            </span>
+            {% endif %}
+
+            {% if type_ecriture_selectionne and type_ecriture_selectionne != 'tous' %}
+            <span class="filter-badge">
+                Type: {{ types_ecriture_disponibles | selectattr('value', 'equalto', type_ecriture_selectionne) | map(attribute='label') | first }}
+                <a href="{{ url_for('banking.liste_ecritures', 
+                    compte_id=compte_selectionne, 
+                    date_from=date_from, 
+                    date_to=date_to, 
+                    id_contact=contact_selectionne, 
+                    categorie_id=categorie_id,
+                    statut=statut_selectionne,
+                    type_ecriture_comptable=type_ecriture_comptable_selectionne,
+                    date_created_from=date_created_from,
+                    date_created_to=date_created_to) }}" class="text-white ms-1">&times;</a>
+            </span>
+            {% endif %}
+
+            {% if type_ecriture_comptable_selectionne and type_ecriture_comptable_selectionne != 'tous' %}
+            <span class="filter-badge">
+                Type comptable: {{ type_ecriture_comptable_disponibles | selectattr('value', 'equalto', type_ecriture_comptable_selectionne) | map(attribute='label') | first }}
+                <a href="{{ url_for('banking.liste_ecritures', 
+                    compte_id=compte_selectionne, 
+                    date_from=date_from, 
+                    date_to=date_to, 
+                    id_contact=contact_selectionne, 
+                    categorie_id=categorie_id,
+                    statut=statut_selectionne,
+                    type_ecriture=type_ecriture_selectionne,
+                    date_created_from=date_created_from,
+                    date_created_to=date_created_to) }}" class="text-white ms-1">&times;</a>
+            </span>
+            {% endif %}
+
+            {% if date_created_from %}
+            <span class="filter-badge">
+                Créé depuis: {{ date_created_from }}
+                <a href="{{ url_for('banking.liste_ecritures', 
+                    compte_id=compte_selectionne, 
+                    date_from=date_from, 
+                    date_to=date_to, 
+                    id_contact=contact_selectionne, 
+                    categorie_id=categorie_id,
+                    statut=statut_selectionne,
+                    type_ecriture=type_ecriture_selectionne,
+                    type_ecriture_comptable=type_ecriture_comptable_selectionne,
+                    date_created_to=date_created_to) }}" class="text-white ms-1">&times;</a>
+            </span>
+            {% endif %}
+
+            {% if date_created_to %}
+            <span class="filter-badge">
+                Créé jusqu'à: {{ date_created_to }}
+                <a href="{{ url_for('banking.liste_ecritures', 
+                    compte_id=compte_selectionne, 
+                    date_from=date_from, 
+                    date_to=date_to, 
+                    id_contact=contact_selectionne, 
+                    categorie_id=categorie_id,
+                    statut=statut_selectionne,
+                    type_ecriture=type_ecriture_selectionne,
+                    type_ecriture_comptable=type_ecriture_comptable_selectionne,
+                    date_created_from=date_created_from) }}" class="text-white ms-1">&times;</a>
             </span>
             {% endif %}
         </div>
     </div>
     {% endif %}
 
-    <!-- Filtres -->
+    <!-- ============================================ -->
+    <!-- FORMULAIRE DE FILTRES -->
+    <!-- ============================================ -->
     <div class="card mb-4">
         <div class="card-header">
             <h5 class="mb-0">Filtres de recherche</h5>
@@ -352,6 +444,7 @@
                         {% endfor %}
                     </select>
                 </div>
+
                 <div class="col-md-3">
                     <label for="date_created_from" class="form-label">Date création de début</label>
                     <input type="date" id="date_created_from" name="date_created_from" class="form-control"
@@ -360,7 +453,8 @@
 
                 <div class="col-md-3">
                     <label for="date_created_to" class="form-label">Date création de fin</label>
-                    <input type="date" id="date_created_to" name="date_created_to" class="form-control" value="{{ date_created_to or '' }}">
+                    <input type="date" id="date_created_to" name="date_created_to" class="form-control"
+                        value="{{ date_created_to or '' }}">
                 </div>
 
                 <div class="col-md-12">
@@ -377,8 +471,9 @@
         </div>
     </div>
 
-    <!-- Résumé statistique -->
-    <!-- Résumé statistique -->
+    <!-- ============================================ -->
+    <!-- RÉSUMÉ STATISTIQUE -->
+    <!-- ============================================ -->
     {% if ecritures %}
     <div class="card mb-4">
         <div class="card-body">
@@ -408,7 +503,9 @@
                 <div class="col-md-3">
                     <div class="text-center p-3 bg-info bg-opacity-10 rounded">
                         <h6 class="text-muted">Solde</h6>
-                        {% set solde = (ecritures|selectattr('type_ecriture', 'equalto', 'recette')|sum(attribute='montant') or 0) - (ecritures|selectattr('type_ecriture', 'equalto', 'depense')|sum(attribute='montant') or 0) %}
+                        {% set total_recettes = ecritures | selectattr('type_ecriture', 'equalto', 'recette') | sum(attribute='montant') | default(0) %}
+                        {% set total_depenses = ecritures | selectattr('type_ecriture', 'equalto', 'depense') | sum(attribute='montant') | default(0) %}
+                        {% set solde = total_recettes - total_depenses %}
                         <h4 class="mb-0 {% if solde > 0 %}amount-positive{% else %}amount-negative{% endif %}">
                             {{ "%.2f"|format(solde) }} CHF
                         </h4>
@@ -419,7 +516,9 @@
     </div>
     {% endif %}
 
-    <!-- Tableau des écritures -->
+    <!-- ============================================ -->
+    <!-- TABLEAU DES ÉCRITURES -->
+    <!-- ============================================ -->
     <div class="card table-card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0">Historique des écritures</h5>
@@ -465,11 +564,9 @@
                                     {{ ecriture.categorie_nom }}
                                 </div>
 
-                                <!-- Indicateur d'écritures secondaires -->
+                                <!-- ✅ CORRECTION N+1 : Utilisation du dictionnaire préchargé -->
                                 {% if ecriture.type_ecriture_comptable == 'principale' %}
-                                {% set secondaires =
-                                g.models.ecriture_comptable_model.get_ecritures_complementaires(ecriture.id,
-                                current_user.id) %}
+                                {% set secondaires = secondaires_map.get(ecriture.id, []) %}
                                 {% if secondaires %}
                                 <a href="{{ url_for('banking.details_ecriture_secondaires', ecriture_id=ecriture.id) }}"
                                     class="badge bg-info text-decoration-none ms-1"
@@ -483,7 +580,6 @@
                             </td>
                             <td>
                                 {{ ecriture.description }}
-                                <!-- Indication du type d'écriture -->
                                 <div class="transaction-details mt-1">
                                     Type:
                                     <span
@@ -498,7 +594,6 @@
                                     {% endif %}
                                 </div>
 
-                                <!-- Détails TVA -->
                                 {% if ecriture.tva_taux and ecriture.tva_taux > 0 %}
                                 <div class="transaction-details mt-1">
                                     HT: {{ "%.2f"|format(ecriture.montant_htva) }} CHF |
@@ -527,20 +622,16 @@
                             <td class="text-center">
                                 {% if ecriture.nom_fichier %}
                                 <div class="d-flex flex-column gap-1">
-                                    <!-- Icône pour visualiser le fichier -->
                                     <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal"
                                         data-bs-target="#modalFichier{{ ecriture.id }}" title="Visualiser">
                                         <i class="bi bi-file-earmark-text"></i>
                                     </button>
-
-                                    <!-- Lien de téléchargement -->
                                     <a href="{{ url_for('banking.download_fichier_ecriture', ecriture_id=ecriture.id) }}"
                                         class="btn btn-sm btn-outline-success" title="Télécharger">
                                         <i class="bi bi-download"></i>
                                     </a>
                                 </div>
                                 {% else %}
-                                <!-- Bouton pour ajouter un fichier -->
                                 <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal"
                                     data-bs-target="#modalUpload{{ ecriture.id }}" title="Ajouter un fichier">
                                     <i class="bi bi-upload"></i>
@@ -580,8 +671,6 @@
                                         title="Voir les détails de la transaction">
                                         <i class="bi bi-link-45deg"></i> #{{ ecriture.transaction_id }}
                                     </a>
-
-                                    <!-- Bouton pour délier -->
                                     <form action="{{ url_for('banking.unlink_ecriture', ecriture_id=ecriture.id) }}"
                                         method="post" class="d-inline">
                                         <button type="submit" class="btn btn-sm btn-outline-warning btn-sm"
@@ -620,12 +709,13 @@
                                         <i class="bi bi-pencil"></i>
                                     </a>
 
-                                    <!-- Suppression normale (soft delete) -->
+                                    <!-- ✅ ARCHIVAGE AVEC ANALYSE D'IMPACT (modal dynamique) -->
                                     <form action="{{ url_for('banking.delete_ecriture', ecriture_id=ecriture.id) }}"
-                                        method="post" class="d-inline">
+                                        method="post" class="d-inline impact-form"
+                                        data-impact-url="{{ url_for('banking.delete_ecriture', ecriture_id=ecriture.id) }}">
+                                        <input type="hidden" name="action" value="confirmer_impact">
                                         <button type="submit" class="btn btn-sm btn-outline-warning"
-                                            title="Archiver (soft delete)"
-                                            onclick="return confirm('Êtes-vous sûr de vouloir archiver cette écriture ?')">
+                                            title="Archiver (avec analyse d'impact)">
                                             <i class="bi bi-archive"></i>
                                         </button>
                                     </form>
@@ -636,7 +726,7 @@
                                         method="post" class="d-inline">
                                         <button type="submit" class="btn btn-sm btn-outline-danger"
                                             title="Supprimer définitivement"
-                                            onclick="return confirm('Êtes-vous sûr de vouloir supprimer définitivement cette écriture ?')">
+                                            onclick="return confirm('⚠️ ATTENTION : Suppression DÉFINITIVE !\n\nCette action est IRRÉVERSIBLE.\nÊtes-vous absolument sûr ?')">
                                             <i class="bi bi-trash-fill"></i>
                                         </button>
                                     </form>
@@ -663,10 +753,68 @@
             </div>
         </div>
     </div>
+
+    <!-- ============================================ -->
+    <!-- PAGINATION -->
+    <!-- ============================================ -->
+    {% if total_pages is defined and total_pages > 1 %}
+    <nav aria-label="Pagination des écritures" class="mt-4">
+        <ul class="pagination justify-content-center">
+            <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                <a class="page-link" href="{{ url_for('banking.liste_ecritures', 
+                    page=page-1, per_page=per_page,
+                    compte_id=compte_selectionne, date_from=date_from, date_to=date_to,
+                    id_contact=contact_selectionne, categorie_id=categorie_id, 
+                    statut=statut_selectionne, type_ecriture=type_ecriture_selectionne,
+                    type_ecriture_comptable=type_ecriture_comptable_selectionne,
+                    date_created_from=date_created_from, date_created_to=date_created_to) }}">
+                    « Précédent
+                </a>
+            </li>
+
+            {% for p in range(1, total_pages + 1) %}
+            {% if p == page or p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link" href="{{ url_for('banking.liste_ecritures', 
+                        page=p, per_page=per_page,
+                        compte_id=compte_selectionne, date_from=date_from, date_to=date_to,
+                        id_contact=contact_selectionne, categorie_id=categorie_id, 
+                        statut=statut_selectionne, type_ecriture=type_ecriture_selectionne,
+                        type_ecriture_comptable=type_ecriture_comptable_selectionne,
+                        date_created_from=date_created_from, date_created_to=date_created_to) }}">
+                    {{ p }}
+                </a>
+            </li>
+            {% elif p == page - 3 or p == page + 3 %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% endif %}
+            {% endfor %}
+
+            <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+                <a class="page-link" href="{{ url_for('banking.liste_ecritures', 
+                    page=page+1, per_page=per_page,
+                    compte_id=compte_selectionne, date_from=date_from, date_to=date_to,
+                    id_contact=contact_selectionne, categorie_id=categorie_id, 
+                    statut=statut_selectionne, type_ecriture=type_ecriture_selectionne,
+                    type_ecriture_comptable=type_ecriture_comptable_selectionne,
+                    date_created_from=date_created_from, date_created_to=date_created_to) }}">
+                    Suivant »
+                </a>
+            </li>
+        </ul>
+        <p class="text-center text-muted small">
+            Affichage de {{ ((page - 1) * per_page) + 1 }} à
+            {{ [page * per_page, total_ecritures] | min }} sur {{ total_ecritures }} écriture(s)
+        </p>
+    </nav>
+    {% endif %}
 </div>
 
-<!-- Modals pour chaque écriture -->
+<!-- ============================================ -->
+<!-- MODALS POUR CHAQUE ÉCRITURE -->
+<!-- ============================================ -->
 {% for ecriture in ecritures %}
+
 <!-- Modal pour changement de statut -->
 <div class="modal fade" id="modalStatut{{ ecriture.id }}" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-sm">
@@ -706,10 +854,9 @@
                         </select>
                     </div>
 
-                    <!-- Affichage des écritures secondaires concernées -->
+                    <!-- ✅ Utilisation du dictionnaire préchargé -->
                     {% if ecriture.type_ecriture_comptable == 'principale' %}
-                    {% set secondaires = g.models.ecriture_comptable_model.get_ecritures_complementaires(ecriture.id,
-                    current_user.id) %}
+                    {% set secondaires = secondaires_map.get(ecriture.id, []) %}
                     {% if secondaires %}
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle"></i>
@@ -771,14 +918,12 @@
             </div>
             <div class="modal-body p-0">
                 {% if ecriture.type_mime and ecriture.type_mime.startswith('image/') %}
-                <!-- Affichage d'image -->
                 <div class="text-center p-3">
                     <img src="{{ url_for('banking.view_fichier_ecriture', ecriture_id=ecriture.id) }}"
                         class="img-fluid rounded" alt="{{ ecriture.nom_fichier }}" style="max-height: 70vh;">
                 </div>
 
                 {% elif ecriture.type_mime == 'application/pdf' %}
-                <!-- Affichage PDF avec embed -->
                 <div class="embed-container">
                     <embed
                         src="{{ url_for('banking.view_fichier_ecriture', ecriture_id=ecriture.id) }}#toolbar=1&navpanes=1&scrollbar=1"
@@ -786,7 +931,6 @@
                 </div>
 
                 {% else %}
-                <!-- Autres types de fichiers -->
                 <div class="alert alert-info text-center m-3">
                     <i class="bi bi-file-earmark fs-1"></i>
                     <p class="mt-2">Prévisualisation non disponible</p>
@@ -800,12 +944,10 @@
                     class="btn btn-outline-primary" target="_blank">
                     <i class="bi bi-eye"></i> Ouvrir dans un nouvel onglet
                 </a>
-
                 <a href="{{ url_for('banking.download_fichier_ecriture', ecriture_id=ecriture.id) }}"
                     class="btn btn-success">
                     <i class="bi bi-download"></i> Télécharger
                 </a>
-
                 <form action="{{ url_for('banking.supprimer_fichier_ecriture', ecriture_id=ecriture.id) }}"
                     method="post" class="d-inline">
                     <button type="submit" class="btn btn-danger"
@@ -813,7 +955,6 @@
                         <i class="bi bi-trash"></i> Supprimer
                     </button>
                 </form>
-
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
             </div>
         </div>
@@ -822,7 +963,9 @@
 {% endif %}
 {% endfor %}
 
-<!-- Modals existants pour liaison et transactions -->
+<!-- ============================================ -->
+<!-- MODALS CONTEXTUELS (liaison / transaction) -->
+<!-- ============================================ -->
 {% if show_link_modal and ecriture_link %}
 {% include 'comptabilite/modal_link_ecriture_transaction.html' %}
 {% endif %}
@@ -831,4 +974,58 @@
 {% include 'comptabilite/_modal_transaction_detail.html' %}
 {% endif %}
 
+<!-- ============================================ -->
+<!-- CONTENEUR POUR LE MODAL D'IMPACT DE SUPPRESSION -->
+<!-- ============================================ -->
+<div id="modalImpactContainer"></div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    // ✅ Intercepter les soumissions de formulaire d'archivage pour afficher le modal d'impact
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('form.impact-form').forEach(function (form) {
+            form.addEventListener('submit', async function (e) {
+                e.preventDefault();
+
+                const formData = new FormData(form);
+                const url = form.getAttribute('data-impact-url');
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    });
+
+                    if (response.ok) {
+                        const html = await response.text();
+                        const container = document.getElementById('modalImpactContainer');
+                        container.innerHTML = html;
+
+                        // Activer les scripts contenus dans le HTML retourné
+                        container.querySelectorAll('script').forEach(function (oldScript) {
+                            const newScript = document.createElement('script');
+                            Array.from(oldScript.attributes).forEach(attr => {
+                                newScript.setAttribute(attr.name, attr.value);
+                            });
+                            newScript.textContent = oldScript.textContent;
+                            oldScript.parentNode.replaceChild(newScript, oldScript);
+                        });
+                    } else {
+                        console.error('Erreur lors du chargement du modal d\'impact');
+                        alert('Une erreur est survenue. Veuillez réessayer.');
+                    }
+                } catch (error) {
+                    console.error('Erreur:', error);
+                    alert('Erreur de communication avec le serveur.');
+                }
+            });
+        });
+    });
+</script>
 {% endblock %}

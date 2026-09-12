@@ -7678,6 +7678,7 @@ class EcritureComptable:
                 regle['categorie_destination_id'],  # La catégorie de destination devient la source
                 niveau + 1
             )
+
     def get_ecriture_avec_secondaires(self, ecriture_id: int, user_id: int) -> Dict:
         """Récupère une écriture principale avec toutes ses écritures secondaires"""
         try:
@@ -7707,8 +7708,162 @@ class EcritureComptable:
             logger.error(f"Erreur get_ecriture_avec_secondaires: {e}")
             return None
 
-    
+    def get_ecritures_complementaires_batch(self, ecriture_ids: List[int], user_id: int) -> Dict[int, List[Dict]]:
+        """Récupère les écritures complémentaires pour plusieurs écritures principales en une seule requête."""
+        if not ecriture_ids:
+            return {}
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                placeholders = ','.join(['%s'] * len(ecriture_ids))
+                query = f"""
+                    SELECT e.*, c.numero as categorie_numero, c.nom as categorie_nom
+                    FROM ecritures_comptables e
+                    LEFT JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.ecriture_principale_id IN ({placeholders})
+                    AND e.utilisateur_id = %s
+                    AND e.type_ecriture_comptable = 'complementaire'
+                    AND e.statut != 'supprimee'
+                    ORDER BY e.date_ecriture, e.id
+                """
+                cursor.execute(query, list(ecriture_ids) + [user_id])
+                rows = cursor.fetchall()
+                result = {}
+                for row in rows:
+                    parent_id = row.get('ecriture_principale_id')
+                    if parent_id not in result:
+                        result[parent_id] = []
+                    result[parent_id].append(row)
+                return result
+        except Exception as e:
+            logger.error(f"Erreur batch secondaires: {e}", exc_info=True)
+            return {}
 
+
+    def get_impact_suppression(self, ecriture_id: int, user_id: int) -> Dict:
+        """Analyse l'impact de la suppression d'une écriture."""
+        impact = {
+            'ecriture': None,
+            'est_liee_transaction': False,
+            'transaction': None,
+            'est_liee_receipt': False,
+            'receipts': [],
+            'secondaires': [],
+            'est_secondaire': False,
+            'principale': None,
+            'peut_supprimer': True,
+            'niveau_alerte': 'info',
+            'messages': []
+        }
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT e.*, c.numero as categorie_numero, c.nom as categorie_nom,
+                        cp.nom_compte as compte_nom
+                    FROM ecritures_comptables e
+                    LEFT JOIN categories_comptables c ON e.categorie_id = c.id
+                    LEFT JOIN comptes_principaux cp ON e.compte_bancaire_id = cp.id
+                    WHERE e.id = %s AND e.utilisateur_id = %s
+                """, (ecriture_id, user_id))
+                ecriture = cursor.fetchone()
+                if not ecriture:
+                    impact['peut_supprimer'] = False
+                    impact['messages'].append("Écriture introuvable.")
+                    return impact
+                impact['ecriture'] = ecriture
+
+                if ecriture.get('transaction_id'):
+                    impact['est_liee_transaction'] = True
+                    cursor.execute("""
+                        SELECT t.*, cp.nom_compte as compte_nom
+                        FROM transactions t
+                        LEFT JOIN comptes_principaux cp ON t.compte_principal_id = cp.id
+                        WHERE t.id = %s AND t.utilisateur_id = %s
+                    """, (ecriture['transaction_id'], user_id))
+                    impact['transaction'] = cursor.fetchone()
+                    if impact['transaction']:
+                        cursor.execute("""
+                            SELECT r.id, r.recu_numero, r.date, r.total_collecte, r.pdv, r.status
+                            FROM pos_receipts r
+                            WHERE r.transaction_id = %s AND r.utilisateur_id = %s
+                        """, (ecriture['transaction_id'], user_id))
+                        receipts = cursor.fetchall()
+                        if receipts:
+                            impact['est_liee_receipt'] = True
+                            impact['receipts'] = receipts
+                            impact['niveau_alerte'] = 'danger'
+                            impact['messages'].append(
+                                f"⚠️ Cette écriture est liée à {len(receipts)} receipt(s) POS.")
+                        else:
+                            impact['niveau_alerte'] = 'warning'
+                            impact['messages'].append("Liée à une transaction bancaire.")
+
+                if ecriture.get('type_ecriture_comptable') == 'principale':
+                    cursor.execute("""
+                        SELECT e.*, c.numero as categorie_numero, c.nom as categorie_nom
+                        FROM ecritures_comptables e
+                        LEFT JOIN categories_comptables c ON e.categorie_id = c.id
+                        WHERE e.ecriture_principale_id = %s AND e.utilisateur_id = %s AND e.statut != 'supprimee'
+                    """, (ecriture_id, user_id))
+                    secondaires = cursor.fetchall()
+                    if secondaires:
+                        impact['secondaires'] = secondaires
+                        if impact['niveau_alerte'] == 'info':
+                            impact['niveau_alerte'] = 'warning'
+                        impact['messages'].append(
+                            f"La suppression entraînera celle de {len(secondaires)} écriture(s) secondaire(s).")
+
+                if ecriture.get('ecriture_principale_id'):
+                    impact['est_secondaire'] = True
+                    cursor.execute("""
+                        SELECT id, description, montant FROM ecritures_comptables
+                        WHERE id = %s AND utilisateur_id = %s
+                    """, (ecriture['ecriture_principale_id'], user_id))
+                    impact['principale'] = cursor.fetchone()
+                    impact['messages'].append("Écriture secondaire : la principale restera intacte.")
+
+                return impact
+        except Exception as e:
+            logger.error(f"Erreur analyse impact: {e}", exc_info=True)
+            impact['peut_supprimer'] = False
+            impact['messages'].append(f"Erreur technique: {str(e)}")
+            return impact
+
+
+    def supprimer_avec_impact(self, ecriture_id: int, user_id: int,
+                            delier_transaction: bool = False,
+                            supprimer_cascade: bool = False) -> Tuple[bool, str]:
+        """Supprime une écriture en gérant ses dépendances."""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, transaction_id, type_ecriture_comptable, statut
+                    FROM ecritures_comptables WHERE id = %s AND utilisateur_id = %s
+                """, (ecriture_id, user_id))
+                ecriture = cursor.fetchone()
+                if not ecriture:
+                    return False, "Écriture introuvable."
+                if ecriture['transaction_id'] and not delier_transaction:
+                    return False, "Écriture liée à une transaction. Veuillez la délier."
+                if ecriture['transaction_id'] and delier_transaction:
+                    cursor.execute("UPDATE ecritures_comptables SET transaction_id = NULL WHERE id = %s", (ecriture_id,))
+                nb_secondaires = 0
+                if ecriture['type_ecriture_comptable'] == 'principale' and supprimer_cascade:
+                    cursor.execute("""
+                        UPDATE ecritures_comptables SET statut = 'supprimee', date_suppression = NOW()
+                        WHERE ecriture_principale_id = %s AND utilisateur_id = %s AND statut != 'supprimee'
+                    """, (ecriture_id, user_id))
+                    nb_secondaires = cursor.rowcount
+                cursor.execute("""
+                    UPDATE ecritures_comptables SET statut = 'supprimee', date_suppression = NOW()
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (ecriture_id, user_id))
+                message = "Écriture archivée."
+                if nb_secondaires > 0:
+                    message += f" {nb_secondaires} secondaire(s) également archivée(s)."
+                return True, message
+        except Exception as e:
+            logger.error(f"Erreur suppression: {e}", exc_info=True)
+            return False, f"Erreur: {str(e)}"
     def get_solde_tva_par_periode(self, user_id: int, date_debut: str, date_fin: str) -> Dict:
         """Calcule le solde TVA pour une période donnée"""
         try:

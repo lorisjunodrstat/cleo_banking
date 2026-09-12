@@ -3817,6 +3817,11 @@ def liste_ecritures():
     date_created_from = request.args.get('date_created_from')
     date_created_to = request.args.get('date_created_to')
     
+    # ✅ NOUVEAU : Pagination
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    per_page = min(per_page, 200)  # Plafond de sécurité
+    
     # Définition des options disponibles
     types_ecriture_disponibles = [
         {'value': 'tous', 'label': 'Tous les types'},
@@ -3851,11 +3856,26 @@ def liste_ecritures():
         'type_ecriture_comptable': type_ecriture_comptable if type_ecriture_comptable != 'tous' else None,
         'date_created_from': date_created_from,
         'date_created_to': date_created_to,
-        'limit': 1000
+        # ✅ Pagination au lieu du limit fixe
+        'limit': per_page,
+        'offset': (page - 1) * per_page
     }
     
     # Récupérer les écritures avec filtres
     ecritures = g.models.ecriture_comptable_model.get_with_filters(**filtres)
+    
+    # ✅ NOUVEAU : Récupérer le total pour la pagination
+    total_ecritures = g.models.ecriture_comptable_model.count_with_filters(**{
+        k: v for k, v in filtres.items() if k not in ('limit', 'offset')
+    })
+    total_pages = (total_ecritures + per_page - 1) // per_page if total_ecritures > 0 else 1
+    
+    # ✅ CORRECTION CRITIQUE : Précharger les écritures secondaires EN UNE SEULE REQUÊTE
+    # Au lieu de faire N requêtes SQL dans le template (problème N+1)
+    ecriture_ids = [e['id'] for e in ecritures if e.get('type_ecriture_comptable') == 'principale']
+    secondaires_map = g.models.ecriture_comptable_model.get_ecritures_complementaires_batch(
+        ecriture_ids, current_user.id
+    )
     
     # Récupérer les données supplémentaires
     comptes = g.models.compte_model.get_by_user_id(current_user.id)
@@ -3879,6 +3899,9 @@ def liste_ecritures():
                     date_from=date_tx,
                     date_to=date_tx
                 )[0]
+                
+                # ✅ CORRECTION N+1 : Récupérer toutes les transactions en une fois
+                # au lieu de boucler avec get_transaction_with_ecritures_total
                 for tx in all_tx:
                     full_tx = g.models.transaction_financiere_model.get_transaction_with_ecritures_total(
                         tx['id'], current_user.id
@@ -3920,8 +3943,15 @@ def liste_ecritures():
         transactions_eligibles=transactions_eligibles,
         contact_map=contact_map,
         show_transaction_modal=show_transaction_modal,
-        transaction_detail=transaction_detail
+        transaction_detail=transaction_detail,
+        # ✅ NOUVEAU : Variables pour la pagination
+        secondaires_map=secondaires_map,
+        page=page,
+        per_page=per_page,
+        total_ecritures=total_ecritures,
+        total_pages=total_pages
     )
+
 
 # Route pour l'export
 @bp.route('/comptabilite/ecritures/export')
@@ -5808,18 +5838,144 @@ def edit_ecriture(ecriture_id):
                         taux_disponibles=tous_les_taux,
                         contacts=contacts)
 
-@bp.route('/comptabilite/ecritures/<int:ecriture_id>/delete', methods=['POST'])
+@bp.route('/comptabilite/ecriture/<int:ecriture_id>/delete', methods=['POST'])
 @login_required
 def delete_ecriture(ecriture_id):
-    """Supprime une écriture comptable (soft delete)"""
-    success, message = g.models.ecriture_comptable_model.delete_soft(ecriture_id, current_user.id, soft_delete=True)
+    """Suppression d'une écriture avec gestion des impacts."""
     
-    if success:
-        flash(message, 'success')
-    else:
-        flash(message, 'danger')
+    action = request.form.get('action')
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     
-    return redirect(url_for('banking.liste_ecritures'))
+    # ============================================================
+    # MODE 1 : ANALYSE D'IMPACT (appel AJAX depuis le formulaire)
+    # ============================================================
+    if action == 'confirmer_impact':
+        impact = g.models.ecriture_comptable_model.get_impact_suppression(
+            ecriture_id, current_user.id
+        )
+        
+        if is_ajax:
+            # ✅ Retourne UNIQUEMENT le fragment HTML du modal
+            return render_template(
+                'comptabilite/_modal_confirm_suppression.html',
+                impact=impact
+            )
+        else:
+            # Fallback pour les navigateurs sans JavaScript
+            flash("Veuillez activer JavaScript pour supprimer cette écriture.", "warning")
+            return redirect(request.referrer or url_for('banking.liste_ecritures'))
+    
+    # ============================================================
+    # MODE 2 : SUPPRESSION EFFECTIVE (soumission du modal)
+    # ============================================================
+    if action == 'supprimer_definitivement':
+        # Re-vérification de l'impact au moment de la suppression
+        impact = g.models.ecriture_comptable_model.get_impact_suppression(
+            ecriture_id, current_user.id
+        )
+        
+        if not impact['peut_supprimer']:
+            flash("Impossible de supprimer cette écriture : " + "; ".join(impact['messages']), "error")
+            return redirect(request.referrer or url_for('banking.liste_ecritures'))
+        
+        # Vérification de sécurité : si liée à une transaction, le checkbox doit être coché
+        if impact['est_liee_transaction'] and request.form.get('delier_transaction') != '1':
+            flash("⚠️ Vous devez confirmer la déliaison de la transaction.", "error")
+            return redirect(request.referrer or url_for('banking.liste_ecritures'))
+        
+        # Vérification de sécurité : si écriture principale avec secondaires, le checkbox doit être coché
+        if impact['secondaires'] and request.form.get('supprimer_cascade') != '1':
+            flash("⚠️ Vous devez confirmer la suppression des écritures secondaires.", "error")
+            return redirect(request.referrer or url_for('banking.liste_ecritures'))
+        
+        # Options validées
+        delier_transaction = request.form.get('delier_transaction') == '1'
+        supprimer_cascade = request.form.get('supprimer_cascade') == '1'
+        
+        try:
+            success, message = g.models.ecriture_comptable_model.supprimer_avec_impact(
+                ecriture_id=ecriture_id,
+                user_id=current_user.id,
+                delier_transaction=delier_transaction,
+                supprimer_cascade=supprimer_cascade
+            )
+            
+            if success:
+                flash(f"✅ {message}", "success")
+            else:
+                flash(f"❌ {message}", "error")
+        except Exception as e:
+            logger.error(f"Erreur suppression écriture: {e}", exc_info=True)
+            flash(f"Erreur lors de la suppression: {str(e)}", "error")
+        
+        return redirect(request.referrer or url_for('banking.liste_ecritures'))
+    
+    # ============================================================
+    # ACTION INVALIDE
+    # ============================================================
+    flash("Action invalide.", "error")
+    return redirect(request.referrer or url_for('banking.liste_ecritures'))
+
+def supprimer_avec_impact(self, ecriture_id: int, user_id: int, 
+                          delier_transaction: bool = False,
+                          supprimer_cascade: bool = False) -> Tuple[bool, str]:
+    """Supprime une écriture en gérant ses dépendances."""
+    try:
+        with self.db.get_cursor() as cursor:
+            # Vérifier l'existence
+            cursor.execute("""
+                SELECT id, transaction_id, type_ecriture_comptable, statut
+                FROM ecritures_comptables
+                WHERE id = %s AND utilisateur_id = %s
+            """, (ecriture_id, user_id))
+            ecriture = cursor.fetchone()
+            
+            if not ecriture:
+                return False, "Écriture introuvable."
+            
+            # Si liée à une transaction et qu'on ne veut pas délier → refus
+            if ecriture['transaction_id'] and not delier_transaction:
+                return False, ("Cette écriture est liée à une transaction. "
+                              "Veuillez choisir de la délier ou annuler.")
+            
+            # Délier la transaction si demandé
+            if ecriture['transaction_id'] and delier_transaction:
+                cursor.execute("""
+                    UPDATE ecritures_comptables 
+                    SET transaction_id = NULL 
+                    WHERE id = %s
+                """, (ecriture_id,))
+            
+            # Cascade des secondaires
+            nb_secondaires = 0
+            if (ecriture['type_ecriture_comptable'] == 'principale' 
+                and supprimer_cascade):
+                cursor.execute("""
+                    UPDATE ecritures_comptables 
+                    SET statut = 'supprimee', date_suppression = NOW()
+                    WHERE ecriture_principale_id = %s 
+                      AND utilisateur_id = %s
+                      AND statut != 'supprimee'
+                """, (ecriture_id, user_id))
+                nb_secondaires = cursor.rowcount
+            
+            # Soft delete de l'écriture principale
+            cursor.execute("""
+                UPDATE ecritures_comptables 
+                SET statut = 'supprimee', date_suppression = NOW()
+                WHERE id = %s AND utilisateur_id = %s
+            """, (ecriture_id, user_id))
+            
+            message = "Écriture archivée avec succès."
+            if nb_secondaires > 0:
+                message += f" {nb_secondaires} écriture(s) secondaire(s) également archivée(s)."
+            
+            return True, message
+            
+    except Exception as e:
+        logger.error(f"Erreur suppression avec impact: {e}", exc_info=True)
+        return False, f"Erreur technique: {str(e)}"
+
 
 # Route pour la suppression définitive (hard delete)
 @bp.route('/comptabilite/ecritures/<int:ecriture_id>/delete/hard', methods=['POST'])

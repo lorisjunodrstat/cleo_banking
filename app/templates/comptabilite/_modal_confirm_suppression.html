@@ -1,0 +1,201 @@
+<div class="modal fade" id="modalConfirmSuppression" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header 
+                {% if impact.niveau_alerte == 'danger' %}bg-danger text-white
+                {% elif impact.niveau_alerte == 'warning' %}bg-warning text-dark
+                {% else %}bg-primary text-white{% endif %}">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    Confirmation de suppression
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            
+            <form method="POST" action="{{ url_for('banking.delete_ecriture', ecriture_id=impact.ecriture.id) }}">
+                <input type="hidden" name="action" value="supprimer_definitivement">
+                
+                <div class="modal-body">
+                    <!-- Résumé de l'écriture -->
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <h6 class="card-title">Écriture concernée</h6>
+                            <p class="mb-1"><strong>Description :</strong> {{ impact.ecriture.description }}</p>
+                            <p class="mb-1">
+                                <strong>Montant :</strong> 
+                                <span class="{% if impact.ecriture.type_ecriture == 'recette' %}text-success{% else %}text-danger{% endif %} fw-bold">
+                                    {{ "%.2f"|format(impact.ecriture.montant) }} {{ impact.ecriture.devise }}
+                                </span>
+                            </p>
+                            <p class="mb-1"><strong>Compte :</strong> {{ impact.ecriture.compte_nom }}</p>
+                            <p class="mb-1"><strong>Catégorie :</strong> {{ impact.ecriture.categorie_numero }} - {{ impact.ecriture.categorie_nom }}</p>
+                            <p class="mb-0"><strong>Date :</strong> {{ impact.ecriture.date_ecriture.strftime('%d.%m.%Y') }}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Messages d'alerte -->
+                    {% if impact.messages %}
+                    <div class="alert alert-{{ impact.niveau_alerte }}">
+                        {% for msg in impact.messages %}
+                        <div>{{ msg }}</div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Détails des impacts -->
+                    
+                    {% if impact.est_liee_receipt %}
+                    <div class="card border-danger mb-3">
+                        <div class="card-header bg-danger bg-opacity-10">
+                            <h6 class="mb-0 text-danger">
+                                <i class="bi bi-receipt"></i> Receipts POS liés ({{ impact.receipts|length }})
+                            </h6>
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>N° Reçu</th>
+                                        <th>PDV</th>
+                                        <th>Date</th>
+                                        <th class="text-end">Total</th>
+                                        <th>Statut</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for r in impact.receipts %}
+                                    <tr>
+                                        <td><strong>#{{ r.recu_numero }}</strong></td>
+                                        <td>{{ r.pdv }}</td>
+                                        <td>{{ r.date.strftime('%d.%m.%Y') }}</td>
+                                        <td class="text-end">{{ "%.2f"|format(r.total_collecte) }} CHF</td>
+                                        <td><span class="badge bg-secondary">{{ r.status }}</span></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="card-footer bg-danger bg-opacity-10">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" 
+                                       name="delier_transaction" value="1" id="delierTx" required>
+                                <label class="form-check-label" for="delierTx">
+                                    <strong>Je confirme vouloir délier la transaction</strong> et supprimer l'écriture.
+                                    <small class="d-block text-muted">
+                                        Les receipts ne seront plus liés à aucune écriture comptable.
+                                    </small>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    {% elif impact.est_liee_transaction %}
+                    <div class="card border-warning mb-3">
+                        <div class="card-header bg-warning bg-opacity-10">
+                            <h6 class="mb-0">
+                                <i class="bi bi-link-45deg"></i> Transaction liée
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <p class="mb-1"><strong>Transaction #{{ impact.transaction.id }}</strong></p>
+                            <p class="mb-1">Compte : {{ impact.transaction.compte_nom }}</p>
+                            <p class="mb-0">Montant : {{ "%.2f"|format(impact.transaction.montant) }} CHF</p>
+                        </div>
+                        <div class="card-footer">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" 
+                                       name="delier_transaction" value="1" id="delierTx" required>
+                                <label class="form-check-label" for="delierTx">
+                                    Délier la transaction avant suppression
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if impact.secondaires %}
+                    <div class="card border-info mb-3">
+                        <div class="card-header bg-info bg-opacity-10">
+                            <h6 class="mb-0">
+                                <i class="bi bi-diagram-3"></i> Écritures secondaires ({{ impact.secondaires|length }})
+                            </h6>
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Catégorie</th>
+                                        <th>Description</th>
+                                        <th class="text-end">Montant</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for s in impact.secondaires %}
+                                    <tr>
+                                        <td><span class="badge bg-secondary">{{ s.categorie_numero }}</span></td>
+                                        <td>{{ s.description }}</td>
+                                        <td class="text-end">{{ "%.2f"|format(s.montant) }} CHF</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="card-footer">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" 
+                                       name="supprimer_cascade" value="1" id="cascadeSup" required>
+                                <label class="form-check-label" for="cascadeSup">
+                                    Supprimer également les {{ impact.secondaires|length }} écriture(s) secondaire(s)
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if impact.est_secondaire %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        Cette écriture est <strong>secondaire</strong>. L'écriture principale
+                        "<em>{{ impact.principale.description }}</em>" restera intacte.
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        Annuler
+                    </button>
+                    <button type="submit" 
+                            class="btn btn-{{ 'danger' if impact.niveau_alerte == 'danger' else 'warning' }}">
+                        <i class="bi bi-trash"></i>
+                        Confirmer la suppression
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var modalElement = document.getElementById('modalConfirmSuppression');
+    if (modalElement) {
+        // Nettoyer les anciennes instances de modal pour éviter les conflits
+        var existingInstance = bootstrap.Modal.getInstance(modalElement);
+        if (existingInstance) {
+            existingInstance.dispose();
+        }
+        
+        // Initialiser et afficher le nouveau modal
+        var modal = new bootstrap.Modal(modalElement);
+        modal.show();
+        
+        // Nettoyer le conteneur parent quand le modal est complètement fermé
+        modalElement.addEventListener('hidden.bs.modal', function () {
+            var container = document.getElementById('modalImpactContainer');
+            if (container) {
+                container.innerHTML = '';
+            }
+        });
+    }
+})();
+</script>
