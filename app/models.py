@@ -557,7 +557,7 @@ class DatabaseManager:
                         -- 📎 Champs pour les fichiers joints
                         fichier_path VARCHAR(255) NULL COMMENT 'Chemin relatif ou absolu vers le fichier',
                         fichier_nom_original VARCHAR(255) NULL COMMENT 'Nom du fichier lors du upload',
-                        fichier_type_mime VARCHAR(100) NULL COMMENT 'Ex: application/pdf, image/jpeg',
+                        fichier_type_mime VARCHAR(100) NULL,
                         
                         -- 🔄 Statut étendu pour supporter le soft delete
                         statut ENUM('pending', 'validée', 'rejetée', 'supprimée') DEFAULT 'pending',
