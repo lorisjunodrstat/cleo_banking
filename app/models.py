@@ -821,7 +821,7 @@ class DatabaseManager:
                     added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (equipe_id, employe_id),
                     FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE CASCADE,
-                    FOREIGN KEY (employe_id) REFERENCES employes(id) ON DELETE CASCADE
+                    FOREIGN KEY (employe_id) REFERENCES employes(id) ON DELETE CASCADE,
                     FOREIGN KEY (entreprise_id) REFERENCES enterprise(id)
                 );""")
 
