@@ -556,7 +556,7 @@ class DatabaseManager:
                         
                         -- 📎 Champs pour les fichiers joints
                         fichier_path VARCHAR(255) NULL COMMENT 'Chemin relatif ou absolu vers le fichier',
-                        fichier_nom_original VARCHAR(255) NULL COMMENT 'Nom du fichier lors de de l''upload',
+                        fichier_nom_original VARCHAR(255) NULL COMMENT 'Nom du fichier lors du upload',
                         fichier_type_mime VARCHAR(100) NULL COMMENT 'Ex: application/pdf, image/jpeg',
                         
                         -- 🔄 Statut étendu pour supporter le soft delete
@@ -590,7 +590,7 @@ class DatabaseManager:
                         INDEX idx_compte_bancaire_id (compte_bancaire_id)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
                 """)
-                
+
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS regles_ecritures (
                     id INT AUTO_INCREMENT PRIMARY KEY,
