@@ -493,7 +493,7 @@ class DatabaseManager:
                     categorie_complementaire_id INT NULL,
                     type_ecriture_complementaire VARCHAR(255) NULL,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     UNIQUE KEY uq_numero (numero),
                     FOREIGN KEY (parent_id) REFERENCES categories_comptables(id),
                     FOREIGN KEY (categorie_complementaire_id) REFERENCES categories_comptables(id) ON DELETE SET NULL
@@ -686,9 +686,9 @@ class DatabaseManager:
                     difference DECIMAL(10,2),
                     difference_pourcent DECIMAL(5,2),
                     user_id INT NOT NULL,
-                    id_contrat INT NOT NULL
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
+                    id_contrat INT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id),
                     FOREIGN KEY (id_contrat) REFERENCES contrats(id)
                 );""")
 
@@ -817,7 +817,7 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS equipes_employes (
                     equipe_id INT,
                     employe_id INT,
-                    entreprise_id INT
+                    entreprise_id INT,
                     added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (equipe_id, employe_id),
                     FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE CASCADE,
@@ -869,7 +869,7 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS entreprise (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     user_id INT NOT NULL,
-                    entreprise_id INT
+                    entreprise_id INT,
                     nom VARCHAR(255) NOT NULL,
                     rue VARCHAR(255),
                     code_postal VARCHAR(20),
