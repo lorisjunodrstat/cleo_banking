@@ -5847,7 +5847,7 @@ def delete_ecriture(ecriture_id):
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     
     # ============================================================
-    # MODE 1 : ANALYSE D'IMPACT (appel AJAX depuis le formulaire)
+    # MODE 1 : ANALYSE D'IMPACT (appel AJAX depuis le tableau)
     # ============================================================
     if action == 'confirmer_impact':
         impact = g.models.ecriture_comptable_model.get_impact_suppression(
@@ -5855,35 +5855,34 @@ def delete_ecriture(ecriture_id):
         )
         
         if is_ajax:
-            # ✅ Retourne UNIQUEMENT le fragment HTML du modal
+            # Retourne UNIQUEMENT le fragment HTML du modal
             return render_template(
                 'comptabilite/_modal_confirm_suppression.html',
                 impact=impact
             )
         else:
             # Fallback pour les navigateurs sans JavaScript
-            flash("Veuillez activer JavaScript pour supprimer cette écriture.", "warning")
+            flash("Veuillez activer JavaScript pour utiliser cette fonctionnalité.", "warning")
             return redirect(request.referrer or url_for('banking.liste_ecritures'))
     
     # ============================================================
     # MODE 2 : SUPPRESSION EFFECTIVE (soumission du modal)
     # ============================================================
     if action == 'supprimer_definitivement':
-        # Re-vérification de l'impact au moment de la suppression
+        # Re-vérification de l'impact au moment de la soumission
         impact = g.models.ecriture_comptable_model.get_impact_suppression(
             ecriture_id, current_user.id
         )
         
         if not impact['peut_supprimer']:
-            flash("Impossible de supprimer cette écriture : " + "; ".join(impact['messages']), "error")
+            flash("Impossible de supprimer : " + "; ".join(impact['messages']), "error")
             return redirect(request.referrer or url_for('banking.liste_ecritures'))
         
-        # Vérification de sécurité : si liée à une transaction, le checkbox doit être coché
+        # Vérifications de sécurité : les cases à cocher doivent être cochées si affichées
         if impact['est_liee_transaction'] and request.form.get('delier_transaction') != '1':
             flash("⚠️ Vous devez confirmer la déliaison de la transaction.", "error")
             return redirect(request.referrer or url_for('banking.liste_ecritures'))
         
-        # Vérification de sécurité : si écriture principale avec secondaires, le checkbox doit être coché
         if impact['secondaires'] and request.form.get('supprimer_cascade') != '1':
             flash("⚠️ Vous devez confirmer la suppression des écritures secondaires.", "error")
             return redirect(request.referrer or url_for('banking.liste_ecritures'))
