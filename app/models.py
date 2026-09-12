@@ -7292,7 +7292,6 @@ class EcritureComptable:
     def __init__(self, db):
         self.db = db
 
-    
     @property
     def upload_folder(self):
         """Fournit le dossier d'upload à la demande, sans effet de bord à l'initialisation"""
@@ -7307,6 +7306,7 @@ class EcritureComptable:
     def _get_file_path(self, filename):
         """Génère le chemin complet du fichier"""
         return os.path.join(self.upload_folder, filename)
+
     def test_dossier_upload(self):
         """Teste l'accès au dossier d'upload"""
         print(f"=== TEST DOSSIER UPLOAD ===")
@@ -7828,7 +7828,6 @@ class EcritureComptable:
             impact['messages'].append(f"Erreur technique: {str(e)}")
             return impact
 
-
     def supprimer_avec_impact(self, ecriture_id: int, user_id: int,
                             delier_transaction: bool = False,
                             supprimer_cascade: bool = False) -> Tuple[bool, str]:
@@ -7864,6 +7863,7 @@ class EcritureComptable:
         except Exception as e:
             logger.error(f"Erreur suppression: {e}", exc_info=True)
             return False, f"Erreur: {str(e)}"
+
     def get_solde_tva_par_periode(self, user_id: int, date_debut: str, date_fin: str) -> Dict:
         """Calcule le solde TVA pour une période donnée"""
         try:
@@ -8430,14 +8430,12 @@ class EcritureComptable:
             logger.error(f"Erreur lors de la récupération des statistiques par catégorie: {e}")
             return []
 
-        @staticmethod
-
     @staticmethod
     def _validate_date(date_str: str) -> bool:
         """Valide le format d'une chaîne de date YYYY-MM-DD"""
         try:
             from datetime import datetime
-            datetime.strptime(date_str, '%Y-%-%d')
+            datetime.strptime(date_str, '%Y-%m-%d')  # Corrigé: %m ajouté
             return True
         except (ValueError, TypeError):
             return False
