@@ -19841,14 +19841,20 @@ class POSComptabilisation:
                         'date_ecriture': date_ecriture,
                         'compte_bancaire_id': id_compte_bancaire_reel,
                         'categorie_id': id_compte_vente,
-                        'montant': total_ttc if is_credit else total_ht,
-                        'montant_htva': total_ttc if is_credit else total_ht,
+                        
+                        # ✅ CORRECTION ICI :
+                        'montant': total_ttc,          # Le montant total de l'écriture est le TTC
+                        'montant_htva': total_ht,      # La base imposable (HT) est stockée ici pour l'affichage
+                        
                         'devise': 'CHF',
-                        'description': f"Achat crédit POS {item.get('type_taxe_nom')} - {mode_nom}" if is_credit else f"Ventes POS {item.get('type_taxe_nom')} - {mode_nom}",
-                        'reference': f"JOURNAL-{date_ecriture}-{'CREDIT-' if is_credit else ''}{item.get('type_taxe_id')}",
+                        'description': f"Ventes POS {item.get('type_taxe_nom')} - {mode_nom}",
+                        'reference': f"JOURNAL-{date_ecriture}-VENTE-{item.get('type_taxe_id')}",
                         'type_ecriture': 'recette',
-                        'tva_taux': 0 if is_credit else (round((total_tva / total_ht * 100), 2) if total_ht > 0 else 0),
-                        'tva_montant': 0 if is_credit else total_tva,
+                        
+                        # ✅ Ces deux champs déclencheront la création automatique de l'écriture secondaire (2200)
+                        'tva_taux': round((total_tva / total_ht * 100), 2) if total_ht > 0 else 0,
+                        'tva_montant': total_tva,
+                        
                         'utilisateur_id': user_id,
                         'statut': 'validée',
                         'type_ecriture_comptable': 'principale'
