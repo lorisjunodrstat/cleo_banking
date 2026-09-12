@@ -8430,19 +8430,18 @@ class EcritureComptable:
             logger.error(f"Erreur lors de la récupération des statistiques par catégorie: {e}")
             return []
 
-    def _validate_date(date_str: str) -> bool:
-        try:
-            datetime.strptime(date_str, '%Y-%m-%d')
-            return True
-        except ValueError:
-            return False
+        @staticmethod
+
     @staticmethod
     def _validate_date(date_str: str) -> bool:
+        """Valide le format d'une chaîne de date YYYY-MM-DD"""
         try:
-            datetime.strptime(date_str, '%Y-%m-%d')
+            from datetime import datetime
+            datetime.strptime(date_str, '%Y-%-%d')
             return True
-        except ValueError:
+        except (ValueError, TypeError):
             return False
+        
     def _fetch_ecritures_by_type(self, user_id: int, date_from: str, date_to: str, type_ecriture: str) -> List[Dict]:
         with self.db.get_cursor() as cursor:
             cursor.execute("""
@@ -8695,6 +8694,7 @@ class EcritureComptable:
                 'nb_ecritures': 0,
                 'taux_moyen': 0
             }
+
     def _generate_titre_detail(self, cursor, type_categorie: str, categorie_id: str,
                             ecritures: List[Dict], annee: str) -> str:
         """Génère le titre pour la page de détail"""
@@ -9013,6 +9013,55 @@ class EcritureComptable:
         except Error as e:
             logger.error(f"Erreur lors de la récupération des écritures avec filtres: {e}")
             return []
+
+    def count_with_filters(self, user_id: int, date_from: str = None, date_to: str = None,
+                           statut: str = None, id_contact: int = None, compte_id: int = None,
+                           categorie_id: int = None, type_ecriture: str = None, 
+                           type_ecriture_comptable: str = None, date_created_from: str = None, 
+                           date_created_to: str = None) -> int:
+        """Compte le nombre total d'écritures correspondant aux filtres (pour la pagination)."""
+        try:
+            with self.db.get_cursor() as cursor:
+                query = "SELECT COUNT(*) as total FROM ecritures_comptables e WHERE e.utilisateur_id = %s"
+                params = [user_id]
+
+                if date_from:
+                    query += " AND e.date_ecriture >= %s"
+                    params.append(date_from)
+                if date_to:
+                    query += " AND e.date_ecriture <= %s"
+                    params.append(date_to)
+                if statut:
+                    query += " AND e.statut = %s"
+                    params.append(statut)
+                if id_contact:
+                    query += " AND e.id_contact = %s"
+                    params.append(id_contact)
+                if compte_id:
+                    query += " AND e.compte_bancaire_id = %s"
+                    params.append(compte_id)
+                if categorie_id:
+                    query += " AND e.categorie_id = %s"
+                    params.append(categorie_id)
+                if type_ecriture:
+                    query += " AND e.type_ecriture = %s"
+                    params.append(type_ecriture)
+                if type_ecriture_comptable:
+                    query += " AND e.type_ecriture_comptable = %s"
+                    params.append(type_ecriture_comptable)
+                if date_created_from:
+                    query += " AND e.created_at >= %s"
+                    params.append(date_created_from)
+                if date_created_to:
+                    query += " AND e.created_at <= %s"
+                    params.append(date_created_to)
+
+                cursor.execute(query, tuple(params))
+                result = cursor.fetchone()
+                return result['total'] if result else 0
+        except Exception as e:
+            logger.error(f"Erreur count_with_filters: {e}", exc_info=True)
+            return 0
 
     def get_by_user_period(self, user_id, date_from, date_to):
         """Récupère toutes les écritures pour une période donnée"""
