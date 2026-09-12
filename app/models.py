@@ -492,8 +492,8 @@ class DatabaseManager:
                     actif BOOLEAN DEFAULT TRUE,
                     categorie_complementaire_id INT NULL,
                     type_ecriture_complementaire VARCHAR(255) NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                     UNIQUE KEY uq_numero (numero),
                     FOREIGN KEY (parent_id) REFERENCES categories_comptables(id),
                     FOREIGN KEY (categorie_complementaire_id) REFERENCES categories_comptables(id) ON DELETE SET NULL
@@ -561,11 +561,11 @@ class DatabaseManager:
                         
                         -- 🔄 Statut étendu pour supporter le soft delete
                         statut ENUM('pending', 'validée', 'rejetée', 'supprimée') DEFAULT 'pending',
-                        date_validation TIMESTAMP NULL,
+                        date_validation DATETIME NULL,
                         
                         -- ⏱️ Audit
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                         
                         -- 🔗 Hiérarchie
                         ecriture_principale_id INT NULL,
@@ -602,8 +602,8 @@ class DatabaseManager:
                     valeur DECIMAL(15,2) DEFAULT NULL,
                     ordre INT DEFAULT 1,
                     actif BOOLEAN DEFAULT TRUE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     UNIQUE KEY uq_regle (categorie_source_id, categorie_destination_id, type_regle),
                     FOREIGN KEY (categorie_source_id) REFERENCES categories_comptables(id) ON DELETE CASCADE,
                     FOREIGN KEY (categorie_destination_id) REFERENCES categories_comptables(id) ON DELETE CASCADE
@@ -642,8 +642,8 @@ class DatabaseManager:
                     notifications_email BOOLEAN DEFAULT TRUE,
                     alertes_solde BOOLEAN DEFAULT TRUE,
                     seuil_alerte_solde DECIMAL(15,2) DEFAULT 500.00,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id)
                 );""")
 
@@ -877,8 +877,8 @@ class DatabaseManager:
                     email VARCHAR(255),
                     telephone VARCHAR(50),
                     logo_path VARCHAR(255),
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     est_actif BOOLEAN DEFAULT TRUE,
                     FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
                     FOREIGN KEY (entreprise_id) REFERENCES entreprise(id)
@@ -1089,9 +1089,9 @@ class DatabaseManager:
                     article_id INT NOT NULL,
                     type_taxe_id INT NOT NULL,
                     est_actuelle BOOLEAN DEFAULT TRUE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    date_debut TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    date_fin TIMESTAMP NULL DEFAULT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    date_debut DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    date_fin DATETIME NULL DEFAULT NULL,
                     FOREIGN KEY (article_id) REFERENCES pos_articles(id) ON DELETE CASCADE,
                     FOREIGN KEY (type_taxe_id) REFERENCES pos_types_taxes(id) ON DELETE CASCADE,
                     INDEX idx_article (article_id),
@@ -1331,8 +1331,8 @@ class DatabaseManager:
                     utilisateur_id INT NOT NULL,
                     mode_comptabilisation ENUM('par_ticket', 'par_jour') DEFAULT 'par_jour',
                     generation_ecritures ENUM('automatique', 'manuel') DEFAULT 'manuel',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     UNIQUE KEY unique_user (utilisateur_id),
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
                 );""")
@@ -1346,8 +1346,8 @@ class DatabaseManager:
                     compte_tva_id INT NULL COMMENT 'Compte de TVA passif (classe 2, ex: 2200)',
                     taux DECIMAL(5,2) NULL COMMENT 'Taux de TVA historique (ex: 8.10, 2.50)',
                     compte_vente_id INT NOT NULL COMMENT 'Compte de vente (classe 3, ex: 3001, 3002) ou compte passif (classe 2, ex: 2030 pour bons cadeaux)',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     
                     -- Contraintes de clés étrangères
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
