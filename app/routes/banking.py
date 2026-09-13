@@ -13070,7 +13070,7 @@ def pos_create_taxe():
 @login_required
 def pos_edit_taxe(type_taxe_id):
     # ✅ On récupère le TYPE, pas l'ancienne taxe
-    type_taxe = g.models.taxe_pos_model.get_by_id(type_taxe_id, current_user.id) 
+    type_taxe = g.models.taxe_pos_model.get_by_id(type_taxe_id, current_user.id)
     if not type_taxe:
         flash('Type de taxe introuvable.', 'error')
         return redirect(url_for('banking.pos_taxes_list'))
@@ -13080,40 +13080,44 @@ def pos_edit_taxe(type_taxe_id):
 
     if request.method == 'POST':
         action = request.form.get('action')
-        
+
         if action == 'update_type':
-            # Mise à jour du nom ou du statut actif
+            # ⬇️ CORRIGÉ : 3 arguments positionnels, pas de magasin_id
             g.models.taxe_pos_model.update_type(
-                type_taxe_id, 
-                current_user.id, 
-                magasin_id=get_magasin_id_courant(),
+                type_taxe_id,
+                current_user.id,
                 {
                     'nom': request.form.get('nom', '').strip(),
                     'est_actif': 'est_actif' in request.form
                 }
             )
             flash('Type de taxe mis à jour !', 'success')
-            
+
         elif action == 'add_new_rate':
             # Ajout d'un nouveau taux historique (ex: changement de TVA légale)
             try:
                 nouveau_taux = float(request.form.get('nouveau_taux', '0').replace(',', '.'))
-                date_debut = datetime.strptime(request.form.get('nouveau_date_debut'), '%Y-%m-%d').date()
-                
+                date_debut = datetime.strptime(
+                    request.form.get('nouveau_date_debut'), '%Y-%m-%d'
+                ).date()
+
                 g.models.taxe_pos_model.add_taux_historique(
                     type_taxe_id=type_taxe_id,
                     taux=nouveau_taux,
                     date_debut=date_debut,
-                    date_fin=None # Les anciens taux seront automatiquement fermés par la méthode du modèle
+                    date_fin=None
                 )
                 flash('Nouveau taux historique ajouté !', 'success')
             except ValueError:
                 flash('Format de taux ou date invalide.', 'error')
-                
-        return redirect(url_for('banking.pos_edit_taxe', type_taxe_id=type_taxe_id))
-        
-    return render_template('pos/edit_taxe.html', type_taxe=type_taxe, historique_taux=historique_taux)
 
+        return redirect(url_for('banking.pos_edit_taxe', type_taxe_id=type_taxe_id))
+
+    return render_template(
+        'pos/edit_taxe.html',
+        type_taxe=type_taxe,
+        historique_taux=historique_taux
+    )
 
 @bp.route('/pos/taxes/<int:taxe_id>/delete', methods=['POST'])
 @login_required
