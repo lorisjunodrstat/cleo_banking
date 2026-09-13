@@ -13301,7 +13301,7 @@ class HeureTravail:
     #
     #    except Exception as e:
     #        logger.error(f"Erreur get_by_date pour {date_str}: {str(e)}")
-    #        return []]
+    #        return []
 
     def get_jours_travail(self, mois: int, semaine: int, user_id: int, employeur: str, id_contrat: int) -> List[Dict]:
         """Récupère les jours de travail pour une période"""
@@ -17350,7 +17350,7 @@ class DiscountPOS:
                 return cursor.fetchall()
         except Exception as e:
             logger.error(f"Erreur récupération discounts: {e}")
-            return []]
+            return []
 
     def calculer_reduction(self, discount_id: int, montant_brut: Decimal) -> Decimal:
         """Calcule le montant de la réduction"""
