@@ -5910,6 +5910,17 @@ def delete_ecriture(ecriture_id):
             ecriture_id, current_user.id
         )
         
+        # ✅ CORRECTION : Vérifier que l'écriture existe avant de rendre le template
+        if not impact['ecriture']:
+            if is_ajax:
+                return jsonify({
+                    'success': False,
+                    'message': "Écriture introuvable ou non autorisée."
+                }), 404
+            else:
+                flash("Écriture introuvable ou non autorisée.", "error")
+                return redirect(url_for('banking.liste_ecritures'))
+        
         if is_ajax:
             # Retourne UNIQUEMENT le fragment HTML du modal
             return render_template(
@@ -5929,6 +5940,11 @@ def delete_ecriture(ecriture_id):
         impact = g.models.ecriture_comptable_model.get_impact_suppression(
             ecriture_id, current_user.id
         )
+        
+        # ✅ CORRECTION : Vérifier que l'écriture existe
+        if not impact['ecriture']:
+            flash("Écriture introuvable ou déjà supprimée.", "error")
+            return redirect(url_for('banking.liste_ecritures'))
         
         if not impact['peut_supprimer']:
             flash("Impossible de supprimer : " + "; ".join(impact['messages']), "error")
@@ -5970,7 +5986,6 @@ def delete_ecriture(ecriture_id):
     # ============================================================
     flash("Action invalide.", "error")
     return redirect(request.referrer or url_for('banking.liste_ecritures'))
-
 def supprimer_avec_impact(self, ecriture_id: int, user_id: int, 
                           delier_transaction: bool = False,
                           supprimer_cascade: bool = False) -> Tuple[bool, str]:
