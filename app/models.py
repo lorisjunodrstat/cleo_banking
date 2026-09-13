@@ -8582,7 +8582,13 @@ class EcritureComptable:
     def _fetch_ecritures_by_type(self, user_id: int, date_from: str, date_to: str, type_ecriture: str) -> List[Dict]:
         """Récupère les écritures pour le compte de résultat (uniquement comptes de résultat, pas de bilan)"""
         with self.db.get_cursor() as cursor:
-            cursor.execute("""
+            # ✅ CORRECTION : Utiliser les bons types_compte selon votre base
+            if type_ecriture == 'recette':
+                type_compte_filter = "'Revenus'"  # Produits (classe 3)
+            else:  # depense
+                type_compte_filter = "'Charge'"  # Charges (classe 4, 6) - SINGULIER !
+            
+            cursor.execute(f"""
                 SELECT
                     c.numero,
                     c.nom AS categorie_nom,
@@ -8599,12 +8605,11 @@ class EcritureComptable:
                 AND e.type_ecriture = %s
                 AND e.statut = 'validée'
                 AND e.type_ecriture_comptable = 'principale'
-                AND c.type_compte IN ('Revenus', 'Charges')
+                AND c.type_compte IN ({type_compte_filter})
                 GROUP BY c.id, c.numero, c.nom, c.type_compte
                 ORDER BY c.numero
             """, (user_id, date_from, date_to, type_ecriture))
             return cursor.fetchall()
-
     def get_compte_de_resultat(self, user_id: int, date_from: str, date_to: str) -> Dict:
         if not (self._validate_date(date_from) and self._validate_date(date_to)):
             logger.error("Format de date invalide dans get_compte_de_resultat")
