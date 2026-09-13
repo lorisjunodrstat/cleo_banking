@@ -6324,42 +6324,40 @@ def transactions_by_contact_and_compte(compte_id: int, contact_id: int):
 @bp.route('/comptabilite/compte-de-resultat')
 @login_required
 def compte_de_resultat():
-    """Génère le compte de résultat avec filtres"""
-    print(f"DEBUG: User {current_user.id} accède au compte de résultat")
+    """Génère le compte de résultat avec structure hiérarchique type Bexio"""
     try:
-        # Récupération des paramètres avec conversion sécurisée
         annee_str = request.args.get('annee', '')
         if annee_str and annee_str.isdigit():
             annee = int(annee_str)
         else:
             annee = datetime.now().year
+        
         date_from = f"{annee}-01-01"
         date_to = f"{annee}-12-31"
-        # Récupération des données
-        stats = g.models.ecriture_comptable_model.get_compte_de_resultat(
+        
+        # Utiliser la méthode Bexio existante
+        from app.models import Rapport
+        rapport_model = Rapport(g.db)
+        compte_resultat = rapport_model.get_compte_resultat_bexio(
             user_id=current_user.id,
             date_from=date_from,
-            date_to=date_to
-        )  
-        # Debug: Afficher le nombre d'écritures trouvées
-        print(f"DEBUG: {len(stats.get('produits', [])) + len(stats.get('charges', []))} éléments dans le compte de résultat")
-        # Vérification des écritures pour l'année sélectionnée
-        toutes_ecritures = g.models.ecriture_comptable_model.get_by_user_period(
-            user_id=current_user.id,
-            date_from=date_from,
-            date_to=date_to
+            date_to=date_to,
+            niveau=3,  # 1=groupes, 2=+sous-groupes, 3=+comptes
+            show_zero=True  # Afficher toutes les catégories même sans écritures
         )
-        print(f"DEBUG: {len(toutes_ecritures)} écritures trouvées pour {annee}")
-        # Préparation des données pour le template
+        
         annees_disponibles = g.models.ecriture_comptable_model.get_annees_disponibles(current_user.id)
+        
         return render_template('comptabilite/compte_de_resultat.html',
-                            stats=stats,
-                            annee_selectionnee=annee,
-                            annees_disponibles=annees_disponibles)  
+                              compte_resultat=compte_resultat,
+                              annee_selectionnee=annee,
+                              annees_disponibles=annees_disponibles)
+    
     except Exception as e:
         flash(f"Erreur lors de la génération du compte de résultat: {str(e)}", "danger")
+        logger.error(f"Erreur compte de résultat: {e}", exc_info=True)
         return redirect(url_for('banking.banking_dashboard'))
-
+       
 @bp.route('/comptabilite/ecritures/detail/<string:type>/<categorie_id>')
 @login_required
 def detail_ecritures_categorie(type, categorie_id):

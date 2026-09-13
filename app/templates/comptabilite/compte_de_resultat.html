@@ -55,122 +55,42 @@
     <div class="card">
         <div class="card-header">
             <h4 class="mb-0">Compte de résultat - {{ annee_selectionnee }}</h4>
-            <p class="mb-0 text-muted">Période du {{ stats.date_from|format_date }} au {{ stats.date_to|format_date }}
-            </p>
+            <p class="mb-0 text-muted">Période du {{ compte_resultat.meta.date_from }} au {{ compte_resultat.meta.date_to }}</p>
         </div>
         <div class="card-body">
-            <!-- Section Produits -->
-            <div class="mb-5">
-                <h5 class="border-bottom pb-2">PRODUITS</h5>
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Numéro</th>
-                                <th>Catégorie</th>
-                                <th class="text-end">Montant HT (CHF)</th>
-                                <th class="text-end">TVA (CHF)</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for produit in stats.produits if produit.montant %}
-                            <tr>
-                                <td>{{ produit.numero }}</td>
-                                <td>{{ produit.categorie_nom }}</td>
-                                <td class="text-end">{{ "%.2f"|format(produit.montant) }}</td>
-                                <td class="text-end">{{ "%.2f"|format(produit.montant_ttc - produit.montant) }}</td>
-                                <td class="text-end">
-                                    <a href="{{ url_for('banking.detail_ecritures_categorie',
-                                    type='produit',
-                                    categorie_id=produit.categorie_id) }}?annee={{ annee_selectionnee }}"
-                                        class="btn btn-sm btn-outline-info">
-                                        <i class="fas fa-eye"></i> Détail
-                                    </a>
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="4" class="text-center">Aucun produit enregistré</td>
-                            </tr>
-                            {% endfor %}
-                            <tr class="table-success">
-                                <td colspan="2" class="fw-bold">TOTAL PRODUITS</td>
-                                <td class="text-end fw-bold">
-                                    <a href="{{ url_for('banking.detail_ecritures_categorie',
-                                    type='produit',
-                                    categorie_id='all') }}?annee={{ annee_selectionnee }}"
-                                        class="text-decoration-none text-dark">
-                                        {{ "%.2f"|format(stats.total_produits) }}
-                                    </a>
-                                </td>
-                                <td></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Section Charges -->
-            <div class="mb-5">
-                <h5 class="border-bottom pb-2">CHARGES</h5>
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Numéro</th>
-                                <th>Catégorie</th>
-                                <th class="text-end">Montant (CHF)</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for charge in stats.charges if charge.montant %}
-                            <tr>
-                                <td>{{ charge.numero }}</td>
-                                <td>{{ charge.categorie_nom }}</td>
-                                <td class="text-end">{{ "%.2f"|format(charge.montant) }}</td>
-                                <td class="text-end">
-                                    <a href="{{ url_for('banking.detail_ecritures_categorie',
-                                    type='charge',
-                                    categorie_id=charge.categorie_id) }}?annee={{ annee_selectionnee }}"
-                                        class="btn btn-sm btn-outline-info">
-                                        <i class="fas fa-eye"></i> Détail
-                                    </a>
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="4" class="text-center">Aucune charge enregistrée</td>
-                            </tr>
-                            {% endfor %}
-                            <tr class="table-danger">
-                                <td colspan="2" class="fw-bold">TOTAL CHARGES</td>
-                                <td class="text-end fw-bold">
-                                    <a href="{{ url_for('banking.detail_ecritures_categorie',
-                                    type='charge',
-                                    categorie_id='all') }}?annee={{ annee_selectionnee }}"
-                                        class="text-decoration-none text-dark">
-                                        {{ "%.2f"|format(stats.total_charges) }}
-                                    </a>
-                                </td>
-                                <td></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Résultat -->
-            <div class="row justify-content-end">
-                <div class="col-md-6">
-                    <div class="card {% if stats.resultat >= 0 %}bg-success{% else %}bg-danger{% endif %} text-white">
-                        <div class="card-body text-center">
-                            <h5 class="card-title">RÉSULTAT {{ annee_selectionnee }}</h5>
-                            <p class="card-text display-4">{{ "%.2f"|format(stats.resultat) }} CHF</p>
-                        </div>
-                    </div>
-                </div>
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 70%;">Libellé</th>
+                            <th class="text-end" style="width: 15%;">Période A (CHF)</th>
+                            <th class="text-end" style="width: 15%;">Période B (CHF)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in compte_resultat.rows %}
+                        <tr class="{% if row.bold %}fw-bold{% endif %} 
+                                   {% if row.kind == 'result' %}table-info{% elif row.kind == 'group' %}table-warning{% elif row.kind == 'subgroup' %}table-light{% endif %}">
+                            <td style="padding-left: {{ row.level * 20 + 10 }}px;">
+                                {% if row.numero %}
+                                    <span class="text-muted me-2">{{ row.numero }}</span>
+                                {% endif %}
+                                {{ row.label }}
+                            </td>
+                            <td class="text-end">
+                                <span class="{% if row.a < 0 %}text-danger{% else %}text-success{% endif %}">
+                                    {{ "%.2f"|format(row.a) }}
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                <span class="{% if row.b < 0 %}text-danger{% else %}text-success{% endif %}">
+                                    {{ "%.2f"|format(row.b) }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
