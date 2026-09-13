@@ -73,7 +73,7 @@
                 <select name="pdv" class="form-control" title="PDV">
                     <option value="">Tous les PDV</option>
                     {% for p in pdvs %}
-                        <option value="{{ p.id }}" {% if pdv|int == p.id %}selected{% endif %}>
+                        <option value="{{ p.nom_pdv }}" {% if pdv == p.nom_pdv %}selected{% endif %}>
                             {{ p.nom_pdv }}
                         </option>
                     {% endfor %}
