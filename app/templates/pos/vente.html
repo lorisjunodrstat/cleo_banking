@@ -215,10 +215,18 @@ button{cursor:pointer; border:none; background:none}
 {% if etat == 'select_pdv' %}
 <div class="screen">
   <div class="card">
-    <h1>Mode Caisse</h1>
-    <p class="sub">Sélectionnez le point de vente à utiliser sur cet appareil.</p>
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:16px;">
+      <div>
+        <h1 style="margin-bottom:6px;">Mode Caisse</h1>
+        <p class="sub" style="margin-bottom:0;">Sélectionnez le point de vente à utiliser.</p>
+      </div>
+      <div style="flex-shrink:0;">
+        {% include 'pos/_magasin_selector.html' %}
+      </div>
+    </div>
+
     {% if not pdvs %}
-      <p>Aucun point de vente défini. Créez d'abord un magasin et un PDV dans le Back Office.</p>
+      <p>Aucun point de vente défini pour ce magasin. Créez d'abord un PDV dans le Back Office.</p>
     {% else %}
       <form method="POST" action="{{ url_for('banking.pos_vente_select_pdv') }}">
         <div class="pdv-grid">
@@ -241,7 +249,15 @@ button{cursor:pointer; border:none; background:none}
 {% elif etat == 'periode' %}
 <div class="screen">
   <div class="card">
-    <h1>{{ pdv.nom_pdv }} — {{ pdv.nom_magasin }}</h1>
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:16px;">
+      <div>
+        <h1 style="margin-bottom:6px;">{{ pdv.nom_pdv }}</h1>
+        <p class="sub" style="margin-bottom:0;">Magasin : <strong>{{ pdv.nom_magasin }}</strong></p>
+      </div>
+      <div style="flex-shrink:0;">
+        {% include 'pos/_magasin_selector.html' %}
+      </div>
+    </div>
 
     {% if periode %}
       {# Une période est ouverte sur UN AUTRE PDV : il faut la fermer d'abord #}
@@ -272,12 +288,16 @@ button{cursor:pointer; border:none; background:none}
 {% else %}
 <header class="topbar">
   <button class="iconbtn" id="btnDrawer">☰</button>
-  
-  {# --- AJOUT : onclick et cursor:pointer pour rendre la zone cliquable --- #}
   <div class="title" onclick="showTicket()" style="cursor: pointer;" title="Afficher le ticket">
     <span id="ticketNomDisplay">Ticket</span> <span class="badge" id="ticketCount">0</span>
   </div>
-  
+  {# ⬇️ AJOUT : nom du PDV + magasin dans le topbar (compact, non cliquable) #}
+  {% if pdv %}
+  <div style="font-size:13px; opacity:0.9; margin-right:6px; text-align:right; line-height:1.2;">
+    <div style="font-weight:600;">{{ pdv.nom_pdv }}</div>
+    <div style="font-size:11px; opacity:0.8;">{{ pdv.nom_magasin }}</div>
+  </div>
+  {% endif %}
   <button class="iconbtn" id="btnClient" title="Attribuer le ticket">👤+</button>
   <button class="iconbtn" id="btnMenu">⋮</button>
 </header>

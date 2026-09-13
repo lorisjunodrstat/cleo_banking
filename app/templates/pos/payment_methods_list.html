@@ -3,12 +3,13 @@
 {% block page_header %}
 <h2 class="mb-4">
     Modes de paiement
-    <a href="{{ url_for('banking.pos_create_payment_method') }}" class="btn btn-sm btn-success float-end">+ Nouveau</a>
+    <a href="{{ url_for('banking.pos_create_payment_method', magasin_id=pos_magasin_courant.id) }}" class="btn btn-sm btn-success float-end">+ Nouveau</a>
 </h2>
 {% endblock %}
 
 {% block content %}
 <div class="card shadow-sm">
+    {% include 'pos/_magasin_selector.html' %}
     <div class="card-body">
         <table class="table table-hover">
             <thead class="table-light">

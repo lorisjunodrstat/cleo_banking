@@ -3,7 +3,8 @@
 {% block page_header %}
 <h2 class="mb-4">
     Gestion des types de taxes
-    <a href="{{ url_for('banking.pos_create_taxe') }}" class="btn btn-sm btn-success float-end">
+    {% include 'pos/_magasin_selector.html' %}
+    <a href="{{ url_for('banking.pos_create_taxe', magasin_id=pos_magasin_courant.id) }}" class="btn btn-sm btn-success float-end">
         <i class="bi bi-plus-lg"></i> Nouveau type de taxe
     </a>
 </h2>

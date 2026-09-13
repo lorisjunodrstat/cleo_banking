@@ -4,6 +4,9 @@
 {% block page_header %}
 <h2 class="mb-4">
     <i class="bi bi-people me-2"></i>Gestion des clients
+    <div class="d-flex gap-2">
+        {% include 'pos/_magasin_selector.html' %}
+    </div>
     <span class="badge bg-primary ms-2">{{ total_clients }}</span>
 </h2>
 {% endblock %}

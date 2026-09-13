@@ -281,7 +281,24 @@ class DatabaseManager:
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
                 );""")
-
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS entreprise (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    entreprise_id INT,
+                    nom VARCHAR(255) NOT NULL,
+                    rue VARCHAR(255),
+                    code_postal VARCHAR(20),
+                    commune VARCHAR(100),
+                    email VARCHAR(255),
+                    telephone VARCHAR(50),
+                    logo_path VARCHAR(255),
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    est_actif BOOLEAN DEFAULT TRUE,
+                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (entreprise_id) REFERENCES entreprise(id)
+                );""")
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS equipes (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -291,6 +308,7 @@ class DatabaseManager:
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
                 );""")
+
 
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS employes (
@@ -822,7 +840,7 @@ class DatabaseManager:
                     PRIMARY KEY (equipe_id, employe_id),
                     FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE CASCADE,
                     FOREIGN KEY (employe_id) REFERENCES employes(id) ON DELETE CASCADE,
-                    FOREIGN KEY (entreprise_id) REFERENCES enterprise(id)
+                    FOREIGN KEY (entreprise_id) REFERENCES entreprise(id)
                 );""")
 
                 cursor.execute("""
@@ -865,24 +883,7 @@ class DatabaseManager:
                     FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
                 );""")
 
-                cursor.execute("""
-                CREATE TABLE IF NOT EXISTS entreprise (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    user_id INT NOT NULL,
-                    entreprise_id INT,
-                    nom VARCHAR(255) NOT NULL,
-                    rue VARCHAR(255),
-                    code_postal VARCHAR(20),
-                    commune VARCHAR(100),
-                    email VARCHAR(255),
-                    telephone VARCHAR(50),
-                    logo_path VARCHAR(255),
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    est_actif BOOLEAN DEFAULT TRUE,
-                    FOREIGN KEY (user_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                    FOREIGN KEY (entreprise_id) REFERENCES entreprise(id)
-                );""")
+                
 
                 # ========================================================================
                 # TABLES POS (Point de Vente / Caisse)
@@ -894,6 +895,7 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS pos_magasins (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     utilisateur_id INT NOT NULL,
+                    entreprise_id INT NULL,
                     nom_magasin VARCHAR(100) NOT NULL,
                     adresse VARCHAR(200),
                     ville VARCHAR(200),
@@ -905,7 +907,9 @@ class DatabaseManager:
                     description TEXT,
                     actif BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (entreprise_id) REFERENCES entreprise(id) ON DELETE SET NULL,
+                    INDEX idx_entreprise (entreprise_id)
                 );""")
 
                 # 2. Points de vente
@@ -944,6 +948,7 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS pos_categories (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     utilisateur_id INT NOT NULL,
+                    magasin_id INT NULL,
                     nom_categorie VARCHAR(100) NOT NULL,
                     description TEXT,
                     couleur VARCHAR(7) DEFAULT '#28a745',
@@ -954,7 +959,9 @@ class DatabaseManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
                     FOREIGN KEY (categorie_comptable_vente_id) REFERENCES categories_comptables(id) ON DELETE SET NULL,
-                    UNIQUE KEY unique_categorie_user (utilisateur_id, nom_categorie)
+                    FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE SET NULL,
+                    UNIQUE KEY unique_categorie_user (utilisateur_id, nom_categorie),
+                    INDEX idx_magasin (magasin_id)
                 );""")
 
                 # 5. Sous-catégories POS
@@ -978,10 +985,12 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS pos_types_taxes (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     utilisateur_id INT NOT NULL,
+                    magasin_id INT NULL,
                     nom VARCHAR(100) NOT NULL,
                     est_actif BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE SET NULL,
                     UNIQUE KEY unique_type_taxe_user (utilisateur_id, nom)
                 );""")
 
@@ -1003,6 +1012,7 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS pos_articles (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     utilisateur_id INT NOT NULL,
+                    magasin_id INT NULL,
                     id_categorie INT NOT NULL,
                     id_sous_categorie INT NULL,
                     nom_article VARCHAR(255) NOT NULL,
@@ -1023,7 +1033,9 @@ class DatabaseManager:
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
                     FOREIGN KEY (id_categorie) REFERENCES pos_categories(id),
                     FOREIGN KEY (id_sous_categorie) REFERENCES pos_sous_categories(id) ON DELETE SET NULL,
+                    FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE SET NULL,
                     INDEX idx_nom_article (nom_article),
+                    INDEX idx_magasin (magasin_id),
                     INDEX idx_utilisateur (utilisateur_id)
                 );""")
 
@@ -1048,13 +1060,16 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS pos_modificateurs (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     utilisateur_id INT NOT NULL,
+                    magasin_id INT NULL,
                     nom_modificateur VARCHAR(200) NOT NULL,
                     prix_modificateur DECIMAL(10,2) DEFAULT 0,
                     description TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     taux_tva DECIMAL(5,2) DEFAULT 0.00 COMMENT 'Taux de TVA par défaut pour ce modificateur (ex: 8.1)',
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
-                    INDEX idx_nom_modificateur (nom_modificateur)
+                    FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE SET NULL,
+                    INDEX idx_nom_modificateur (nom_modificateur),
+                    INDEX idx_magasin (magasin_id)
                 );""")
 
                 # 11. Options de modificateurs
@@ -1113,6 +1128,7 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS pos_clients (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     utilisateur_id INT NOT NULL,
+                    magasin_id INT NULL,
                     nom_client VARCHAR(200) NOT NULL,
                     numero_client VARCHAR(50),
                     telephone VARCHAR(50),
@@ -1125,8 +1141,10 @@ class DatabaseManager:
                     email VARCHAR(100),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE SET NULL,
                     INDEX idx_nom_client (nom_client),
-                    INDEX idx_utilisateur (utilisateur_id)
+                    INDEX idx_utilisateur (utilisateur_id),
+                    INDEX idx_magasin (magasin_id)
                 );""")
 
                 # 15. Réductions / Remises
@@ -1134,13 +1152,16 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS pos_discounts (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     utilisateur_id INT NOT NULL,
+                    magasin_id INT NULL,
                     nom VARCHAR(100) NOT NULL,
                     type_reduction VARCHAR(20) NOT NULL,
                     valeur DECIMAL(10,2),
                     est_actif BOOLEAN DEFAULT TRUE,
                     acces_restreint BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE SET NULL,
+                    INDEX idx_magasin (magasin_id)
                 );""")
 
                 # 16. Options restaurant
@@ -1148,12 +1169,15 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS pos_restaurant_options (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     utilisateur_id INT NOT NULL,
+                    magasin_id INT NULL,
                     nom VARCHAR(50) NOT NULL,
                     description TEXT,
                     icone VARCHAR(50) DEFAULT 'utensils',
                     est_actif BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE SET NULL,
+                    INDEX idx_magasin (magasin_id),
                     UNIQUE KEY unique_option_user (utilisateur_id, nom)
                 );""")
 
@@ -1162,6 +1186,7 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS pos_modes_paiement (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     utilisateur_id INT NOT NULL,
+                    magasin_id INT NULL,
                     nom VARCHAR(50) NOT NULL,
                     description TEXT,
                     icone VARCHAR(50) DEFAULT 'credit-card',
@@ -1177,7 +1202,9 @@ class DatabaseManager:
                     FOREIGN KEY (compte_tresorerie_id) REFERENCES categories_comptables(id) ON DELETE SET NULL,
                     FOREIGN KEY (compte_frais_service_id) REFERENCES categories_comptables(id) ON DELETE SET NULL,
                     FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id) ON DELETE SET NULL,
-                    UNIQUE KEY unique_mode_user (utilisateur_id, nom)
+                    FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE SET NULL,
+                    UNIQUE KEY unique_mode_user (utilisateur_id, nom),
+                    INDEX idx_magasin (magasin_id)
                 );""")
 
                 # ========================================================================
@@ -1189,6 +1216,7 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS pos_receipts (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     utilisateur_id INT NOT NULL,
+                    magasin_id INT NULL,
                     porte_monnaie_id INT NULL COMMENT 'Lien vers le porte-monnaie utilisé',
                     date DATETIME NOT NULL,
                     recu_numero VARCHAR(50) NOT NULL,
@@ -1227,13 +1255,15 @@ class DatabaseManager:
                     FOREIGN KEY (discount_id) REFERENCES pos_discounts(id) ON DELETE SET NULL,
                     FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
                     FOREIGN KEY (compte_bancaire_id) REFERENCES comptes_principaux(id) ON DELETE SET NULL,
+                    FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE SET NULL,
                     INDEX idx_recu_numero (recu_numero),
                     INDEX idx_date (date),
                     INDEX idx_caissier (nom_du_caissier),
                     INDEX idx_utilisateur (utilisateur_id),
                     INDEX idx_transaction (transaction_id),
                     INDEX idx_client (id_client),
-                    INDEX idx_porte_monnaie (porte_monnaie_id)
+                    INDEX idx_porte_monnaie (porte_monnaie_id),
+                    INDEX idx_magasin (magasin_id)
                 );""")
 
                 # 19. Items du reçu
@@ -1329,12 +1359,15 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS pos_compta_settings (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     utilisateur_id INT NOT NULL,
+                    magasin_id INT NULL,
                     mode_comptabilisation ENUM('par_ticket', 'par_jour') DEFAULT 'par_jour',
                     generation_ecritures ENUM('automatique', 'manuel') DEFAULT 'manuel',
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     UNIQUE KEY unique_user (utilisateur_id),
-                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE SET NULL,
+                    INDEX idx_magasin (magasin_id)
                 );""")
 
                 # 25. 🆕 Mapping Comptable TVA (lié au TYPE de taxe, pas au taux historique)
@@ -1342,6 +1375,7 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS pos_compta_mapping_tva (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     utilisateur_id INT NOT NULL,
+                    magasin_id INT NULL,
                     type_taxe_id INT NOT NULL,
                     compte_tva_id INT NULL COMMENT 'Compte de TVA passif (classe 2, ex: 2200)',
                     taux DECIMAL(5,2) NULL COMMENT 'Taux de TVA historique (ex: 8.10, 2.50)',
@@ -1351,6 +1385,7 @@ class DatabaseManager:
                     
                     -- Contraintes de clés étrangères
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (magasin_id) REFERENCES pos_magasins(id) ON DELETE SET NULL,
                     FOREIGN KEY (type_taxe_id) REFERENCES pos_types_taxes(id) ON DELETE CASCADE,
                     FOREIGN KEY (compte_vente_id) REFERENCES categories_comptables(id) ON DELETE CASCADE,
                     FOREIGN KEY (compte_tva_id) REFERENCES categories_comptables(id) ON DELETE SET NULL,
@@ -1362,7 +1397,8 @@ class DatabaseManager:
                     INDEX idx_utilisateur (utilisateur_id),
                     INDEX idx_type_taxe (type_taxe_id),
                     INDEX idx_compte_vente (compte_vente_id),
-                    INDEX idx_compte_tva (compte_tva_id)
+                    INDEX idx_compte_tva (compte_tva_id),
+                    INDEX idx_magasin (magasin_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci 
                 COMMENT='Mapping entre les types de taxes POS et les comptes comptables (ventes et TVA)';
                 """)
@@ -16248,7 +16284,7 @@ class Entreprise:
                 cursor.execute(query, (user_id,))
                 return cursor.fetchall()
         except Exception as e:
-            logger.error(f"Erreur récupération types de enterprise: {e}")
+            logger.error(f"Erreur récupération types de entreprise: {e}")
             return []
 
     def get_by_id(self, user_id: int, entreprise_id: int) ->Optional[Dict]: 
@@ -16405,7 +16441,23 @@ class MagasinPOS:
             logger.error(f"Erreur suppression magasin: {e}")
             return False
 
-
+    def get_by_entreprise(self, user_id: int, entreprise_id: int) -> List[Dict]:
+        """Récupère les magasins d'une entreprise."""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT m.*, 
+                        (SELECT COUNT(*) FROM pos_points_de_vente WHERE magasin_id = m.id) AS nb_pdv,
+                        e.nom AS nom_entreprise
+                    FROM pos_magasins m
+                    LEFT JOIN entreprise e ON e.id = m.entreprise_id
+                    WHERE m.utilisateur_id = %s AND m.entreprise_id = %s
+                    ORDER BY m.nom_magasin
+                """, (user_id, entreprise_id))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération magasins par entreprise: {e}")
+            return []
 
 class PointDeVentePOS:
     """
@@ -16415,31 +16467,30 @@ class PointDeVentePOS:
     def __init__(self, db):
         self.db = db
 
-    def create(self, user_id: int, entreprise_id: int, data: Dict) -> Optional[int]:
-        """Crée un magasin lié à une entreprise spécifique"""
+    def create(self, user_id: int, magasin_id: int, data: Dict) -> Optional[int]:
+        """Crée un point de vente rattaché à un magasin."""
         try:
+            # Vérifier que le magasin appartient à l'utilisateur
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
-                    INSERT INTO pos_magasins 
-                    (utilisateur_id, entreprise_id, nom_magasin, adresse, ville, canton, 
-                    code_postal, pays, telephone, email, description)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    SELECT id FROM pos_magasins 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (magasin_id, user_id))
+                if not cursor.fetchone():
+                    return None
+                
+                cursor.execute("""
+                    INSERT INTO pos_points_de_vente 
+                    (magasin_id, nom_pdv, compte_bancaire_id)
+                    VALUES (%s, %s, %s)
                 """, (
-                    user_id,
-                    entreprise_id,
-                    data['nom_magasin'],
-                    data.get('adresse'),
-                    data.get('ville'),
-                    data.get('canton'),
-                    data.get('code_postal'),
-                    data.get('pays', 'Suisse'),
-                    data.get('telephone'),
-                    data.get('email'),
-                    data.get('description')
+                    magasin_id,
+                    data['nom_pdv'],
+                    data.get('compte_bancaire_id')
                 ))
                 return cursor.lastrowid
         except Exception as e:
-            logger.error(f"Erreur création magasin: {e}")
+            logger.error(f"Erreur création PDV: {e}")
             return None
 
     def update(self, pdv_id: int, user_id: int, data: Dict) -> bool:
@@ -16497,7 +16548,7 @@ class PointDeVentePOS:
         except Exception as e:
             logger.error(f"Erreur récupération PDV: {e}")
             return []
-
+    
     def get_by_id(self, pdv_id: int) -> Optional[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
@@ -16526,7 +16577,6 @@ class PointDeVentePOS:
             logger.error(f"Erreur suppression PDV: {e}")
             return False
 
-
 class CategoriePOS:
     """Catégories d'articles POS"""
     def __init__(self, db):
@@ -16536,24 +16586,29 @@ class CategoriePOS:
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
-                    INSERT INTO pos_categories (utilisateur_id, nom_categorie, description)
-                    VALUES (%s, %s, %s)
-                """, (user_id, data['nom_categorie'], data.get('description', '')))
+                    INSERT INTO pos_categories (utilisateur_id, magasin_id, nom_categorie, description)
+                    VALUES (%s, %s, %s, %s)
+                """, (user_id, data['magasin_id'], data['nom_categorie'], data.get('description', '')))
                 return cursor.lastrowid
         except Exception as e:
             logger.error(f"Erreur création catégorie POS: {e}")
             return None
 
-    def get_all(self, user_id: int) -> List[Dict]:
+    def get_all(self, user_id: int, magasin_id: int = None) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                cursor.execute("""
+                query = """
                     SELECT c.*, 
-                           (SELECT COUNT(*) FROM pos_articles WHERE id_categorie = c.id) as nb_articles
+                        (SELECT COUNT(*) FROM pos_articles WHERE id_categorie = c.id) as nb_articles
                     FROM pos_categories c
                     WHERE c.utilisateur_id = %s
-                    ORDER BY c.nom_categorie
-                """, (user_id,))
+                """
+                params = [user_id]
+                if magasin_id:
+                    query += " AND c.magasin_id = %s"
+                    params.append(magasin_id)
+                query += " ORDER BY c.nom_categorie"
+                cursor.execute(query, params)
                 return cursor.fetchall()
         except Exception as e:
             logger.error(f"Erreur récupération catégories POS: {e}")
@@ -16602,7 +16657,6 @@ class CategoriePOS:
             logger.error(f"Erreur suppression catégorie POS: {e}")
             return False
 
-
 class SousCategoriePOS:
     """Sous-catégories d'articles POS"""
     def __init__(self, db):
@@ -16626,16 +16680,21 @@ class SousCategoriePOS:
         except Exception as e:
             return None
         
-    def get_all(self, user_id: int) -> List[Dict]:
+    def get_all(self, user_id: int, magasin_id: int = None) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                cursor.execute("""
+                query = """
                     SELECT sc.*, c.nom_categorie 
                     FROM pos_sous_categories sc
                     JOIN pos_categories c ON sc.id_categorie = c.id
                     WHERE c.utilisateur_id = %s
-                    ORDER BY c.nom_categorie, sc.nom_sous_categorie
-                """, (user_id,))
+                """
+                params = [user_id]
+                if magasin_id:
+                    query += " AND c.magasin_id = %s"
+                    params.append(magasin_id)
+                query += " ORDER BY c.nom_categorie, sc.nom_sous_categorie"
+                cursor.execute(query, params)
                 return cursor.fetchall()
         except Exception as e:
             logger.error(f"Erreur get_all sous-cat: {e}")
@@ -16694,8 +16753,6 @@ class SousCategoriePOS:
             logger.error(f"Erreur suppression sous-catégorie: {e}")
             return False
 
-
-
 class TaxePOS:
     """
     Gestion des taxes (TVA, etc.) basée sur des TYPES de taxes et des taux historiques.
@@ -16705,14 +16762,13 @@ class TaxePOS:
     def __init__(self, db):
         self.db = db
 
-    def create_type(self, user_id: int, nom: str, est_actif: bool = True) -> Optional[int]:
-        """Crée un type de taxe (ex: 'TVA Alimentaire')"""
+    def create_type(self, user_id: int, magasin_id: int, nom: str, est_actif: bool = True) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
-                    INSERT INTO pos_types_taxes (utilisateur_id, nom, est_actif)
-                    VALUES (%s, %s, %s)
-                """, (user_id, nom, est_actif))
+                    INSERT INTO pos_types_taxes (utilisateur_id, magasin_id, nom, est_actif)
+                    VALUES (%s, %s, %s, %s)
+                """, (user_id, magasin_id, nom, est_actif))
                 return cursor.lastrowid
         except Exception as e:
             logger.error(f"Erreur création type de taxe: {e}")
@@ -16847,22 +16903,17 @@ class TaxePOS:
             'date_application': date_ticket
         }
 
-    def get_all_types(self, user_id: int, actif_only: bool = True) -> List[Dict]:
-        """Récupère uniquement la liste des types de taxes de l'utilisateur."""
+    def get_all_types(self, user_id: int, magasin_id: int = None, actif_only: bool = True) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                query = """
-                    SELECT id, nom, est_actif 
-                    FROM pos_types_taxes 
-                    WHERE utilisateur_id = %s
-                """
+                query = "SELECT id, nom, est_actif FROM pos_types_taxes WHERE utilisateur_id = %s"
                 params = [user_id]
-
+                if magasin_id:
+                    query += " AND magasin_id = %s"
+                    params.append(magasin_id)
                 if actif_only:
                     query += " AND est_actif = TRUE"
-
                 query += " ORDER BY nom"
-                
                 cursor.execute(query, params)
                 return cursor.fetchall()
         except Exception as e:
@@ -16945,31 +16996,41 @@ class TaxePOS:
         except Exception as e:
             logger.error(f"Erreur désactivation taxes article {article_id}: {e}", exc_info=True)
             return False
-
-                        
+                      
 class ModePaiementPOS:
     """Modes de paiement (Espèces, Carte, Twint, etc.)"""
     def __init__(self, db):
         self.db = db
 
 
-    def create(self, user_id: int, data: Dict) -> Optional[int]:
+    def create(self, user_id: int, magasin_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
-                    INSERT INTO pos_modes_paiement (utilisateur_id, nom, description, est_actif, compte_bancaire_id, compte_tresorerie_id)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (user_id, data['nom'], data.get('description', ''), data.get('est_actif', True), data.get('compte_bancaire_id'), data.get('compte_tresorerie_id')))
+                    INSERT INTO pos_modes_paiement 
+                    (utilisateur_id, magasin_id, nom, description, est_actif, 
+                    compte_bancaire_id, compte_tresorerie_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    user_id, magasin_id, data['nom'], data.get('description', ''),
+                    data.get('est_actif', True), data.get('compte_bancaire_id'),
+                    data.get('compte_tresorerie_id')
+                ))
                 return cursor.lastrowid
         except Exception as e:
+            logger.error(f"Erreur création mode paiement: {e}")
             return None
 
-    def get_all(self, user_id: int, actif_only: bool = True) -> List[Dict]:
+    def get_all(self, user_id: int, actif_only: bool = True, magasin_id: int = None) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 # Construction du WHERE
                 where_conditions = ["pmp.utilisateur_id = %s"]
                 params = [user_id]
+
+                if magasin_id is not None:
+                    where_conditions.append("pmp.magasin_id = %s")
+                    params.append(magasin_id)
                 
                 if actif_only:
                     where_conditions.append("pmp.est_actif = TRUE")
@@ -16995,7 +17056,7 @@ class ModePaiementPOS:
             logger.error(f"Erreur récupération modes paiement: {e}")
             return []
 
-    def get_all_with_comptes(self, user_id: int, actif_only: bool = True) -> List[Dict]:
+    def get_all_with_comptes(self, user_id: int, actif_only: bool = True, magasin_id: int = None) -> List[Dict]:
         """
         Récupère tous les modes de paiement avec les noms des comptes comptables affiliés.
         """
@@ -17023,6 +17084,10 @@ class ModePaiementPOS:
                 WHERE m.utilisateur_id = %s
                 """
                 params = [user_id]
+                
+                if magasin_id is not None:
+                    query += " AND m.magasin_id = %s"
+                    params.append(magasin_id)
                 
                 if actif_only:
                     query += " AND m.est_actif = TRUE"
@@ -17184,25 +17249,31 @@ class RestaurantOptionPOS:
     def __init__(self, db):
         self.db = db
 
-    def create(self, user_id: int, data: Dict) -> Optional[int]:
+    def create(self, user_id: int, magasin_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
-                    INSERT INTO pos_restaurant_options (utilisateur_id, nom, description, est_actif)
-                    VALUES (%s, %s, %s, %s)
-                """, (user_id, data['nom'], data.get('description', ''), data.get('est_actif', True)))
+                    INSERT INTO pos_restaurant_options 
+                    (utilisateur_id, magasin_id, nom, description, est_actif)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (
+                    user_id, magasin_id, data['nom'],
+                    data.get('description', ''), data.get('est_actif', True)
+                ))
                 return cursor.lastrowid
         except Exception as e:
             logger.error(f"Erreur création option restaurant: {e}")
             return None
-    def get_all(self, user_id: int) -> List[Dict]:
+    def get_all(self, user_id: int, magasin_id: int = None) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                cursor.execute("""
-                    SELECT * FROM pos_restaurant_options 
-                    WHERE utilisateur_id = %s AND est_actif = TRUE
-                    ORDER BY nom
-                """, (user_id,))
+                query = "SELECT * FROM pos_restaurant_options WHERE utilisateur_id = %s AND est_actif = TRUE"
+                params = [user_id]
+                if magasin_id:
+                    query += " AND magasin_id = %s"
+                    params.append(magasin_id)
+                query += " ORDER BY nom"
+                cursor.execute(query, params)
                 return cursor.fetchall()
         except Exception as e:
             logger.error(f"Erreur récupération options restaurant: {e}")
@@ -17241,26 +17312,22 @@ class RestaurantOptionPOS:
         except:
             return False
 
-
-
 class DiscountPOS:
     """Gestion des réductions (pourcentages ou montants fixes)"""
     def __init__(self, db):
         self.db = db
 
-    def create(self, user_id: int, data: Dict) -> Optional[int]:
+    def create(self, user_id: int, magasin_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO pos_discounts 
-                    (utilisateur_id, nom, type_reduction, valeur, est_actif, acces_restreint)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    (utilisateur_id, magasin_id, nom, type_reduction, valeur, 
+                    est_actif, acces_restreint)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """, (
-                    user_id,
-                    data['nom'],
-                    data['type_reduction'],  # 'percentage' ou 'fixed'
-                    data.get('valeur'),
-                    data.get('est_actif', True),
+                    user_id, magasin_id, data['nom'], data['type_reduction'],
+                    data.get('valeur'), data.get('est_actif', True),
                     data.get('acces_restreint', False)
                 ))
                 return cursor.lastrowid
@@ -17268,18 +17335,22 @@ class DiscountPOS:
             logger.error(f"Erreur création discount POS: {e}")
             return None
 
-    def get_all(self, user_id: int, actif_only: bool = True) -> List[Dict]:
+    def get_all(self, user_id: int, magasin_id: int = None, actif_only: bool = True) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 query = "SELECT * FROM pos_discounts WHERE utilisateur_id = %s"
+                params = [user_id]
+                if magasin_id:
+                    query += " AND magasin_id = %s"
+                    params.append(magasin_id)
                 if actif_only:
                     query += " AND est_actif = TRUE"
                 query += " ORDER BY nom"
-                cursor.execute(query, (user_id,))
+                cursor.execute(query, params)
                 return cursor.fetchall()
         except Exception as e:
             logger.error(f"Erreur récupération discounts: {e}")
-            return []
+            return []]
 
     def calculer_reduction(self, discount_id: int, montant_brut: Decimal) -> Decimal:
         """Calcule le montant de la réduction"""
@@ -17343,29 +17414,23 @@ class ArticlePOS:
         self.variante_model = VariantePOS(db)
         self.taxe_model = TaxePOS(db)
 
-    def create(self, user_id: int, data: Dict) -> Optional[int]:
+    def create(self, user_id: int, magasin_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO pos_articles 
-                    (utilisateur_id, id_categorie, id_sous_categorie, nom_article, 
-                     description, vendu_type, prix_unitaire, cout_unitaire, 
-                     stock, stock_alerte, is_variable_price, variante, code_barre)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (utilisateur_id, magasin_id, id_categorie, id_sous_categorie, 
+                    nom_article, description, vendu_type, prix_unitaire, cout_unitaire, 
+                    stock, stock_alerte, is_variable_price, variante, code_barre)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
-                    user_id,
-                    data['id_categorie'],
-                    data.get('id_sous_categorie'),
-                    data['nom_article'],
-                    data.get('description', ''),
-                    data.get('vendu_type', 'piece'),
-                    data.get('prix_unitaire', 0),
-                    data.get('cout_unitaire', 0),
-                    data.get('stock', 0),
-                    data.get('stock_alerte', 0),
-                    data.get('is_variable_price', False),
-                    data.get('variante', False),
-                    data.get('code_barre', '')
+                    user_id, magasin_id,
+                    data['id_categorie'], data.get('id_sous_categorie'),
+                    data['nom_article'], data.get('description', ''),
+                    data.get('vendu_type', 'piece'), data.get('prix_unitaire', 0),
+                    data.get('cout_unitaire', 0), data.get('stock', 0),
+                    data.get('stock_alerte', 0), data.get('is_variable_price', False),
+                    data.get('variante', False), data.get('code_barre', '')
                 ))
                 return cursor.lastrowid
         except Exception as e:
@@ -17403,18 +17468,21 @@ class ArticlePOS:
             logger.error(f"Erreur mise à jour article: {e}")
             return False
 
-    def get_all(self, user_id: int, categorie_id: int = None) -> List[Dict]:
+    def get_all(self, user_id: int, magasin_id: int = None, categorie_id: int = None) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 query = """
                     SELECT a.*, c.nom_categorie, sc.nom_sous_categorie,
-                           (SELECT COUNT(*) FROM pos_variantes WHERE article_id = a.id AND is_active = TRUE) as nb_variantes
+                        (SELECT COUNT(*) FROM pos_variantes WHERE article_id = a.id AND is_active = TRUE) as nb_variantes
                     FROM pos_articles a
                     JOIN pos_categories c ON a.id_categorie = c.id
                     LEFT JOIN pos_sous_categories sc ON a.id_sous_categorie = sc.id
                     WHERE c.utilisateur_id = %s
                 """
                 params = [user_id]
+                if magasin_id:
+                    query += " AND a.magasin_id = %s"
+                    params.append(magasin_id)
                 if categorie_id:
                     query += " AND a.id_categorie = %s"
                     params.append(categorie_id)
@@ -17587,39 +17655,41 @@ class VariantePOS:
         except:
             return False
 
-
 class ModificateurPOS:
     """Modificateurs (suppléments : sans oignons, extra fromage, etc.)"""
     def __init__(self, db):
         self.db = db
 
-    def create(self, user_id: int, data: Dict) -> Optional[int]:
+    def create(self, user_id: int, magasin_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO pos_modificateurs 
-                    (utilisateur_id, nom_modificateur, prix_modificateur, description, taux_tva)
-                    VALUES (%s, %s, %s, %s, %s)
+                    (utilisateur_id, magasin_id, nom_modificateur, prix_modificateur, 
+                    description, taux_tva)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                 """, (
-                    user_id,
+                    user_id, magasin_id,
                     data['nom_modificateur'],
                     data.get('prix_modificateur', 0),
                     data.get('description'),
-                    data.get('taux_tva', 0.00) # ✅ Nouveau champ
+                    data.get('taux_tva', 0.00)
                 ))
                 return cursor.lastrowid
         except Exception as e:
             logger.error(f"Erreur création modificateur: {e}")
             return None
 
-    def get_all(self, user_id: int) -> List[Dict]:
+    def get_all(self, user_id: int, magasin_id: int = None) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                cursor.execute("""
-                    SELECT * FROM pos_modificateurs 
-                    WHERE utilisateur_id = %s
-                    ORDER BY nom_modificateur
-                """, (user_id,))
+                query = "SELECT * FROM pos_modificateurs WHERE utilisateur_id = %s"
+                params = [user_id]
+                if magasin_id:
+                    query += " AND magasin_id = %s"
+                    params.append(magasin_id)
+                query += " ORDER BY nom_modificateur"
+                cursor.execute(query, params)
                 return cursor.fetchall()
         except Exception as e:
             logger.error(f"Erreur récupération modificateurs: {e}")
@@ -17777,26 +17847,21 @@ class ClientPOS:
     def __init__(self, db):
         self.db = db
 
-    def create(self, user_id: int, data: Dict) -> Optional[int]:
+    def create(self, user_id: int, magasin_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO pos_clients 
-                    (utilisateur_id, nom_client, numero_client, telephone, ville,
-                     code_postal, canton, pays, remarque, code_client, email)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (utilisateur_id, magasin_id, nom_client, numero_client, telephone, 
+                    ville, code_postal, canton, pays, remarque, code_client, email)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
-                    user_id,
-                    data['nom_client'],
-                    data.get('numero_client'),
-                    data.get('telephone'),
-                    data.get('ville'),
-                    data.get('code_postal'),
-                    data.get('canton'),
-                    data.get('pays', 'Suisse'),
-                    data.get('remarque'),
-                    data.get('code_client'),
-                    data.get('email')
+                    user_id, magasin_id,
+                    data['nom_client'], data.get('numero_client'),
+                    data.get('telephone'), data.get('ville'),
+                    data.get('code_postal'), data.get('canton'),
+                    data.get('pays', 'Suisse'), data.get('remarque'),
+                    data.get('code_client'), data.get('email')
                 ))
                 return cursor.lastrowid
         except Exception as e:
@@ -17933,18 +17998,23 @@ class ClientPOS:
             logger.error(f"Erreur calcul statistiques client POS: {e}")
             return {}
 
-    def get_all(self, user_id: int, limit: int = 100) -> List[Dict]:
+    def get_all(self, user_id: int, magasin_id: int = None, limit: int = 100) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                cursor.execute("""
+                query = """
                     SELECT c.*,
-                           (SELECT COUNT(*) FROM pos_receipts WHERE id_client = c.id AND receipt_type = 'Vente') as nombre_visites,
-                           (SELECT COALESCE(SUM(total_collecte), 0) FROM pos_receipts WHERE id_client = c.id AND receipt_type = 'Vente') as total_depense
+                        (SELECT COUNT(*) FROM pos_receipts WHERE id_client = c.id AND receipt_type = 'Vente') as nombre_visites,
+                        (SELECT COALESCE(SUM(total_collecte), 0) FROM pos_receipts WHERE id_client = c.id AND receipt_type = 'Vente') as total_depense
                     FROM pos_clients c
                     WHERE c.utilisateur_id = %s
-                    ORDER BY c.nom_client
-                    LIMIT %s
-                """, (user_id, limit))
+                """
+                params = [user_id]
+                if magasin_id:
+                    query += " AND c.magasin_id = %s"
+                    params.append(magasin_id)
+                query += " ORDER BY c.nom_client LIMIT %s"
+                params.append(limit)
+                cursor.execute(query, params)
                 clients = cursor.fetchall()
                 for client in clients:
                     client['panier_moyen'] = (
@@ -17982,39 +18052,49 @@ class ClientPOS:
             logger.error(f"Erreur récupération client: {e}")
             return None
 
-    def search(self, user_id: int, query: str, limit: int = 20) -> List[Dict]:
+    def search(self, user_id: int, query: str, magasin_id: int = None, limit: int = 20) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                cursor.execute("""
+                sql = """
                     SELECT * FROM pos_clients 
-                    WHERE utilisateur_id = %s 
-                      AND (nom_client LIKE %s OR telephone LIKE %s OR email LIKE %s)
+                    WHERE utilisateur_id = %s
+                """
+                params = [user_id]
+                
+                if magasin_id:
+                    sql += " AND magasin_id = %s"
+                    params.append(magasin_id)
+                
+                sql += """
+                    AND (nom_client LIKE %s OR telephone LIKE %s OR email LIKE %s)
                     ORDER BY nom_client
                     LIMIT %s
-                """, (user_id, f"%{query}%", f"%{query}%", f"%{query}%", limit))
+                """
+                params.extend([f"%{query}%", f"%{query}%", f"%{query}%", limit])
+                
+                cursor.execute(sql, params)
                 return cursor.fetchall()
         except Exception as e:
             logger.error(f"Erreur recherche client: {e}")
             return []
 
-    def get_or_create(self, user_id: int, nom_client: str, numero_client: str = '') -> Optional[int]:
-        """Récupère ou crée un client par son nom"""
+    def get_or_create(self, user_id: int, magasin_id: int, nom_client: str, numero_client: str = '') -> Optional[int]:
         if not nom_client or nom_client.strip() == '' or nom_client == 'nan':
             return None
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 cursor.execute("""
                     SELECT id FROM pos_clients 
-                    WHERE utilisateur_id = %s AND nom_client = %s
-                """, (user_id, nom_client.strip()))
+                    WHERE utilisateur_id = %s AND magasin_id = %s AND nom_client = %s
+                """, (user_id, magasin_id, nom_client.strip()))
                 existing = cursor.fetchone()
                 if existing:
                     return existing['id']
                 
                 cursor.execute("""
-                    INSERT INTO pos_clients (utilisateur_id, nom_client, numero_client)
-                    VALUES (%s, %s, %s)
-                """, (user_id, nom_client.strip(), numero_client or ''))
+                    INSERT INTO pos_clients (utilisateur_id, magasin_id, nom_client, numero_client)
+                    VALUES (%s, %s, %s, %s)
+                """, (user_id, magasin_id, nom_client.strip(), numero_client or ''))
                 return cursor.lastrowid
         except Exception as e:
             logger.error(f"Erreur get_or_create client: {e}")
@@ -18023,12 +18103,13 @@ class ClientPOS:
 class ReceiptPOS:
     """
     ⭐ CLASSE CLÉ : Gestion des tickets de caisse.
-    
+
     LIENS AVEC LE SYSTÈME EXISTANT :
     - transaction_id → transactions.id (transaction financière créée)
     - compte_bancaire_id → comptes_principaux.id (où l'argent est encaissé)
     - utilisateur_id → utilisateurs.id (caissier)
-    
+    - magasin_id → pos_magasins.id (magasin dans lequel la vente a lieu)
+
     FLUX :
     1. Création du receipt (pos_receipts)
     2. Création des items (pos_receipt_items)
@@ -18048,12 +18129,12 @@ class ReceiptPOS:
             with self.db.get_cursor(dictionary=True) as cursor:
                 cursor.execute("""
                     SELECT r.*, 
-                           c.nom_client AS client_nom, c.email AS client_email,
-                           d.nom AS discount_nom,
-                           ro.nom AS restaurant_option_nom,
-                           t.id AS transaction_liee_id,
-                           t.montant AS transaction_montant,
-                           cp.nom_compte AS compte_bancaire_nom
+                        c.nom_client AS client_nom, c.email AS client_email,
+                        d.nom AS discount_nom,
+                        ro.nom AS restaurant_option_nom,
+                        t.id AS transaction_liee_id,
+                        t.montant AS transaction_montant,
+                        cp.nom_compte AS compte_bancaire_nom
                     FROM pos_receipts r
                     LEFT JOIN pos_clients c ON r.id_client = c.id
                     LEFT JOIN pos_discounts d ON r.discount_id = d.id
@@ -18091,785 +18172,14 @@ class ReceiptPOS:
         """, (receipt_id,))
         return cursor.fetchall()
 
-    def get_all(self, user_id: int, date_from: str = None, date_to: str = None, 
-                limit: int = 100) -> List[Dict]:
-        try:
-            with self.db.get_cursor(dictionary=True) as cursor:
-                query = """
-                    SELECT r.*, c.nom_client AS client_nom, d.nom AS discount_nom
-                    FROM pos_receipts r
-                    LEFT JOIN pos_clients c ON r.id_client = c.id
-                    LEFT JOIN pos_discounts d ON r.discount_id = d.id
-                    WHERE r.utilisateur_id = %s
-                """
-                params = [user_id]
-                if date_from:
-                    query += " AND r.date >= %s"
-                    params.append(date_from)
-                if date_to:
-                    query += " AND r.date <= %s"
-                    params.append(date_to)
-                query += " ORDER BY r.date DESC LIMIT %s"
-                params.append(limit)
-                cursor.execute(query, params)
-                return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération receipts: {e}")
-            return []
-
-    def get_payment_methods_stats(self, user_id: int, date_from: str = None, date_to: str = None) -> List[Dict]:
-        """
-        Statistiques agrégées par mode de paiement (Ventes vs Remboursements).
-        Retourne une liste de dictionnaires avec les totaux par mode.
-        """
-        try:
-            with self.db.get_cursor(dictionary=True) as cursor:
-                query = """
-                    SELECT 
-                        COALESCE(mp.nom, 'Inconnu') AS mode_nom,
-                        COUNT(CASE WHEN r.receipt_type = 'Vente' THEN p.id END) as transactions,
-                        COALESCE(SUM(CASE WHEN r.receipt_type = 'Vente' THEN p.montant ELSE 0 END), 0) as amount,
-                        COUNT(CASE WHEN r.receipt_type = 'Remboursement' THEN p.id END) as refund_transactions,
-                        COALESCE(SUM(CASE WHEN r.receipt_type = 'Remboursement' THEN p.montant ELSE 0 END), 0) as refund_amount
-                    FROM pos_payments p
-                    JOIN pos_receipts r ON p.receipt_id = r.id
-                    LEFT JOIN pos_modes_paiement mp ON p.mode_paiement_id = mp.id
-                    WHERE r.utilisateur_id = %s AND r.status != 'Annulé'
-                """
-                params = [user_id]
-                
-                if date_from:
-                    query += " AND DATE(r.date) >= %s"
-                    params.append(date_from)
-                if date_to:
-                    query += " AND DATE(r.date) <= %s"
-                    params.append(date_to)
-                    
-                query += " GROUP BY mp.nom ORDER BY amount DESC"
-                
-                cursor.execute(query, params)
-                return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur get_payment_methods_stats: {e}")
-            return []
-
-    def get_receipt_open(self, user_id: int) -> Optional[Dict]:
-        try:
-            with self.db.get_cursor(dictionary=True) as cursor:
-                cursor.execute("""
-                    SELECT r.*, c.nom_client AS client_nom, d.nom AS discount_nom
-                    FROM pos_receipts r
-                    LEFT JOIN pos_clients c ON r.id_client = c.id
-                    LEFT JOIN pos_discounts d ON r.discount_id = d.id
-                    WHERE r.utilisateur_id = %s AND r.status = 'open'
-                """, (user_id,))
-                return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur récupération receipt ouvert {user_id}: {e}")
-            return None
-
-    def creer_vente(self, user_id: int, data: Dict, pdv_id: int) -> Tuple[bool, str, Optional[int]]:
-        """
-        ⭐ MÉTHODE PRINCIPALE : Crée une vente POS avec gestion avancée de la TVA (paniers mixtes) 
-        et extraction de TVA depuis un prix TTC.
-        
-        ✅ NOUVEAU : Le paramètre est maintenant 'pdv_id' (et non plus compte_bancaire_id fixe).
-        Cela permet de résoudre dynamiquement le compte bancaire : 
-        - Espèces -> Compte bancaire du PDV
-        - Carte/Twint -> Compte de trésorerie configuré dans le mode de paiement
-        """
-        try:
-            with self.db.get_cursor(dictionary=True) as cursor:
-                ventes_brutes_ht = Decimal('0')
-                cout_marchandises = Decimal('0')
-                items_data = []
-                
-                # 0. RÉCUPÉRATION DU COMPTE BANCAIRE DU PDV (Fallback pour les espèces)
-                compte_bancaire_pdv = None
-                if pdv_id:
-                    cursor.execute("SELECT compte_bancaire_id FROM pos_points_de_vente WHERE id = %s", (pdv_id,))
-                    res_pdv = cursor.fetchone()
-                    if res_pdv:
-                        compte_bancaire_pdv = res_pdv['compte_bancaire_id']
-
-                # 1. TRAITEMENT DES ARTICLES ET CALCUL TVA DÉTAILLÉ
-                for item in data.get('items', []):
-                    cursor.execute("SELECT * FROM pos_articles WHERE id = %s", (item['article_id'],))
-                    article = cursor.fetchone()
-                    if not article:
-                        return False, f"Article {item['article_id']} introuvable", None
-                    
-                    nom_article_final = str(article['nom_article'])
-                    modificateurs = str(item.get('modificateurs', '')).strip()
-                    qte = int(item.get('quantite', 1))
-                    commentaire = item.get('commentaire', '') or ''
-                    
-                    # Mise à jour du stock (une seule fois par article)
-                    cursor.execute("UPDATE pos_articles SET stock = stock - %s WHERE id = %s", 
-                                   (qte, item['article_id']))
-                    cout_marchandises += Decimal(str(article['cout_unitaire'] or 0)) * qte
-
-                    # ✅ GESTION DU TVA_BREAKDOWN (paniers mixtes avec taux différents)
-                    if 'tva_breakdown' in item and item['tva_breakdown']:
-                        for breakdown in item['tva_breakdown']:
-                            montant_ttc_comp = Decimal(str(breakdown['montant_ttc'])) * qte
-                            taux_taxe_comp = Decimal(str(breakdown['taux']))
-                            
-                            if taux_taxe_comp > Decimal('0'):
-                                diviseur = Decimal('1') + (taux_taxe_comp / Decimal('100'))
-                                ligne_ht = (montant_ttc_comp / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                                ligne_taxe = (montant_ttc_comp - ligne_ht).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                            else:
-                                ligne_ht = montant_ttc_comp.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                                ligne_taxe = Decimal('0')
-                            
-                            ventes_brutes_ht += ligne_ht
-                            
-                            items_data.append({
-                                'article_id': item['article_id'],
-                                'nom_article': f"{nom_article_final} - {breakdown['description']}",
-                                'modificateurs': modificateurs,
-                                'variante_id': item.get('variante_id'),
-                                'quantite': qte,
-                                'prix_ttc': montant_ttc_comp,
-                                'total_ligne_ttc': montant_ttc_comp,
-                                'ligne_ht_brut': ligne_ht,
-                                'taux_taxe': taux_taxe_comp,
-                                'commentaire': commentaire,
-                            })
-                    else:
-                        # FALLBACK : Logique classique (un seul taux de TVA)
-                        prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
-                        total_ligne_ttc = prix_ttc * qte
-                        
-                        taxe = self._get_taxe_active(cursor, item['article_id'])
-                        taux_taxe = Decimal('0')
-                        if taxe:
-                            taux_taxe = Decimal(str(taxe['taux']))
-                            
-                        if taux_taxe > Decimal('0'):
-                            diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
-                            ligne_ht_brut = (total_ligne_ttc / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                        else:
-                            ligne_ht_brut = total_ligne_ttc.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                            
-                        ventes_brutes_ht += ligne_ht_brut
-                        
-                        items_data.append({
-                            'article_id': item['article_id'],
-                            'nom_article': nom_article_final,
-                            'modificateurs': modificateurs,
-                            'variante_id': item.get('variante_id'),
-                            'quantite': qte,
-                            'prix_ttc': prix_ttc,
-                            'total_ligne_ttc': total_ligne_ttc,
-                            'ligne_ht_brut': ligne_ht_brut,
-                            'taux_taxe': taux_taxe,
-                            'commentaire': commentaire,
-                        })
-                
-                # 2. CALCUL DES RÉDUCTIONS GLOBALES
-                reduction_ttc = Decimal('0')
-                if data.get('discount_id'):
-                    cursor.execute("SELECT * FROM pos_discounts WHERE id = %s", (data['discount_id'],))
-                    discount = cursor.fetchone()
-                    if discount:
-                        total_ttc_global = sum(i['total_ligne_ttc'] for i in items_data)
-                        if discount['type_reduction'] == 'percentage':
-                            reduction_ttc = total_ttc_global * (Decimal(str(discount['valeur'])) / Decimal('100'))
-                        else:
-                            reduction_ttc = Decimal(str(discount['valeur']))
-                
-                total_ttc_global = sum(i['total_ligne_ttc'] for i in items_data)
-                reduction_ratio = Decimal('0')
-                if total_ttc_global > Decimal('0'):
-                    reduction_ratio = reduction_ttc / total_ttc_global
-                    
-                # 3. CALCUL DES MONTANTS NETS
-                ventes_nettes_ht = Decimal('0')
-                total_taxes = Decimal('0')
-                reduction_ht_total = Decimal('0')
-                
-                for item_data in items_data:
-                    total_ligne_ttc = item_data['total_ligne_ttc']
-                    taux_taxe = item_data['taux_taxe']
-                    ligne_ttc_net = total_ligne_ttc - (total_ligne_ttc * reduction_ratio)
-                    
-                    if taux_taxe > Decimal('0'):
-                        diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
-                        ligne_ht_net = (ligne_ttc_net / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                    else:
-                        ligne_ht_net = ligne_ttc_net.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                        
-                    ligne_taxe = (ligne_ttc_net - ligne_ht_net).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                    ligne_reduction_ht = item_data['ligne_ht_brut'] - ligne_ht_net
-                    
-                    ventes_nettes_ht += ligne_ht_net
-                    total_taxes += ligne_taxe
-                    reduction_ht_total += ligne_reduction_ht
-                
-                # 4. TOTAUX GLOBAUX
-                tips = Decimal(str(data.get('tips', 0)))
-                total_collecte = ventes_nettes_ht + total_taxes + tips
-                marge_brute = ventes_nettes_ht - cout_marchandises
-                recu_numero = f"V-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
-                
-                # 5. INSERTION DU REÇU
-                # Note: compte_bancaire_id est rempli avec celui du PDV par défaut pour référence
-                cursor.execute("""
-                    INSERT INTO pos_receipts 
-                    (utilisateur_id, date, recu_numero, nom_ticket, description, receipt_type, ventes_brutes, reduction, 
-                     ventes_nettes, taxes, tips, total_collecte, cout_marchandises, marge_brute,
-                     restaurant_option_id, pdv, magasin, nom_du_caissier,
-                     nom_du_client, numero_client, id_client, discount_id, discount_amount,
-                     status, compte_bancaire_id)
-                    VALUES (%s, NOW(), %s, %s, %s, 'Vente', %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Fermé', %s)
-                """, (
-                    user_id, recu_numero, data.get('nom_ticket'), data.get('description'), 
-                    float(ventes_brutes_ht), float(reduction_ht_total), float(ventes_nettes_ht),
-                    float(total_taxes), float(tips), float(total_collecte),
-                    float(cout_marchandises), float(marge_brute),
-                    data.get('restaurant_option_id'), data.get('pdv'), data.get('magasin'),
-                    data.get('nom_du_caissier'), data.get('nom_du_client'),
-                    data.get('numero_client'), data.get('id_client'),
-                    data.get('discount_id'), float(reduction_ttc),
-                    compte_bancaire_pdv
-                ))
-                receipt_id = cursor.lastrowid
-                
-                # 6. INSERTION DES LIGNES DU REÇU
-                for item in items_data:
-                    cursor.execute("""
-                        INSERT INTO pos_receipt_items 
-                        (receipt_id, article_id, nom_article, variante_id, quantite, prix_unitaire, 
-                         total_ligne, taux_taxe_applique, commentaire, modificateurs)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (
-                        receipt_id, item['article_id'], item['nom_article'], item['variante_id'],
-                        item['quantite'], float(item['prix_ttc']),
-                        float(item['total_ligne_ttc']),
-                        float(item['taux_taxe']),
-                        item['commentaire'],
-                        item['modificateurs']
-                    ))
-                
-                # ========================================================================
-                # 7. GESTION DES PAIEMENTS ET TRANSACTIONS FINANCIÈRES (RÉÉCRIT)
-                # ========================================================================
-                nb_paiements = 0
-                primary_transaction_id = None
-                
-                for payment in data.get('payments', []):
-                    montant_pay = Decimal(str(payment.get('montant', 0)))
-                    if montant_pay <= 0: 
-                        continue
-                        
-                    mode_paiement_id = payment['mode_paiement_id']
-                    
-                    # A. Enregistrer le paiement dans pos_payments
-                    cursor.execute("""
-                        INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant) 
-                        VALUES (%s, %s, %s)
-                    """, (receipt_id, mode_paiement_id, float(montant_pay)))
-                    nb_paiements += 1
-                    
-                    # B. Déterminer le compte bancaire effectif pour ce mode de paiement
-                    compte_effectif = compte_bancaire_pdv  # Fallback par défaut (Espèces)
-                    nom_mode = 'Paiement'
-                    
-                    cursor.execute("""
-                        SELECT nom, compte_bancaire_id 
-                        FROM pos_modes_paiement 
-                        WHERE id = %s
-                    """, (mode_paiement_id,))
-                    mode_info = cursor.fetchone()
-                    
-                    if mode_info:
-                        nom_mode = mode_info['nom']
-                        # Si le mode de paiement a un compte dédié (ex: Concardis, Twint), on l'utilise
-                        if mode_info['compte_bancaire_id']:
-                            compte_effectif = mode_info['compte_bancaire_id']
-                    
-                    # C. Créer la transaction financière pour CE paiement spécifique
-                    if compte_effectif:
-                        success, msg, trans_id = self.transaction_model._inserer_transaction_with_cursor(
-                            cursor=cursor, 
-                            compte_type='compte_principal', 
-                            compte_id=compte_effectif,
-                            type_transaction='depot', 
-                            montant=montant_pay,
-                            description=f"Vente POS {recu_numero} - {nom_mode}",
-                            user_id=user_id, 
-                            date_transaction=datetime.now(), 
-                            validate_balance=False, 
-                            receipt_id=receipt_id 
-                        )
-                        
-                        # On garde la première transaction ID pour la lier au reçu (compatibilité)
-                        if nb_paiements == 1 and success and trans_id:
-                            primary_transaction_id = trans_id
-
-                # Fallback si aucun paiement explicite mais un total > 0 (comme dans l'ancien code)
-                if nb_paiements == 0 and float(total_collecte) > 0:
-                    cursor.execute("""
-                        SELECT id, nom, compte_tresorerie_id FROM pos_modes_paiement 
-                        WHERE utilisateur_id = %s 
-                        ORDER BY (nom LIKE '%%spè%%' OR nom LIKE '%%cash%%') DESC, id LIMIT 1
-                    """, (user_id,))
-                    mode_defaut = cursor.fetchone()
-                    if mode_defaut:
-                        compte_effectif = mode_defaut['compte_tresorerie_id'] or compte_bancaire_pdv
-                        
-                        cursor.execute("""
-                            INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant) 
-                            VALUES (%s, %s, %s)
-                        """, (receipt_id, mode_defaut['id'], float(total_collecte)))
-                        
-                        if compte_effectif:
-                            success, msg, primary_transaction_id = self.transaction_model._inserer_transaction_with_cursor(
-                                cursor=cursor, 
-                                compte_type='compte_principal', 
-                                compte_id=compte_effectif,
-                                type_transaction='depot', 
-                                montant=total_collecte,
-                                description=f"Vente POS {recu_numero} - {mode_defaut['nom']}",
-                                user_id=user_id, 
-                                date_transaction=datetime.now(), 
-                                validate_balance=False,
-                                receipt_id=receipt_id 
-                            )
-                
-                # Mise à jour du reçu avec la transaction principale (pour compatibilité)
-                if primary_transaction_id:
-                    cursor.execute("""
-                        UPDATE pos_receipts 
-                        SET transaction_id = %s 
-                        WHERE id = %s
-                    """, (primary_transaction_id, receipt_id))
-                    logger.info(f"✅ Vente {receipt_id} liée à transaction(s) financière(s)")
-                
-                # ========================================================================
-                # 9. GESTION DE LA COMPTABILISATION
-                # ========================================================================
-                settings = self.get_compta_settings(user_id)
-                mode_compta = settings.get('mode_comptabilisation', 'par_jour')
-                generation = settings.get('generation_ecritures', 'manuel')
-                
-                if generation == 'automatique':
-                    if mode_compta == 'par_ticket':
-                        from app.models import POSComptabilisation
-                        compta_engine = POSComptabilisation(self.db)
-                        succes_compta, msg_compta = compta_engine.comptabiliser_ticket(receipt_id, user_id)
-                        if succes_compta:
-                            logger.info(f"✅ Ticket {receipt_id} comptabilisé automatiquement")
-                        else:
-                            logger.warning(f"⚠️ Échec comptabilisation auto ticket {receipt_id}: {msg_compta}")
-                    else:
-                        logger.info(f"ℹ️ Ticket {receipt_id} prêt pour agrégation journalière")
-                else:
-                    logger.info(f"ℹ️ Ticket {receipt_id} en attente de comptabilisation manuelle")
-
-                return True, "Vente créée avec succès", receipt_id
-                
-        except Exception as e:
-            logger.error(f"Erreur création vente POS: {e}", exc_info=True)
-            return False, f"Erreur: {str(e)}", None
-        
-    def creer_ticket_ouvert(self, user_id: int, data: Dict) -> Tuple[bool, str, Optional[int]]:
-        """Enregistre un ticket sans paiement (status 'Ouvert'), sans transaction bancaire."""
-        try:
-            with self.db.get_cursor(dictionary=True) as cursor:
-                ventes_brutes_ht = Decimal('0')
-                total_taxes = Decimal('0')
-                items_data = []
-                
-                for item in data.get('items', []):
-                    cursor.execute("SELECT * FROM pos_articles WHERE id = %s", (item['article_id'],))
-                    article = cursor.fetchone()
-                    if not article:
-                        return False, f"Article {item['article_id']} introuvable", None
-                    
-                    nom_article_final = str(article['nom_article'])
-                    modificateurs = str(item.get('modificateurs', '')).strip()
-                    
-                    prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
-                    qte = int(item.get('quantite', 1))
-                    total_ligne_ttc = prix_ttc * qte
-                    
-                    taxe = self._get_taxe_active(cursor, item['article_id'])
-                    taux_taxe = Decimal('0')
-                    if taxe: taux_taxe = Decimal(str(taxe['taux']))
-                        
-                    if taux_taxe > Decimal('0'):
-                        diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
-                        ligne_ht = (total_ligne_ttc / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                    else:
-                        ligne_ht = total_ligne_ttc.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                        
-                    ligne_taxe = (total_ligne_ttc - ligne_ht).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                    ventes_brutes_ht += ligne_ht
-                    total_taxes += ligne_taxe
-                    
-                    items_data.append({
-                        'article_id': item['article_id'],
-                        'nom_article': nom_article_final,
-                        'modificateurs': modificateurs,
-                        'variante_id': item.get('variante_id'),
-                        'quantite': qte,
-                        'prix_ttc': prix_ttc,
-                        'total_ligne_ttc': total_ligne_ttc,
-                        'taux_taxe': taux_taxe,
-                        'commentaire': item.get('commentaire', '') or '',
-                    })
-                
-                total_collecte = ventes_brutes_ht + total_taxes
-                recu_numero = f"O-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
-                reduction_ttc = Decimal('0')
-                reduction_ht = Decimal('0')
-                
-                if data.get('discount_id'):
-                    cursor.execute("SELECT * FROM pos_discounts WHERE id = %s", (data['discount_id'],))
-                    discount = cursor.fetchone()
-                    if discount:
-                        total_ttc_global = sum(i['total_ligne_ttc'] for i in items_data)
-                        if discount['type_reduction'] == 'percentage':
-                            reduction_ttc = total_ttc_global * (Decimal(str(discount['valeur'])) / Decimal('100'))
-                        else:
-                            reduction_ttc = Decimal(str(discount['valeur']))
-                        if total_taxes > 0 and ventes_brutes_ht > 0:
-                            taux_moyen = (total_taxes / ventes_brutes_ht) * 100
-                            reduction_ht = reduction_ttc / (Decimal('1') + taux_moyen/Decimal('100'))
-                        else:
-                            reduction_ht = reduction_ttc
-
-                cursor.execute("""
-                    INSERT INTO pos_receipts 
-                    (utilisateur_id, date, recu_numero, nom_ticket, description, receipt_type,
-                    ventes_brutes, reduction, ventes_nettes, taxes, total_collecte,
-                    restaurant_option_id, pdv, magasin, nom_du_caissier,
-                    nom_du_client, id_client, discount_id, discount_amount, status)
-                    VALUES (%s, NOW(), %s, %s, %s, 'Vente', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Ouvert')
-                """, (
-                    user_id, recu_numero,
-                    data.get('nom_ticket', ''), data.get('description', '') or data.get('commentaire', ''),
-                    float(ventes_brutes_ht), float(reduction_ht), 
-                    float(ventes_brutes_ht - reduction_ht), float(total_taxes), 
-                    float(total_collecte - reduction_ttc),
-                    data.get('restaurant_option_id'), data.get('pdv'), data.get('magasin'),
-                    data.get('nom_du_caissier'), data.get('nom_du_client'), data.get('id_client'),
-                    data.get('discount_id'), float(reduction_ttc)
-                ))
-                receipt_id = cursor.lastrowid
-                
-                # ✅ INSERTION AVEC LA COLONNE MODIFICATEURS
-                for item in items_data:
-                    cursor.execute("""
-                        INSERT INTO pos_receipt_items 
-                        (receipt_id, article_id, nom_article, variante_id, quantite, prix_unitaire, 
-                        total_ligne, taux_taxe_applique, commentaire, modificateurs)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (
-                        receipt_id, item['article_id'], item['nom_article'], item['variante_id'],
-                        item['quantite'], float(item['prix_ttc']),
-                        float(item['total_ligne_ttc']), float(item['taux_taxe']),
-                        item['commentaire'], item['modificateurs']
-                    ))
-                
-                return True, "Ticket enregistré", receipt_id
-                
-        except Exception as e:
-            logger.error(f"Erreur ticket ouvert: {e}")
-            return False, f"Erreur: {str(e)}", None
-
-    def _get_taxe_active(self, cursor, article_id: int, date_ref: date = None) -> Optional[Dict]:
-        """Récupère le taux de taxe en vigueur pour un article à une date donnée"""
-        if date_ref is None:
-            date_ref = date.today()
-            
-        cursor.execute("""
-            SELECT tt.taux, tt.date_debut, tt.date_fin, typ.nom as type_nom
-            FROM pos_article_taxes at
-            JOIN pos_types_taxes typ ON at.type_taxe_id = typ.id
-            JOIN pos_taux_taxes tt ON typ.id = tt.type_taxe_id
-            WHERE at.article_id = %s 
-              AND at.est_actuelle = TRUE
-              AND tt.date_debut <= %s
-              AND (tt.date_fin >= %s OR tt.date_fin IS NULL)
-            ORDER BY tt.date_debut DESC
-            LIMIT 1
-        """, (article_id, date_ref, date_ref))
-        return cursor.fetchone()
-
-    def annuler_vente(self, receipt_id: int, user_id: int, raison: str = "") -> Tuple[bool, str]:
-        """
-        Annule une vente en tenant compte de son état de comptabilisation.
-        - Si comptabilisée : Génère une écriture d'extourne (le système créera automatiquement 
-          la ligne de TVA inversée grâce au compte complémentaire configuré sur le compte de vente).
-        - Si non comptabilisée (ex: ticket ouvert) : Annulation simple sans impact au journal.
-        """
-        try:
-            with self.db.get_cursor(dictionary=True) as cursor:
-                # 1. Récupérer le receipt
-                cursor.execute("""
-                    SELECT * FROM pos_receipts 
-                    WHERE id = %s AND utilisateur_id = %s
-                """, (receipt_id, user_id))
-                receipt = cursor.fetchone()
-                if not receipt:
-                    return False, "Receipt non trouvé"
-                
-                if receipt['status'] == 'Annulé':
-                    return False, "Receipt déjà annulé"
-                
-                # 2. Gestion comptable : Extourne SI ET SEULEMENT SI déjà comptabilisé
-                est_comptabilise = receipt.get('comptabilise') or receipt.get('etat_comptable') == 'comptabilise'
-                
-                if est_comptabilise:
-                    from app.models import EcritureComptable, CategorieComptable
-                    modele_ecriture = EcritureComptable(self.db)
-                    modele_categorie = CategorieComptable(self.db)
-                    
-                    # Retrouver l'écriture principale d'origine pour réutiliser exactement les mêmes comptes
-                    cursor.execute("""
-                        SELECT categorie_id, compte_bancaire_id 
-                        FROM ecritures_comptables 
-                        WHERE reference LIKE %s AND utilisateur_id = %s AND type_ecriture_comptable = 'principale'
-                        ORDER BY id ASC LIMIT 1
-                    """, (f"%{receipt['recu_numero']}%", user_id))
-                    ecriture_origine = cursor.fetchone()
-                    
-                    if ecriture_origine:
-                        categorie_id = ecriture_origine['categorie_id']
-                        compte_bancaire_id = ecriture_origine['compte_bancaire_id']
-                    else:
-                        # Fallback sécurisé si l'écriture n'est pas retrouvée par référence
-                        categorie_id = self._get_categorie_vente_defaut(cursor, user_id)
-                        compte_bancaire_id = receipt.get('compte_bancaire_id')
-
-                    if not categorie_id:
-                        return False, "Impossible de déterminer la catégorie comptable pour l'extourne."
-
-                    # Création de l'extourne : on inverse le type_ecriture ('depense' au lieu de 'recette')
-                    # Le modèle EcritureComptable générera automatiquement l'écriture secondaire (TVA) 
-                    # en utilisant le compte complémentaire associé à cette catégorie de vente.
-                    data_extourne = {
-                        'date_ecriture': datetime.now().date(),
-                        'compte_bancaire_id': compte_bancaire_id,
-                        'categorie_id': categorie_id,
-                        'montant': float(receipt['total_collecte']),
-                        'montant_htva': float(receipt['ventes_nettes']),
-                        'devise': 'CHF',
-                        'description': f"Extourne vente POS {receipt['recu_numero']} - {raison}",
-                        'reference': f"EXT-{receipt['recu_numero']}",
-                        'type_ecriture': 'depense', # Inverse de 'recette' pour annuler le produit
-                        'tva_taux': float(receipt['taxes'] / receipt['ventes_nettes'] * 100) if receipt['ventes_nettes'] > 0 else 0,
-                        'tva_montant': float(receipt['taxes']),
-                        'utilisateur_id': user_id,
-                        'statut': 'validée',
-                        'type_ecriture_comptable': 'extourne'
-                    }
-                    
-                    succes, msg = modele_ecriture.create(modele_categorie, data_extourne)
-                    if not succes:
-                        return False, f"Échec de l'extourne comptable : {msg}"
-                    
-                    # Marquer le receipt comme extourné pour éviter les doubles extournes
-                    cursor.execute("""
-                        UPDATE pos_receipts SET etat_comptable = 'extourne' WHERE id = %s
-                    """, (receipt_id,))
-
-                # 3. Gestion bancaire : Annuler la transaction financière si elle existe 
-                # (Ceci s'applique même si non comptabilisé, car la transaction est créée à la vente)
-                if receipt.get('transaction_id') and receipt.get('compte_bancaire_id'):
-                    success, msg, _ = self.transaction_model._inserer_transaction_with_cursor(
-                        cursor=cursor,
-                        compte_type='compte_principal',
-                        compte_id=receipt['compte_bancaire_id'],
-                        type_transaction='retrait',
-                        montant=Decimal(str(receipt['total_collecte'])),
-                        description=f"Annulation vente {receipt['recu_numero']} - {raison}",
-                        user_id=user_id,
-                        date_transaction=datetime.now(),
-                        validate_balance=False,
-                        receipt_id=None
-                    )
-                    if not success:
-                        return False, f"Erreur remboursement bancaire : {msg}"
-                
-                # 4. Restaurer le stock
-                cursor.execute("""
-                    SELECT article_id, quantite FROM pos_receipt_items WHERE receipt_id = %s
-                """, (receipt_id,))
-                items = cursor.fetchall()
-                for item in items:
-                    cursor.execute("""
-                        UPDATE pos_articles SET stock = stock + %s WHERE id = %s
-                    """, (item['quantite'], item['article_id']))
-                
-                # 5. Marquer comme annulé
-                cursor.execute("""
-                    UPDATE pos_receipts 
-                    SET status = 'Annulé', cloture_at = NOW() 
-                    WHERE id = %s
-                """, (receipt_id,))
-                
-                # 6. Historique (Ajoutez la colonne 'etait_comptabilise' BOOLEAN dans votre table pos_historique_suppressions)
-                cursor.execute("""
-                    INSERT INTO pos_historique_suppressions 
-                    (receipt_id, utilisateur_id, recu_numero, montant_original, raison, etait_comptabilise)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (receipt_id, user_id, receipt['recu_numero'], 
-                      receipt['total_collecte'], raison, est_comptabilise))
-                
-                msg_succes = "Vente annulée avec succès"
-                if est_comptabilise:
-                    msg_succes += " (Extourne comptable générée automatiquement)"
-                    
-                return True, msg_succes
-                
-        except Exception as e:
-            logger.error(f"Erreur annulation vente: {e}", exc_info=True)
-            return False, f"Erreur: {str(e)}"
-
-    def _get_categorie_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
-        """Récupère le compte de vente de classe 3 par défaut (ex: 3000) en cas de fallback"""
-        try:
-            cursor.execute("""
-                SELECT c.id 
-                FROM categories_comptables c
-                INNER JOIN plan_categorie pc ON c.id = pc.categorie_id
-                INNER JOIN plans_comptables p ON pc.plan_id = p.id
-                WHERE p.utilisateur_id = %s 
-                  AND c.numero LIKE '3%%' 
-                  AND c.actif = TRUE 
-                ORDER BY c.numero 
-                LIMIT 1
-            """, (user_id,))
-            res = cursor.fetchone()
-            return res['id'] if res else None
-        except Exception as e:
-            logger.error(f"Erreur récupération compte vente par défaut: {e}")
-            return None
-
-    def add_payment(self, receipt_id: int, data: Dict) -> Optional[int]:
-        """Ajoute un paiement à un reçu existant"""
-        try:
-            with self.db.get_cursor() as cursor:
-                # Trouver le mode de paiement par nom
-                cursor.execute("""
-                    SELECT id FROM pos_modes_paiement 
-                    WHERE nom = %s AND utilisateur_id = (
-                        SELECT utilisateur_id FROM pos_receipts WHERE id = %s
-                    )
-                """, (data['mode_paiement_nom'], receipt_id))
-                mode = cursor.fetchone()
-                if not mode:
-                    return None
-                
-                cursor.execute("""
-                    INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant, est_remboursement)
-                    VALUES (%s, %s, %s, %s)
-                """, (receipt_id, mode['id'], float(data.get('montant', 0)), 
-                    data.get('est_remboursement', False)))
-                return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur add_payment: {e}")
-            return None
-    
-    def cloturer_vente(self, user_id: int, pdv_id: int, items: List[Dict], 
-                   mode_paiement: str = 'Espèces') -> Tuple[bool, str, Optional[int]]:
-        try:
-            pdv_info = self.pdv_model.get_with_bank_info(pdv_id, user_id)
-            if not pdv_info:
-                return False, "Point de vente introuvable", None
-            
-            compte_bancaire_id = pdv_info.get('compte_bancaire_id')
-            if not compte_bancaire_id:
-                return False, f"Le PDV '{pdv_info['nom_pdv']}' n'a pas de compte bancaire.", None
-
-            total_collecte = Decimal('0')
-            for item in items:
-                total_collecte += Decimal(str(item['prix_unitaire'])) * Decimal(str(item['quantite']))
-
-            recu_numero = f"POS-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-
-            with self.db.get_cursor() as cursor:
-                cursor.execute("""
-                    INSERT INTO pos_receipts (utilisateur_id, pdv_id, date, recu_numero, total_collecte, status)
-                    VALUES (%s, %s, NOW(), %s, %s, 'Fermé')
-                """, (user_id, pdv_id, recu_numero, float(total_collecte)))
-                receipt_id = cursor.lastrowid
-
-                for item in items:
-                    cursor.execute("""
-                        INSERT INTO pos_receipt_items (receipt_id, nom_article, quantite, prix_unitaire, total_ligne)
-                        VALUES (%s, %s, %s, %s, %s)
-                    """, (
-                        receipt_id, item['nom_article'], item['quantite'], 
-                        float(item['prix_unitaire']),  # ✅ corrigé (espace enlevé)
-                        float(item['quantite']) * float(item['prix_unitaire'])
-                    ))
-
-                # ✅ corrigé : self.transaction_model (pas tx_model)
-                success, msg, transaction_id = self.transaction_model._inserer_transaction_with_cursor(
-                    cursor=cursor,
-                    compte_type='compte_principal',
-                    compte_id=compte_bancaire_id,
-                    type_transaction='depot',
-                    montant=total_collecte,
-                    description=f"Encaissement POS {recu_numero} ({pdv_info['nom_pdv']})",
-                    user_id=user_id,
-                    date_transaction=datetime.now(),
-                    validate_balance=False,
-                    receipt_id=None
-                )
-
-                if success and transaction_id:
-                    cursor.execute("""
-                        UPDATE pos_receipts SET transaction_id = %s WHERE id = %s
-                    """, (transaction_id, receipt_id))
-                    return True, "Vente clôturée avec succès", receipt_id
-                else:
-                    return False, f"Échec comptabilisation : {msg}", None
-
-        except Exception as e:
-            logger.error(f"Erreur clôture vente POS: {e}", exc_info=True)
-            return False, f"Erreur système: {str(e)}", None                   
-
-    def get_stats(self, user_id: int, date_from: str, date_to: str) -> Dict:
-        """Statistiques de vente sur une période"""
-        try:
-            with self.db.get_cursor(dictionary=True) as cursor:
-                cursor.execute("""
-                    SELECT 
-                        COUNT(*) as nb_ventes,
-                        COALESCE(SUM(ventes_brutes), 0) as total_brut,
-                        COALESCE(SUM(reduction), 0) as total_reductions,
-                        COALESCE(SUM(ventes_nettes), 0) as total_net,
-                        COALESCE(SUM(taxes), 0) as total_taxes,
-                        COALESCE(SUM(total_collecte), 0) as total_encaisse,
-                        COALESCE(SUM(marge_brute), 0) as total_marge,
-                        COALESCE(AVG(total_collecte), 0) as panier_moyen
-                    FROM pos_receipts
-                    WHERE utilisateur_id = %s 
-                      AND receipt_type = 'Vente'
-                      AND status != 'Annulé'
-                      AND date BETWEEN %s AND %s
-                """, (user_id, date_from, date_to))
-                return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur stats POS: {e}")
-            return {}
-
-    
-    def get_all(self, user_id: int, search: str = None, payment: str = None, 
-                date_from: str = None, date_to: str = None, employee: str = None,
-                limit: int = 100, offset: int = 0) -> List[Dict]:
+    def get_all(self, user_id: int, magasin_id: int = None, search: str = None, 
+                payment: str = None, date_from: str = None, date_to: str = None, 
+                employee: str = None, limit: int = 100, offset: int = 0) -> List[Dict]:
         """
         Récupère tous les reçus avec filtres avancés côté SQL.
-        
+
         Paramètres:
+        - magasin_id: filtre par magasin
         - search: recherche sur numéro, client, description, caissier
         - payment: filtre par mode de paiement (nom)
         - date_from/date_to: filtre par période
@@ -18886,18 +18196,20 @@ class ReceiptPOS:
                     LEFT JOIN pos_discounts d ON r.discount_id = d.id
                 """
                 params = []
-                
-                # Jointure pour filtre par mode de paiement
+
                 if payment:
                     query += """
                         JOIN pos_payments pp ON r.id = pp.receipt_id
                         JOIN pos_modes_paiement mp ON pp.mode_paiement_id = mp.id
                     """
-                
+
                 query += " WHERE r.utilisateur_id = %s"
                 params.append(user_id)
-                
-                # Filtre recherche
+
+                if magasin_id:
+                    query += " AND r.magasin_id = %s"
+                    params.append(magasin_id)
+
                 if search:
                     query += """
                         AND (
@@ -18909,55 +18221,56 @@ class ReceiptPOS:
                     """
                     search_param = f"%{search.lower()}%"
                     params.extend([search_param] * 4)
-                
-                # Filtre par caissier
+
                 if employee:
                     query += " AND r.nom_du_caissier = %s"
                     params.append(employee)
-                
-                # Filtres par date
+
                 if date_from:
                     query += " AND DATE(r.date) >= %s"
                     params.append(date_from)
                 if date_to:
                     query += " AND DATE(r.date) <= %s"
                     params.append(date_to)
-                
-                # Filtre par mode de paiement
+
                 if payment:
                     query += " AND LOWER(mp.nom) LIKE %s"
                     params.append(f"%{payment.lower()}%")
-                
+
                 query += " ORDER BY r.date DESC LIMIT %s OFFSET %s"
                 params.extend([limit, offset])
-                
+
                 cursor.execute(query, params)
                 return cursor.fetchall()
         except Exception as e:
             logger.error(f"Erreur récupération receipts: {e}")
             return []
 
-    def count_all(self, user_id: int, search: str = None, payment: str = None,
-                  date_from: str = None, date_to: str = None, employee: str = None) -> int:
+    def count_all(self, user_id: int, magasin_id: int = None, search: str = None, 
+                  payment: str = None, date_from: str = None, date_to: str = None, 
+                  employee: str = None) -> int:
         """Compte le nombre de reçus avec les mêmes filtres que get_all."""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 query = """
                     SELECT COUNT(DISTINCT r.id) as total
                     FROM pos_receipts r
-                    LEFT JOIN pos_clients c ON r.id_client = c.id
                 """
                 params = []
-                
+
                 if payment:
                     query += """
                         JOIN pos_payments pp ON r.id = pp.receipt_id
                         JOIN pos_modes_paiement mp ON pp.mode_paiement_id = mp.id
                     """
-                
+
                 query += " WHERE r.utilisateur_id = %s"
                 params.append(user_id)
-                
+
+                if magasin_id:
+                    query += " AND r.magasin_id = %s"
+                    params.append(magasin_id)
+
                 if search:
                     query += """
                         AND (
@@ -18969,22 +18282,22 @@ class ReceiptPOS:
                     """
                     search_param = f"%{search.lower()}%"
                     params.extend([search_param] * 4)
-                
+
                 if employee:
                     query += " AND r.nom_du_caissier = %s"
                     params.append(employee)
-                
+
                 if date_from:
                     query += " AND DATE(r.date) >= %s"
                     params.append(date_from)
                 if date_to:
                     query += " AND DATE(r.date) <= %s"
                     params.append(date_to)
-                
+
                 if payment:
                     query += " AND LOWER(mp.nom) LIKE %s"
                     params.append(f"%{payment.lower()}%")
-                
+
                 cursor.execute(query, params)
                 result = cursor.fetchone()
                 return result['total'] if result else 0
@@ -18993,10 +18306,7 @@ class ReceiptPOS:
             return 0
 
     def get_payment_methods(self, receipt_id: int) -> List[str]:
-        """
-        Récupère les modes de paiement utilisés pour un reçu spécifique.
-        Retourne une liste de noms de modes de paiement.
-        """
+        """Récupère les modes de paiement utilisés pour un reçu spécifique."""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 cursor.execute("""
@@ -19012,13 +18322,10 @@ class ReceiptPOS:
             logger.error(f"Erreur récupération modes paiement receipt {receipt_id}: {e}")
             return []
 
-    def get_filtered_stats(self, user_id: int, search: str = None, payment: str = None,
-                           date_from: str = None, date_to: str = None, 
+    def get_filtered_stats(self, user_id: int, magasin_id: int = None, search: str = None, 
+                           payment: str = None, date_from: str = None, date_to: str = None, 
                            employee: str = None) -> Dict:
-        """
-        Calcule les statistiques (total, revenus, nb ventes, nb remboursements)
-        sur les reçus filtrés.
-        """
+        """Calcule les statistiques sur les reçus filtrés."""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 query = """
@@ -19030,16 +18337,20 @@ class ReceiptPOS:
                     FROM pos_receipts r
                 """
                 params = []
-                
+
                 if payment:
                     query += """
                         JOIN pos_payments pp ON r.id = pp.receipt_id
                         JOIN pos_modes_paiement mp ON pp.mode_paiement_id = mp.id
                     """
-                
+
                 query += " WHERE r.utilisateur_id = %s"
                 params.append(user_id)
-                
+
+                if magasin_id:
+                    query += " AND r.magasin_id = %s"
+                    params.append(magasin_id)
+
                 if search:
                     query += """
                         AND (
@@ -19051,25 +18362,25 @@ class ReceiptPOS:
                     """
                     search_param = f"%{search.lower()}%"
                     params.extend([search_param] * 4)
-                
+
                 if employee:
                     query += " AND r.nom_du_caissier = %s"
                     params.append(employee)
-                
+
                 if date_from:
                     query += " AND DATE(r.date) >= %s"
                     params.append(date_from)
                 if date_to:
                     query += " AND DATE(r.date) <= %s"
                     params.append(date_to)
-                
+
                 if payment:
                     query += " AND LOWER(mp.nom) LIKE %s"
                     params.append(f"%{payment.lower()}%")
-                
+
                 cursor.execute(query, params)
                 result = cursor.fetchone()
-                
+
                 return {
                     'total_receipts': result['total_receipts'] or 0,
                     'sales_count': result['sales_count'] or 0,
@@ -19085,23 +18396,27 @@ class ReceiptPOS:
                 'total_revenue': 0.0
             }
 
-    def get_unique_employees(self, user_id: int) -> List[str]:
+    def get_unique_employees(self, user_id: int, magasin_id: int = None) -> List[str]:
         """Récupère la liste des caissiers uniques ayant créé des reçus."""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                cursor.execute("""
+                query = """
                     SELECT DISTINCT nom_du_caissier
                     FROM pos_receipts
                     WHERE utilisateur_id = %s AND nom_du_caissier IS NOT NULL
-                    ORDER BY nom_du_caissier
-                """, (user_id,))
+                """
+                params = [user_id]
+                if magasin_id:
+                    query += " AND magasin_id = %s"
+                    params.append(magasin_id)
+                query += " ORDER BY nom_du_caissier"
+                cursor.execute(query, params)
                 results = cursor.fetchall()
                 return [r['nom_du_caissier'] for r in results]
         except Exception as e:
             logger.error(f"Erreur récupération employés: {e}")
             return []
 
-    
     def get_by_numero(self, numero: str, user_id: int) -> Optional[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
@@ -19109,18 +18424,22 @@ class ReceiptPOS:
                     SELECT * FROM pos_receipts WHERE recu_numero = %s AND utilisateur_id = %s
                 """, (numero, user_id))
                 return cursor.fetchone()
-        except:
+        except Exception:
             return None
 
-    def get_by_client(self, client_id: int, limit: int = 20) -> List[Dict]:
+    def get_by_client(self, client_id: int, magasin_id: int = None, limit: int = 20) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                cursor.execute("""
-                    SELECT * FROM pos_receipts WHERE id_client = %s 
-                    ORDER BY date DESC LIMIT %s
-                """, (client_id, limit))
+                query = "SELECT * FROM pos_receipts WHERE id_client = %s"
+                params = [client_id]
+                if magasin_id:
+                    query += " AND magasin_id = %s"
+                    params.append(magasin_id)
+                query += " ORDER BY date DESC LIMIT %s"
+                params.append(limit)
+                cursor.execute(query, params)
                 return cursor.fetchall()
-        except:
+        except Exception:
             return []
 
     def get_top_articles_client(self, client_id: int, limit: int = 10) -> List[Dict]:
@@ -19136,173 +18455,528 @@ class ReceiptPOS:
                     ORDER BY total_qte DESC LIMIT %s
                 """, (client_id, limit))
                 return cursor.fetchall()
-        except:
+        except Exception:
             return []
 
-    def supprimer_ticket_ouvert(self, receipt_id: int, user_id: int) -> bool:
-        """Supprime un ticket 'Ouvert' (jamais payé, sans transaction bancaire)"""
-        try:
-            with self.db.get_cursor() as cursor:
-                cursor.execute("""
-                    SELECT status, transaction_id FROM pos_receipts 
-                    WHERE id = %s AND utilisateur_id = %s
-                """, (receipt_id, user_id))
-                r = cursor.fetchone()
-                if not r or r['status'] != 'Ouvert' or r['transaction_id']:
-                    return False  # Sécurité : ne jamais supprimer un reçu payé
-                
-                cursor.execute("DELETE FROM pos_receipt_items WHERE receipt_id = %s", (receipt_id,))
-                cursor.execute("DELETE FROM pos_payments WHERE receipt_id = %s", (receipt_id,))
-                cursor.execute("DELETE FROM pos_receipts WHERE id = %s", (receipt_id,))
-                return True
-        except Exception as e:
-            logger.error(f"Erreur supprimer_ticket_ouvert: {e}")
-            return False
-
-    def get_compta_settings(self, user_id: int) -> Dict:
-        """Récupère les préférences de comptabilisation de l'utilisateur"""
+    def get_receipt_open(self, user_id: int, magasin_id: int = None) -> Optional[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                cursor.execute("""
-                    SELECT mode_comptabilisation, generation_ecritures
-                    FROM pos_compta_settings
-                    WHERE utilisateur_id = %s
-                """, (user_id,))
-                settings = cursor.fetchone()
-                
-                # Valeurs par défaut si non configuré
-                if not settings:
-                    return {
-                        'mode_comptabilisation': 'par_jour',
-                        'generation_ecritures': 'manuel'
-                    }
-                
-                return settings
-        except Exception as e:
-            logger.error(f"Erreur récupération settings compta: {e}")
-            return {
-                'mode_comptabilisation': 'par_jour',
-                'generation_ecritures': 'manuel'
-            }
-
-    def save_compta_settings(self, user_id: int, mode: str, generation: str) -> bool:
-        """Sauvegarde les préférences de comptabilisation"""
-        try:
-            with self.db.get_cursor() as cursor:
-                cursor.execute("""
-                    INSERT INTO pos_compta_settings (utilisateur_id, mode_comptabilisation, generation_ecritures)
-                    VALUES (%s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                        mode_comptabilisation = VALUES(mode_comptabilisation),
-                        generation_ecritures = VALUES(generation_ecritures)
-                """, (user_id, mode, generation))
-                return True
-        except Exception as e:
-            logger.error(f"Erreur sauvegarde settings compta: {e}")
-            return False
-
-    def comptabiliser_ticket(self, receipt_id: int, user_id: int) -> Tuple[bool, str]:
-        """
-        Génère les écritures comptables pour un ticket POS.
-        S'appuie sur le modèle EcritureComptable existant pour gérer la TVA en cascade.
-        """
-        try:
-            with self.db.get_cursor(dictionary=True) as cursor:
-                # 1. Récupérer le ticket et ses infos
-                cursor.execute("""
-                    SELECT r.*, p.categorie_comptable_tresorerie_id as mode_tresorerie_cat_id
+                query = """
+                    SELECT r.*, c.nom_client AS client_nom, d.nom AS discount_nom
                     FROM pos_receipts r
-                    JOIN pos_modes_paiement p ON r.mode_paiement_principal_id = p.id -- (à adapter selon votre schéma de paiement)
-                    WHERE r.id = %s AND r.utilisateur_id = %s
-                """, (receipt_id, user_id))
-                receipt = cursor.fetchone()
-                
-                if not receipt:
-                    return False, "Ticket non trouvé"
-                if receipt['comptabilise']:
-                    return True, "Déjà comptabilisé"
+                    LEFT JOIN pos_clients c ON r.id_client = c.id
+                    LEFT JOIN pos_discounts d ON r.discount_id = d.id
+                    WHERE r.utilisateur_id = %s AND r.status = 'open'
+                """
+                params = [user_id]
+                if magasin_id:
+                    query += " AND r.magasin_id = %s"
+                    params.append(magasin_id)
+                cursor.execute(query, params)
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur récupération receipt ouvert {user_id}: {e}")
+            return None
 
-                # 2. Récupérer la catégorie comptable de vente (basée sur le 1er article ou une catégorie par défaut du PDV)
+    def receipt_exists(self, receipt_id: int, user_id: int) -> bool:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute(
+                    "SELECT id FROM pos_receipts WHERE id = %s AND utilisateur_id = %s",
+                    (receipt_id, user_id)
+                )
+                return cursor.fetchone() is not None
+        except Exception as e:
+            logger.error(f"Erreur receipt_exists: {e}")
+            return False
+
+    def get_client_receipts(self, client_id: int, user_id: int, magasin_id: int = None,
+                            date_from: str = None, date_to: str = None, limit: int = 500) -> List[Dict]:
+        """Récupère les reçus d'un client avec filtres de date et magasin"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                q = "SELECT * FROM pos_receipts WHERE id_client = %s AND status != 'Annulé'"
+                params = [client_id]
+                if magasin_id:
+                    q += " AND magasin_id = %s"
+                    params.append(magasin_id)
+                if date_from:
+                    q += " AND DATE(date) >= %s"
+                    params.append(date_from)
+                if date_to:
+                    q += " AND DATE(date) <= %s"
+                    params.append(date_to)
+                q += " ORDER BY date DESC LIMIT %s"
+                params.append(limit)
+                cursor.execute(q, params)
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur get_client_receipts: {e}")
+            return []
+
+    def get_client_stats(self, client_id: int, magasin_id: int = None) -> Dict:
+        """Récupère les statistiques d'un client"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                query = """
+                    SELECT COUNT(*) AS nb_visites,
+                           COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN total_collecte ELSE 0 END),0) AS total_depense,
+                           MIN(date) AS premiere_visite,
+                           MAX(date) AS derniere_visite
+                    FROM pos_receipts
+                    WHERE id_client = %s AND status != 'Annulé'
+                """
+                params = [client_id]
+                if magasin_id:
+                    query += " AND magasin_id = %s"
+                    params.append(magasin_id)
+                cursor.execute(query, params)
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Erreur get_client_stats: {e}")
+            return {}
+
+    # ============================================================
+    # ÉCRITURE — CRÉATION DE VENTES
+    # ============================================================
+
+    def creer_vente(self, user_id: int, data: Dict, pdv_id: int) -> Tuple[bool, str, Optional[int]]:
+        """
+        ⭐ MÉTHODE PRINCIPALE : Crée une vente POS avec gestion avancée de la TVA 
+        (paniers mixtes) et extraction de TVA depuis un prix TTC.
+
+        Le magasin_id est résolu automatiquement depuis le PDV.
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                ventes_brutes_ht = Decimal('0')
+                cout_marchandises = Decimal('0')
+                items_data = []
+
+                # 0. RÉCUPÉRATION DU COMPTE BANCAIRE ET DU MAGASIN DEPUIS LE PDV
+                compte_bancaire_pdv = None
+                magasin_id = None
+                if pdv_id:
+                    cursor.execute("""
+                        SELECT p.compte_bancaire_id, p.magasin_id 
+                        FROM pos_points_de_vente p 
+                        WHERE p.id = %s
+                    """, (pdv_id,))
+                    res_pdv = cursor.fetchone()
+                    if res_pdv:
+                        magasin_id = res_pdv.get('magasin_id')
+                        compte_bancaire_pdv = res_pdv.get('compte_bancaire_id')
+
+                # 1. TRAITEMENT DES ARTICLES ET CALCUL TVA DÉTAILLÉ
+                for item in data.get('items', []):
+                    cursor.execute("SELECT * FROM pos_articles WHERE id = %s", (item['article_id'],))
+                    article = cursor.fetchone()
+                    if not article:
+                        return False, f"Article {item['article_id']} introuvable", None
+
+                    nom_article_final = str(article['nom_article'])
+                    modificateurs = str(item.get('modificateurs', '')).strip()
+                    qte = int(item.get('quantite', 1))
+                    commentaire = item.get('commentaire', '') or ''
+
+                    # Mise à jour du stock
+                    cursor.execute("UPDATE pos_articles SET stock = stock - %s WHERE id = %s",
+                                   (qte, item['article_id']))
+                    cout_marchandises += Decimal(str(article['cout_unitaire'] or 0)) * qte
+
+                    # ✅ GESTION DU TVA_BREAKDOWN (paniers mixtes)
+                    if 'tva_breakdown' in item and item['tva_breakdown']:
+                        for breakdown in item['tva_breakdown']:
+                            montant_ttc_comp = Decimal(str(breakdown['montant_ttc'])) * qte
+                            taux_taxe_comp = Decimal(str(breakdown['taux']))
+
+                            if taux_taxe_comp > Decimal('0'):
+                                diviseur = Decimal('1') + (taux_taxe_comp / Decimal('100'))
+                                ligne_ht = (montant_ttc_comp / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                                ligne_taxe = (montant_ttc_comp - ligne_ht).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                            else:
+                                ligne_ht = montant_ttc_comp.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                                ligne_taxe = Decimal('0')
+
+                            ventes_brutes_ht += ligne_ht
+
+                            items_data.append({
+                                'article_id': item['article_id'],
+                                'nom_article': f"{nom_article_final} - {breakdown['description']}",
+                                'modificateurs': modificateurs,
+                                'variante_id': item.get('variante_id'),
+                                'quantite': qte,
+                                'prix_ttc': montant_ttc_comp,
+                                'total_ligne_ttc': montant_ttc_comp,
+                                'ligne_ht_brut': ligne_ht,
+                                'taux_taxe': taux_taxe_comp,
+                                'commentaire': commentaire,
+                            })
+                    else:
+                        # FALLBACK : un seul taux de TVA
+                        prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
+                        total_ligne_ttc = prix_ttc * qte
+
+                        taxe = self._get_taxe_active(cursor, item['article_id'])
+                        taux_taxe = Decimal('0')
+                        if taxe:
+                            taux_taxe = Decimal(str(taxe['taux']))
+
+                        if taux_taxe > Decimal('0'):
+                            diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
+                            ligne_ht_brut = (total_ligne_ttc / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                        else:
+                            ligne_ht_brut = total_ligne_ttc.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+                        ventes_brutes_ht += ligne_ht_brut
+
+                        items_data.append({
+                            'article_id': item['article_id'],
+                            'nom_article': nom_article_final,
+                            'modificateurs': modificateurs,
+                            'variante_id': item.get('variante_id'),
+                            'quantite': qte,
+                            'prix_ttc': prix_ttc,
+                            'total_ligne_ttc': total_ligne_ttc,
+                            'ligne_ht_brut': ligne_ht_brut,
+                            'taux_taxe': taux_taxe,
+                            'commentaire': commentaire,
+                        })
+
+                # 2. RÉDUCTIONS GLOBALES
+                reduction_ttc = Decimal('0')
+                if data.get('discount_id'):
+                    cursor.execute("SELECT * FROM pos_discounts WHERE id = %s", (data['discount_id'],))
+                    discount = cursor.fetchone()
+                    if discount:
+                        total_ttc_global = sum(i['total_ligne_ttc'] for i in items_data)
+                        if discount['type_reduction'] == 'percentage':
+                            reduction_ttc = total_ttc_global * (Decimal(str(discount['valeur'])) / Decimal('100'))
+                        else:
+                            reduction_ttc = Decimal(str(discount['valeur']))
+
+                total_ttc_global = sum(i['total_ligne_ttc'] for i in items_data)
+                reduction_ratio = Decimal('0')
+                if total_ttc_global > Decimal('0'):
+                    reduction_ratio = reduction_ttc / total_ttc_global
+
+                # 3. MONTANTS NETS
+                ventes_nettes_ht = Decimal('0')
+                total_taxes = Decimal('0')
+                reduction_ht_total = Decimal('0')
+
+                for item_data in items_data:
+                    total_ligne_ttc = item_data['total_ligne_ttc']
+                    taux_taxe = item_data['taux_taxe']
+                    ligne_ttc_net = total_ligne_ttc - (total_ligne_ttc * reduction_ratio)
+
+                    if taux_taxe > Decimal('0'):
+                        diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
+                        ligne_ht_net = (ligne_ttc_net / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    else:
+                        ligne_ht_net = ligne_ttc_net.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+                    ligne_taxe = (ligne_ttc_net - ligne_ht_net).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    ligne_reduction_ht = item_data['ligne_ht_brut'] - ligne_ht_net
+
+                    ventes_nettes_ht += ligne_ht_net
+                    total_taxes += ligne_taxe
+                    reduction_ht_total += ligne_reduction_ht
+
+                # 4. TOTAUX GLOBAUX
+                tips = Decimal(str(data.get('tips', 0)))
+                total_collecte = ventes_nettes_ht + total_taxes + tips
+                marge_brute = ventes_nettes_ht - cout_marchandises
+                recu_numero = f"V-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
+
+                # 5. INSERTION DU REÇU (avec magasin_id)
                 cursor.execute("""
-                    SELECT pc.categorie_comptable_vente_id, pc.categorie_comptable_tva_id
-                    FROM pos_receipt_items ri
-                    JOIN pos_articles a ON ri.article_id = a.id
-                    JOIN pos_categories pc ON a.categorie_id = pc.id
-                    WHERE ri.receipt_id = %s
-                    LIMIT 1
-                """, (receipt_id,))
-                cat_mapping = cursor.fetchone()
-                
-                if not cat_mapping or not cat_mapping['categorie_comptable_vente_id']:
-                    return False, "Aucune catégorie comptable de vente configurée pour les articles de ce ticket."
+                    INSERT INTO pos_receipts 
+                    (utilisateur_id, magasin_id, date, recu_numero, nom_ticket, description, receipt_type, 
+                     ventes_brutes, reduction, ventes_nettes, taxes, tips, total_collecte, 
+                     cout_marchandises, marge_brute,
+                     restaurant_option_id, pdv, magasin, nom_du_caissier,
+                     nom_du_client, numero_client, id_client, discount_id, discount_amount,
+                     status, compte_bancaire_id)
+                    VALUES (%s, %s, NOW(), %s, %s, %s, 'Vente', %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Fermé', %s)
+                """, (
+                    user_id, magasin_id, recu_numero, data.get('nom_ticket'), data.get('description'),
+                    float(ventes_brutes_ht), float(reduction_ht_total), float(ventes_nettes_ht),
+                    float(total_taxes), float(tips), float(total_collecte),
+                    float(cout_marchandises), float(marge_brute),
+                    data.get('restaurant_option_id'), data.get('pdv'), data.get('magasin'),
+                    data.get('nom_du_caissier'), data.get('nom_du_client'),
+                    data.get('numero_client'), data.get('id_client'),
+                    data.get('discount_id'), float(reduction_ttc),
+                    compte_bancaire_pdv
+                ))
+                receipt_id = cursor.lastrowid
 
-                categorie_vente_id = cat_mapping['categorie_comptable_vente_id']
-                categorie_tva_id = cat_mapping['categorie_comptable_tva_id']
-                compte_bancaire_id = receipt['compte_bancaire_id'] # Le compte de caisse du PDV
+                # 6. LIGNES DU REÇU
+                for item in items_data:
+                    cursor.execute("""
+                        INSERT INTO pos_receipt_items 
+                        (receipt_id, article_id, nom_article, variante_id, quantite, prix_unitaire, 
+                         total_ligne, taux_taxe_applique, commentaire, modificateurs)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        receipt_id, item['article_id'], item['nom_article'], item['variante_id'],
+                        item['quantite'], float(item['prix_ttc']),
+                        float(item['total_ligne_ttc']),
+                        float(item['taux_taxe']),
+                        item['commentaire'],
+                        item['modificateurs']
+                    ))
 
-                # 3. Préparer les données pour le modèle EcritureComptable
-                # On crée une écriture de "Recette" (Produit) pour le montant HT
-                data_ecriture = {
-                    'date_ecriture': receipt['date'].date(),
-                    'compte_bancaire_id': compte_bancaire_id,
-                    'categorie_id': categorie_vente_id,
-                    'montant': float(receipt['ventes_nettes']), # Montant HT
-                    'montant_htva': float(receipt['ventes_nettes']),
-                    'devise': 'CHF',
-                    'description': f"Vente POS {receipt['recu_numero']}",
-                    'reference': receipt['recu_numero'],
-                    'type_ecriture': 'recette',  # Argent qui entre / Produit
-                    'tva_taux': float(receipt['taux_moyen_tva'] or 0), # À calculer ou stocker dans le receipt
-                    'tva_montant': float(receipt['taxes']),
-                    'utilisateur_id': user_id,
-                    'statut': 'validée',
-                    'type_ecriture_comptable': 'pos_vente'
-                }
+                # 7. PAIEMENTS ET TRANSACTIONS FINANCIÈRES
+                nb_paiements = 0
+                primary_transaction_id = None
 
-                # 4. Utiliser le modèle EcritureComptable existant
-                # (Il faudra injecter une instance de ce modèle dans ReceiptPOS ou l'importer)
-                from app.models import EcritureComptable # Ajustez le chemin d'import
-                modele_ecriture = EcritureComptable(self.db)
-                
-                # On a besoin du modèle de catégorie pour la vérification de la TVA en cascade
-                from app.models import CategorieComptable
-                modele_categorie = CategorieComptable(self.db)
+                for payment in data.get('payments', []):
+                    montant_pay = Decimal(str(payment.get('montant', 0)))
+                    if montant_pay <= 0:
+                        continue
 
-                succes, msg = modele_ecriture.create(modele_categorie, data_ecriture)
-                
-                if succes:
-                    # Marquer le ticket comme comptabilisé
+                    mode_paiement_id = payment['mode_paiement_id']
+
+                    cursor.execute("""
+                        INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant) 
+                        VALUES (%s, %s, %s)
+                    """, (receipt_id, mode_paiement_id, float(montant_pay)))
+                    nb_paiements += 1
+
+                    compte_effectif = compte_bancaire_pdv
+                    nom_mode = 'Paiement'
+
+                    cursor.execute("""
+                        SELECT nom, compte_bancaire_id 
+                        FROM pos_modes_paiement 
+                        WHERE id = %s
+                    """, (mode_paiement_id,))
+                    mode_info = cursor.fetchone()
+
+                    if mode_info:
+                        nom_mode = mode_info['nom']
+                        if mode_info['compte_bancaire_id']:
+                            compte_effectif = mode_info['compte_bancaire_id']
+
+                    if compte_effectif:
+                        success, msg, trans_id = self.transaction_model._inserer_transaction_with_cursor(
+                            cursor=cursor,
+                            compte_type='compte_principal',
+                            compte_id=compte_effectif,
+                            type_transaction='depot',
+                            montant=montant_pay,
+                            description=f"Vente POS {recu_numero} - {nom_mode}",
+                            user_id=user_id,
+                            date_transaction=datetime.now(),
+                            validate_balance=False,
+                            receipt_id=receipt_id
+                        )
+
+                        if nb_paiements == 1 and success and trans_id:
+                            primary_transaction_id = trans_id
+
+                # Fallback paiement par défaut
+                if nb_paiements == 0 and float(total_collecte) > 0:
+                    cursor.execute("""
+                        SELECT id, nom, compte_tresorerie_id FROM pos_modes_paiement 
+                        WHERE utilisateur_id = %s 
+                        ORDER BY (nom LIKE '%%spè%%' OR nom LIKE '%%cash%%') DESC, id LIMIT 1
+                    """, (user_id,))
+                    mode_defaut = cursor.fetchone()
+                    if mode_defaut:
+                        compte_effectif = mode_defaut['compte_tresorerie_id'] or compte_bancaire_pdv
+
+                        cursor.execute("""
+                            INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant) 
+                            VALUES (%s, %s, %s)
+                        """, (receipt_id, mode_defaut['id'], float(total_collecte)))
+
+                        if compte_effectif:
+                            success, msg, primary_transaction_id = self.transaction_model._inserer_transaction_with_cursor(
+                                cursor=cursor,
+                                compte_type='compte_principal',
+                                compte_id=compte_effectif,
+                                type_transaction='depot',
+                                montant=total_collecte,
+                                description=f"Vente POS {recu_numero} - {mode_defaut['nom']}",
+                                user_id=user_id,
+                                date_transaction=datetime.now(),
+                                validate_balance=False,
+                                receipt_id=receipt_id
+                            )
+
+                if primary_transaction_id:
                     cursor.execute("""
                         UPDATE pos_receipts 
-                        SET comptabilise = TRUE, date_comptabilisation = CURDATE() 
+                        SET transaction_id = %s 
                         WHERE id = %s
-                    """, (receipt_id,))
-                    return True, "Écritures comptables générées avec succès"
+                    """, (primary_transaction_id, receipt_id))
+                    logger.info(f"✅ Vente {receipt_id} liée à transaction(s) financière(s)")
+
+                # 9. COMPTABILISATION (avec magasin_id)
+                settings = self.get_compta_settings(user_id, magasin_id)
+                mode_compta = settings.get('mode_comptabilisation', 'par_jour')
+                generation = settings.get('generation_ecritures', 'manuel')
+
+                if generation == 'automatique':
+                    if mode_compta == 'par_ticket':
+                        from app.models import POSComptabilisation
+                        compta_engine = POSComptabilisation(self.db)
+                        succes_compta, msg_compta = compta_engine.comptabiliser_ticket(receipt_id, user_id)
+                        if succes_compta:
+                            logger.info(f"✅ Ticket {receipt_id} comptabilisé automatiquement")
+                        else:
+                            logger.warning(f"⚠️ Échec comptabilisation auto ticket {receipt_id}: {msg_compta}")
+                    else:
+                        logger.info(f"ℹ️ Ticket {receipt_id} prêt pour agrégation journalière")
                 else:
-                    return False, f"Échec de la génération des écritures : {msg}"
+                    logger.info(f"ℹ️ Ticket {receipt_id} en attente de comptabilisation manuelle")
+
+                return True, "Vente créée avec succès", receipt_id
 
         except Exception as e:
-            logger.error(f"Erreur comptabilisation ticket {receipt_id}: {e}", exc_info=True)
-            return False, f"Erreur système: {str(e)}"
+            logger.error(f"Erreur création vente POS: {e}", exc_info=True)
+            return False, f"Erreur: {str(e)}", None
 
+    def creer_ticket_ouvert(self, user_id: int, data: Dict, pdv_id: int = None) -> Tuple[bool, str, Optional[int]]:
+        """Enregistre un ticket sans paiement (status 'Ouvert'), sans transaction bancaire."""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                ventes_brutes_ht = Decimal('0')
+                total_taxes = Decimal('0')
+                items_data = []
+
+                # Résolution magasin_id via PDV si fourni
+                magasin_id = None
+                if pdv_id:
+                    cursor.execute("SELECT magasin_id FROM pos_points_de_vente WHERE id = %s", (pdv_id,))
+                    res_pdv = cursor.fetchone()
+                    if res_pdv:
+                        magasin_id = res_pdv.get('magasin_id')
+
+                for item in data.get('items', []):
+                    cursor.execute("SELECT * FROM pos_articles WHERE id = %s", (item['article_id'],))
+                    article = cursor.fetchone()
+                    if not article:
+                        return False, f"Article {item['article_id']} introuvable", None
+
+                    nom_article_final = str(article['nom_article'])
+                    modificateurs = str(item.get('modificateurs', '')).strip()
+
+                    prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
+                    qte = int(item.get('quantite', 1))
+                    total_ligne_ttc = prix_ttc * qte
+
+                    taxe = self._get_taxe_active(cursor, item['article_id'])
+                    taux_taxe = Decimal('0')
+                    if taxe:
+                        taux_taxe = Decimal(str(taxe['taux']))
+
+                    if taux_taxe > Decimal('0'):
+                        diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
+                        ligne_ht = (total_ligne_ttc / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    else:
+                        ligne_ht = total_ligne_ttc.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+                    ligne_taxe = (total_ligne_ttc - ligne_ht).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    ventes_brutes_ht += ligne_ht
+                    total_taxes += ligne_taxe
+
+                    items_data.append({
+                        'article_id': item['article_id'],
+                        'nom_article': nom_article_final,
+                        'modificateurs': modificateurs,
+                        'variante_id': item.get('variante_id'),
+                        'quantite': qte,
+                        'prix_ttc': prix_ttc,
+                        'total_ligne_ttc': total_ligne_ttc,
+                        'taux_taxe': taux_taxe,
+                        'commentaire': item.get('commentaire', '') or '',
+                    })
+
+                total_collecte = ventes_brutes_ht + total_taxes
+                recu_numero = f"O-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
+                reduction_ttc = Decimal('0')
+                reduction_ht = Decimal('0')
+
+                if data.get('discount_id'):
+                    cursor.execute("SELECT * FROM pos_discounts WHERE id = %s", (data['discount_id'],))
+                    discount = cursor.fetchone()
+                    if discount:
+                        total_ttc_global = sum(i['total_ligne_ttc'] for i in items_data)
+                        if discount['type_reduction'] == 'percentage':
+                            reduction_ttc = total_ttc_global * (Decimal(str(discount['valeur'])) / Decimal('100'))
+                        else:
+                            reduction_ttc = Decimal(str(discount['valeur']))
+                        if total_taxes > 0 and ventes_brutes_ht > 0:
+                            taux_moyen = (total_taxes / ventes_brutes_ht) * 100
+                            reduction_ht = reduction_ttc / (Decimal('1') + taux_moyen / Decimal('100'))
+                        else:
+                            reduction_ht = reduction_ttc
+
+                cursor.execute("""
+                    INSERT INTO pos_receipts 
+                    (utilisateur_id, magasin_id, date, recu_numero, nom_ticket, description, receipt_type,
+                    ventes_brutes, reduction, ventes_nettes, taxes, total_collecte,
+                    restaurant_option_id, pdv, magasin, nom_du_caissier,
+                    nom_du_client, id_client, discount_id, discount_amount, status)
+                    VALUES (%s, %s, NOW(), %s, %s, %s, 'Vente', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Ouvert')
+                """, (
+                    user_id, magasin_id, recu_numero,
+                    data.get('nom_ticket', ''), data.get('description', '') or data.get('commentaire', ''),
+                    float(ventes_brutes_ht), float(reduction_ht),
+                    float(ventes_brutes_ht - reduction_ht), float(total_taxes),
+                    float(total_collecte - reduction_ttc),
+                    data.get('restaurant_option_id'), data.get('pdv'), data.get('magasin'),
+                    data.get('nom_du_caissier'), data.get('nom_du_client'), data.get('id_client'),
+                    data.get('discount_id'), float(reduction_ttc)
+                ))
+                receipt_id = cursor.lastrowid
+
+                for item in items_data:
+                    cursor.execute("""
+                        INSERT INTO pos_receipt_items 
+                        (receipt_id, article_id, nom_article, variante_id, quantite, prix_unitaire, 
+                        total_ligne, taux_taxe_applique, commentaire, modificateurs)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        receipt_id, item['article_id'], item['nom_article'], item['variante_id'],
+                        item['quantite'], float(item['prix_ttc']),
+                        float(item['total_ligne_ttc']), float(item['taux_taxe']),
+                        item['commentaire'], item['modificateurs']
+                    ))
+
+                return True, "Ticket enregistré", receipt_id
+
+        except Exception as e:
+            logger.error(f"Erreur ticket ouvert: {e}")
+            return False, f"Erreur: {str(e)}", None
 
     def save_open_ticket(self, user_id: int, pdv_id: int, data: Dict) -> Tuple[bool, str, Optional[int]]:
-        """
-        Sauvegarde un ticket ouvert avec ses items (incluant tva_breakdown).
-        Retourne (succes, message, receipt_id)
-        """
+        """Sauvegarde un ticket ouvert avec ses items (incluant tva_breakdown)."""
         import json
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
+                # Résoudre magasin_id via PDV
+                magasin_id = None
+                if pdv_id:
+                    cursor.execute("SELECT magasin_id FROM pos_points_de_vente WHERE id = %s", (pdv_id,))
+                    res_pdv = cursor.fetchone()
+                    if res_pdv:
+                        magasin_id = res_pdv.get('magasin_id')
+
                 recu_numero = f"OPEN-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
-                
+
                 cursor.execute("""
                     INSERT INTO pos_receipts 
-                    (utilisateur_id, date, recu_numero, nom_ticket, description, receipt_type, 
+                    (utilisateur_id, magasin_id, date, recu_numero, nom_ticket, description, receipt_type, 
                      status, pdv, id_client, nom_du_client, restaurant_option_id, discount_id)
-                    VALUES (%s, NOW(), %s, %s, %s, 'Ouvert', 'open', %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, NOW(), %s, %s, %s, 'Ouvert', 'open', %s, %s, %s, %s, %s)
                 """, (
-                    user_id, recu_numero,
+                    user_id, magasin_id, recu_numero,
                     data.get('nom_ticket'),
                     data.get('commentaire', ''),
                     pdv_id,
@@ -19312,7 +18986,7 @@ class ReceiptPOS:
                     data.get('discount_id')
                 ))
                 receipt_id = cursor.lastrowid
-                
+
                 for item in data.get('items', []):
                     cursor.execute("""
                         INSERT INTO pos_receipt_items 
@@ -19332,43 +19006,48 @@ class ReceiptPOS:
                         item.get('modificateurs', ''),
                         json.dumps(item.get('tva_breakdown', []))
                     ))
-                
+
                 return True, "Ticket enregistré", receipt_id
-                
+
         except Exception as e:
             logger.error(f"Erreur save_open_ticket: {e}")
             return False, str(e), None
 
-    def get_open_tickets(self, user_id: int) -> List[Dict]:
-        """Récupère tous les tickets ouverts avec leurs items (incluant tva_breakdown)"""
+    def get_open_tickets(self, user_id: int, magasin_id: int = None) -> List[Dict]:
+        """Récupère tous les tickets ouverts avec leurs items."""
         import json
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                cursor.execute("""
+                query = """
                     SELECT r.*, c.nom_client
                     FROM pos_receipts r
                     LEFT JOIN pos_clients c ON r.id_client = c.id
                     WHERE r.utilisateur_id = %s AND r.status = 'open'
-                    ORDER BY r.date DESC
-                """, (user_id,))
+                """
+                params = [user_id]
+                if magasin_id:
+                    query += " AND r.magasin_id = %s"
+                    params.append(magasin_id)
+                query += " ORDER BY r.date DESC"
+                cursor.execute(query, params)
                 receipts = cursor.fetchall()
-                
+
                 tickets = []
                 for r in receipts:
                     cursor.execute("""
                         SELECT * FROM pos_receipt_items WHERE receipt_id = %s
                     """, (r['id'],))
                     items = cursor.fetchall()
-                    
+
                     lines = []
                     for item in items:
                         tva_breakdown = []
                         if item.get('tva_breakdown_json'):
                             try:
                                 tva_breakdown = json.loads(item['tva_breakdown_json'])
-                            except:
+                            except Exception:
                                 tva_breakdown = []
-                        
+
                         lines.append({
                             'article_id': item['article_id'],
                             'variante_id': item.get('variante_id'),
@@ -19381,7 +19060,7 @@ class ReceiptPOS:
                             'tva_breakdown': tva_breakdown,
                             'key': f"{item['article_id']}_{item.get('variante_id') or 0}_{item.get('modificateurs', '')}"
                         })
-                    
+
                     tickets.append({
                         'id': r['id'],
                         'nom': r.get('nom_ticket', ''),
@@ -19391,79 +19070,364 @@ class ReceiptPOS:
                         'restaurant_option_id': r.get('restaurant_option_id'),
                         'total': sum(l['prix'] * l['qty'] for l in lines)
                     })
-                
+
                 return tickets
-                
+
         except Exception as e:
             logger.error(f"Erreur get_open_tickets: {e}")
             return []
 
-    def receipt_exists(self, receipt_id: int, user_id: int) -> bool:
-        """Vérifie qu'un reçu existe et appartient à l'utilisateur"""
+    def supprimer_ticket_ouvert(self, receipt_id: int, user_id: int) -> bool:
+        """Supprime un ticket 'Ouvert' (jamais payé, sans transaction bancaire)"""
         try:
             with self.db.get_cursor() as cursor:
-                cursor.execute(
-                    "SELECT id FROM pos_receipts WHERE id = %s AND utilisateur_id = %s",
-                    (receipt_id, user_id)
-                )
-                return cursor.fetchone() is not None
+                cursor.execute("""
+                    SELECT status, transaction_id FROM pos_receipts 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (receipt_id, user_id))
+                r = cursor.fetchone()
+                if not r or r['status'] != 'Ouvert' or r['transaction_id']:
+                    return False
+
+                cursor.execute("DELETE FROM pos_receipt_items WHERE receipt_id = %s", (receipt_id,))
+                cursor.execute("DELETE FROM pos_payments WHERE receipt_id = %s", (receipt_id,))
+                cursor.execute("DELETE FROM pos_receipts WHERE id = %s", (receipt_id,))
+                return True
         except Exception as e:
-            logger.error(f"Erreur receipt_exists: {e}")
+            logger.error(f"Erreur supprimer_ticket_ouvert: {e}")
             return False
 
-    def get_client_receipts(self, client_id: int, user_id: int, 
-                            date_from: str = None, date_to: str = None, limit: int = 500) -> List[Dict]:
-        """Récupère les reçus d'un client avec filtres de date"""
-        try:
-            with self.db.get_cursor(dictionary=True) as cursor:
-                q = "SELECT * FROM pos_receipts WHERE id_client = %s AND status != 'Annulé'"
-                params = [client_id]
-                if date_from:
-                    q += " AND DATE(date) >= %s"; params.append(date_from)
-                if date_to:
-                    q += " AND DATE(date) <= %s"; params.append(date_to)
-                q += " ORDER BY date DESC LIMIT %s"
-                params.append(limit)
-                cursor.execute(q, params)
-                return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur get_client_receipts: {e}")
-            return []
-
-    def get_client_stats(self, client_id: int) -> Dict:
-        """Récupère les statistiques d'un client (visites, dépenses, etc.)"""
+    def annuler_vente(self, receipt_id: int, user_id: int, raison: str = "") -> Tuple[bool, str]:
+        """Annule une vente (extourne comptable si déjà comptabilisée)."""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 cursor.execute("""
-                    SELECT COUNT(*) AS nb_visites,
-                           COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN total_collecte ELSE 0 END),0) AS total_depense,
-                           MIN(date) AS premiere_visite,
-                           MAX(date) AS derniere_visite
+                    SELECT * FROM pos_receipts 
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (receipt_id, user_id))
+                receipt = cursor.fetchone()
+                if not receipt:
+                    return False, "Receipt non trouvé"
+
+                if receipt['status'] == 'Annulé':
+                    return False, "Receipt déjà annulé"
+
+                est_comptabilise = receipt.get('comptabilise') or receipt.get('etat_comptable') == 'comptabilise'
+
+                if est_comptabilise:
+                    from app.models import EcritureComptable, CategorieComptable
+                    modele_ecriture = EcritureComptable(self.db)
+                    modele_categorie = CategorieComptable(self.db)
+
+                    cursor.execute("""
+                        SELECT categorie_id, compte_bancaire_id 
+                        FROM ecritures_comptables 
+                        WHERE reference LIKE %s AND utilisateur_id = %s AND type_ecriture_comptable = 'principale'
+                        ORDER BY id ASC LIMIT 1
+                    """, (f"%{receipt['recu_numero']}%", user_id))
+                    ecriture_origine = cursor.fetchone()
+
+                    if ecriture_origine:
+                        categorie_id = ecriture_origine['categorie_id']
+                        compte_bancaire_id = ecriture_origine['compte_bancaire_id']
+                    else:
+                        categorie_id = self._get_categorie_vente_defaut(cursor, user_id)
+                        compte_bancaire_id = receipt.get('compte_bancaire_id')
+
+                    if not categorie_id:
+                        return False, "Impossible de déterminer la catégorie comptable pour l'extourne."
+
+                    data_extourne = {
+                        'date_ecriture': datetime.now().date(),
+                        'compte_bancaire_id': compte_bancaire_id,
+                        'categorie_id': categorie_id,
+                        'montant': float(receipt['total_collecte']),
+                        'montant_htva': float(receipt['ventes_nettes']),
+                        'devise': 'CHF',
+                        'description': f"Extourne vente POS {receipt['recu_numero']} - {raison}",
+                        'reference': f"EXT-{receipt['recu_numero']}",
+                        'type_ecriture': 'depense',
+                        'tva_taux': float(receipt['taxes'] / receipt['ventes_nettes'] * 100) if receipt['ventes_nettes'] > 0 else 0,
+                        'tva_montant': float(receipt['taxes']),
+                        'utilisateur_id': user_id,
+                        'statut': 'validée',
+                        'type_ecriture_comptable': 'extourne'
+                    }
+
+                    succes, msg = modele_ecriture.create(modele_categorie, data_extourne)
+                    if not succes:
+                        return False, f"Échec de l'extourne comptable : {msg}"
+
+                    cursor.execute("""
+                        UPDATE pos_receipts SET etat_comptable = 'extourne' WHERE id = %s
+                    """, (receipt_id,))
+
+                if receipt.get('transaction_id') and receipt.get('compte_bancaire_id'):
+                    success, msg, _ = self.transaction_model._inserer_transaction_with_cursor(
+                        cursor=cursor,
+                        compte_type='compte_principal',
+                        compte_id=receipt['compte_bancaire_id'],
+                        type_transaction='retrait',
+                        montant=Decimal(str(receipt['total_collecte'])),
+                        description=f"Annulation vente {receipt['recu_numero']} - {raison}",
+                        user_id=user_id,
+                        date_transaction=datetime.now(),
+                        validate_balance=False,
+                        receipt_id=None
+                    )
+                    if not success:
+                        return False, f"Erreur remboursement bancaire : {msg}"
+
+                cursor.execute("""
+                    SELECT article_id, quantite FROM pos_receipt_items WHERE receipt_id = %s
+                """, (receipt_id,))
+                items = cursor.fetchall()
+                for item in items:
+                    cursor.execute("""
+                        UPDATE pos_articles SET stock = stock + %s WHERE id = %s
+                    """, (item['quantite'], item['article_id']))
+
+                cursor.execute("""
+                    UPDATE pos_receipts 
+                    SET status = 'Annulé', cloture_at = NOW() 
+                    WHERE id = %s
+                """, (receipt_id,))
+
+                cursor.execute("""
+                    INSERT INTO pos_historique_suppressions 
+                    (receipt_id, utilisateur_id, recu_numero, montant_original, raison, etait_comptabilise)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (receipt_id, user_id, receipt['recu_numero'],
+                      receipt['total_collecte'], raison, est_comptabilise))
+
+                msg_succes = "Vente annulée avec succès"
+                if est_comptabilise:
+                    msg_succes += " (Extourne comptable générée automatiquement)"
+
+                return True, msg_succes
+
+        except Exception as e:
+            logger.error(f"Erreur annulation vente: {e}", exc_info=True)
+            return False, f"Erreur: {str(e)}"
+
+    def _get_categorie_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
+        try:
+            cursor.execute("""
+                SELECT c.id 
+                FROM categories_comptables c
+                INNER JOIN plan_categorie pc ON c.id = pc.categorie_id
+                INNER JOIN plans_comptables p ON pc.plan_id = p.id
+                WHERE p.utilisateur_id = %s 
+                  AND c.numero LIKE '3%%' 
+                  AND c.actif = TRUE 
+                ORDER BY c.numero 
+                LIMIT 1
+            """, (user_id,))
+            res = cursor.fetchone()
+            return res['id'] if res else None
+        except Exception as e:
+            logger.error(f"Erreur récupération compte vente par défaut: {e}")
+            return None
+
+    def _get_taxe_active(self, cursor, article_id: int, date_ref: date = None) -> Optional[Dict]:
+        """Récupère le taux de taxe en vigueur pour un article à une date donnée"""
+        if date_ref is None:
+            date_ref = date.today()
+
+        cursor.execute("""
+            SELECT tt.taux, tt.date_debut, tt.date_fin, typ.nom as type_nom
+            FROM pos_article_taxes at
+            JOIN pos_types_taxes typ ON at.type_taxe_id = typ.id
+            JOIN pos_taux_taxes tt ON typ.id = tt.type_taxe_id
+            WHERE at.article_id = %s 
+              AND at.est_actuelle = TRUE
+              AND tt.date_debut <= %s
+              AND (tt.date_fin >= %s OR tt.date_fin IS NULL)
+            ORDER BY tt.date_debut DESC
+            LIMIT 1
+        """, (article_id, date_ref, date_ref))
+        return cursor.fetchone()
+
+    def add_payment(self, receipt_id: int, data: Dict) -> Optional[int]:
+        """Ajoute un paiement à un reçu existant"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT id FROM pos_modes_paiement 
+                    WHERE nom = %s AND utilisateur_id = (
+                        SELECT utilisateur_id FROM pos_receipts WHERE id = %s
+                    )
+                """, (data['mode_paiement_nom'], receipt_id))
+                mode = cursor.fetchone()
+                if not mode:
+                    return None
+
+                cursor.execute("""
+                    INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant, est_remboursement)
+                    VALUES (%s, %s, %s, %s)
+                """, (receipt_id, mode['id'], float(data.get('montant', 0)),
+                      data.get('est_remboursement', False)))
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Erreur add_payment: {e}")
+            return None
+
+    # ============================================================
+    # STATISTIQUES
+    # ============================================================
+
+    def get_stats(self, user_id: int, date_from: str, date_to: str, 
+                  magasin_id: int = None) -> Dict:
+        """Statistiques de vente sur une période"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                query = """
+                    SELECT 
+                        COUNT(*) as nb_ventes,
+                        COALESCE(SUM(ventes_brutes), 0) as total_brut,
+                        COALESCE(SUM(reduction), 0) as total_reductions,
+                        COALESCE(SUM(ventes_nettes), 0) as total_net,
+                        COALESCE(SUM(taxes), 0) as total_taxes,
+                        COALESCE(SUM(total_collecte), 0) as total_encaisse,
+                        COALESCE(SUM(marge_brute), 0) as total_marge,
+                        COALESCE(AVG(total_collecte), 0) as panier_moyen
                     FROM pos_receipts
-                    WHERE id_client = %s AND status != 'Annulé'
-                """, (client_id,))
+                    WHERE utilisateur_id = %s 
+                      AND receipt_type = 'Vente'
+                      AND status != 'Annulé'
+                      AND date BETWEEN %s AND %s
+                """
+                params = [user_id, date_from, date_to]
+                if magasin_id:
+                    query += " AND magasin_id = %s"
+                    params.append(magasin_id)
+                cursor.execute(query, params)
                 return cursor.fetchone()
         except Exception as e:
-            logger.error(f"Erreur get_client_stats: {e}")
+            logger.error(f"Erreur stats POS: {e}")
             return {}
 
-    # ============================================================
-    # 🆕 NOUVELLES MÉTHODES POUR STATISTIQUES
-    # ============================================================
+    def get_stats_summary(self, user_id: int, date_from: str, date_to: str,
+                          employee: str = None, magasin_id: int = None) -> Dict:
+        """Récupère les stats agrégées pour une période."""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                q = """
+                    SELECT
+                      COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END), 0) AS ventes_brutes,
+                      COALESCE(SUM(CASE WHEN receipt_type='Remboursement' THEN ABS(ventes_brutes) ELSE 0 END), 0) AS remboursements,
+                      COALESCE(SUM(reduction), 0) AS reductions,
+                      COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END) +
+                               SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_nettes) ELSE 0 END), 0) AS ventes_nettes,
+                      COALESCE(SUM(marge_brute), 0) AS marge_brute,
+                      COALESCE(SUM(taxes), 0) AS taxes,
+                      COALESCE(SUM(total_collecte), 0) AS total_collecte,
+                      COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN 1 ELSE 0 END), 0) AS nb_ventes
+                    FROM pos_receipts
+                    WHERE utilisateur_id = %s AND status != 'Annulé'
+                      AND DATE(date) >= %s AND DATE(date) <= %s
+                """
+                params = [user_id, date_from, date_to]
+                if employee:
+                    q += " AND nom_du_caissier = %s"
+                    params.append(employee)
+                if magasin_id:
+                    q += " AND magasin_id = %s"
+                    params.append(magasin_id)
+                cursor.execute(q, params)
+                r = cursor.fetchone()
+                if not r:
+                    return {}
+                return {k: float(r[k] or 0) for k in (
+                    'ventes_brutes', 'remboursements', 'reductions',
+                    'ventes_nettes', 'marge_brute', 'taxes', 'total_collecte'
+                )}
+        except Exception as e:
+            logger.error(f"Erreur get_stats_summary: {e}")
+            return {}
 
-    def get_stats_by_article(self, user_id: int, date_from: str, date_to: str, 
-                             employee: str = None, search: str = None) -> List[Dict]:
+    def get_daily_stats(self, user_id: int, date_from: str, date_to: str,
+                        employee: str = None, magasin_id: int = None) -> Dict:
+        """Stats journalières avec tous les jours."""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                q = """
+                    SELECT DATE(date) AS jour,
+                      SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END) AS ventes_brutes,
+                      SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_brutes) ELSE 0 END) AS remboursements,
+                      SUM(reduction) AS reductions,
+                      SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END) +
+                      SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_nettes) ELSE 0 END) -
+                      SUM(reduction) AS ventes_nettes,
+                      SUM(marge_brute) AS marge_brute,
+                      SUM(taxes) AS taxes
+                    FROM pos_receipts
+                    WHERE utilisateur_id = %s AND status != 'Annulé'
+                      AND DATE(date) >= %s AND DATE(date) <= %s
+                """
+                params = [user_id, date_from, date_to]
+                if employee:
+                    q += " AND nom_du_caissier = %s"
+                    params.append(employee)
+                if magasin_id:
+                    q += " AND magasin_id = %s"
+                    params.append(magasin_id)
+                q += " GROUP BY DATE(date)"
+                cursor.execute(q, params)
+                return {str(r['jour']): r for r in cursor.fetchall()}
+        except Exception as e:
+            logger.error(f"Erreur get_daily_stats: {e}")
+            return {}
+
+    def get_stats_by_payment_mode(self, user_id: int, date_from: str, date_to: str,
+                                   employee: str = None, magasin_id: int = None) -> List[Dict]:
+        """Stats par mode de paiement"""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                q = """
+                    SELECT COALESCE(mp.nom,'Inconnu') AS nom, COUNT(*) AS nb, SUM(p.montant) AS total
+                    FROM pos_payments p
+                    JOIN pos_receipts r ON r.id = p.receipt_id
+                    LEFT JOIN pos_modes_paiement mp ON mp.id = p.mode_paiement_id
+                    WHERE r.utilisateur_id=%s AND r.status!='Annulé'
+                      AND DATE(r.date) >= %s AND DATE(r.date) <= %s
+                """
+                params = [user_id, date_from, date_to]
+                if employee:
+                    q += " AND r.nom_du_caissier=%s"
+                    params.append(employee)
+                if magasin_id:
+                    q += " AND r.magasin_id=%s"
+                    params.append(magasin_id)
+                q += " GROUP BY mp.nom ORDER BY total DESC"
+                cursor.execute(q, params)
+                return [{'nom': r['nom'], 'nb': int(r['nb']), 'total': float(r['total'])}
+                        for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Erreur get_stats_by_payment_mode: {e}")
+            return []
+
+    def get_stats_by_article(self, user_id: int, date_from: str, date_to: str,
+                             employee: str = None, search: str = None,
+                             magasin_id: int = None) -> List[Dict]:
         """Ventes par article avec filtres"""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 where = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente'"
                 params = [user_id]
-                where += " AND DATE(r.date) >= %s"; params.append(date_from)
-                where += " AND DATE(r.date) <= %s"; params.append(date_to)
+                where += " AND DATE(r.date) >= %s"
+                params.append(date_from)
+                where += " AND DATE(r.date) <= %s"
+                params.append(date_to)
                 if employee:
-                    where += " AND r.nom_du_caissier=%s"; params.append(employee)
+                    where += " AND r.nom_du_caissier=%s"
+                    params.append(employee)
+                if magasin_id:
+                    where += " AND r.magasin_id=%s"
+                    params.append(magasin_id)
                 if search:
-                    where += " AND ri.nom_article LIKE %s"; params.append(f"%{search}%")
+                    where += " AND ri.nom_article LIKE %s"
+                    params.append(f"%{search}%")
 
                 cursor.execute(f"""
                     SELECT ri.nom_article AS nom,
@@ -19479,7 +19443,7 @@ class ReceiptPOS:
                     GROUP BY ri.nom_article
                     ORDER BY total_revenue DESC
                 """, params)
-                
+
                 articles = cursor.fetchall()
                 for a in articles:
                     a['total_revenue'] = float(a['total_revenue'] or 0)
@@ -19490,20 +19454,25 @@ class ReceiptPOS:
             logger.error(f"Erreur get_stats_by_article: {e}")
             return []
 
-    def get_article_series(self, user_id: int, date_from: str, date_to: str, 
-                           article_names: List[str], employee: str = None) -> List[Dict]:
+    def get_article_series(self, user_id: int, date_from: str, date_to: str,
+                           article_names: List[str], employee: str = None,
+                           magasin_id: int = None) -> List[Dict]:
         """Série journalière pour les articles du top 5"""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 if not article_names:
                     return []
-                
+
                 ph = ','.join(['%s'] * len(article_names))
                 swhere = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente' AND DATE(r.date) >= %s AND DATE(r.date) <= %s"
                 sparams = [user_id, date_from, date_to]
                 if employee:
-                    swhere += " AND r.nom_du_caissier=%s"; sparams.append(employee)
-                
+                    swhere += " AND r.nom_du_caissier=%s"
+                    sparams.append(employee)
+                if magasin_id:
+                    swhere += " AND r.magasin_id=%s"
+                    sparams.append(magasin_id)
+
                 cursor.execute(f"""
                     SELECT DATE(r.date) AS jour, ri.nom_article AS nom, SUM(ri.total_ligne) AS val
                     FROM pos_receipt_items ri
@@ -19511,24 +19480,30 @@ class ReceiptPOS:
                     WHERE {swhere} AND ri.nom_article IN ({ph})
                     GROUP BY DATE(r.date), ri.nom_article
                 """, sparams + article_names)
-                
+
                 return [{'date': str(r['jour']), 'name': r['nom'], 'value': float(r['val'] or 0)}
                         for r in cursor.fetchall()]
         except Exception as e:
             logger.error(f"Erreur get_article_series: {e}")
             return []
 
-    def get_stats_by_category(self, user_id: int, date_from: str, date_to: str, 
-                              employee: str = None) -> List[Dict]:
+    def get_stats_by_category(self, user_id: int, date_from: str, date_to: str,
+                              employee: str = None, magasin_id: int = None) -> List[Dict]:
         """Ventes par catégorie"""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 where = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente'"
                 params = [user_id]
-                where += " AND DATE(r.date) >= %s"; params.append(date_from)
-                where += " AND DATE(r.date) <= %s"; params.append(date_to)
+                where += " AND DATE(r.date) >= %s"
+                params.append(date_from)
+                where += " AND DATE(r.date) <= %s"
+                params.append(date_to)
                 if employee:
-                    where += " AND r.nom_du_caissier=%s"; params.append(employee)
+                    where += " AND r.nom_du_caissier=%s"
+                    params.append(employee)
+                if magasin_id:
+                    where += " AND r.magasin_id=%s"
+                    params.append(magasin_id)
 
                 cursor.execute(f"""
                     SELECT COALESCE(c.nom_categorie, 'Sans catégorie') AS nom,
@@ -19544,7 +19519,7 @@ class ReceiptPOS:
                     GROUP BY nom
                     ORDER BY total_revenue DESC
                 """, params)
-                
+
                 categories = cursor.fetchall()
                 for c in categories:
                     c['total_revenue'] = float(c['total_revenue'] or 0)
@@ -19555,20 +19530,359 @@ class ReceiptPOS:
             logger.error(f"Erreur get_stats_by_category: {e}")
             return []
 
-    def get_category_series(self, user_id: int, date_from: str, date_to: str, 
-                            category_names: List[str], employee: str = None) -> List[Dict]:
+    def get_stats_by_modifier(self, user_id: int, date_from: str, date_to: str,
+                            employee: str = None, magasin_id: int = None,
+                            search: str = None) -> List[Dict]:
+        """
+        Agrège les ventes par libellé de modificateur (colonne TEXT de pos_receipt_items).
+        Un même ticket peut contenir plusieurs modificateurs ; chaque libellé est compté
+        séparément via une sous-requête qui éclate les chaînes séparées par virgule.
+        
+        Retourne pour chaque modificateur :
+        - nom               : le libellé (ex: "Sans oignons")
+        - nb_utilisations   : nombre de lignes de reçu contenant ce modificateur
+        - total_quantite    : somme des quantités vendues avec ce modificateur
+        - total_revenue     : CA TTC généré par ces lignes
+        - panier_moyen      : total_revenue / nb_utilisations
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                where = (
+                    "r.utilisateur_id = %s "
+                    "AND r.status != 'Annulé' "
+                    "AND r.receipt_type = 'Vente' "
+                    "AND ri.modificateurs IS NOT NULL "
+                    "AND TRIM(ri.modificateurs) != ''"
+                )
+                params = [user_id]
+
+                where += " AND DATE(r.date) >= %s"
+                params.append(date_from)
+                where += " AND DATE(r.date) <= %s"
+                params.append(date_to)
+
+                if employee:
+                    where += " AND r.nom_du_caissier = %s"
+                    params.append(employee)
+                if magasin_id:
+                    where += " AND r.magasin_id = %s"
+                    params.append(magasin_id)
+                if search:
+                    where += " AND ri.modificateurs LIKE %s"
+                    params.append(f"%{search}%")
+
+                # On éclate les libellés séparés par virgule via une table de nombres
+                # (de 1 à 20, suffisant pour la quasi-totalité des cas).
+                # Chaque ligne de reçu produit N lignes, une par modificateur détecté.
+                cursor.execute(f"""
+                    SELECT
+                        TRIM(
+                            SUBSTRING_INDEX(
+                                SUBSTRING_INDEX(ri.modificateurs, ',', n.i),
+                                ',', -1
+                            )
+                        ) AS nom,
+                        COUNT(DISTINCT ri.id) AS nb_utilisations,
+                        SUM(ri.quantite)      AS total_quantite,
+                        SUM(ri.total_ligne)   AS total_revenue
+                    FROM pos_receipt_items ri
+                    JOIN pos_receipts r ON r.id = ri.receipt_id
+                    JOIN (
+                        SELECT 1 AS i UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+                        UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8
+                        UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL SELECT 12
+                        UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15 UNION ALL SELECT 16
+                        UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19 UNION ALL SELECT 20
+                    ) n
+                    ON n.i <= 1 + LENGTH(ri.modificateurs) - LENGTH(REPLACE(ri.modificateurs, ',', ''))
+                    WHERE {where}
+                    GROUP BY nom
+                    HAVING nom != ''
+                    ORDER BY total_revenue DESC
+                """, params)
+
+                rows = cursor.fetchall()
+                for r in rows:
+                    r['total_revenue'] = float(r['total_revenue'] or 0)
+                    r['total_quantite'] = int(r['total_quantite'] or 0)
+                    r['nb_utilisations'] = int(r['nb_utilisations'] or 0)
+                    r['panier_moyen'] = (
+                        round(r['total_revenue'] / r['nb_utilisations'], 2)
+                        if r['nb_utilisations'] > 0 else 0.0
+                    )
+                return rows
+        except Exception as e:
+            logger.error(f"Erreur get_stats_by_modifier: {e}", exc_info=True)
+            return []
+
+    def get_modifier_series(self, user_id: int, date_from: str, date_to: str,
+                            modifier_names: List[str], employee: str = None,
+                            magasin_id: int = None) -> List[Dict]:
+        """
+        Série journalière pour les modificateurs du top 5.
+        Retourne une liste de dicts {date, name, value} prête pour un graphique.
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                if not modifier_names:
+                    return []
+
+                # Placeholders pour la clause IN
+                ph = ','.join(['%s'] * len(modifier_names))
+
+                where = (
+                    "r.utilisateur_id = %s "
+                    "AND r.status != 'Annulé' "
+                    "AND r.receipt_type = 'Vente' "
+                    "AND ri.modificateurs IS NOT NULL "
+                    "AND TRIM(ri.modificateurs) != '' "
+                    "AND DATE(r.date) >= %s "
+                    "AND DATE(r.date) <= %s"
+                )
+                params = [user_id, date_from, date_to]
+
+                if employee:
+                    where += " AND r.nom_du_caissier = %s"
+                    params.append(employee)
+                if magasin_id:
+                    where += " AND r.magasin_id = %s"
+                    params.append(magasin_id)
+
+                cursor.execute(f"""
+                    SELECT
+                        DATE(r.date) AS jour,
+                        TRIM(
+                            SUBSTRING_INDEX(
+                                SUBSTRING_INDEX(ri.modificateurs, ',', n.i),
+                                ',', -1
+                            )
+                        ) AS nom,
+                        SUM(ri.total_ligne) AS val
+                    FROM pos_receipt_items ri
+                    JOIN pos_receipts r ON r.id = ri.receipt_id
+                    JOIN (
+                        SELECT 1 AS i UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+                        UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8
+                        UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL SELECT 12
+                        UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15 UNION ALL SELECT 16
+                        UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19 UNION ALL SELECT 20
+                    ) n
+                    ON n.i <= 1 + LENGTH(ri.modificateurs) - LENGTH(REPLACE(ri.modificateurs, ',', ''))
+                    WHERE {where}
+                    AND TRIM(
+                            SUBSTRING_INDEX(
+                                SUBSTRING_INDEX(ri.modificateurs, ',', n.i),
+                                ',', -1
+                            )
+                        ) IN ({ph})
+                    GROUP BY jour, nom
+                    ORDER BY jour, nom
+                """, params + modifier_names)
+
+                return [
+                    {
+                        'date': str(r['jour']),
+                        'name': r['nom'],
+                        'value': float(r['val'] or 0)
+                    }
+                    for r in cursor.fetchall()
+                ]
+        except Exception as e:
+            logger.error(f"Erreur get_modifier_series: {e}", exc_info=True)
+            return []
+
+    def get_stats_by_modifier_option(self, user_id: int, date_from: str, date_to: str,
+                                    employee: str = None, magasin_id: int = None,
+                                    search: str = None) -> List[Dict]:
+        """
+        Agrège les ventes par libellé présent dans ri.modificateurs,
+        mais en ne gardant QUE ceux qui correspondent à une option enregistrée
+        dans pos_options_modificateurs (par nom_option).
+        
+        Cela permet de séparer ce qui est vraiment une 'option' (ex: "Extra fromage"
+        configurée dans le catalogue) du texte libre éventuel.
+        
+        Retourne pour chaque option :
+        - nom               : nom_option
+        - option_id         : id de l'option (dans pos_options_modificateurs)
+        - modificateur_id   : id du modificateur parent
+        - nb_utilisations
+        - total_quantite
+        - total_revenue
+        - panier_moyen
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                where = (
+                    "r.utilisateur_id = %s "
+                    "AND r.status != 'Annulé' "
+                    "AND r.receipt_type = 'Vente' "
+                    "AND ri.modificateurs IS NOT NULL "
+                    "AND TRIM(ri.modificateurs) != ''"
+                )
+                params = [user_id]
+
+                where += " AND DATE(r.date) >= %s"
+                params.append(date_from)
+                where += " AND DATE(r.date) <= %s"
+                params.append(date_to)
+
+                if employee:
+                    where += " AND r.nom_du_caissier = %s"
+                    params.append(employee)
+                if magasin_id:
+                    where += " AND r.magasin_id = %s"
+                    params.append(magasin_id)
+                if search:
+                    where += " AND ri.modificateurs LIKE %s"
+                    params.append(f"%{search}%")
+
+                # Jointure sur pos_options_modificateurs : on ne garde que les libellés
+                # qui correspondent à une option existante pour cet utilisateur.
+                cursor.execute(f"""
+                    SELECT
+                        o.id                 AS option_id,
+                        o.nom_option         AS nom,
+                        o.id_modificateur    AS modificateur_id,
+                        m.nom_modificateur   AS modificateur_nom,
+                        COUNT(DISTINCT ri.id) AS nb_utilisations,
+                        SUM(ri.quantite)      AS total_quantite,
+                        SUM(ri.total_ligne)   AS total_revenue
+                    FROM pos_receipt_items ri
+                    JOIN pos_receipts r ON r.id = ri.receipt_id
+                    JOIN (
+                        SELECT 1 AS i UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+                        UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8
+                        UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL SELECT 12
+                        UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15 UNION ALL SELECT 16
+                        UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19 UNION ALL SELECT 20
+                    ) n
+                    ON n.i <= 1 + LENGTH(ri.modificateurs) - LENGTH(REPLACE(ri.modificateurs, ',', ''))
+                    JOIN pos_options_modificateurs o
+                    ON o.utilisateur_id = r.utilisateur_id
+                    AND o.nom_option = TRIM(
+                            SUBSTRING_INDEX(
+                                SUBSTRING_INDEX(ri.modificateurs, ',', n.i),
+                                ',', -1
+                            )
+                        )
+                    AND (o.id_modificateur IS NULL OR o.id_modificateur IS NOT NULL)  -- explicite : on accepte tout
+                    LEFT JOIN pos_modificateurs m ON m.id = o.id_modificateur
+                    WHERE {where}
+                    GROUP BY o.id, o.nom_option, o.id_modificateur, m.nom_modificateur
+                    ORDER BY total_revenue DESC
+                """, params)
+
+                rows = cursor.fetchall()
+                for r in rows:
+                    r['total_revenue'] = float(r['total_revenue'] or 0)
+                    r['total_quantite'] = int(r['total_quantite'] or 0)
+                    r['nb_utilisations'] = int(r['nb_utilisations'] or 0)
+                    r['panier_moyen'] = (
+                        round(r['total_revenue'] / r['nb_utilisations'], 2)
+                        if r['nb_utilisations'] > 0 else 0.0
+                    )
+                return rows
+        except Exception as e:
+            logger.error(f"Erreur get_stats_by_modifier_option: {e}", exc_info=True)
+            return []
+
+    def get_modifier_option_series(self, user_id: int, date_from: str, date_to: str,
+                                option_names: List[str], employee: str = None,
+                                magasin_id: int = None) -> List[Dict]:
+        """
+        Série journalière pour les options du top 5 (nom_option).
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                if not option_names:
+                    return []
+
+                ph = ','.join(['%s'] * len(option_names))
+
+                where = (
+                    "r.utilisateur_id = %s "
+                    "AND r.status != 'Annulé' "
+                    "AND r.receipt_type = 'Vente' "
+                    "AND ri.modificateurs IS NOT NULL "
+                    "AND TRIM(ri.modificateurs) != '' "
+                    "AND DATE(r.date) >= %s "
+                    "AND DATE(r.date) <= %s"
+                )
+                params = [user_id, date_from, date_to]
+
+                if employee:
+                    where += " AND r.nom_du_caissier = %s"
+                    params.append(employee)
+                if magasin_id:
+                    where += " AND r.magasin_id = %s"
+                    params.append(magasin_id)
+
+                cursor.execute(f"""
+                    SELECT
+                        DATE(r.date) AS jour,
+                        TRIM(
+                            SUBSTRING_INDEX(
+                                SUBSTRING_INDEX(ri.modificateurs, ',', n.i),
+                                ',', -1
+                            )
+                        ) AS nom,
+                        SUM(ri.total_ligne) AS val
+                    FROM pos_receipt_items ri
+                    JOIN pos_receipts r ON r.id = ri.receipt_id
+                    JOIN (
+                        SELECT 1 AS i UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+                        UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8
+                        UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL SELECT 12
+                        UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15 UNION ALL SELECT 16
+                        UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19 UNION ALL SELECT 20
+                    ) n
+                    ON n.i <= 1 + LENGTH(ri.modificateurs) - LENGTH(REPLACE(ri.modificateurs, ',', ''))
+                    JOIN pos_options_modificateurs o
+                    ON o.utilisateur_id = r.utilisateur_id
+                    AND o.nom_option = TRIM(
+                            SUBSTRING_INDEX(
+                                SUBSTRING_INDEX(ri.modificateurs, ',', n.i),
+                                ',', -1
+                            )
+                        )
+                    WHERE {where}
+                    AND o.nom_option IN ({ph})
+                    GROUP BY jour, nom
+                    ORDER BY jour, nom
+                """, params + option_names)
+
+                return [
+                    {
+                        'date': str(r['jour']),
+                        'name': r['nom'],
+                        'value': float(r['val'] or 0)
+                    }
+                    for r in cursor.fetchall()
+                ]
+        except Exception as e:
+            logger.error(f"Erreur get_modifier_option_series: {e}", exc_info=True)
+            return []
+
+    def get_category_series(self, user_id: int, date_from: str, date_to: str,
+                            category_names: List[str], employee: str = None,
+                            magasin_id: int = None) -> List[Dict]:
         """Série journalière pour les catégories du top 5"""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 if not category_names:
                     return []
-                
+
                 ph = ','.join(['%s'] * len(category_names))
                 swhere = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente' AND DATE(r.date) >= %s AND DATE(r.date) <= %s"
                 sparams = [user_id, date_from, date_to]
                 if employee:
-                    swhere += " AND r.nom_du_caissier=%s"; sparams.append(employee)
-                
+                    swhere += " AND r.nom_du_caissier=%s"
+                    sparams.append(employee)
+                if magasin_id:
+                    swhere += " AND r.magasin_id=%s"
+                    sparams.append(magasin_id)
+
                 cursor.execute(f"""
                     SELECT DATE(r.date) AS jour,
                            COALESCE(c.nom_categorie, 'Sans catégorie') AS nom,
@@ -19580,118 +19894,214 @@ class ReceiptPOS:
                     WHERE {swhere} AND COALESCE(c.nom_categorie, 'Sans catégorie') IN ({ph})
                     GROUP BY DATE(r.date), nom
                 """, sparams + category_names)
-                
+
                 return [{'date': str(r['jour']), 'name': r['nom'], 'value': float(r['val'] or 0)}
                         for r in cursor.fetchall()]
         except Exception as e:
             logger.error(f"Erreur get_category_series: {e}")
             return []
 
-    def get_stats_summary(self, user_id: int, date_from: str, date_to: str, 
-                          employee: str = None) -> Dict:
-        """Récupère les stats agrégées pour une période (CORRIGÉ - pas de double soustraction)"""
+    def get_payment_methods_stats(self, user_id: int, date_from: str = None, 
+                                   date_to: str = None, magasin_id: int = None) -> List[Dict]:
+        """Statistiques agrégées par mode de paiement (Ventes vs Remboursements)."""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                q = """
-                    SELECT
-                      -- Ventes brutes : uniquement les ventes, pas les remboursements
-                      COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END), 0) AS ventes_brutes,
-                      -- Remboursements : affichés en positif pour l'UI, mais négatifs en interne
-                      COALESCE(SUM(CASE WHEN receipt_type='Remboursement' THEN ABS(ventes_brutes) ELSE 0 END), 0) AS remboursements,
-                      -- Réductions : somme des réductions appliquées
-                      COALESCE(SUM(reduction), 0) AS reductions,
-                      -- 🟢 CORRECTION : ventes_nettes contient DÉJÀ la réduction, on ne soustrait pas encore
-                      COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END) +
-                               SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_nettes) ELSE 0 END), 0) AS ventes_nettes,
-                      COALESCE(SUM(marge_brute), 0) AS marge_brute,
-                      COALESCE(SUM(taxes), 0) AS taxes,
-                      COALESCE(SUM(total_collecte), 0) AS total_collecte,
-                      COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN 1 ELSE 0 END), 0) AS nb_ventes
-                    FROM pos_receipts
-                    WHERE utilisateur_id = %s AND status != 'Annulé'
-                      AND DATE(date) >= %s AND DATE(date) <= %s
-                """
-                params = [user_id, date_from, date_to]
-                if employee:
-                    q += " AND nom_du_caissier = %s"
-                    params.append(employee)
-                cursor.execute(q, params)
-                r = cursor.fetchone()
-                return {k: float(r[k]) for k in ('ventes_brutes','remboursements','reductions',
-                                                 'ventes_nettes','marge_brute','taxes','total_collecte')}
-        except Exception as e:
-            logger.error(f"Erreur get_stats_summary: {e}")
-            return {}
-    
-    def get_daily_stats(self, user_id: int, date_from: str, date_to: str, 
-                        employee: str = None) -> List[Dict]:
-        """Stats journalières avec tous les jours (CORRIGÉ pour les ventes nettes)"""
-        try:
-            with self.db.get_cursor(dictionary=True) as cursor:
-                q = """
-                    SELECT DATE(date) AS jour,
-                      SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END) AS ventes_brutes,
-                      SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_brutes) ELSE 0 END) AS remboursements,
-                      SUM(reduction) AS reductions,
-                      -- 🟢 CORRECTION : Ventes nettes = Ventes brutes - Remboursements - Réductions
-                      SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END) +
-                      SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_nettes) ELSE 0 END) -
-                      SUM(reduction) AS ventes_nettes,
-                      SUM(marge_brute) AS marge_brute,
-                      SUM(taxes) AS taxes
-                    FROM pos_receipts
-                    WHERE utilisateur_id = %s AND status != 'Annulé'
-                      AND DATE(date) >= %s AND DATE(date) <= %s
-                """
-                params = [user_id, date_from, date_to]
-                if employee:
-                    q += " AND nom_du_caissier = %s"
-                    params.append(employee)
-                q += " GROUP BY DATE(date)"
-                cursor.execute(q, params)
-                return {str(r['jour']): r for r in cursor.fetchall()}
-        except Exception as e:
-            logger.error(f"Erreur get_daily_stats: {e}")
-            return {}
-        
-    def get_stats_by_payment_mode(self, user_id: int, date_from: str, date_to: str, 
-                                   employee: str = None) -> List[Dict]:
-        """Stats par mode de paiement"""
-        try:
-            with self.db.get_cursor(dictionary=True) as cursor:
-                q = """
-                    SELECT COALESCE(mp.nom,'Inconnu') AS nom, COUNT(*) AS nb, SUM(p.montant) AS total
+                query = """
+                    SELECT 
+                        COALESCE(mp.nom, 'Inconnu') AS mode_nom,
+                        COUNT(CASE WHEN r.receipt_type = 'Vente' THEN p.id END) as transactions,
+                        COALESCE(SUM(CASE WHEN r.receipt_type = 'Vente' THEN p.montant ELSE 0 END), 0) as amount,
+                        COUNT(CASE WHEN r.receipt_type = 'Remboursement' THEN p.id END) as refund_transactions,
+                        COALESCE(SUM(CASE WHEN r.receipt_type = 'Remboursement' THEN p.montant ELSE 0 END), 0) as refund_amount
                     FROM pos_payments p
-                    JOIN pos_receipts r ON r.id = p.receipt_id
-                    LEFT JOIN pos_modes_paiement mp ON mp.id = p.mode_paiement_id
-                    WHERE r.utilisateur_id=%s AND r.status!='Annulé'
-                      AND DATE(r.date) >= %s AND DATE(r.date) <= %s
+                    JOIN pos_receipts r ON p.receipt_id = r.id
+                    LEFT JOIN pos_modes_paiement mp ON p.mode_paiement_id = mp.id
+                    WHERE r.utilisateur_id = %s AND r.status != 'Annulé'
                 """
-                params = [user_id, date_from, date_to]
-                if employee:
-                    q += " AND r.nom_du_caissier=%s"; params.append(employee)
-                q += " GROUP BY mp.nom ORDER BY total DESC"
-                cursor.execute(q, params)
-                return [{'nom': r['nom'], 'nb': int(r['nb']), 'total': float(r['total'])} 
-                        for r in cursor.fetchall()]
+                params = [user_id]
+
+                if magasin_id:
+                    query += " AND r.magasin_id = %s"
+                    params.append(magasin_id)
+                if date_from:
+                    query += " AND DATE(r.date) >= %s"
+                    params.append(date_from)
+                if date_to:
+                    query += " AND DATE(r.date) <= %s"
+                    params.append(date_to)
+
+                query += " GROUP BY mp.nom ORDER BY amount DESC"
+
+                cursor.execute(query, params)
+                return cursor.fetchall()
         except Exception as e:
-            logger.error(f"Erreur get_stats_by_payment_mode: {e}")
+            logger.error(f"Erreur get_payment_methods_stats: {e}")
             return []
 
+    # ============================================================
+    # COMPTABILITÉ
+    # ============================================================
 
+    def get_compta_settings(self, user_id: int, magasin_id: int = None) -> Dict:
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                query = """
+                    SELECT mode_comptabilisation, generation_ecritures
+                    FROM pos_compta_settings
+                    WHERE utilisateur_id = %s
+                """
+                params = [user_id]
+                if magasin_id:
+                    query += " AND magasin_id = %s"
+                    params.append(magasin_id)
+                query += " LIMIT 1"
+                cursor.execute(query, params)
+                settings = cursor.fetchone()
+                if not settings:
+                    return {
+                        'mode_comptabilisation': 'par_jour',
+                        'generation_ecritures': 'manuel'
+                    }
+                return settings
+        except Exception as e:
+            logger.error(f"Erreur récupération settings compta: {e}")
+            return {'mode_comptabilisation': 'par_jour', 'generation_ecritures': 'manuel'}
+
+    def save_compta_settings(self, user_id: int, mode: str, generation: str, 
+                              magasin_id: int = None) -> bool:
+        """Sauvegarde les préférences de comptabilisation"""
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO pos_compta_settings 
+                    (utilisateur_id, magasin_id, mode_comptabilisation, generation_ecritures)
+                    VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        mode_comptabilisation = VALUES(mode_comptabilisation),
+                        generation_ecritures = VALUES(generation_ecritures)
+                """, (user_id, magasin_id, mode, generation))
+                return True
+        except Exception as e:
+            logger.error(f"Erreur sauvegarde settings compta: {e}")
+            return False
+
+    def comptabiliser_ticket(self, receipt_id: int, user_id: int) -> Tuple[bool, str]:
+        """
+        Génère les écritures comptables pour un ticket POS.
+        S'appuie sur le modèle EcritureComptable existant pour gérer la TVA en cascade.
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                # 1. Récupérer le ticket et ses infos
+                cursor.execute("""
+                    SELECT r.*
+                    FROM pos_receipts r
+                    WHERE r.id = %s AND r.utilisateur_id = %s
+                """, (receipt_id, user_id))
+                receipt = cursor.fetchone()
+
+                if not receipt:
+                    return False, "Ticket non trouvé"
+                if receipt.get('comptabilise'):
+                    return True, "Déjà comptabilisé"
+
+                # 2. Récupérer le compte de vente via le mapping TVA du premier article
+                cursor.execute("""
+                    SELECT 
+                        pc.categorie_comptable_vente_id,
+                        mct.compte_vente_id AS compte_mapping_vente_id
+                    FROM pos_receipt_items ri
+                    JOIN pos_articles a ON ri.article_id = a.id
+                    JOIN pos_categories pc ON a.id_categorie = pc.id
+                    LEFT JOIN pos_article_taxes pat 
+                        ON pat.article_id = a.id AND pat.est_actuelle = TRUE
+                    LEFT JOIN pos_compta_mapping_tva mct 
+                        ON mct.type_taxe_id = pat.type_taxe_id 
+                        AND mct.utilisateur_id = r.utilisateur_id
+                    WHERE ri.receipt_id = %s
+                    LIMIT 1
+                """, (receipt_id,))
+                cat_mapping = cursor.fetchone()
+
+                # Priorité : mapping TVA > catégorie directe de l'article
+                categorie_vente_id = None
+                if cat_mapping:
+                    categorie_vente_id = (
+                        cat_mapping.get('compte_mapping_vente_id') 
+                        or cat_mapping.get('categorie_comptable_vente_id')
+                    )
+
+                # Fallback : compte de vente par défaut (classe 3)
+                if not categorie_vente_id:
+                    categorie_vente_id = self._get_categorie_vente_defaut(cursor, user_id)
+
+                if not categorie_vente_id:
+                    return False, "Aucune catégorie comptable de vente configurée pour ce ticket."
+
+                compte_bancaire_id = receipt.get('compte_bancaire_id')
+                if not compte_bancaire_id:
+                    return False, "Aucun compte bancaire associé au ticket."
+
+                # 3. Calcul du taux moyen de TVA (pour l'affichage dans l'écriture)
+                ventes_nettes = float(receipt['ventes_nettes'] or 0)
+                taxes = float(receipt['taxes'] or 0)
+                taux_moyen = (taxes / ventes_nettes * 100) if ventes_nettes > 0 else 0.0
+
+                # 4. Préparer les données pour le modèle EcritureComptable
+                data_ecriture = {
+                    'date_ecriture': receipt['date'].date() if hasattr(receipt['date'], 'date') else receipt['date'],
+                    'compte_bancaire_id': compte_bancaire_id,
+                    'categorie_id': categorie_vente_id,
+                    'montant': float(receipt['total_collecte']),   # TTC
+                    'montant_htva': ventes_nettes,                 # Base imposable
+                    'devise': 'CHF',
+                    'description': f"Vente POS {receipt['recu_numero']}",
+                    'reference': receipt['recu_numero'],
+                    'type_ecriture': 'recette',
+                    'tva_taux': round(taux_moyen, 2),
+                    'tva_montant': taxes,
+                    'utilisateur_id': user_id,
+                    'statut': 'validée',
+                    'type_ecriture_comptable': 'pos_vente'
+                }
+
+                # 5. Utiliser le modèle EcritureComptable existant
+                from app.models import EcritureComptable, CategorieComptable
+                modele_ecriture = EcritureComptable(self.db)
+                modele_categorie = CategorieComptable(self.db)
+
+                succes, msg = modele_ecriture.create(modele_categorie, data_ecriture)
+
+                if succes:
+                    cursor.execute("""
+                        UPDATE pos_receipts 
+                        SET comptabilise = TRUE, 
+                            etat_comptable = 'comptabilise',
+                            date_comptabilisation = CURDATE() 
+                        WHERE id = %s
+                    """, (receipt_id,))
+                    logger.info(f"✅ Ticket {receipt_id} comptabilisé")
+                    return True, "Écritures comptables générées avec succès"
+                else:
+                    return False, f"Échec de la génération des écritures : {msg}"
+
+        except Exception as e:
+            logger.error(f"Erreur comptabilisation ticket {receipt_id}: {e}", exc_info=True)
+            return False, f"Erreur système: {str(e)}"
+        
 class POSComptaMapping:
     """Gère le lien entre les taxes POS et les comptes comptables de vente (Classe 3)"""
     def __init__(self, db):
         self.db = db
 
-    def set_mapping(self, user_id: int, type_taxe_id: int, compte_vente_id: int) -> bool:
+    def set_mapping(self, user_id: int, magasin_id: int, type_taxe_id: int, compte_vente_id: int) -> bool:
         """Mappe un type de taxe POS vers un compte comptable (3001 ou 2030)"""
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO pos_compta_mapping_tva 
-                    (utilisateur_id, type_taxe_id, compte_vente_id)
-                    VALUES (%s, %s, %s)
+                    (utilisateur_id, magasin_id, type_taxe_id, compte_vente_id)
+                    VALUES (%s, %s, %s, %s)
                     ON DUPLICATE KEY UPDATE 
                     compte_vente_id = VALUES(compte_vente_id)
                 """, (user_id, type_taxe_id, compte_vente_id))
@@ -19760,7 +20170,7 @@ class POSComptabilisation:
     def get_a_comptabiliser(self, user_id: int, pdv_id: int = None, 
                             date_from: str = None, date_to: str = None, 
                             mode: str = 'jour',
-                            only_without_transaction: bool = False) -> List[Dict]:
+                            only_without_transaction: bool = False, magasin_id: int = None) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 compte_defaut = self._get_compte_vente_defaut(cursor, user_id)
@@ -19792,7 +20202,9 @@ class POSComptabilisation:
                 if pdv_id:
                     where_base += " AND r.pdv_id = %s"
                     params_base.append(pdv_id)
-                
+                if magasin_id:
+                    where_base += " AND r.magasin_id = %s"
+                    params_base.append(magasin_id)
                 if mode == 'jour':
                     query = """
                         SELECT 
@@ -20363,20 +20775,25 @@ class PeriodeTravailPOS:
         except:
             return []
 
-    def get_by_date_range(self, user_id: int, date_from: str, date_to: str) -> List[Dict]:
-        """Récupère les périodes entre deux dates"""
+    def get_by_date_range(self, user_id: int, date_from: str, date_to: str, 
+                      magasin_id: int = None) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                cursor.execute("""
+                query = """
                     SELECT ppt.*, ppv.nom_pdv
                     FROM pos_periodes_travail AS ppt
                     LEFT JOIN pos_points_de_vente AS ppv ON ppt.pdv_id = ppv.id
+                    LEFT JOIN pos_magasins AS m ON m.id = ppv.magasin_id
                     WHERE ppt.utilisateur_id = %s 
                     AND DATE(ppt.date_debut) >= %s
                     AND DATE(ppt.date_debut) <= %s
-                    ORDER BY ppt.date_debut DESC
-                    LIMIT 100
-                """, (user_id, date_from, date_to))
+                """
+                params = [user_id, date_from, date_to]
+                if magasin_id:
+                    query += " AND m.id = %s"
+                    params.append(magasin_id)
+                query += " ORDER BY ppt.date_debut DESC LIMIT 100"
+                cursor.execute(query, params)
                 return cursor.fetchall()
         except Exception as e:
             logger.error(f"Erreur get_by_date_range: {e}")

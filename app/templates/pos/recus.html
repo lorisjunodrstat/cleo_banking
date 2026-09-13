@@ -4,6 +4,7 @@
 
 {% block page_header %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    {% include 'pos/_magasin_selector.html' %}
     <h1 class="h2"><i class="fas fa-receipt me-2"></i>Archive des reçus</h1>
     <div class="btn-toolbar mb-2 mb-md-0">
         <a href="{{ url_for('banking.pos_caisse') }}" class="btn btn-success">
@@ -45,6 +46,9 @@
 
         <form method="GET" action="{{ url_for('banking.pos_receipts_list') }}" class="row g-3">
             <div class="col-md-3">
+                {% if pos_magasin_courant %}
+                    <input type="hidden" name="magasin_id" value="{{ pos_magasin_courant.id }}">
+                {% endif %}
                 <input type="text" name="search" class="form-control" placeholder="Rechercher (N°, client...)" value="{{ search }}">
             </div>
             

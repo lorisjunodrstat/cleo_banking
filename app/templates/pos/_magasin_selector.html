@@ -1,0 +1,32 @@
+{# Sélecteur de magasin — à inclure dans les pages POS #}
+{% if pos_magasins %}
+    {% if pos_magasins|length == 1 %}
+        {# Un seul magasin : badge informatif #}
+        <span class="badge bg-light text-dark border">
+            <i class="bi bi-shop me-1"></i>{{ pos_magasins[0].nom_magasin }}
+        </span>
+    {% else %}
+        {# Plusieurs magasins : dropdown #}
+        <div class="dropdown">
+            <button class="btn btn-sm btn-light border dropdown-toggle" type="button"
+                    data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-shop me-1"></i>
+                {{ pos_magasin_courant.nom_magasin if pos_magasin_courant else 'Choisir…' }}
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><h6 class="dropdown-header">Magasin actif</h6></li>
+                {% for m in pos_magasins %}
+                    <li>
+                        <a class="dropdown-item {% if pos_magasin_courant and m.id == pos_magasin_courant.id %}active{% endif %}"
+                           href="{{ pos_url_with_magasin(m.id) }}">
+                            <i class="bi bi-shop me-2"></i>{{ m.nom_magasin }}
+                            {% if pos_magasin_courant and m.id == pos_magasin_courant.id %}
+                                <i class="bi bi-check2 ms-2"></i>
+                            {% endif %}
+                        </a>
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+{% endif %}
