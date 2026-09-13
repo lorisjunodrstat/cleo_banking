@@ -12078,6 +12078,7 @@ def pos_receipts_list():
         date_from=date_from,
         date_to=date_to,
         employee=employee,
+        pdv=pdv, 
         total_receipts=stats['total_receipts'],
         total_revenue=stats['total_revenue'],
         payment_methods=payment_methods,
