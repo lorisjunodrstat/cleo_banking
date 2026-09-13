@@ -8580,14 +8580,17 @@ class EcritureComptable:
             return False
         
     def _fetch_ecritures_by_type(self, user_id: int, date_from: str, date_to: str, type_ecriture: str) -> List[Dict]:
+        """Récupère les écritures pour le compte de résultat (uniquement comptes de résultat, pas de bilan)"""
         with self.db.get_cursor() as cursor:
             cursor.execute("""
                 SELECT
                     c.numero,
                     c.nom AS categorie_nom,
                     c.id AS categorie_id,
+                    c.type_compte,
                     COUNT(e.id) AS nombre_ecritures,
                     SUM(COALESCE(e.montant_htva, 0)) AS montant,
+                    SUM(COALESCE(e.tva_montant, 0)) AS montant_tva,
                     SUM(COALESCE(e.montant, 0)) AS montant_ttc
                 FROM ecritures_comptables e
                 JOIN categories_comptables c ON e.categorie_id = c.id
@@ -8595,7 +8598,9 @@ class EcritureComptable:
                 AND e.date_ecriture BETWEEN %s AND %s
                 AND e.type_ecriture = %s
                 AND e.statut = 'validée'
-                GROUP BY c.id, c.numero, c.nom
+                AND e.type_ecriture_comptable = 'principale'
+                AND c.type_compte IN ('Revenus', 'Charges')
+                GROUP BY c.id, c.numero, c.nom, c.type_compte
                 ORDER BY c.numero
             """, (user_id, date_from, date_to, type_ecriture))
             return cursor.fetchall()
