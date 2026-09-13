@@ -69,7 +69,16 @@
             <div class="col-md-2">
                 <input type="date" name="date_to" class="form-control" value="{{ date_to }}" title="Date de fin">
             </div>
-            
+            <div class="col-md-2">
+                <select name="pdv" class="form-control" title="PDV">
+                    <option value="">Tous les PDV</option>
+                    {% for p in pdvs %}
+                        <option value="{{ p.id }}" {% if pdv|int == p.id %}selected{% endif %}>
+                            {{ p.nom_pdv }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
             <div class="col-md-2 d-flex gap-2">
                 <button type="submit" class="btn btn-primary flex-grow-1">
                     <i class="fas fa-filter me-1"></i> Filtrer
@@ -151,7 +160,8 @@
                 {% if pagination.has_prev %}
                     <li class="page-item">
                         <!-- CORRECTION ICI : pagination pointe vers pos_receipts_list -->
-                        <a class="page-link" href="{{ url_for('banking.pos_receipts_list', page=pagination.prev_num, search=search, payment=payment_filter, date_from=date_from, date_to=date_to) }}">« Précédent</a>
+                        <a class="page-link" href="{{ url_for('banking.pos_receipts_list', page=pagination.prev_num, search=search, payment=payment_filter, date_from=date_from, date_to=date_to, employee=employee, 
+                        pdv=pdv, magasin_id=pos_magasin_courant.id if pos_magasin_courant else None) }}">« Précédent</a>
                     </li>
                 {% endif %}
                 
@@ -161,7 +171,8 @@
                 
                 {% if pagination.has_next %}
                     <li class="page-item">
-                        <a class="page-link" href="{{ url_for('banking.pos_receipts_list', page=pagination.next_num, search=search, payment=payment_filter, date_from=date_from, date_to=date_to) }}">Suivant »</a>
+                        <a class="page-link" href="{{ url_for('banking.pos_receipts_list', page=pagination.next_num, search=search, payment=payment_filter, date_from=date_from, date_to=date_to, employee=employee, 
+                        pdv=pdv, magasin_id=pos_magasin_courant.id if pos_magasin_courant else None) }}">Suivant »</a>
                     </li>
                 {% endif %}
             </ul>

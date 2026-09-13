@@ -18210,9 +18210,9 @@ class ReceiptPOS:
                     query += " AND r.magasin_id = %s"
                     params.append(magasin_id)
                 if pdv:
-                query += " AND r.pdv = %s"
-                params.append(pdv)
-                
+                    query += " AND r.pdv = %s"
+                    params.append(pdv)
+
                 if search:
                     query += """
                         AND (

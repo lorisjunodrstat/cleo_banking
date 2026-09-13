@@ -12000,7 +12000,9 @@ def pos_create_sale():
 @login_required
 def pos_receipts_list():
     from types import SimpleNamespace
-    
+    magasin_id = get_magasin_id_courant()
+    user_id=current_user.id
+    pdvs = g.models.pdv_pos_model.get_by_magasin(magasin_id, user_id)
     page = request.args.get('page', 1, type=int)
     search = request.args.get('search', '').strip()
     payment_filter = request.args.get('payment', '').strip()
@@ -12008,7 +12010,7 @@ def pos_receipts_list():
     date_to = request.args.get('date_to', '').strip()
     employee = request.args.get('employee', '').strip()
     pdv = request.args.get('pdv', '').strip()
-    magasin_id = get_magasin_id_courant()
+    
     # Liste filtrée
     receipts = g.models.receipt_pos_model.get_all(
         user_id=current_user.id,
@@ -12041,7 +12043,11 @@ def pos_receipts_list():
         date_to=date_to or None,
         employee=employee or None
     )
-    
+    total_revenue_ht = 0
+    total_taxes = 0
+    for r in receipts:
+        total_taxes += float(r.get('taxes') or 0)
+        total_revenue_ht += float(r.get('ventes_nettes') or 0)
     # Pagination manuelle
     per_page = current_app.config.get('PER_PAGE', 20)
     total = len(receipts_data)
@@ -12065,7 +12071,7 @@ def pos_receipts_list():
   
     return render_template(
         'pos/recus.html',
-        receipts_data=pagination.items,          # ✅ NOM CORRECT
+        receipts_data=pagination.items,          
         pagination=pagination,
         search=search,
         payment_filter=payment_filter,
@@ -12076,9 +12082,12 @@ def pos_receipts_list():
         total_revenue=stats['total_revenue'],
         payment_methods=payment_methods,
         employees=employees,
+        pdvs=pdvs,
         sales_count=stats['sales_count'],
         refunds_count=stats['refunds_count'],
-        periode_ouverte=g.models.periode_travail_pos_model.get_ouverte(current_user.id)
+        periode_ouverte=g.models.periode_travail_pos_model.get_ouverte(current_user.id),
+        total_revenue_ht=total_revenue_ht,
+        total_taxes=total_taxes
     )
 
 @bp.route('/pos/receipts/<int:receipt_id>')
