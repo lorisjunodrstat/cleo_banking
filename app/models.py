@@ -11158,7 +11158,7 @@ class Rapport:
                     GROUP BY c.id, c.numero, c.nom, c.type_compte
                     HAVING total_debit > 0 OR total_credit > 0
                     ORDER BY c.numero
-                """, (user_id, date_bilan, user_id))
+                """, (user_id, date_bilan))
                 lignes = cursor.fetchall()
 
             # Calcul des soldes et totaux
