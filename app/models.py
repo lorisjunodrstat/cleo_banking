@@ -8715,69 +8715,73 @@ class EcritureComptable:
         except Exception as e:
             logger.error(f"Erreur génération bilan: {e}")
             return {}
-
     def get_ecritures_by_categorie_period(self, user_id: int, type_categorie: str = None,
                                             categorie_id: int = None, date_from: str = None,
                                             date_to: str = None, statut: str = 'validée') -> Tuple[List[Dict], float, str]:
-            """
-            Récupère les écritures par catégorie et période avec calcul du total et génération du titre
+        """
+        Récupère les écritures par catégorie et période avec calcul du total et génération du titre
+        
+        Returns:
+            Tuple: (ecritures, total, titre)
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                # Construire la requête
+                query = """
+                    SELECT
+                        e.id,
+                        e.date_ecriture,
+                        e.description,
+                        e.reference,
+                        e.montant,
+                        e.montant_htva,
+                        e.tva_taux,
+                        e.tva_montant,
+                        e.statut,
+                        e.id_contact,
+                        e.type_ecriture,
+                        e.type_ecriture_comptable,
+                        e.ecriture_principale_id,
+                        c.nom as categorie_nom,
+                        c.numero as categorie_numero,
+                        c.type_compte,
+                        ct.nom as contact_nom
+                    FROM ecritures_comptables e
+                    JOIN categories_comptables c ON e.categorie_id = c.id
+                    LEFT JOIN contacts ct ON e.id_contact = ct.id_contact
+                    WHERE e.utilisateur_id = %s
+                    AND e.date_ecriture BETWEEN %s AND %s
+                    AND e.statut = %s
+                    AND e.type_ecriture_comptable = 'principale'  ← ✅ EXCLURE LES SECONDAIRES
+                """
+                params = [user_id, date_from, date_to, statut]
 
-            Returns:
-                Tuple: (ecritures, total, titre)
-            """
-            try:
-                with self.db.get_cursor() as cursor:
-                    # Construire la requête avec une jointure LEFT pour les contacts
-                    query = """
-                        SELECT
-                             e.id,
-                            e.date_ecriture,
-                            e.description,
-                            e.reference,
-                            e.montant,
-                            e.montant_htva,
-                            e.tva_taux,
-                            e.tva_montant,
-                            e.statut,
-                            e.id_contact,
-                            e.type_ecriture_comptable,
-                            e.ecriture_principale_id,
-                            c.nom as categorie_nom,
-                            c.numero as categorie_numero,
-                            ct.nom as contact_nom
-                        FROM ecritures_comptables e
-                        JOIN categories_comptables c ON e.categorie_id = c.id
-                        LEFT JOIN contacts ct ON e.id_contact = ct.id_contact
-                        WHERE e.utilisateur_id = %s
-                        AND e.date_ecriture BETWEEN %s AND %s
-                        AND e.statut = %s
-                    """
-                    params = [user_id, date_from, date_to, statut]
-
+                # ✅ CORRECTION : Si categorie_id est spécifié, filtrer uniquement sur celui-ci
+                if categorie_id and categorie_id != 'all':
+                    query += " AND e.categorie_id = %s"
+                    params.append(int(categorie_id))
+                elif type_categorie:
+                    # ✅ CORRECTION : Ajouter des parenthèses pour la priorité SQL
                     if type_categorie == 'produit':
-                        query += " AND c.type_compte = 'Revenus' OR c.type_compte = 'Actif'"
+                        query += " AND (c.type_compte IN ('Revenus', 'Actif') AND e.type_ecriture = 'recette')"
                     elif type_categorie == 'charge':
-                        query += " AND c.type_compte = 'Charge' OR c.type_compte = 'Passif'"
+                        query += " AND (c.type_compte IN ('Charges', 'Passif') AND e.type_ecriture = 'depense')"
 
-                    if categorie_id and categorie_id != 'all':
-                        query += " AND e.categorie_id = %s"
-                        params.append(int(categorie_id))
+                query += " ORDER BY e.date_ecriture DESC, e.id DESC"
+                cursor.execute(query, tuple(params))
+                ecritures = cursor.fetchall()
 
-                    query += " ORDER BY e.date_ecriture DESC"
-                    cursor.execute(query, tuple(params))
-                    ecritures = cursor.fetchall()
+                # Calculer le total
+                total = sum(float(e['montant']) for e in ecritures) if ecritures else 0
 
-                    # Calculer le total
-                    total = sum(float(e['montant']) for e in ecritures) if ecritures else 0
+                # Générer le titre
+                titre = self._generate_titre_detail(cursor, type_categorie, categorie_id, ecritures, date_from[:4])
 
-                    # Générer le titre
-                    titre = self._generate_titre_detail(cursor, type_categorie, categorie_id, ecritures, date_from[:4])
+                return ecritures, total, titre
 
-                    return ecritures, total, titre
-
-            except Exception as e:
-                logger.error(f"Erreur lors de la récupération des écritures par catégorie: {e}")
-                return [], 0, ""
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des écritures par catégorie: {e}", exc_info=True)
+            return [], 0, ""
 
     def get_totaux_tva_par_categorie(self, user_id: int, categorie_id: int = None,
                                   date_from: str = None, date_to: str = None) -> Dict:
