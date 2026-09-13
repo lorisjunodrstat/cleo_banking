@@ -1428,6 +1428,31 @@ class DatabaseManager:
                     date_suppression TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
                 );""")
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ecritures_historique_suppressions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    ecriture_id INT NOT NULL,
+                    utilisateur_id INT NOT NULL,
+                    receipt_id INT NULL,
+                    transaction_id INT NULL,
+                    categorie_numero VARCHAR(20),
+                    categorie_nom VARCHAR(100),
+                    montant DECIMAL(10,2),
+                    devise VARCHAR(10) DEFAULT 'CHF',
+                    description TEXT,
+                    type_ecriture ENUM('recette', 'depense'),
+                    type_ecriture_comptable ENUM('principale', 'complementaire'),
+                    etait_liee_transaction BOOLEAN DEFAULT FALSE,
+                    nombre_secondaires INT DEFAULT 0,
+                    delier_transaction BOOLEAN DEFAULT FALSE,
+                    supprimer_cascade BOOLEAN DEFAULT FALSE,
+                    raison TEXT,
+                    date_suppression TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_utilisateur (utilisateur_id),
+                    INDEX idx_ecriture (ecriture_id),
+                    INDEX idx_receipt (receipt_id),
+                    INDEX idx_date (date_suppression)
+                    );""")
 
                 logger.info("✅ Tables POS (Point de Vente) créées/vérifiées avec succès.")
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
@@ -7867,22 +7892,38 @@ class EcritureComptable:
 
     def supprimer_avec_impact(self, ecriture_id: int, user_id: int,
                             delier_transaction: bool = False,
-                            supprimer_cascade: bool = False) -> Tuple[bool, str]:
-        """Supprime une écriture en gérant ses dépendances et libère les receipts si nécessaire."""
+                            supprimer_cascade: bool = False,
+                            raison: str = None) -> Tuple[bool, str]:
+        """Supprime une écriture en gérant ses dépendances, libère les receipts et trace dans l'historique."""
         try:
-            with self.db.get_cursor() as cursor:
-                # 1. Récupérer les infos de l'écriture
+            with self.db.get_cursor(dictionary=True) as cursor:
+                # 1. Récupérer les infos COMPLÈTES de l'écriture (pour l'historique)
                 cursor.execute("""
-                    SELECT id, transaction_id, type_ecriture_comptable, statut
-                    FROM ecritures_comptables 
-                    WHERE id = %s AND utilisateur_id = %s
+                    SELECT e.*, 
+                           c.numero as categorie_numero, 
+                           c.nom as categorie_nom
+                    FROM ecritures_comptables e
+                    LEFT JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.id = %s AND e.utilisateur_id = %s
                 """, (ecriture_id, user_id))
                 ecriture = cursor.fetchone()
                 
                 if not ecriture:
                     return False, "Écriture introuvable."
 
-                transaction_id_cible = ecriture['transaction_id']
+                transaction_id_cible = ecriture.get('transaction_id')
+                receipt_id_lie = None
+                
+                # Récupérer le receipt lié (s'il existe)
+                if transaction_id_cible:
+                    cursor.execute("""
+                        SELECT id FROM pos_receipts 
+                        WHERE transaction_id = %s AND utilisateur_id = %s
+                        LIMIT 1
+                    """, (transaction_id_cible, user_id))
+                    receipt_row = cursor.fetchone()
+                    if receipt_row:
+                        receipt_id_lie = receipt_row['id']
 
                 # 2. Gestion du lien transaction
                 if transaction_id_cible and not delier_transaction:
@@ -7895,28 +7936,36 @@ class EcritureComptable:
                         WHERE id = %s
                     """, (ecriture_id,))
 
-                # 3. Cascade des secondaires
+                # 3. Compter les secondaires AVANT suppression (pour l'historique)
                 nb_secondaires = 0
-                if ecriture['type_ecriture_comptable'] == 'principale' and supprimer_cascade:
+                if ecriture.get('type_ecriture_comptable') == 'principale' and supprimer_cascade:
                     cursor.execute("""
-                        UPDATE ecritures_comptables 
-                        SET statut = 'supprimee', date_suppression = NOW()
+                        SELECT COUNT(*) as nb 
+                        FROM ecritures_comptables 
                         WHERE ecriture_principale_id = %s 
                           AND utilisateur_id = %s 
                           AND statut != 'supprimee'
                     """, (ecriture_id, user_id))
-                    nb_secondaires = cursor.rowcount
+                    nb_secondaires = cursor.fetchone()['nb']
+                    
+                    # Cascade des secondaires (SANS date_suppression)
+                    cursor.execute("""
+                        UPDATE ecritures_comptables 
+                        SET statut = 'supprimee'
+                        WHERE ecriture_principale_id = %s 
+                          AND utilisateur_id = %s 
+                          AND statut != 'supprimee'
+                    """, (ecriture_id, user_id))
 
-                # 4. Soft delete de l'écriture principale
+                # 4. Soft delete de l'écriture principale (SANS date_suppression)
                 cursor.execute("""
                     UPDATE ecritures_comptables 
-                    SET statut = 'supprimee', date_suppression = NOW()
+                    SET statut = 'supprimee'
                     WHERE id = %s AND utilisateur_id = %s
                 """, (ecriture_id, user_id))
 
-                # 🆕 5. NOUVEAU : Réinitialiser l'état des receipts si la transaction n'a plus d'écritures valides
+                # 5. 🆕 NOUVEAU : Réinitialiser les receipts si la transaction n'a plus d'écritures valides
                 if transaction_id_cible:
-                    # On compte combien d'écritures VALIDES (non supprimées) restent pour cette transaction
                     cursor.execute("""
                         SELECT COUNT(*) as nb_valides
                         FROM ecritures_comptables
@@ -7924,7 +7973,6 @@ class EcritureComptable:
                     """, (transaction_id_cible,))
                     reste_des_ecritures = cursor.fetchone()['nb_valides']
 
-                    # Si aucune écriture valide ne reste, on libère les receipts associés
                     if reste_des_ecritures == 0:
                         cursor.execute("""
                             UPDATE pos_receipts
@@ -7936,7 +7984,46 @@ class EcritureComptable:
                         
                         logger.info(f"🔄 Receipts liés à la transaction {transaction_id_cible} réinitialisés à 'non_comptabilise'")
 
-                # 6. Message de retour
+                # 6. 🆕 NOUVEAU : Insérer dans la table d'historique
+                try:
+                    cursor.execute("""
+                        INSERT INTO ecritures_historique_suppressions (
+                            ecriture_id, utilisateur_id, receipt_id, transaction_id,
+                            categorie_numero, categorie_nom, montant, devise, description,
+                            type_ecriture, type_ecriture_comptable,
+                            etait_liee_transaction, nombre_secondaires,
+                            delier_transaction, supprimer_cascade, raison
+                        ) VALUES (
+                            %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s,
+                            %s, %s,
+                            %s, %s,
+                            %s, %s, %s
+                        )
+                    """, (
+                        ecriture_id,
+                        user_id,
+                        receipt_id_lie,
+                        transaction_id_cible,
+                        ecriture.get('categorie_numero'),
+                        ecriture.get('categorie_nom'),
+                        ecriture.get('montant'),
+                        ecriture.get('devise', 'CHF'),
+                        ecriture.get('description'),
+                        ecriture.get('type_ecriture'),
+                        ecriture.get('type_ecriture_comptable'),
+                        1 if transaction_id_cible else 0,
+                        nb_secondaires,
+                        1 if delier_transaction else 0,
+                        1 if supprimer_cascade else 0,
+                        raison
+                    ))
+                    logger.info(f"📝 Suppression tracée dans l'historique (écriture {ecriture_id})")
+                except Exception as e_hist:
+                    # On ne fait pas échouer la suppression si l'historique échoue
+                    logger.warning(f"⚠️ Impossible d'enregistrer l'historique: {e_hist}")
+
+                # 7. Message de retour
                 message = "Écriture archivée avec succès."
                 if nb_secondaires > 0:
                     message += f" {nb_secondaires} écriture(s) secondaire(s) également archivée(s)."
@@ -7946,7 +8033,7 @@ class EcritureComptable:
         except Exception as e:
             logger.error(f"Erreur suppression avec impact: {e}", exc_info=True)
             return False, f"Erreur technique: {str(e)}"
-        
+            
     def get_solde_tva_par_periode(self, user_id: int, date_debut: str, date_fin: str) -> Dict:
         """Calcule le solde TVA pour une période donnée"""
         try:
@@ -8196,22 +8283,11 @@ class EcritureComptable:
             return False
 
     def delete_hard(self, ecriture_id: int, user_id: int) -> Tuple[bool, str]:
-        """
-        Supprime une écriture comptable après avoir délié sa transaction.
-        Gère également la suppression des écritures secondaires associées.
-
-        Args:
-            ecriture_id: ID de l'écriture à supprimer
-            user_id: ID de l'utilisateur pour vérification de propriété
-
-        Returns:
-            Tuple (succès, message)
-        """
+        """Supprime définitivement une écriture comptable."""
         try:
             with self.db.get_cursor() as cursor:
-                # 1. Vérifier que l'écriture existe et appartient à l'utilisateur
                 cursor.execute(
-                    "SELECT id, transaction_id, type_ecriture_comptable, ecriture_principale_id FROM ecritures_comptables WHERE id = %s AND utilisateur_id = %s",
+                    "SELECT id, transaction_id, type_ecriture_comptable FROM ecritures_comptables WHERE id = %s AND utilisateur_id = %s",
                     (ecriture_id, user_id)
                 )
                 ecriture = cursor.fetchone()
@@ -8219,36 +8295,23 @@ class EcritureComptable:
                 if not ecriture:
                     return False, "Écriture non trouvée ou non autorisée"
 
-                # 2. Délier la transaction si elle existe
                 if ecriture['transaction_id']:
                     cursor.execute(
                         "UPDATE ecritures_comptables SET transaction_id = NULL WHERE id = %s",
                         (ecriture_id,)
                     )
-                    logger.info(f"Écriture {ecriture_id} déliée de la transaction {ecriture['transaction_id']}")
 
-                # 3. Gestion des écritures secondaires
                 ecritures_secondaires_ids = []
-
                 if ecriture['type_ecriture_comptable'] == 'principale':
-                    # Si c'est une écriture principale, récupérer ses écritures secondaires
                     secondaires = self.get_ecritures_complementaires(ecriture_id, user_id)
                     ecritures_secondaires_ids = [sec['id'] for sec in secondaires]
-                elif ecriture.get('ecriture_principale_id'):
-                    # Si c'est une écriture secondaire, on peut aussi supprimer la principale si souhaité
-                    # Pour l'instant, on ne supprime que la secondaire
-                    pass
 
-                # 4. Supprimer d'abord les écritures secondaires (si elles existent)
                 for sec_id in ecritures_secondaires_ids:
                     cursor.execute(
                         "DELETE FROM ecritures_comptables WHERE id = %s AND utilisateur_id = %s",
                         (sec_id, user_id)
                     )
-                    if cursor.rowcount > 0:
-                        logger.info(f"Écriture secondaire {sec_id} supprimée avec succès")
 
-                # 5. Supprimer l'écriture principale
                 cursor.execute(
                     "DELETE FROM ecritures_comptables WHERE id = %s AND utilisateur_id = %s",
                     (ecriture_id, user_id)
@@ -8258,7 +8321,6 @@ class EcritureComptable:
                     message = f"Écriture {ecriture_id} supprimée avec succès"
                     if ecritures_secondaires_ids:
                         message += f" ainsi que {len(ecritures_secondaires_ids)} écriture(s) secondaire(s)"
-                    logger.info(message)
                     return True, message
                 else:
                     return False, "Erreur lors de la suppression de l'écriture"
@@ -8268,19 +8330,9 @@ class EcritureComptable:
             return False, f"Erreur lors de la suppression: {str(e)}"
 
     def delete_soft(self, ecriture_id: int, user_id: int, soft_delete: bool = True) -> Tuple[bool, str]:
-        """
-        Supprime une écriture comptable (soft delete par défaut).
-        Gère également le soft delete des écritures secondaires associées.
-        Args:
-            ecriture_id: ID de l'écriture à supprimer
-            user_id: ID de l'utilisateur pour vérification de propriété
-            soft_delete: Si True, marque comme supprimée au lieu de supprimer définitivement
-        Returns:
-            Tuple (succès, message)
-        """
+        """Supprime une écriture comptable (soft delete par défaut)."""
         try:
             with self.db.get_cursor() as cursor:
-                # Vérifier que l'écriture existe et appartient à l'utilisateur
                 cursor.execute(
                     "SELECT id, transaction_id, type_ecriture_comptable, ecriture_principale_id FROM ecritures_comptables WHERE id = %s AND utilisateur_id = %s",
                     (ecriture_id, user_id)
@@ -8290,81 +8342,56 @@ class EcritureComptable:
                 if not ecriture:
                     return False, "Écriture non trouvée ou non autorisée"
 
-                # Délier la transaction si elle existe
                 if ecriture['transaction_id']:
                     cursor.execute(
                         "UPDATE ecritures_comptables SET transaction_id = NULL WHERE id = %s",
                         (ecriture_id,)
                     )
-                    logger.info(f"Écriture {ecriture_id} déliée de la transaction {ecriture['transaction_id']}")
 
-                # Gestion des écritures secondaires
                 ecritures_secondaires_ids = []
-
                 if ecriture['type_ecriture_comptable'] == 'principale':
-                    # Si c'est une écriture principale, récupérer ses écritures secondaires
                     secondaires = self.get_ecritures_complementaires(ecriture_id, user_id)
                     ecritures_secondaires_ids = [sec['id'] for sec in secondaires]
-                elif ecriture.get('ecriture_principale_id'):
-                    # Si c'est une écriture secondaire, on peut aussi soft delete la principale si souhaité
-                    pass
 
                 if soft_delete:
-                    # SOFT DELETE: marquer comme supprimée l'écriture principale et ses secondaires
                     success_count = 0
-
-                    # Marquer les écritures secondaires d'abord
                     for sec_id in ecritures_secondaires_ids:
                         cursor.execute("""
                             UPDATE ecritures_comptables
-                            SET statut = 'supprimee', date_suppression = NOW()
+                            SET statut = 'supprimee'
                             WHERE id = %s AND utilisateur_id = %s
                         """, (sec_id, user_id))
                         if cursor.rowcount > 0:
                             success_count += 1
-                            logger.info(f"Écriture secondaire {sec_id} marquée comme supprimée")
 
-                    # Marquer l'écriture principale
                     cursor.execute("""
                         UPDATE ecritures_comptables
-                        SET statut = 'supprimee', date_suppression = NOW()
+                        SET statut = 'supprimee'
                         WHERE id = %s AND utilisateur_id = %s
                     """, (ecriture_id, user_id))
 
                     if cursor.rowcount > 0:
                         success_count += 1
-                        logger.info(f"Écriture {ecriture_id} marquée comme supprimée")
-
-                    if success_count > 0:
                         message = f"Écriture {ecriture_id} marquée comme supprimée"
                         if ecritures_secondaires_ids:
                             message += f" ainsi que {len(ecritures_secondaires_ids)} écriture(s) secondaire(s)"
                         return True, message
                     else:
                         return False, "Erreur lors du marquage des écritures comme supprimées"
-
                 else:
-                    # HARD DELETE: suppression définitive
-                    # Supprimer d'abord les écritures secondaires
                     for sec_id in ecritures_secondaires_ids:
                         cursor.execute(
                             "DELETE FROM ecritures_comptables WHERE id = %s AND utilisateur_id = %s",
                             (sec_id, user_id)
                         )
-                        if cursor.rowcount > 0:
-                            logger.info(f"Écriture secondaire {sec_id} supprimée définitivement")
-
-                    # Supprimer l'écriture principale
                     cursor.execute(
                         "DELETE FROM ecritures_comptables WHERE id = %s AND utilisateur_id = %s",
                         (ecriture_id, user_id)
                     )
-
                     if cursor.rowcount > 0:
                         message = f"Écriture {ecriture_id} supprimée définitivement"
                         if ecritures_secondaires_ids:
                             message += f" ainsi que {len(ecritures_secondaires_ids)} écriture(s) secondaire(s)"
-                        logger.info(message)
                         return True, message
                     else:
                         return False, "Erreur lors de la suppression de l'écriture"
@@ -8372,6 +8399,35 @@ class EcritureComptable:
         except Exception as e:
             logger.error(f"Erreur lors de la suppression de l'écriture {ecriture_id}: {e}")
             return False, f"Erreur lors de la suppression: {str(e)}"
+
+    def get_historique_suppressions(self, user_id: int, date_from: str = None, 
+                                     date_to: str = None, limit: int = 100) -> List[Dict]:
+        """Récupère l'historique des suppressions d'écritures."""
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                query = """
+                    SELECT h.*, u.email as utilisateur_email
+                    FROM ecritures_historique_suppressions h
+                    LEFT JOIN utilisateurs u ON h.utilisateur_id = u.id
+                    WHERE h.utilisateur_id = %s
+                """
+                params = [user_id]
+                
+                if date_from:
+                    query += " AND h.date_suppression >= %s"
+                    params.append(date_from)
+                if date_to:
+                    query += " AND h.date_suppression <= %s"
+                    params.append(date_to)
+                
+                query += " ORDER BY h.date_suppression DESC LIMIT %s"
+                params.append(limit)
+                
+                cursor.execute(query, tuple(params))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Erreur récupération historique suppressions: {e}", exc_info=True)
+            return []
 
     def get_by_id(self, ecriture_id: int) -> Optional[Dict]:
         """Récupère une écriture par son ID"""
