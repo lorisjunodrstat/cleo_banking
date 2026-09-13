@@ -8988,11 +8988,12 @@ class EcritureComptable:
             return []
 
     def get_with_filters(self, user_id: int, date_from: str = None, date_to: str = None,
-                        statut: str = None, id_contact: int = None, compte_id: int = None,
-                        categorie_id: int = None, type_ecriture: str = None, type_ecriture_comptable: str = None,
-                        date_created_from: str = None, date_created_to: str = None,
-                        limit: int = 100) -> List[Dict]:
-        """Récupère les écritures avec tous les filtres combinés"""
+                     statut: str = None, id_contact: int = None, compte_id: int = None,
+                     categorie_id: int = None, type_ecriture: str = None,
+                     type_ecriture_comptable: str = None,
+                     date_created_from: str = None, date_created_to: str = None,
+                     limit: int = 100, offset: int = 0) -> List[Dict]:
+        """Récupère les écritures avec tous les filtres combinés."""
         ecritures = []
         try:
             with self.db.get_cursor() as cursor:
@@ -9037,9 +9038,8 @@ class EcritureComptable:
                     query += " AND e.created_at <= %s"
                     params.append(date_created_to)
 
-
-                query += " ORDER BY e.date_ecriture DESC LIMIT %s"
-                params.append(limit)
+                query += " ORDER BY e.date_ecriture DESC LIMIT %s OFFSET %s"   # ⬅️ OFFSET
+                params.extend([limit, offset])                                 # ⬅️
 
                 cursor.execute(query, tuple(params))
                 ecritures = cursor.fetchall()
@@ -9048,7 +9048,7 @@ class EcritureComptable:
         except Error as e:
             logger.error(f"Erreur lors de la récupération des écritures avec filtres: {e}")
             return []
-
+        
     def count_with_filters(self, user_id: int, date_from: str = None, date_to: str = None,
                            statut: str = None, id_contact: int = None, compte_id: int = None,
                            categorie_id: int = None, type_ecriture: str = None, 
