@@ -20411,7 +20411,7 @@ class POSComptabilisation:
                             COUNT(DISTINCT sub.receipt_id) as nb_tickets,
                             SUM(sub.total_ht * (p.montant / NULLIF(sub.total_collecte, 0))) as total_ht,
                             SUM(sub.total_tva * (p.montant / NULLIF(sub.total_collecte, 0))) as total_tva,
-                            SUM(p.montant) as total_ttc,
+                            SUM(p.montant) as total_ttc_global,
                             MAX(sub.has_transaction_bancaire) as has_transaction_bancaire,
                             GROUP_CONCAT(DISTINCT sub.receipt_id) as receipt_ids
                         FROM (
@@ -20484,7 +20484,7 @@ class POSComptabilisation:
                             cvente.nom as compte_vente_nom,
                             SUM(sub.total_ht * (p.montant / NULLIF(sub.total_collecte, 0))) as total_ht,
                             SUM(sub.total_tva * (p.montant / NULLIF(sub.total_collecte, 0))) as total_tva,
-                            SUM(p.montant) as total_ttc,
+                            SUM(p.montant) as total_ttc_global,
                             sub.has_transaction_bancaire,
                             sub.receipt_id
                         FROM (
@@ -20588,7 +20588,6 @@ class POSComptabilisation:
 
                         total_ht = float(item.get('total_ht', 0))
                         total_tva = float(item.get('total_tva', 0))
-                        total_ttc_pro_rata = float(item.get('total_ttc_pro_rata', 0))
                         total_ttc_global = float(item.get('total_ttc_global', 0))
 
                         logger.info(f"🔍 Item {idx}: mode={mode_nom}, compte_bancaire={id_compte_bancaire_reel}, "

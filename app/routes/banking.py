@@ -6050,29 +6050,41 @@ def supprimer_avec_impact(self, ecriture_id: int, user_id: int,
 @bp.route('/comptabilite/ecritures/groupe/<string:groupe_id>/delete', methods=['POST'])
 @login_required
 def delete_groupe_ecritures(groupe_id):
-    """Supprime toutes les écritures d'un groupe (vente complète)"""
-    raison = request.form.get('raison', '')
-    
-    # Récupérer une écriture du groupe pour amorcer la suppression
-    with g.db.get_cursor(dictionary=True) as cursor:
-        cursor.execute("""
-            SELECT id FROM ecritures_comptables
-            WHERE groupe_ecriture_id = %s AND utilisateur_id = %s AND statut != 'supprimee'
-            LIMIT 1
-        """, (groupe_id, current_user.id))
-        row = cursor.fetchone()
-    
-    if not row:
-        flash("Groupe introuvable.", "error")
-        return redirect(request.referrer or url_for('banking.liste_ecritures'))
-    
-    success, message = g.models.ecriture_comptable_model.supprimer_avec_impact(
-        ecriture_id=row['id'],
-        user_id=current_user.id,
-        raison=raison
-    )
-    
-    flash(message, 'success' if success else 'error')
+    """
+    Supprime TOUTES les écritures d'un groupe (vente complète) :
+    trésorerie + vente + TVA + frais d'une même opération.
+    """
+    try:
+        # 🔧 Utiliser g.db_manager (pas g.db)
+        with g.db_manager.get_cursor(dictionary=True) as cursor:
+            cursor.execute("""
+                SELECT id FROM ecritures_comptables
+                WHERE groupe_ecriture_id = %s 
+                  AND utilisateur_id = %s 
+                  AND statut != 'supprimee'
+                LIMIT 1
+            """, (groupe_id, current_user.id))
+            row = cursor.fetchone()
+
+        if not row:
+            flash("Groupe introuvable ou déjà supprimé.", "warning")
+            return redirect(request.referrer or url_for('banking.liste_ecritures'))
+
+        success, message = g.models.ecriture_comptable_model.supprimer_avec_impact(
+            ecriture_id=row['id'],
+            user_id=current_user.id,
+            raison=request.form.get('raison', f'Suppression du groupe {groupe_id}')
+        )
+
+        if success:
+            flash(f"✅ {message}", "success")
+        else:
+            flash(f"❌ {message}", "error")
+
+    except Exception as e:
+        logger.error(f"Erreur suppression groupe {groupe_id}: {e}", exc_info=True)
+        flash(f"Erreur lors de la suppression du groupe: {str(e)}", "error")
+
     return redirect(request.referrer or url_for('banking.liste_ecritures'))
 
 # Route pour la suppression définitive (hard delete)
