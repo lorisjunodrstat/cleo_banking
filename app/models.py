@@ -8029,6 +8029,30 @@ class EcritureComptable:
                         WHERE id = %s AND utilisateur_id = %s
                     """, (r_id, user_id))
 
+                # 7b. NOUVEAU : Via le groupe_ecriture_id (extrait les receipt IDs)
+                if groupe_id and groupe_id.startswith('POS-'):
+                    # Format : POS-YYYY-MM-DD-mode_id-receipt_ids
+                    # ex: POS-2022-01-29-4-206  → receipt_ids_str = "206"
+                    # ex: POS-2022-01-29-4-199,202 → receipt_ids_str = "199,202"
+                    parties = groupe_id.split('-', 4)  # Max 5 parties
+                    if len(parties) == 5:
+                        receipt_ids_str = parties[4]
+                        receipt_ids = [
+                            int(rid.strip())
+                            for rid in receipt_ids_str.split(',')
+                            if rid.strip().isdigit()
+                        ]
+                        if receipt_ids:
+                            placeholders = ','.join(['%s'] * len(receipt_ids))
+                            cursor.execute(f"""
+                                UPDATE pos_receipts
+                                SET comptabilise = FALSE,
+                                    etat_comptable = 'non_comptabilise',
+                                    date_comptabilisation = NULL
+                                WHERE id IN ({placeholders}) AND utilisateur_id = %s
+                            """, receipt_ids + [user_id])
+                            logger.info(f"🔄 {cursor.rowcount} receipt(s) réinitialisé(s) via groupe {groupe_id}")
+
                 # 8. Historique
                 try:
                     for e in ecritures_completes:
@@ -20591,8 +20615,8 @@ class POSComptabilisation:
                         total_ttc_global = float(item.get('total_ttc_global', 0))
 
                         logger.info(f"🔍 Item {idx}: mode={mode_nom}, compte_bancaire={id_compte_bancaire_reel}, "
-                                f"compte_tresorerie={id_compte_tresorerie}, compte_vente={id_compte_vente}, "
-                                f"pro_rata={total_ttc_pro_rata}, global={total_ttc_global}, groupe={groupe_id}")
+                            f"compte_tresorerie={id_compte_tresorerie}, compte_vente={id_compte_vente}, "
+                            f"ht={total_ht}, tva={total_tva}, ttc_global={total_ttc_global}, groupe={groupe_id}")
 
                         # Vérifications préalables — un "continue" ici est sûr car rien n'a encore
                         # été écrit sur cette itération (aucune écriture partielle en base).
