@@ -11198,18 +11198,19 @@ class Rapport:
                         c.type_compte,
                         COALESCE(SUM(
                             CASE 
-                                WHEN c.type_compte IN ('Actif', 'Charge') 
+                                WHEN c.type_compte = 'Actif' 
                                     AND e.type_ecriture = 'recette' THEN e.montant
-                                WHEN c.type_compte IN ('Passif', 'Revenus') 
+                                WHEN c.type_compte IN ('Charge', 'Passif', 'Revenus') 
                                     AND e.type_ecriture = 'depense' THEN e.montant
                                 ELSE 0
                             END
                         ), 0) AS total_debit,
+
                         COALESCE(SUM(
                             CASE 
-                                WHEN c.type_compte IN ('Actif', 'Charge') 
+                                WHEN c.type_compte = 'Actif' 
                                     AND e.type_ecriture = 'depense' THEN e.montant
-                                WHEN c.type_compte IN ('Passif', 'Revenus') 
+                                WHEN c.type_compte IN ('Charge', 'Passif', 'Revenus') 
                                     AND e.type_ecriture = 'recette' THEN e.montant
                                 ELSE 0
                             END
