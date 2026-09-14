@@ -535,6 +535,7 @@
                         <tr>
                             <th>Date</th>
                             <th>Compte</th>
+                            <th>Groupe</th>
                             <th>Catégorie</th>
                             <th>Description</th>
                             <th>Contact</th>
@@ -557,6 +558,13 @@
                             </td>
                             <td>
                                 <span class="badge bg-secondary">{{ ecriture.compte_bancaire_nom }}</span>
+                            </td>
+                            <td>
+                                {% if e.groupe_ecriture_id %}
+                                    <span class="badge bg-info">{{ e.groupe_ecriture_id }}</span>
+                                {% else %}
+                                    -
+                                {% endif %}
                             </td>
                             <td>
                                 <span class="badge category-badge">{{ ecriture.categorie_numero }}</span>
@@ -709,7 +717,7 @@
                                         <i class="bi bi-pencil"></i>
                                     </a>
 
-                                    <!-- ✅ ARCHIVAGE AVEC ANALYSE D'IMPACT (modal dynamique) -->
+                                    <!-- Archivage avec analyse d'impact -->
                                     <form action="{{ url_for('banking.delete_ecriture', ecriture_id=ecriture.id) }}"
                                         method="post" class="d-inline impact-form"
                                         data-impact-url="{{ url_for('banking.delete_ecriture', ecriture_id=ecriture.id) }}">
@@ -720,9 +728,20 @@
                                         </button>
                                     </form>
 
+                                    <!-- ✅ NOUVEAU : Suppression du groupe complet -->
+                                    {% if ecriture.groupe_ecriture_id %}
+                                        <form action="{{ url_for('banking.delete_groupe_ecritures', groupe_id=ecriture.groupe_ecriture_id) }}"
+                                            method="post" class="d-inline">
+                                            <button type="submit" class="btn btn-sm btn-outline-dark"
+                                                title="Supprimer TOUTES les écritures du groupe (vente complète)"
+                                                onclick="return confirm('⚠️ Suppression du groupe :\n\n{{ ecriture.groupe_ecriture_id }}\n\nToutes les écritures liées (trésorerie, vente, TVA, frais) seront supprimées.\n\nContinuer ?')">
+                                                <i class="bi bi-trash3"></i>
+                                            </button>
+                                        </form>
+                                    {% endif %}
+
                                     <!-- Suppression définitive (hard delete) -->
-                                    <form
-                                        action="{{ url_for('banking.hard_delete_ecriture', ecriture_id=ecriture.id) }}"
+                                    <form action="{{ url_for('banking.hard_delete_ecriture', ecriture_id=ecriture.id) }}"
                                         method="post" class="d-inline">
                                         <button type="submit" class="btn btn-sm btn-outline-danger"
                                             title="Supprimer définitivement"

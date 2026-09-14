@@ -567,6 +567,7 @@ class DatabaseManager:
                         description TEXT,
                         id_contact INT NULL,
                         reference VARCHAR(100),
+                        groupe_ecriture_id VARCHAR(50) NULL,
                         type_ecriture ENUM('depense', 'recette') NOT NULL,
                         tva_taux DECIMAL(5,2) DEFAULT 0.00,
                         tva_montant DECIMAL(15,2) DEFAULT 0.00,
@@ -605,7 +606,8 @@ class DatabaseManager:
                         INDEX idx_categorie_id (categorie_id),
                         INDEX idx_statut (statut),
                         INDEX idx_ecriture_principale_id (ecriture_principale_id),
-                        INDEX idx_compte_bancaire_id (compte_bancaire_id)
+                        INDEX idx_compte_bancaire_id (compte_bancaire_id),
+                        INDEX idx_groupe (groupe_ecriture_id)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
                 """)
 
@@ -7327,23 +7329,28 @@ class CategorieComptable:
             logger.error(f"Erreur recherche par tag système {tag}: {e}")
             return None
 
-    def is_compte_passif(self, compte_id: int) -> bool:
-        """Détecte si le compte est un compte de passif (classe 2 = bons cadeaux)"""
+    def is_compte_passif(self, compte_id: int, cursor=None) -> bool:
+        """Détecte si le compte est un passif (classe 2)."""
+        def _do_query(cur):
+            cur.execute("""
+                SELECT type_compte, numero 
+                FROM categories_comptables 
+                WHERE id = %s
+            """, (compte_id,))
+            res = cur.fetchone()
+            if not res:
+                return False
+            return (
+                res.get('type_compte') == 'Passif' or 
+                str(res.get('numero', '')).startswith('2')
+            )
+
+        if cursor is not None:
+            return _do_query(cursor)
+
         try:
-            with self.db.get_cursor(dictionary=True) as cursor:
-                cursor.execute("""
-                    SELECT type_compte, numero 
-                    FROM categories_comptables 
-                    WHERE id = %s
-                """, (compte_id,))
-                res = cursor.fetchone()
-                if not res:
-                    return False
-                # ✅ Double vérification : type_compte OU numéro qui commence par '2'
-                return (
-                    res.get('type_compte') == 'Passif' or 
-                    str(res.get('numero', '')).startswith('2')
-                )
+            with self.db.get_cursor(dictionary=True) as new_cursor:
+                return _do_query(new_cursor)
         except Exception as e:
             logger.error(f"Erreur is_compte_passif: {e}")
             return False
@@ -7401,73 +7408,62 @@ class EcritureComptable:
             print("❌ Dossier n'existe pas")
             return False
 
-    def create(self, categorie_comptable_model, data: Dict) -> bool:
-        """Crée une nouvelle écriture comptable"""
-        # Validation du lien catégorie ↔ plan comptable du compte
+    def create(self, categorie_comptable_model, data: Dict, cursor=None) -> bool:
+        """Crée une écriture comptable.
+
+        Si `cursor` est fourni, on l'utilise (transaction partagée avec l'appelant).
+        Sinon, on ouvre une nouvelle connexion.
+        """
         if data.get('id_contact'):
             if not self._is_categorie_valid_for_contact(
-                data['id_contact'],
-                data['categorie_id'],
-                data['utilisateur_id']
+                data['id_contact'], data['categorie_id'], data['utilisateur_id']
             ):
                 logger.warning("Catégorie non autorisée pour ce contact.")
                 return False
-        try:
-            with self.db.get_cursor() as cursor:
-                query = """
+
+        def _do_insert(cur):
+            query = """
                 INSERT INTO ecritures_comptables
                 (date_ecriture, compte_bancaire_id, categorie_id, montant, montant_htva, devise,
-                description, reference, type_ecriture, tva_taux, tva_montant,
+                description, reference, groupe_ecriture_id, type_ecriture, tva_taux, tva_montant,
                 utilisateur_id, justificatif_url, statut, id_contact, type_ecriture_comptable)
-                VALUES (%s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s)
-                """
-                values = (
-                    data['date_ecriture'],
-                    data['compte_bancaire_id'],
-                    data['categorie_id'],
-                    data['montant'],
-                    data['montant_htva'],
-                    data.get('devise', 'CHF'),
-                    data.get('description', ''),
-                    data.get('reference', ''),
-                    data['type_ecriture'],  # 'depense' ou 'recette'
-                    data.get('tva_taux'),
-                    data.get('tva_montant'),
-                    data['utilisateur_id'],
-                    data.get('justificatif_url'),
-                    data.get('statut', 'pending'),  # 'pending', 'validée', 'rejetée'
-                    data.get('id_contact'),
-                    data.get('type_ecriture_comptable', 'principale')  # Toujours 'principale' au départ
-                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            values = (
+                data['date_ecriture'], data['compte_bancaire_id'], data['categorie_id'],
+                data['montant'], data['montant_htva'], data.get('devise', 'CHF'),
+                data.get('description', ''), data.get('reference', ''), data.get('groupe_ecriture_id'),
+                data['type_ecriture'], data.get('tva_taux'), data.get('tva_montant'),
+                data['utilisateur_id'], data.get('justificatif_url'),
+                data.get('statut', 'pending'), data.get('id_contact'),
+                data.get('type_ecriture_comptable', 'principale')
+            )
+            cur.execute(query, values)
+            ecriture_principale_id = cur.lastrowid
+            logger.info(f"Écriture principale créée ID: {ecriture_principale_id}")
 
-                cursor.execute(query, values)
-                ecriture_principale_id = cursor.lastrowid
-                logger.info(f"Écriture principale créée avec ID: {ecriture_principale_id}")
-
-                # 🔥 Vérifier si la catégorie a une catégorie complémentaire
-                categorie_id = data['categorie_id']
-                utilisateur_id = data['utilisateur_id']
-
-                if categorie_comptable_model:
-                    has_complementaire = categorie_comptable_model.has_categorie_complementaire(
-                        categorie_id
-                    )
-                    if has_complementaire:
-                        logger.info(f"La catégorie ID {categorie_id} a une catégorie complémentaire. Création d'écritures secondaires.")
-                        self._create_secondary_ecritures(cursor, ecriture_principale_id, data)
-                    else:
-                        logger.info(f"La catégorie ID {categorie_id} n'a pas de catégorie complémentaire. Aucune écriture secondaire.")
+            if categorie_comptable_model:
+                if categorie_comptable_model.has_categorie_complementaire(data['categorie_id']):
+                    logger.info(f"Catégorie {data['categorie_id']} a une complémentaire → écritures secondaires.")
+                    self._create_secondary_ecritures(cur, ecriture_principale_id, data)
                 else:
-                    logger.warning("Modèle CategorieComptable non disponible pour la vérification.")
+                    logger.info(f"Catégorie {data['categorie_id']} sans complémentaire.")
             return True
+
+        # Cas 1 : cursor externe fourni → laisser remonter les exceptions
+        if cursor is not None:
+            return _do_insert(cursor)
+
+        # Cas 2 : pas de cursor → connexion dédiée
+        try:
+            with self.db.get_cursor(dictionary=True) as new_cursor:
+                return _do_insert(new_cursor)
         except Error as e:
-            logger.error(f"Erreur lors de la création de l'écriture comptable: {e}")
+            logger.error(f"Erreur création écriture: {e}")
             return False
 
-    def _create_secondary_ecritures(self, cursor, ecriture_principale_id: int,  data: Dict):
-        """Crée les écritures secondaires (TVA, taxes, etc.)"""
+    def _create_secondary_ecritures(self, cursor, ecriture_principale_id: int, data: Dict):
+        """Crée les écritures secondaires (TVA, taxes, etc.)."""
         try:
             logger.info(f"Début de la vérification des écritures secondaires pour l'écriture principale ID: {ecriture_principale_id}")
 
@@ -7492,7 +7488,7 @@ class EcritureComptable:
             AND cc.categorie_complementaire_id IS NOT NULL
             """
 
-            cursor.execute(query, (categorie_id,utilisateur_id))
+            cursor.execute(query, (categorie_id, utilisateur_id))
             result = cursor.fetchone()
 
             if not result:
@@ -7500,39 +7496,39 @@ class EcritureComptable:
                 return
 
             categorie_complementaire_id = result['categorie_complementaire_id']
-            type_tva_config = result['type_tva']  # Peut être None
+            type_tva_config = result['type_tva']  # 'recette' ou 'depense' lu du plan comptable
             categorie_nom = result['categorie_nom']
             categorie_numero = result['categorie_numero']
             categorie_complementaire_nom = result.get('categorie_complementaire_nom', 'N/A')
             categorie_complementaire_numero = result.get('categorie_complementaire_numero', 'N/A')
 
-            type_ecriture_complementaire = 'tva' 
+            # 🔧 Le sens comptable vient du plan comptable (type_tva), pas d'une convention codée en dur
+            # - 'recette' → la TVA due (Passif) est créditée
+            # - 'depense' → l'impôt préalable (Actif) est débité
+            sens_comptable = type_tva_config if type_tva_config in ('recette', 'depense') else 'recette'
 
             logger.info(
                 f"Catégorie '{categorie_numero} - {categorie_nom}' a une catégorie complémentaire "
                 f"'{categorie_complementaire_numero} - {categorie_complementaire_nom}' "
-                f"(ID: {categorie_complementaire_id}) détectée."
+                f"(ID: {categorie_complementaire_id}) détectée. Sens comptable: '{sens_comptable}'"
             )
 
-            if type_ecriture_complementaire == 'tva':
-                montant_secondaire = data.get('tva_montant', 0.0)
-                taux_secondaire = data.get('tva_taux', 0.0)
-            else:
-                taux_reel = type_tva_config if type_tva_config is not None else data.get('tva_taux', 0)
-                taux_secondaire = taux_reel
-                montant_secondaire = self._calculate_secondary_amount(
-                    data, type_ecriture_complementaire, taux_reel
-                )
+            # Le calcul du montant reste basé sur la TVA
+            montant_secondaire = data.get('tva_montant', 0.0)
+            taux_secondaire = data.get('tva_taux', 0.0)
 
             if abs(montant_secondaire) > 0.01:
                 comp_cat_simulated = {
                     'categorie_complementaire_id': categorie_complementaire_id,
-                    'type_complement': type_ecriture_complementaire,
+                    'type_complement': sens_comptable,   # 🔧 'recette' ou 'depense' (plus 'tva')
                     'taux': taux_secondaire
                 }
                 self._create_secondary_ecriture(
                     cursor, ecriture_principale_id, data, comp_cat_simulated, montant_secondaire)
-                logger.info(f"Écriture secondaire de {montant_secondaire:.2f} CHF créée pour la catégorie complémentaire ID {categorie_complementaire_id}.")
+                logger.info(
+                    f"✅ Écriture secondaire de {montant_secondaire:.2f} CHF créée "
+                    f"pour la catégorie complémentaire ID {categorie_complementaire_id} (sens: {sens_comptable})."
+                )
             else:
                 logger.info(f"Montant secondaire négligeable ({montant_secondaire:.2f} CHF), pas de création d'écriture.")
 
@@ -7572,18 +7568,17 @@ class EcritureComptable:
         else:
             return montant_principal * (taux / 100)
 
-    def _get_secondary_type(self, type_principal: str, type_complement: str) -> str:
-        """Détermine le type d'écriture pour la secondaire"""
+    def _get_secondary_type(self, type_principal, type_complement):
+        if type_complement in ('recette', 'depense'):
+            return type_complement
         if type_complement == 'tva':
-            # La TVA est généralement une dette (passif) donc recette pour le compte TVA
             return 'recette' if type_principal == 'depense' else 'depense'
-        else:
-            return type_principal
+        return type_principal
 
     def _create_secondary_ecriture(self, cursor, ecriture_principale_id: int, data: Dict, comp_cat: Dict, montant_secondaire: float):
-        """Crée une écriture secondaire individuelle"""
+        """Crée une écriture secondaire individuelle (TVA, taxes, etc.)."""
         try:
-            # 🔥 Déterminer le type d'écriture pour la secondaire
+            # Déterminer le type d'écriture pour la secondaire
             type_ecriture_secondaire = self._get_secondary_type(data['type_ecriture'], comp_cat['type_complement'])
 
             logger.info(
@@ -7595,11 +7590,11 @@ class EcritureComptable:
             query = """
             INSERT INTO ecritures_comptables(
                 date_ecriture, compte_bancaire_id, categorie_id, montant, montant_htva, devise,
-                description, reference, type_ecriture, tva_taux, tva_montant,
+                description, reference, groupe_ecriture_id, type_ecriture, tva_taux, tva_montant,
                 utilisateur_id, justificatif_url, statut, id_contact,
                 ecriture_principale_id, type_ecriture_comptable
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
 
             values = (
@@ -7611,6 +7606,7 @@ class EcritureComptable:
                 data.get('devise', 'CHF'),
                 f"{data.get('description', '')} ({comp_cat['type_complement'].upper()})",
                 data.get('reference', ''),
+                data.get('groupe_ecriture_id'),   # 🔧 NOUVEAU : hérite du groupe de l'écriture principale
                 type_ecriture_secondaire,
                 comp_cat.get('taux', 0),
                 0,
@@ -7619,21 +7615,24 @@ class EcritureComptable:
                 data.get('statut', 'pending'),
                 data.get('id_contact'),
                 ecriture_principale_id,
-                'complementaire' 
+                'complementaire'
             )
 
             cursor.execute(query, values)
             ecriture_secondaire_id = cursor.lastrowid
-            logger.info(f"Écriture secondaire insérée dans la base de données avec succès (ID: {ecriture_secondaire_id}).")
+            logger.info(f"Écriture secondaire insérée avec succès (ID: {ecriture_secondaire_id}, groupe: {data.get('groupe_ecriture_id')}).")
+
+            # Préparer les données pour la cascade (en conservant le groupe)
             data_cascade = data.copy()
-            data_cascade['montant'] = abs(montant_secondaire)  # Utiliser le montant de l'écriture secondaire
-            data_cascade['categorie_id'] = comp_cat['categorie_complementaire_id']  # La catégorie de l'écriture secondaire
+            data_cascade['montant'] = abs(montant_secondaire)
+            data_cascade['categorie_id'] = comp_cat['categorie_complementaire_id']
+            # data_cascade['groupe_ecriture_id'] est déjà inclus via data.copy()
 
             # Appliquer les règles en cascade sur cette écriture secondaire
             self._appliquer_regles_en_cascade(
-                cursor, 
-                ecriture_principale_id, 
-                data_cascade,  # ← data modifié avec le bon montant
+                cursor,
+                ecriture_principale_id,
+                data_cascade,
                 comp_cat['categorie_complementaire_id'],
                 0
             )
@@ -7641,7 +7640,6 @@ class EcritureComptable:
         except Exception as e:
             logger.error(f"Erreur lors de la création de l'écriture secondaire: {e}")
             raise
-
     def get_regles_for_categorie(self, categorie_id: int) -> List[Dict]:
         """Récupère toutes les règles actives pour une catégorie donnée"""
         try:
@@ -7701,11 +7699,11 @@ class EcritureComptable:
             query = """
             INSERT INTO ecritures_comptables(
                 date_ecriture, compte_bancaire_id, categorie_id, montant, montant_htva, devise,
-                description, reference, type_ecriture, tva_taux, tva_montant,
+                description, reference, groupe_ecriture_id, type_ecriture, tva_taux, tva_montant,
                 utilisateur_id, justificatif_url, statut, id_contact,
                 ecriture_principale_id, type_ecriture_comptable
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             
             values = (
@@ -7717,6 +7715,7 @@ class EcritureComptable:
                 data.get('devise', 'CHF'),
                 f"{data.get('description', '')} (règle {regle['id']})",
                 data.get('reference', ''),
+                data.get('groupe_ecriture_id'),
                 type_ecriture,
                 regle.get('valeur', 0),
                 0,
@@ -7891,149 +7890,187 @@ class EcritureComptable:
             return impact
 
     def supprimer_avec_impact(self, ecriture_id: int, user_id: int,
-                            delier_transaction: bool = False,
-                            supprimer_cascade: bool = False,
-                            raison: str = None) -> Tuple[bool, str]:
-        """Supprime une écriture en gérant ses dépendances, libère les receipts et trace dans l'historique."""
+                          delier_transaction: bool = False,
+                          supprimer_cascade: bool = False,
+                          raison: str = None) -> Tuple[bool, str]:
+        """
+        Supprime une écriture et TOUTES ses écritures liées :
+        - Écritures complémentaires (TVA) via ecriture_principale_id
+        - Écritures du même groupe (Trésorerie, Frais, Vente) via groupe_ecriture_id
+        - Délie ou supprime la transaction bancaire si elle n'a plus d'écritures valides
+        - Réinitialise les receipts POS concernés
+        - Enregistre dans l'historique
+        """
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
-                # 1. Récupérer les infos COMPLÈTES de l'écriture (pour l'historique)
+                # 1. Récupérer l'écriture de départ
                 cursor.execute("""
-                    SELECT e.*, 
-                           c.numero as categorie_numero, 
-                           c.nom as categorie_nom
+                    SELECT e.*, c.numero AS categorie_numero, c.nom AS categorie_nom
                     FROM ecritures_comptables e
                     LEFT JOIN categories_comptables c ON e.categorie_id = c.id
                     WHERE e.id = %s AND e.utilisateur_id = %s
                 """, (ecriture_id, user_id))
                 ecriture = cursor.fetchone()
-                
+
                 if not ecriture:
                     return False, "Écriture introuvable."
 
-                transaction_id_cible = ecriture.get('transaction_id')
-                receipt_id_lie = None
-                
-                # Récupérer le receipt lié (s'il existe)
-                if transaction_id_cible:
+                groupe_id = ecriture.get('groupe_ecriture_id')
+                transaction_id = ecriture.get('transaction_id')
+
+                # 2. Collecter TOUTES les écritures à supprimer
+                ecritures_a_supprimer = {ecriture_id}
+
+                # 2a. Les complémentaires liées à cette écriture (si principale)
+                if ecriture.get('type_ecriture_comptable') == 'principale':
                     cursor.execute("""
-                        SELECT id FROM pos_receipts 
+                        SELECT id FROM ecritures_comptables
+                        WHERE ecriture_principale_id = %s
+                        AND utilisateur_id = %s
+                        AND statut != 'supprimee'
+                    """, (ecriture_id, user_id))
+                    ecritures_a_supprimer.update(r['id'] for r in cursor.fetchall())
+
+                # 2b. La principale si on supprime une complémentaire
+                if ecriture.get('ecriture_principale_id'):
+                    ecritures_a_supprimer.add(ecriture['ecriture_principale_id'])
+                    # + toutes les autres complémentaires de cette principale
+                    cursor.execute("""
+                        SELECT id FROM ecritures_comptables
+                        WHERE ecriture_principale_id = %s
+                        AND utilisateur_id = %s
+                        AND statut != 'supprimee'
+                    """, (ecriture['ecriture_principale_id'], user_id))
+                    ecritures_a_supprimer.update(r['id'] for r in cursor.fetchall())
+
+                # 2c. Toutes les écritures du même groupe
+                if groupe_id:
+                    cursor.execute("""
+                        SELECT id FROM ecritures_comptables
+                        WHERE groupe_ecriture_id = %s
+                        AND utilisateur_id = %s
+                        AND statut != 'supprimee'
+                    """, (groupe_id, user_id))
+                    ecritures_a_supprimer.update(r['id'] for r in cursor.fetchall())
+
+                # 3. Collecter les transactions et receipts impactés
+                transactions_impactees = set()
+                receipts_impactes = set()
+
+                placeholders = ','.join(['%s'] * len(ecritures_a_supprimer))
+                cursor.execute(f"""
+                    SELECT id, transaction_id, reference, categorie_id, montant, description, type_ecriture
+                    FROM ecritures_comptables
+                    WHERE id IN ({placeholders}) AND utilisateur_id = %s
+                """, list(ecritures_a_supprimer) + [user_id])
+                ecritures_completes = cursor.fetchall()
+
+                for e in ecritures_completes:
+                    if e['transaction_id']:
+                        transactions_impactees.add(e['transaction_id'])
+
+                for tx_id in transactions_impactees:
+                    cursor.execute("""
+                        SELECT id FROM pos_receipts
                         WHERE transaction_id = %s AND utilisateur_id = %s
-                        LIMIT 1
-                    """, (transaction_id_cible, user_id))
-                    receipt_row = cursor.fetchone()
-                    if receipt_row:
-                        receipt_id_lie = receipt_row['id']
+                    """, (tx_id, user_id))
+                    receipts_impactes.update(r['id'] for r in cursor.fetchall())
 
-                # 2. Gestion du lien transaction
-                if transaction_id_cible and not delier_transaction:
-                    return False, "Écriture liée à une transaction. Veuillez cocher 'Délier la transaction' pour continuer."
-                
-                if transaction_id_cible and delier_transaction:
-                    cursor.execute("""
-                        UPDATE ecritures_comptables 
-                        SET transaction_id = NULL 
-                        WHERE id = %s
-                    """, (ecriture_id,))
+                # 4. Délier toutes les écritures des transactions concernées
+                if transactions_impactees:
+                    tx_placeholders = ','.join(['%s'] * len(transactions_impactees))
+                    cursor.execute(f"""
+                        UPDATE ecritures_comptables
+                        SET transaction_id = NULL
+                        WHERE transaction_id IN ({tx_placeholders})
+                        AND utilisateur_id = %s
+                    """, list(transactions_impactees) + [user_id])
 
-                # 3. Compter les secondaires AVANT suppression (pour l'historique)
-                nb_secondaires = 0
-                if ecriture.get('type_ecriture_comptable') == 'principale' and supprimer_cascade:
-                    cursor.execute("""
-                        SELECT COUNT(*) as nb 
-                        FROM ecritures_comptables 
-                        WHERE ecriture_principale_id = %s 
-                          AND utilisateur_id = %s 
-                          AND statut != 'supprimee'
-                    """, (ecriture_id, user_id))
-                    nb_secondaires = cursor.fetchone()['nb']
-                    
-                    # Cascade des secondaires (SANS date_suppression)
-                    cursor.execute("""
-                        UPDATE ecritures_comptables 
-                        SET statut = 'supprimee'
-                        WHERE ecriture_principale_id = %s 
-                          AND utilisateur_id = %s 
-                          AND statut != 'supprimee'
-                    """, (ecriture_id, user_id))
-
-                # 4. Soft delete de l'écriture principale (SANS date_suppression)
-                cursor.execute("""
-                    UPDATE ecritures_comptables 
+                # 5. Soft delete de toutes les écritures
+                cursor.execute(f"""
+                    UPDATE ecritures_comptables
                     SET statut = 'supprimee'
-                    WHERE id = %s AND utilisateur_id = %s
-                """, (ecriture_id, user_id))
+                    WHERE id IN ({placeholders}) AND utilisateur_id = %s
+                """, list(ecritures_a_supprimer) + [user_id])
+                nb_supprimees = cursor.rowcount
 
-                # 5. 🆕 NOUVEAU : Réinitialiser les receipts si la transaction n'a plus d'écritures valides
-                if transaction_id_cible:
+                # 6. Supprimer les transactions bancaires devenues orphelines
+                nb_tx_supprimees = 0
+                for tx_id in transactions_impactees:
                     cursor.execute("""
-                        SELECT COUNT(*) as nb_valides
+                        SELECT COUNT(*) AS nb
                         FROM ecritures_comptables
                         WHERE transaction_id = %s AND statut != 'supprimee'
-                    """, (transaction_id_cible,))
-                    reste_des_ecritures = cursor.fetchone()['nb_valides']
-
-                    if reste_des_ecritures == 0:
+                    """, (tx_id,))
+                    if cursor.fetchone()['nb'] == 0:
+                        # Aucune écriture valide ne pointe plus vers cette transaction
+                        # On peut la supprimer (ou la délier du receipt, selon ta politique)
                         cursor.execute("""
                             UPDATE pos_receipts
-                            SET comptabilise = FALSE, 
-                                etat_comptable = 'non_comptabilise',
-                                transaction_id = NULL
+                            SET transaction_id = NULL,
+                                comptabilise = FALSE,
+                                etat_comptable = 'non_comptabilise'
                             WHERE transaction_id = %s AND utilisateur_id = %s
-                        """, (transaction_id_cible, user_id))
-                        
-                        logger.info(f"🔄 Receipts liés à la transaction {transaction_id_cible} réinitialisés à 'non_comptabilise'")
+                        """, (tx_id, user_id))
+                        cursor.execute("""
+                            DELETE FROM transactions
+                            WHERE id = %s AND utilisateur_id = %s
+                        """, (tx_id, user_id))
+                        if cursor.rowcount > 0:
+                            nb_tx_supprimees += 1
 
-                # 6. 🆕 NOUVEAU : Insérer dans la table d'historique
-                try:
+                # 7. Réinitialiser les receipts concernés
+                for r_id in receipts_impactes:
                     cursor.execute("""
-                        INSERT INTO ecritures_historique_suppressions (
-                            ecriture_id, utilisateur_id, receipt_id, transaction_id,
-                            categorie_numero, categorie_nom, montant, devise, description,
-                            type_ecriture, type_ecriture_comptable,
-                            etait_liee_transaction, nombre_secondaires,
-                            delier_transaction, supprimer_cascade, raison
-                        ) VALUES (
-                            %s, %s, %s, %s,
-                            %s, %s, %s, %s, %s,
-                            %s, %s,
-                            %s, %s,
-                            %s, %s, %s
-                        )
-                    """, (
-                        ecriture_id,
-                        user_id,
-                        receipt_id_lie,
-                        transaction_id_cible,
-                        ecriture.get('categorie_numero'),
-                        ecriture.get('categorie_nom'),
-                        ecriture.get('montant'),
-                        ecriture.get('devise', 'CHF'),
-                        ecriture.get('description'),
-                        ecriture.get('type_ecriture'),
-                        ecriture.get('type_ecriture_comptable'),
-                        1 if transaction_id_cible else 0,
-                        nb_secondaires,
-                        1 if delier_transaction else 0,
-                        1 if supprimer_cascade else 0,
-                        raison
-                    ))
-                    logger.info(f"📝 Suppression tracée dans l'historique (écriture {ecriture_id})")
+                        UPDATE pos_receipts
+                        SET comptabilise = FALSE,
+                            etat_comptable = 'non_comptabilise',
+                            date_comptabilisation = NULL
+                        WHERE id = %s AND utilisateur_id = %s
+                    """, (r_id, user_id))
+
+                # 8. Historique
+                try:
+                    for e in ecritures_completes:
+                        cursor.execute("""
+                            INSERT INTO ecritures_historique_suppressions (
+                                ecriture_id, utilisateur_id, receipt_id, transaction_id,
+                                categorie_numero, categorie_nom, montant, description,
+                                type_ecriture, type_ecriture_comptable,
+                                etait_liee_transaction, nombre_secondaires,
+                                raison
+                            ) VALUES (
+                                %s, %s, %s, %s,
+                                %s, %s, %s, %s,
+                                %s, %s,
+                                %s, %s,
+                                %s
+                            )
+                        """, (
+                            e['id'], user_id, None, e['transaction_id'],
+                            ecriture.get('categorie_numero'), ecriture.get('categorie_nom'),
+                            e['montant'], e['description'],
+                            e['type_ecriture'], 'principale',
+                            1 if e['transaction_id'] else 0, 0,
+                            raison
+                        ))
                 except Exception as e_hist:
-                    # On ne fait pas échouer la suppression si l'historique échoue
                     logger.warning(f"⚠️ Impossible d'enregistrer l'historique: {e_hist}")
 
-                # 7. Message de retour
-                message = "Écriture archivée avec succès."
-                if nb_secondaires > 0:
-                    message += f" {nb_secondaires} écriture(s) secondaire(s) également archivée(s)."
-                
-                return True, message
-                
+                # 9. Retour
+                msg = f"{nb_supprimees} écriture(s) supprimée(s)"
+                if nb_tx_supprimees:
+                    msg += f", {nb_tx_supprimees} transaction(s) bancaire(s) annulée(s)"
+                if receipts_impactes:
+                    msg += f", {len(receipts_impactes)} reçu(s) réinitialisé(s)"
+
+                logger.info(f"✅ {msg} (écriture de départ #{ecriture_id})")
+                return True, msg
+
         except Exception as e:
             logger.error(f"Erreur suppression avec impact: {e}", exc_info=True)
-            return False, f"Erreur technique: {str(e)}"
-            
+            return False, f"Erreur: {str(e)}"
+        
     def get_solde_tva_par_periode(self, user_id: int, date_debut: str, date_fin: str) -> Dict:
         """Calcule le solde TVA pour une période donnée"""
         try:
@@ -10723,20 +10760,16 @@ class Rapport:
     # 1. COMPTE DE RÉSULTAT (Complet et détaillé)
     # ============================================
     def generate_compte_resultat_detaille(self, user_id: int, date_from: str, date_to: str,
-                                          statut: str = 'validée') -> Dict:
+                                      statut: str = 'validée') -> Dict:
         """
-        Génère un compte de résultat détaillé avec :
-        - Produits d'exploitation / financiers / exceptionnels
-        - Charges d'exploitation / financières / exceptionnelles
-        - Résultat net
-        - Marges et ratios clés
+        Génère un compte de résultat détaillé.
+
+        Seules les écritures PRINCIPALES sur les comptes Revenus/Charge sont prises
+        en compte. Les TVA (complémentaires) et les trésoreries (Actif) sont exclues.
         """
         try:
-            ecriture_model = EcritureComptable(self.db)
-            
-            # Récupération des écritures par type de compte
             with self.db.get_cursor() as cursor:
-                # Produits classés par nature
+                # Produits : comptes Revenus, écritures principales uniquement
                 cursor.execute("""
                     SELECT 
                         c.type_compte,
@@ -10749,15 +10782,16 @@ class Rapport:
                     FROM ecritures_comptables e
                     JOIN categories_comptables c ON e.categorie_id = c.id
                     WHERE e.utilisateur_id = %s
-                      AND e.date_ecriture BETWEEN %s AND %s
-                      AND e.statut = %s
-                      AND c.type_compte IN ('Revenus', 'Produits', 'Actif')
+                    AND e.date_ecriture BETWEEN %s AND %s
+                    AND e.statut = %s
+                    AND e.type_ecriture_comptable = 'principale'
+                    AND c.type_compte IN ('Revenus', 'Produits')
                     GROUP BY c.type_compte, c.numero, c.nom
                     ORDER BY c.numero
                 """, (user_id, date_from, date_to, statut))
                 produits = cursor.fetchall()
-                
-                # Charges classées par nature
+
+                # Charges : comptes Charge, écritures principales uniquement
                 cursor.execute("""
                     SELECT 
                         c.type_compte,
@@ -10770,23 +10804,22 @@ class Rapport:
                     FROM ecritures_comptables e
                     JOIN categories_comptables c ON e.categorie_id = c.id
                     WHERE e.utilisateur_id = %s
-                      AND e.date_ecriture BETWEEN %s AND %s
-                      AND e.statut = %s
-                      AND c.type_compte IN ('Charge', 'Passif')
+                    AND e.date_ecriture BETWEEN %s AND %s
+                    AND e.statut = %s
+                    AND e.type_ecriture_comptable = 'principale'
+                    AND c.type_compte IN ('Charge', 'Charges')
                     GROUP BY c.type_compte, c.numero, c.nom
                     ORDER BY c.numero
                 """, (user_id, date_from, date_to, statut))
                 charges = cursor.fetchall()
 
-            # Calcul des totaux
             total_produits_ht = sum(float(p['total_ht'] or 0) for p in produits)
             total_produits_ttc = sum(float(p['total_ttc'] or 0) for p in produits)
             total_charges_ht = sum(float(c['total_ht'] or 0) for c in charges)
             total_charges_ttc = sum(float(c['total_ttc'] or 0) for c in charges)
-            
+
             resultat_brut = total_produits_ht - total_charges_ht
-            
-            # Ratios clés
+
             marge_brute_pct = (resultat_brut / total_produits_ht * 100) if total_produits_ht > 0 else 0
             ratio_charges = (total_charges_ht / total_produits_ht * 100) if total_produits_ht > 0 else 0
 
@@ -10818,53 +10851,50 @@ class Rapport:
         except Exception as e:
             logger.error(f"Erreur génération compte de résultat détaillé: {e}")
             return {'erreur': str(e)}
-
     # ============================================
     # 2. BILAN (Complet avec vérification d'équilibre)
     # ============================================
     def generate_bilan_detaille(self, user_id: int, date_bilan: str) -> Dict:
         """
         Génère un bilan complet avec :
-        - Actif immobilisé / circulant
-        - Passif immobilisé / circulant
-        - Capitaux propres
+        - Actif / Passif / Capitaux propres
         - Résultat de l'exercice
         - Vérification de l'équilibre Actif = Passif
         """
         try:
             ecriture_model = EcritureComptable(self.db)
             bilan_base = ecriture_model.get_bilan(user_id, date_bilan)
-            
+
             if not bilan_base or 'erreur' in bilan_base:
                 return {'erreur': 'Impossible de générer le bilan'}
-            
-            # Calcul du résultat de l'exercice (Produits - Charges depuis le 01/01)
+
+            # Résultat de l'exercice : Produits - Charges depuis le 01/01
             annee = date_bilan[:4]
             date_debut_exercice = f"{annee}-01-01"
-            
+
             with self.db.get_cursor() as cursor:
-                # Résultat de l'exercice
                 cursor.execute("""
                     SELECT
                         SUM(CASE WHEN e.type_ecriture = 'recette' 
-                              AND c.type_compte IN ('Revenus', 'Produits') 
-                              THEN e.montant_htva ELSE 0 END) AS total_produits,
+                            AND c.type_compte IN ('Revenus', 'Produits') 
+                            THEN e.montant_htva ELSE 0 END) AS total_produits,
                         SUM(CASE WHEN e.type_ecriture = 'depense' 
-                              AND c.type_compte IN ('Charge', 'Passif') 
-                              THEN e.montant_htva ELSE 0 END) AS total_charges
+                            AND c.type_compte IN ('Charge', 'Charges') 
+                            THEN e.montant_htva ELSE 0 END) AS total_charges
                     FROM ecritures_comptables e
                     JOIN categories_comptables c ON e.categorie_id = c.id
                     WHERE e.utilisateur_id = %s
-                      AND e.date_ecriture BETWEEN %s AND %s
-                      AND e.statut = 'validée'
-                      AND e.type_ecriture_comptable = 'principale'
+                    AND e.date_ecriture BETWEEN %s AND %s
+                    AND e.statut = 'validée'
+                    AND e.type_ecriture_comptable = 'principale'
                 """, (user_id, date_debut_exercice, date_bilan))
                 resultat_exercice_data = cursor.fetchone()
-                
-                resultat_exercice = (float(resultat_exercice_data['total_produits'] or 0) 
-                                    - float(resultat_exercice_data['total_charges'] or 0))
 
-            # Réorganisation du bilan
+                resultat_exercice = (
+                    float(resultat_exercice_data['total_produits'] or 0)
+                    - float(resultat_exercice_data['total_charges'] or 0)
+                )
+
             total_capitaux_avec_resultat = bilan_base['total_capitaux'] + resultat_exercice
             total_passif_complet = bilan_base['total_passif'] + total_capitaux_avec_resultat
             equilibre = abs(bilan_base['total_actif'] - total_passif_complet) < 0.01
@@ -10898,22 +10928,19 @@ class Rapport:
         except Exception as e:
             logger.error(f"Erreur génération bilan détaillé: {e}")
             return {'erreur': str(e)}
-
     # ============================================
     # 3. DÉCLARATION TVA TRIMESTRIELLE
     # ============================================
-    def generate_declaration_tva_trimestrielle(self, user_id: int, annee: int, 
-                                                trimestre: int) -> Dict:
+    def generate_declaration_tva_trimestrielle(self, user_id: int, annee: int,
+                                            trimestre: int) -> Dict:
         """
-        Génère une déclaration TVA trimestrielle complète :
-        - TVA collectée (sur ventes) par taux
-        - TVA déductible (sur achats) par taux
-        - Solde à payer ou crédit de TVA
-        - Chiffre d'affaires HT
-        - Détail par catégorie de TVA
+        Génère une déclaration TVA trimestrielle.
+
+        Avec la nouvelle architecture (partie double + écritures complémentaires),
+        la TVA due est sur les comptes Passif 22xx, l'impôt préalable sur les
+        comptes Actif 117x. On filtre donc par numéro de compte, pas par type_ecriture.
         """
         try:
-            # Déterminer les dates du trimestre
             mois_debut = (trimestre - 1) * 3 + 1
             mois_fin = trimestre * 3
             date_debut = date(annee, mois_debut, 1)
@@ -10923,73 +10950,68 @@ class Rapport:
                 date_fin = date(annee, mois_fin + 1, 1) - timedelta(days=1)
 
             with self.db.get_cursor() as cursor:
-                # 🔵 TVA COLLECTÉE (sur les recettes) - détail par taux
+                # 🔵 TVA COLLECTÉE : comptes Passif 22xx (2200, 2201, ...)
                 cursor.execute("""
                     SELECT 
                         e.tva_taux,
                         COUNT(DISTINCT e.id) AS nb_operations,
                         SUM(e.montant_htva) AS base_ht,
-                        SUM(e.tva_montant) AS tva_collectee,
+                        SUM(e.montant) AS tva_collectee,
                         SUM(e.montant) AS total_ttc
                     FROM ecritures_comptables e
                     JOIN categories_comptables c ON e.categorie_id = c.id
                     WHERE e.utilisateur_id = %s
-                      AND e.date_ecriture BETWEEN %s AND %s
-                      AND e.statut = 'validée'
-                      AND e.type_ecriture = 'recette'
-                      AND e.type_ecriture_comptable = 'principale'
-                      AND c.type_compte IN ('Revenus', 'Produits')
+                    AND e.date_ecriture BETWEEN %s AND %s
+                    AND e.statut = 'validée'
+                    AND c.type_compte = 'Passif'
+                    AND c.numero LIKE '22%%'
                     GROUP BY e.tva_taux
                     ORDER BY e.tva_taux DESC
                 """, (user_id, str(date_debut), str(date_fin)))
                 tva_collectee_detail = cursor.fetchall()
 
-                # 🔴 TVA DÉDUCTIBLE (sur les dépenses) - détail par taux
+                # 🔴 TVA DÉDUCTIBLE : comptes Actif 117x (1170, 1171, ...)
                 cursor.execute("""
                     SELECT 
                         e.tva_taux,
                         COUNT(DISTINCT e.id) AS nb_operations,
                         SUM(e.montant_htva) AS base_ht,
-                        SUM(e.tva_montant) AS tva_deductible,
+                        SUM(e.montant) AS tva_deductible,
                         SUM(e.montant) AS total_ttc
                     FROM ecritures_comptables e
                     JOIN categories_comptables c ON e.categorie_id = c.id
                     WHERE e.utilisateur_id = %s
-                      AND e.date_ecriture BETWEEN %s AND %s
-                      AND e.statut = 'validée'
-                      AND e.type_ecriture = 'depense'
-                      AND e.type_ecriture_comptable = 'principale'
-                      AND c.type_compte IN ('Charge', 'Passif')
+                    AND e.date_ecriture BETWEEN %s AND %s
+                    AND e.statut = 'validée'
+                    AND c.type_compte = 'Actif'
+                    AND c.numero LIKE '117%%'
                     GROUP BY e.tva_taux
                     ORDER BY e.tva_taux DESC
                 """, (user_id, str(date_debut), str(date_fin)))
                 tva_deductible_detail = cursor.fetchall()
 
-                # Chiffre d'affaires total HT
+                # Chiffre d'affaires total HT (comptes de Revenus, écritures principales)
                 cursor.execute("""
                     SELECT COALESCE(SUM(e.montant_htva), 0) AS ca_ht
                     FROM ecritures_comptables e
                     JOIN categories_comptables c ON e.categorie_id = c.id
                     WHERE e.utilisateur_id = %s
-                      AND e.date_ecriture BETWEEN %s AND %s
-                      AND e.statut = 'validée'
-                      AND e.type_ecriture = 'recette'
-                      AND e.type_ecriture_comptable = 'principale'
-                      AND c.type_compte IN ('Revenus', 'Produits')
+                    AND e.date_ecriture BETWEEN %s AND %s
+                    AND e.statut = 'validée'
+                    AND e.type_ecriture_comptable = 'principale'
+                    AND c.type_compte IN ('Revenus', 'Produits')
                 """, (user_id, str(date_debut), str(date_fin)))
                 ca_ht = float(cursor.fetchone()['ca_ht'] or 0)
 
-            # Calculs des totaux
             total_tva_collectee = sum(float(t['tva_collectee'] or 0) for t in tva_collectee_detail)
             total_tva_deductible = sum(float(t['tva_deductible'] or 0) for t in tva_deductible_detail)
             solde_tva = total_tva_collectee - total_tva_deductible
-            
-            # Déterminer si c'est un crédit ou une dette
+
             if solde_tva > 0:
-                nature_solde = 'dette_tva'  # À payer à l'AFC
+                nature_solde = 'dette_tva'
                 message_solde = f"Montant dû à l'administration: {solde_tva:.2f} CHF"
             elif solde_tva < 0:
-                nature_solde = 'credit_tva'  # Crédit de TVA
+                nature_solde = 'credit_tva'
                 message_solde = f"Crédit de TVA: {abs(solde_tva):.2f} CHF"
             else:
                 nature_solde = 'nul'
@@ -11023,19 +11045,22 @@ class Rapport:
         except Exception as e:
             logger.error(f"Erreur génération déclaration TVA: {e}")
             return {'erreur': str(e)}
-
+        
     # ============================================
     # 4. GRAND LIVRE (Détail par compte)
     # ============================================
     def generate_grand_livre(self, user_id: int, date_from: str, date_to: str,
-                              categorie_id: int = None, statut: str = 'validée') -> Dict:
+                          categorie_id: int = None, statut: str = 'validée') -> Dict:
         """
         Génère le grand livre : détail de toutes les écritures par compte,
         avec solde progressif (comme un vrai grand livre comptable).
+
+        Sens comptable :
+        - Actif / Charge   : 'recette' = DÉBIT,  'depense' = CRÉDIT
+        - Passif / Revenus : 'recette' = CRÉDIT, 'depense' = DÉBIT
         """
         try:
             with self.db.get_cursor() as cursor:
-                # Récupérer toutes les écritures groupées par compte
                 query = """
                     SELECT 
                         c.id AS categorie_id,
@@ -11056,17 +11081,17 @@ class Rapport:
                     JOIN categories_comptables c ON e.categorie_id = c.id
                     LEFT JOIN contacts ct ON e.id_contact = ct.id_contact
                     WHERE e.utilisateur_id = %s
-                      AND e.date_ecriture BETWEEN %s AND %s
-                      AND e.statut = %s
+                    AND e.date_ecriture BETWEEN %s AND %s
+                    AND e.statut = %s
                 """
                 params = [user_id, date_from, date_to, statut]
-                
+
                 if categorie_id:
                     query += " AND c.id = %s"
                     params.append(categorie_id)
-                
+
                 query += " ORDER BY c.numero, e.date_ecriture, e.id"
-                
+
                 cursor.execute(query, params)
                 ecritures = cursor.fetchall()
 
@@ -11084,34 +11109,34 @@ class Rapport:
                         'total_credit': 0.0,
                         'solde': 0.0
                     }
-                
-                # Calcul du mouvement (débit/crédit selon le type de compte)
+
                 montant = float(ecriture['montant'] or 0)
-                if ecriture['type_compte'] in ('Actif', 'Charge'):
-                    # Débit = augmentation, Crédit = diminution
-                    if ecriture['type_ecriture'] == 'depense':
-                        comptes[compte_key]['total_debit'] += montant
-                        comptes[compte_key]['solde'] += montant
-                    else:
-                        comptes[compte_key]['total_credit'] += montant
-                        comptes[compte_key]['solde'] -= montant
+                type_compte = ecriture['type_compte']
+                type_ecriture = ecriture['type_ecriture']
+
+                # 🔧 Croisement type_compte × type_ecriture
+                if type_compte in ('Actif', 'Charge'):
+                    # Sens naturel : débit
+                    est_debit = (type_ecriture == 'recette')
                 else:
-                    # Passif/Produits : Crédit = augmentation
-                    if ecriture['type_ecriture'] == 'recette':
-                        comptes[compte_key]['total_credit'] += montant
-                        comptes[compte_key]['solde'] += montant
-                    else:
-                        comptes[compte_key]['total_debit'] += montant
-                        comptes[compte_key]['solde'] -= montant
-                
+                    # Passif / Revenus : sens naturel crédit
+                    est_debit = (type_ecriture == 'depense')
+
+                if est_debit:
+                    comptes[compte_key]['total_debit'] += montant
+                    comptes[compte_key]['solde'] += montant
+                else:
+                    comptes[compte_key]['total_credit'] += montant
+                    comptes[compte_key]['solde'] -= montant
+
                 comptes[compte_key]['ecritures'].append({
                     'id': ecriture['ecriture_id'],
                     'date': str(ecriture['date_ecriture']),
                     'description': ecriture['description'],
                     'reference': ecriture['reference'],
                     'contact': ecriture['contact_nom'],
-                    'debit': montant if ecriture['type_ecriture'] == 'depense' else 0,
-                    'credit': montant if ecriture['type_ecriture'] == 'recette' else 0,
+                    'debit': montant if est_debit else 0,
+                    'credit': 0 if est_debit else montant,
                     'solde_progressif': comptes[compte_key]['solde']
                 })
 
@@ -11127,7 +11152,6 @@ class Rapport:
         except Exception as e:
             logger.error(f"Erreur génération grand livre: {e}")
             return {'erreur': str(e)}
-
     # ============================================
     # 5. BALANCE GÉNÉRALE (Soldes de tous les comptes)
     # ============================================
@@ -11135,7 +11159,10 @@ class Rapport:
         """
         Génère la balance générale : tableau récapitulatif de tous les comptes
         avec leurs mouvements (débit/crédit) et soldes à une date donnée.
-        Permet de vérifier l'équilibre comptable.
+
+        Sens comptable selon le type de compte :
+        - Actif / Charge  → 'recette' = DÉBIT, 'depense' = CRÉDIT
+        - Passif / Revenus → 'recette' = CRÉDIT, 'depense' = DÉBIT
         """
         try:
             with self.db.get_cursor() as cursor:
@@ -11145,16 +11172,31 @@ class Rapport:
                         c.numero,
                         c.nom,
                         c.type_compte,
-                        COALESCE(SUM(CASE WHEN e.type_ecriture = 'depense' THEN e.montant ELSE 0 END), 0) AS total_debit,
-                        COALESCE(SUM(CASE WHEN e.type_ecriture = 'recette' THEN e.montant ELSE 0 END), 0) AS total_credit
+                        COALESCE(SUM(
+                            CASE 
+                                WHEN c.type_compte IN ('Actif', 'Charge') 
+                                    AND e.type_ecriture = 'recette' THEN e.montant
+                                WHEN c.type_compte IN ('Passif', 'Revenus') 
+                                    AND e.type_ecriture = 'depense' THEN e.montant
+                                ELSE 0
+                            END
+                        ), 0) AS total_debit,
+                        COALESCE(SUM(
+                            CASE 
+                                WHEN c.type_compte IN ('Actif', 'Charge') 
+                                    AND e.type_ecriture = 'depense' THEN e.montant
+                                WHEN c.type_compte IN ('Passif', 'Revenus') 
+                                    AND e.type_ecriture = 'recette' THEN e.montant
+                                ELSE 0
+                            END
+                        ), 0) AS total_credit
                     FROM categories_comptables c
                     LEFT JOIN ecritures_comptables e 
                         ON c.id = e.categorie_id 
                         AND e.utilisateur_id = %s
                         AND e.date_ecriture <= %s
                         AND e.statut = 'validée'
-                        AND e.type_ecriture_comptable = 'principale'
-                    WHERE  c.actif = TRUE
+                    WHERE c.actif = TRUE
                     GROUP BY c.id, c.numero, c.nom, c.type_compte
                     HAVING total_debit > 0 OR total_credit > 0
                     ORDER BY c.numero
@@ -11165,11 +11207,11 @@ class Rapport:
             total_debit = 0.0
             total_credit = 0.0
             balance = []
-            
+
             for ligne in lignes:
                 debit = float(ligne['total_debit'] or 0)
                 credit = float(ligne['total_credit'] or 0)
-                
+
                 # Calcul du solde selon la nature du compte
                 if ligne['type_compte'] in ('Actif', 'Charge'):
                     solde = debit - credit
@@ -11177,7 +11219,7 @@ class Rapport:
                 else:
                     solde = credit - debit
                     sens = 'crédit' if solde >= 0 else 'débit'
-                
+
                 balance.append({
                     'numero': ligne['numero'],
                     'nom': ligne['nom'],
@@ -11187,7 +11229,7 @@ class Rapport:
                     'solde': abs(solde),
                     'sens': sens
                 })
-                
+
                 total_debit += debit
                 total_credit += credit
 
@@ -11210,15 +11252,18 @@ class Rapport:
         except Exception as e:
             logger.error(f"Erreur génération balance générale: {e}")
             return {'erreur': str(e)}
-
     # ============================================
     # 6. JOURNAL GÉNÉRAL (Chronologique)
     # ============================================
     def generate_journal_general(self, user_id: int, date_from: str, date_to: str,
-                                  statut: str = 'validée') -> Dict:
+                              statut: str = 'validée') -> Dict:
         """
-        Génère le journal général : liste chronologique de toutes les écritures
-        avec numéro de pièce, date, libellé, comptes débités/crédités.
+        Génère le journal général : liste chronologique des écritures.
+
+        Les totaux débit/crédit sont calculés en croisant type_compte × type_ecriture,
+        conformément à la convention de la balance :
+        - Actif / Charge   : 'recette' = DÉBIT,  'depense' = CRÉDIT
+        - Passif / Revenus : 'recette' = CRÉDIT, 'depense' = DÉBIT
         """
         try:
             with self.db.get_cursor() as cursor:
@@ -11243,15 +11288,30 @@ class Rapport:
                     LEFT JOIN contacts ct ON e.id_contact = ct.id_contact
                     LEFT JOIN comptes_principaux cp ON e.compte_bancaire_id = cp.id
                     WHERE e.utilisateur_id = %s
-                      AND e.date_ecriture BETWEEN %s AND %s
-                      AND e.statut = %s
+                    AND e.date_ecriture BETWEEN %s AND %s
+                    AND e.statut = %s
                     ORDER BY e.date_ecriture, e.id
                 """, (user_id, date_from, date_to, statut))
                 ecritures = cursor.fetchall()
 
-            # Calcul des totaux
-            total_debit = sum(float(e['montant'] or 0) for e in ecritures if e['type_ecriture'] == 'depense')
-            total_credit = sum(float(e['montant'] or 0) for e in ecritures if e['type_ecriture'] == 'recette')
+            # Calcul des totaux débit/crédit par croisement type_compte × type_ecriture
+            total_debit = 0.0
+            total_credit = 0.0
+
+            for e in ecritures:
+                montant = float(e['montant'] or 0)
+                type_compte = e['type_compte']
+                type_ecriture = e['type_ecriture']
+
+                if type_compte in ('Actif', 'Charge'):
+                    est_debit = (type_ecriture == 'recette')
+                else:
+                    est_debit = (type_ecriture == 'depense')
+
+                if est_debit:
+                    total_debit += montant
+                else:
+                    total_credit += montant
 
             return {
                 'type_document': 'journal',
@@ -11261,6 +11321,8 @@ class Rapport:
                 'totaux': {
                     'total_debit': total_debit,
                     'total_credit': total_credit,
+                    'ecart': total_debit - total_credit,
+                    'est_equilibre': abs(total_debit - total_credit) < 0.01,
                     'nb_ecritures': len(ecritures)
                 },
                 'date_generation': datetime.now().isoformat()
@@ -11268,7 +11330,6 @@ class Rapport:
         except Exception as e:
             logger.error(f"Erreur génération journal: {e}")
             return {'erreur': str(e)}
-
     # ============================================
     # 7. ÉTAT DES CRÉANCES ET DETTES (Aging)
     # ============================================
@@ -20490,243 +20551,265 @@ class POSComptabilisation:
         try:
             from app.models import TransactionFinanciere
             transaction_model = TransactionFinanciere(self.db)
-            
-            logger.info(f"📊 Début comptabilisation de {len(items_a_comptabiliser)} éléments")
-            
-            with self.db.get_cursor(dictionary=True) as cursor:
-                nb_ecritures = 0
-                nb_transactions = 0
-                nb_sautés = 0
-                
-                # ✅ NOUVEAU : Set pour éviter de créer la Trésorerie et les Frais plusieurs fois pour le même mode de paiement
-                processed_modes = set()
-                
-                for idx, item in enumerate(items_a_comptabiliser):
-                    date_ecriture = POSComptabilisation._parse_date_ecriture(
-                        item.get('date_jour') or item.get('date')
-                    )
-                    
-                    mode_nom = item.get('mode_paiement_nom', 'Inconnu')
-                    mode_id = item.get('mode_paiement_id')
-                    receipt_ids_str = item.get('receipt_ids')
-                    
-                    # Clé unique pour identifier un paiement (ex: "134,136_2")
-                    unique_mode_key = f"{receipt_ids_str}_{mode_id}"
-                    
-                    # ============================================================
-                    # ÉTAPE 1 : Récupération des comptes et des NOUVEAUX montants SQL
-                    # ============================================================
-                    id_compte_bancaire_reel = item.get('compte_bancaire_id')
-                    id_compte_tresorerie = item.get('compte_tresorerie_id')
-                    id_compte_vente = item.get('compte_vente_id')
-                    
-                    total_ht = float(item.get('total_ht', 0))
-                    total_tva = float(item.get('total_tva', 0))
-                    
-                    # ✅ Ces deux variables viennent de la correction SQL
-                    total_ttc_pro_rata = float(item.get('total_ttc_pro_rata', 0)) # Montant de la vente pour cette taxe spécifique
-                    total_ttc_global = float(item.get('total_ttc_global', 0))     # Montant total réel du paiement
-                    
-                    logger.info(f"🔍 Item {idx}: mode={mode_nom}, compte_bancaire={id_compte_bancaire_reel}, "
-                            f"compte_tresorerie={id_compte_tresorerie}, compte_vente={id_compte_vente}, "
-                            f"pro_rata={total_ttc_pro_rata}, global={total_ttc_global}")
-                    
-                    # Vérifications de sécurité
-                    if not id_compte_bancaire_reel:
-                        logger.warning(f"⚠️ SAUTÉ : Mode '{mode_nom}' sans compte bancaire réel configuré.")
-                        nb_sautés += 1
-                        continue
-                    
-                    if not id_compte_tresorerie:
-                        logger.warning(f"⚠️ SAUTÉ : Mode '{mode_nom}' sans compte de trésorerie (Groupe 1) configuré.")
-                        nb_sautés += 1
-                        continue
 
-                    if not id_compte_vente:
-                        logger.warning(f"⚠️ SAUTÉ : Pas de compte de vente (Groupe 3) mappé pour la taxe.")
-                        nb_sautés += 1
-                        continue
-                    
-                    # Détection passif (ex: 2030 pour les bons cadeaux)
-                    is_credit = self.modele_categorie.is_compte_passif(id_compte_vente)
-                    
-                    # ============================================================
-                    # ÉTAPE 2 : CRÉATION DES ÉCRITURES COMPTABLES
-                    # ============================================================
-                    
-                    # A. ÉCRITURE DE TRÉSORERIE & C. FRAIS (Une seule fois par mode de paiement)
-                    if unique_mode_key not in processed_modes:
-                        data_tresorerie = {
+            logger.info(f"📊 Début comptabilisation de {len(items_a_comptabiliser)} éléments")
+
+            with self.db.get_cursor(dictionary=True) as cursor:
+                # 🔧 try/except englobant : toute exception déclenche le rollback via get_cursor
+                try:
+                    nb_ecritures = 0
+                    nb_transactions = 0
+                    nb_sautés = 0
+
+                    # Set pour éviter de créer la Trésorerie et les Frais plusieurs fois
+                    # pour le même mode de paiement
+                    processed_modes = set()
+
+                    for idx, item in enumerate(items_a_comptabiliser):
+                        date_ecriture = POSComptabilisation._parse_date_ecriture(
+                            item.get('date_jour') or item.get('date')
+                        )
+
+                        mode_nom = item.get('mode_paiement_nom', 'Inconnu')
+                        mode_id = item.get('mode_paiement_id')
+                        receipt_ids_str = item.get('receipt_ids')
+
+                        unique_mode_key = f"{receipt_ids_str}_{mode_id}"
+
+                        # 🔧 NOUVEAU : identifiant de groupe pour toutes les écritures de cet item
+                        groupe_id = f"POS-{date_ecriture}-{mode_id}-{receipt_ids_str}"
+
+                        # ============================================================
+                        # ÉTAPE 1 : Récupération des comptes et montants
+                        # ============================================================
+                        id_compte_bancaire_reel = item.get('compte_bancaire_id')
+                        id_compte_tresorerie = item.get('compte_tresorerie_id')
+                        id_compte_vente = item.get('compte_vente_id')
+
+                        total_ht = float(item.get('total_ht', 0))
+                        total_tva = float(item.get('total_tva', 0))
+                        total_ttc_pro_rata = float(item.get('total_ttc_pro_rata', 0))
+                        total_ttc_global = float(item.get('total_ttc_global', 0))
+
+                        logger.info(f"🔍 Item {idx}: mode={mode_nom}, compte_bancaire={id_compte_bancaire_reel}, "
+                                f"compte_tresorerie={id_compte_tresorerie}, compte_vente={id_compte_vente}, "
+                                f"pro_rata={total_ttc_pro_rata}, global={total_ttc_global}, groupe={groupe_id}")
+
+                        # Vérifications préalables — un "continue" ici est sûr car rien n'a encore
+                        # été écrit sur cette itération (aucune écriture partielle en base).
+                        if not id_compte_bancaire_reel:
+                            logger.warning(f"⚠️ SAUTÉ : Mode '{mode_nom}' sans compte bancaire réel configuré.")
+                            nb_sautés += 1
+                            continue
+
+                        if not id_compte_tresorerie:
+                            logger.warning(f"⚠️ SAUTÉ : Mode '{mode_nom}' sans compte de trésorerie (Groupe 1) configuré.")
+                            nb_sautés += 1
+                            continue
+
+                        if not id_compte_vente:
+                            logger.warning(f"⚠️ SAUTÉ : Pas de compte de vente (Groupe 3) mappé pour la taxe.")
+                            nb_sautés += 1
+                            continue
+
+                        # 🔧 cursor partagé
+                        is_credit = self.modele_categorie.is_compte_passif(id_compte_vente, cursor=cursor)
+
+                        # ============================================================
+                        # ÉTAPE 2 : CRÉATION DES ÉCRITURES COMPTABLES
+                        # ============================================================
+
+                        # A. ÉCRITURE DE TRÉSORERIE & FRAIS (une seule fois par mode de paiement)
+                        if unique_mode_key not in processed_modes:
+                            data_tresorerie = {
+                                'date_ecriture': date_ecriture,
+                                'compte_bancaire_id': id_compte_bancaire_reel,
+                                'categorie_id': id_compte_tresorerie,
+                                'montant': total_ttc_global,
+                                'montant_htva': total_ttc_global,
+                                'devise': 'CHF',
+                                'description': f"Encaissement POS {mode_nom}",
+                                'reference': f"JOURNAL-{date_ecriture}-TRESO-{mode_id}",
+                                'groupe_ecriture_id': groupe_id,  # 🔧 NOUVEAU
+                                'type_ecriture': 'recette',
+                                'tva_taux': 0,
+                                'tva_montant': 0,
+                                'utilisateur_id': user_id,
+                                'statut': 'validée',
+                                'type_ecriture_comptable': 'principale'
+                            }
+
+                            # 🔧 cursor partagé + RuntimeError au lieu de continue
+                            if not self.modele_ecriture.create(self.modele_categorie, data_tresorerie, cursor=cursor):
+                                raise RuntimeError(f"Échec création écriture Trésorerie (item {idx})")
+
+                            nb_ecritures += 1
+                            logger.info(f"✅ Écriture Trésorerie créée : Catégorie {id_compte_tresorerie} (Groupe 1)")
+
+                            # C. Gestion des frais de service (une seule fois)
+                            if not is_credit:
+                                montant_frais = (
+                                    total_ttc_global * (float(item.get('frais_pourcentage', 0) or 0) / 100)
+                                ) + float(item.get('frais_fixe', 0) or 0)
+
+                                if montant_frais > 0.01 and item.get('compte_frais_service_id'):
+                                    data_frais = {
+                                        'date_ecriture': date_ecriture,
+                                        'compte_bancaire_id': id_compte_bancaire_reel,
+                                        'categorie_id': item['compte_frais_service_id'],
+                                        'montant': round(montant_frais, 2),
+                                        'montant_htva': round(montant_frais, 2),
+                                        'devise': 'CHF',
+                                        'description': f"Frais de service - {mode_nom}",
+                                        'reference': f"JOURNAL-{date_ecriture}-FRAIS-{mode_id}",
+                                        'groupe_ecriture_id': groupe_id,  # 🔧 NOUVEAU
+                                        'type_ecriture': 'depense',
+                                        'tva_taux': 0,
+                                        'tva_montant': 0,
+                                        'utilisateur_id': user_id,
+                                        'statut': 'validée',
+                                        'type_ecriture_comptable': 'principale'
+                                    }
+
+                                    # 🔧 cursor partagé + RuntimeError
+                                    if not self.modele_ecriture.create(self.modele_categorie, data_frais, cursor=cursor):
+                                        raise RuntimeError(f"Échec création écriture Frais (item {idx})")
+
+                                    nb_ecritures += 1
+                                    logger.info(f"✅ Écriture Frais créée : {round(montant_frais, 2)} CHF")
+
+                            processed_modes.add(unique_mode_key)
+
+                        # B. ÉCRITURE DE VENTE / PASSIF (toujours, car spécifique à la ligne de taxe)
+                        data_vente = {
                             'date_ecriture': date_ecriture,
                             'compte_bancaire_id': id_compte_bancaire_reel,
-                            'categorie_id': id_compte_tresorerie,
-                            'montant': total_ttc_global, # ✅ Utilise le total global du paiement
-                            'montant_htva': total_ttc_global,
+                            'categorie_id': id_compte_vente,
+                            'montant': total_ht,
+                            'montant_htva': total_ht,
                             'devise': 'CHF',
-                            'description': f"Encaissement POS {mode_nom}",
-                            'reference': f"JOURNAL-{date_ecriture}-TRESO-{mode_id}",
+                            'description': f"Ventes POS {item.get('type_taxe_nom')} - {mode_nom}",
+                            'reference': f"JOURNAL-{date_ecriture}-VENTE-{item.get('type_taxe_id')}",
+                            'groupe_ecriture_id': groupe_id,  # 🔧 NOUVEAU
                             'type_ecriture': 'recette',
-                            'tva_taux': 0,
-                            'tva_montant': 0,
+                            'tva_taux': round((total_tva / total_ht * 100), 2) if total_ht > 0 else 0,
+                            'tva_montant': total_tva,
                             'utilisateur_id': user_id,
                             'statut': 'validée',
                             'type_ecriture_comptable': 'principale'
                         }
-                        
-                        if self.modele_ecriture.create(self.modele_categorie, data_tresorerie):
-                            nb_ecritures += 1
-                            logger.info(f"✅ Écriture Trésorerie créée : Catégorie {id_compte_tresorerie} (Groupe 1)")
-                        else:
-                            logger.error(f"❌ Échec création écriture Trésorerie")
-                            nb_sautés += 1
-                            continue # On passe à l'item suivant si la trésorerie échoue
 
-                        # C. Gestion des frais de service (Une seule fois)
-                        if not is_credit:
-                            montant_frais = (total_ttc_global * (float(item.get('frais_pourcentage', 0) or 0) / 100)) + float(item.get('frais_fixe', 0) or 0)
-                            if montant_frais > 0.01 and item.get('compte_frais_service_id'):
-                                data_frais = {
-                                    'date_ecriture': date_ecriture,
-                                    'compte_bancaire_id': id_compte_bancaire_reel,
-                                    'categorie_id': item['compte_frais_service_id'],
-                                    'montant': round(montant_frais, 2),
-                                    'montant_htva': round(montant_frais, 2),
-                                    'devise': 'CHF',
-                                    'description': f"Frais de service - {mode_nom}",
-                                    'reference': f"JOURNAL-{date_ecriture}-FRAIS-{mode_id}",
-                                    'type_ecriture': 'depense',
-                                    'tva_taux': 0,
-                                    'tva_montant': 0,
-                                    'utilisateur_id': user_id,
-                                    'statut': 'validée',
-                                    'type_ecriture_comptable': 'principale'
-                                }
-                                if self.modele_ecriture.create(self.modele_categorie, data_frais):
-                                    nb_ecritures += 1
-                                    logger.info(f"✅ Écriture Frais créée : {round(montant_frais, 2)} CHF")
-                        
-                        # Marquer ce mode comme traité pour les prochaines itérations
-                        processed_modes.add(unique_mode_key)
+                        # 🔧 cursor partagé + RuntimeError
+                        if not self.modele_ecriture.create(self.modele_categorie, data_vente, cursor=cursor):
+                            raise RuntimeError(f"Échec création écriture Vente (item {idx})")
 
-                    # B. ÉCRITURE DE VENTE / PASSIF (Toujours fait, car spécifique à la ligne de taxe)
-                    data_vente = {
-                        'date_ecriture': date_ecriture,
-                        'compte_bancaire_id': id_compte_bancaire_reel,
-                        'categorie_id': id_compte_vente,
-                        
-                        # ✅ CORRECTION ICI : Utiliser le montant pro-rata pour la vente
-                        'montant': total_ttc_pro_rata,          
-                        'montant_htva': total_ht,      
-                        
-                        'devise': 'CHF',
-                        'description': f"Ventes POS {item.get('type_taxe_nom')} - {mode_nom}",
-                        'reference': f"JOURNAL-{date_ecriture}-VENTE-{item.get('type_taxe_id')}",
-                        'type_ecriture': 'recette',
-                        
-                        # ✅ Ces deux champs déclencheront la création automatique de l'écriture secondaire (2200)
-                        'tva_taux': round((total_tva / total_ht * 100), 2) if total_ht > 0 else 0,
-                        'tva_montant': total_tva,
-                        
-                        'utilisateur_id': user_id,
-                        'statut': 'validée',
-                        'type_ecriture_comptable': 'principale'
-                    }
-                    
-                    if self.modele_ecriture.create(self.modele_categorie, data_vente):
                         nb_ecritures += 1
                         logger.info(f"✅ Écriture Vente/Passif créée : Catégorie {id_compte_vente} (Groupe 3/2)")
 
-                    # ============================================================
-                    # ÉTAPE 3 : CRÉATION DE LA TRANSACTION BANCAIRE
-                    # ============================================================
-                    logger.info(f"🔍 Item {idx}: receipt_ids_str={receipt_ids_str}")
-                    
-                    if receipt_ids_str and total_ttc_global > 0:
-                        try:
-                            receipt_ids = [int(rid.strip()) for rid in str(receipt_ids_str).split(',') if rid.strip().isdigit()]
-                        except Exception as e:
-                            logger.error(f"❌ Erreur parsing receipt_ids: {receipt_ids_str} - {e}")
-                            receipt_ids = []
-                        
-                        logger.info(f"🔍 Item {idx}: receipt_ids parsés={receipt_ids}")
-                        
-                        if receipt_ids:
-                            # Le montant par reçu est basé sur le total global du paiement
-                            montant_par_recu = Decimal(str(total_ttc_global)) / len(receipt_ids)
-                            logger.info(f"🔍 Item {idx}: montant_par_recu={montant_par_recu}")
-                            
-                            for receipt_id in receipt_ids:
-                                logger.info(f"🔍 Vérification transaction existante pour receipt_id={receipt_id}, compte={id_compte_bancaire_reel}")
-                                
-                                cursor.execute("""
-                                    SELECT id FROM transactions 
-                                    WHERE receipt_id = %s AND compte_principal_id = %s AND utilisateur_id = %s
-                                """, (receipt_id, id_compte_bancaire_reel, user_id))
-                                
-                                existing_tx = cursor.fetchone()
-                                
-                                if existing_tx:
-                                    logger.info(f"ℹ️ Transaction existante trouvée pour reçu {receipt_id}: ID={existing_tx['id']}")
-                                else:
-                                    logger.info(f"🔍 Création transaction pour reçu {receipt_id} sur compte {id_compte_bancaire_reel}")
-                                    
-                                    success, msg, tx_id = transaction_model._inserer_transaction_with_cursor(
-                                        cursor=cursor,
-                                        compte_type='compte_principal',
-                                        compte_id=id_compte_bancaire_reel,
-                                        type_transaction='depot',
-                                        montant=montant_par_recu,
-                                        description=f"Vente POS - Reçu #{receipt_id} - {mode_nom}",
-                                        user_id=user_id,
-                                        date_transaction=datetime.combine(date_ecriture, datetime.min.time()),
-                                        validate_balance=False,
-                                        receipt_id=receipt_id
-                                    )
-                                    
-                                    if success:
-                                        nb_transactions += 1
-                                        logger.info(f"✅ Transaction {tx_id} créée pour reçu {receipt_id}")
-                                        
-                                        cursor.execute("""
-                                            UPDATE pos_receipts 
-                                            SET transaction_id = %s, compte_bancaire_id = %s
-                                            WHERE id = %s
-                                        """, (tx_id, id_compte_bancaire_reel, receipt_id))
-                                        logger.info(f"🔗 Reçu {receipt_id} lié à la transaction {tx_id}")
+                        # ============================================================
+                        # ÉTAPE 3 : CRÉATION DE LA TRANSACTION BANCAIRE
+                        # ============================================================
+                        logger.info(f"🔍 Item {idx}: receipt_ids_str={receipt_ids_str}")
+
+                        if receipt_ids_str and total_ttc_global > 0:
+                            try:
+                                receipt_ids = [
+                                    int(rid.strip())
+                                    for rid in str(receipt_ids_str).split(',')
+                                    if rid.strip().isdigit()
+                                ]
+                            except Exception as e:
+                                logger.error(f"❌ Erreur parsing receipt_ids: {receipt_ids_str} - {e}")
+                                receipt_ids = []
+
+                            logger.info(f"🔍 Item {idx}: receipt_ids parsés={receipt_ids}")
+
+                            if receipt_ids:
+                                montant_par_recu = Decimal(str(total_ttc_global)) / len(receipt_ids)
+                                logger.info(f"🔍 Item {idx}: montant_par_recu={montant_par_recu}")
+
+                                for receipt_id in receipt_ids:
+                                    logger.info(f"🔍 Vérification transaction existante pour receipt_id={receipt_id}, compte={id_compte_bancaire_reel}")
+
+                                    cursor.execute("""
+                                        SELECT id FROM transactions 
+                                        WHERE receipt_id = %s AND compte_principal_id = %s AND utilisateur_id = %s
+                                    """, (receipt_id, id_compte_bancaire_reel, user_id))
+
+                                    existing_tx = cursor.fetchone()
+
+                                    if existing_tx:
+                                        logger.info(f"ℹ️ Transaction existante trouvée pour reçu {receipt_id}: ID={existing_tx['id']}")
                                     else:
-                                        logger.error(f"❌ Échec création transaction pour reçu {receipt_id}: {msg}")
+                                        logger.info(f"🔍 Création transaction pour reçu {receipt_id} sur compte {id_compte_bancaire_reel}")
+
+                                        success, msg, tx_id = transaction_model._inserer_transaction_with_cursor(
+                                            cursor=cursor,
+                                            compte_type='compte_principal',
+                                            compte_id=id_compte_bancaire_reel,
+                                            type_transaction='depot',
+                                            montant=montant_par_recu,
+                                            description=f"Vente POS - Reçu #{receipt_id} - {mode_nom}",
+                                            user_id=user_id,
+                                            date_transaction=datetime.combine(date_ecriture, datetime.min.time()),
+                                            validate_balance=False,
+                                            receipt_id=receipt_id
+                                        )
+
+                                        if success:
+                                            nb_transactions += 1
+                                            logger.info(f"✅ Transaction {tx_id} créée pour reçu {receipt_id}")
+
+                                            cursor.execute("""
+                                                UPDATE pos_receipts 
+                                                SET transaction_id = %s, compte_bancaire_id = %s
+                                                WHERE id = %s
+                                            """, (tx_id, id_compte_bancaire_reel, receipt_id))
+                                            logger.info(f"🔗 Reçu {receipt_id} lié à la transaction {tx_id}")
+                                        else:
+                                            logger.error(f"❌ Échec création transaction pour reçu {receipt_id}: {msg}")
+                            else:
+                                logger.warning(f"⚠️ Item {idx}: Aucun receipt_id valide après parsing")
                         else:
-                            logger.warning(f"⚠️ Item {idx}: Aucun receipt_id valide après parsing")
-                    else:
-                        logger.warning(f"⚠️ Item {idx}: Pas de receipt_ids_str ou total_ttc_global=0")
-                
-                # ============================================================
-                # ÉTAPE 4 : Marquer les reçus comme comptabilisés
-                # ============================================================
-                if nb_ecritures > 0:
-                    tous_receipt_ids = set()
-                    for item in items_a_comptabiliser:
-                        r_ids = item.get('receipt_ids')
-                        if r_ids:
-                            for rid in str(r_ids).split(','):
-                                if rid.strip().isdigit():
-                                    tous_receipt_ids.add(int(rid.strip()))
-                    
-                    if tous_receipt_ids:
-                        placeholders = ','.join(['%s'] * len(tous_receipt_ids))
-                        cursor.execute(f"""
-                            UPDATE pos_receipts 
-                            SET comptabilise = TRUE, etat_comptable = 'comptabilise', date_comptabilisation = NOW()
-                            WHERE id IN ({placeholders})
-                        """, list(tous_receipt_ids))
-                        logger.info(f"✅ {len(tous_receipt_ids)} reçus marqués comme comptabilisés")
-                
-                logger.info(f"✅ Résumé final : Écritures={nb_ecritures}, Transactions={nb_transactions}, Sautées={nb_sautés}")
-                return True, f"{nb_ecritures} écriture(s) et {nb_transactions} transaction(s) générée(s)"
-                
+                            logger.warning(f"⚠️ Item {idx}: Pas de receipt_ids_str ou total_ttc_global=0")
+
+                    # ============================================================
+                    # ÉTAPE 4 : Marquer les reçus comme comptabilisés
+                    # ============================================================
+                    if nb_ecritures > 0:
+                        tous_receipt_ids = set()
+                        for item in items_a_comptabiliser:
+                            r_ids = item.get('receipt_ids')
+                            if r_ids:
+                                for rid in str(r_ids).split(','):
+                                    if rid.strip().isdigit():
+                                        tous_receipt_ids.add(int(rid.strip()))
+
+                        if tous_receipt_ids:
+                            placeholders = ','.join(['%s'] * len(tous_receipt_ids))
+                            cursor.execute(f"""
+                                UPDATE pos_receipts 
+                                SET comptabilise = TRUE, etat_comptable = 'comptabilise', date_comptabilisation = NOW()
+                                WHERE id IN ({placeholders})
+                            """, list(tous_receipt_ids))
+                            logger.info(f"✅ {len(tous_receipt_ids)} reçus marqués comme comptabilisés")
+
+                    logger.info(f"✅ Résumé final : Écritures={nb_ecritures}, Transactions={nb_transactions}, Sautées={nb_sautés}")
+                    return True, f"{nb_ecritures} écriture(s) et {nb_transactions} transaction(s) générée(s)"
+
+                # 🔧 try/except englobant la boucle ET le marquage final
+                except Exception as e:
+                    # L'exception remonte ici → on log et on retourne False.
+                    # La sortie du "with self.db.get_cursor()" va faire un rollback automatique.
+                    logger.error(f"❌ Comptabilisation annulée, rollback: {e}", exc_info=True)
+                    return False, f"Erreur: {str(e)}"
+
         except Exception as e:
-            logger.error(f"Erreur comptabilisation: {e}", exc_info=True)
+            # Filet de sécurité si l'ouverture du cursor échoue elle-même
+            logger.error(f"Erreur comptabilisation (ouverture cursor): {e}", exc_info=True)
             return False, f"Erreur: {str(e)}"
+
+        
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
             """Récupère le compte de vente de classe 3 par défaut (3000)"""
             try:
