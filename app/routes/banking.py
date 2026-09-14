@@ -6376,9 +6376,7 @@ def compte_de_resultat():
         date_to = f"{annee}-12-31"
         
         # Utiliser la méthode Bexio existante
-        from app.models import Rapport
-        rapport_model = Rapport(g.db)
-        compte_resultat = rapport_model.get_compte_resultat_bexio(
+        compte_resultat = g.models.rapport_model.get_compte_resultat_bexio(
             user_id=current_user.id,
             date_from=date_from,
             date_to=date_to,
