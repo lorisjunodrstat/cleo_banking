@@ -20600,7 +20600,7 @@ class POSComptabilisation:
 
                         unique_mode_key = f"{receipt_ids_str}_{mode_id}"
 
-                        # 🔧 NOUVEAU : identifiant de groupe pour toutes les écritures de cet item
+                        # 🔧 identifiant de groupe pour toutes les écritures de cet item
                         groupe_id = f"POS-{date_ecriture}-{mode_id}-{receipt_ids_str}"
 
                         # ============================================================
@@ -20644,16 +20644,27 @@ class POSComptabilisation:
 
                         # A. ÉCRITURE DE TRÉSORERIE & FRAIS (une seule fois par mode de paiement)
                         if unique_mode_key not in processed_modes:
+                            # 🔧 Calculer les frais AVANT la trésorerie (ils impactent le net encaissé)
+                            montant_frais = 0.0
+                            if not is_credit and item.get('compte_frais_service_id'):
+                                montant_frais = (
+                                    total_ttc_global * (float(item.get('frais_pourcentage', 0) or 0) / 100)
+                                ) + float(item.get('frais_fixe', 0) or 0)
+                                montant_frais = round(montant_frais, 2)
+
+                            # 🔧 La trésorerie reçoit le NET (brut - frais prélevés à la source)
+                            montant_tresorerie_net = round(total_ttc_global - montant_frais, 2)
+
                             data_tresorerie = {
                                 'date_ecriture': date_ecriture,
                                 'compte_bancaire_id': id_compte_bancaire_reel,
                                 'categorie_id': id_compte_tresorerie,
-                                'montant': total_ttc_global,
-                                'montant_htva': total_ttc_global,
+                                'montant': montant_tresorerie_net,          # 🔧 NET
+                                'montant_htva': montant_tresorerie_net,
                                 'devise': 'CHF',
                                 'description': f"Encaissement POS {mode_nom}",
                                 'reference': f"JOURNAL-{date_ecriture}-TRESO-{mode_id}",
-                                'groupe_ecriture_id': groupe_id,  # 🔧 NOUVEAU
+                                'groupe_ecriture_id': groupe_id,
                                 'type_ecriture': 'recette',
                                 'tva_taux': 0,
                                 'tva_montant': 0,
@@ -20662,48 +20673,44 @@ class POSComptabilisation:
                                 'type_ecriture_comptable': 'principale'
                             }
 
-                            # 🔧 cursor partagé + RuntimeError au lieu de continue
+                            # 🔧 cursor partagé + RuntimeError
                             if not self.modele_ecriture.create(self.modele_categorie, data_tresorerie, cursor=cursor):
                                 raise RuntimeError(f"Échec création écriture Trésorerie (item {idx})")
 
                             nb_ecritures += 1
-                            logger.info(f"✅ Écriture Trésorerie créée : Catégorie {id_compte_tresorerie} (Groupe 1)")
+                            logger.info(f"✅ Écriture Trésorerie créée : Catégorie {id_compte_tresorerie} "
+                                        f"({montant_tresorerie_net} CHF net, frais: {montant_frais} CHF)")
 
-                            # C. Gestion des frais de service (une seule fois)
-                            if not is_credit:
-                                montant_frais = (
-                                    total_ttc_global * (float(item.get('frais_pourcentage', 0) or 0) / 100)
-                                ) + float(item.get('frais_fixe', 0) or 0)
+                            # B. Frais de service (si applicable)
+                            if montant_frais > 0.01:
+                                data_frais = {
+                                    'date_ecriture': date_ecriture,
+                                    'compte_bancaire_id': id_compte_bancaire_reel,
+                                    'categorie_id': item['compte_frais_service_id'],
+                                    'montant': montant_frais,
+                                    'montant_htva': montant_frais,
+                                    'devise': 'CHF',
+                                    'description': f"Frais de service - {mode_nom}",
+                                    'reference': f"JOURNAL-{date_ecriture}-FRAIS-{mode_id}",
+                                    'groupe_ecriture_id': groupe_id,
+                                    'type_ecriture': 'depense',
+                                    'tva_taux': 0,
+                                    'tva_montant': 0,
+                                    'utilisateur_id': user_id,
+                                    'statut': 'validée',
+                                    'type_ecriture_comptable': 'principale'
+                                }
 
-                                if montant_frais > 0.01 and item.get('compte_frais_service_id'):
-                                    data_frais = {
-                                        'date_ecriture': date_ecriture,
-                                        'compte_bancaire_id': id_compte_bancaire_reel,
-                                        'categorie_id': item['compte_frais_service_id'],
-                                        'montant': round(montant_frais, 2),
-                                        'montant_htva': round(montant_frais, 2),
-                                        'devise': 'CHF',
-                                        'description': f"Frais de service - {mode_nom}",
-                                        'reference': f"JOURNAL-{date_ecriture}-FRAIS-{mode_id}",
-                                        'groupe_ecriture_id': groupe_id,  # 🔧 NOUVEAU
-                                        'type_ecriture': 'depense',
-                                        'tva_taux': 0,
-                                        'tva_montant': 0,
-                                        'utilisateur_id': user_id,
-                                        'statut': 'validée',
-                                        'type_ecriture_comptable': 'principale'
-                                    }
+                                # 🔧 cursor partagé + RuntimeError
+                                if not self.modele_ecriture.create(self.modele_categorie, data_frais, cursor=cursor):
+                                    raise RuntimeError(f"Échec création écriture Frais (item {idx})")
 
-                                    # 🔧 cursor partagé + RuntimeError
-                                    if not self.modele_ecriture.create(self.modele_categorie, data_frais, cursor=cursor):
-                                        raise RuntimeError(f"Échec création écriture Frais (item {idx})")
-
-                                    nb_ecritures += 1
-                                    logger.info(f"✅ Écriture Frais créée : {round(montant_frais, 2)} CHF")
+                                nb_ecritures += 1
+                                logger.info(f"✅ Écriture Frais créée : {montant_frais} CHF")
 
                             processed_modes.add(unique_mode_key)
 
-                        # B. ÉCRITURE DE VENTE / PASSIF (toujours, car spécifique à la ligne de taxe)
+                        # C. ÉCRITURE DE VENTE / PASSIF (toujours, car spécifique à la ligne de taxe)
                         data_vente = {
                             'date_ecriture': date_ecriture,
                             'compte_bancaire_id': id_compte_bancaire_reel,
@@ -20713,7 +20720,7 @@ class POSComptabilisation:
                             'devise': 'CHF',
                             'description': f"Ventes POS {item.get('type_taxe_nom')} - {mode_nom}",
                             'reference': f"JOURNAL-{date_ecriture}-VENTE-{item.get('type_taxe_id')}",
-                            'groupe_ecriture_id': groupe_id,  # 🔧 NOUVEAU
+                            'groupe_ecriture_id': groupe_id,
                             'type_ecriture': 'recette',
                             'tva_taux': round((total_tva / total_ht * 100), 2) if total_ht > 0 else 0,
                             'tva_montant': total_tva,
@@ -20822,8 +20829,7 @@ class POSComptabilisation:
 
                 # 🔧 try/except englobant la boucle ET le marquage final
                 except Exception as e:
-                    # L'exception remonte ici → on log et on retourne False.
-                    # La sortie du "with self.db.get_cursor()" va faire un rollback automatique.
+                    # L'exception remonte ici → rollback automatique via get_cursor
                     logger.error(f"❌ Comptabilisation annulée, rollback: {e}", exc_info=True)
                     return False, f"Erreur: {str(e)}"
 
@@ -20831,7 +20837,6 @@ class POSComptabilisation:
             # Filet de sécurité si l'ouverture du cursor échoue elle-même
             logger.error(f"Erreur comptabilisation (ouverture cursor): {e}", exc_info=True)
             return False, f"Erreur: {str(e)}"
-
         
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
             """Récupère le compte de vente de classe 3 par défaut (3000)"""
