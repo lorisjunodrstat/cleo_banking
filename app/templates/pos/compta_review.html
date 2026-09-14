@@ -39,22 +39,7 @@
                         <tr>
                             <td>
                                 <input type="checkbox" name="selection" class="item-check form-check-input" 
-                                       value='{{ {
-                                            "date_jour": item.date_jour,
-                                            "date": item.date,
-                                            "mode_paiement_id": item.mode_paiement_id,
-                                            "receipt_ids": item.receipt_ids,
-                                            "compte_bancaire_id": item.compte_bancaire_id,
-                                            "compte_tresorerie_id": item.compte_tresorerie_id,
-                                            "compte_vente_id": item.compte_vente_id,
-                                            "compte_frais_service_id": item.compte_frais_service_id,
-                                            "frais_pourcentage": item.frais_pourcentage,
-                                            "frais_fixe": item.frais_fixe,
-                                            "type_taxe_id": item.type_taxe_id,
-                                            "total_ht": item.total_ht | float,
-                                            "total_tva": item.total_tva | float,
-                                            "total_ttc_global": item.total_ttc_global | float
-                                        } | tojson | safe }}'>
+                                       value='{{ item._json | safe }}'>
                             </td>
                             <td class="fw-medium">
                                 {% set d = item.date_jour or item.date %}

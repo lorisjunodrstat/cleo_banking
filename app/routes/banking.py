@@ -13848,8 +13848,45 @@ def pos_compta_review():
 
     # GET : Afficher la page de revue
     a_comptabiliser = g.models.pos_comptabilisation_model.get_a_comptabiliser(user_id, pdv_id, mode=mode)
+
+    # 🔧 Préparer les données JSON-sérialisables pour le template
+    # (évite l'erreur "Object of type Decimal/date/Undefined is not JSON serializable")
+    import json
+    from decimal import Decimal
+    from datetime import date as _date, datetime as _datetime
+
+    def _make_json(item):
+        def _conv(v):
+            if isinstance(v, Decimal):
+                return float(v)
+            if isinstance(v, (_date, _datetime)):
+                return v.isoformat()
+            return v
+
+        payload = {
+            'date_jour':            _conv(item.get('date_jour')),
+            'date':                 _conv(item.get('date')),
+            'mode_paiement_id':     item.get('mode_paiement_id'),
+            'mode_paiement_nom':    item.get('mode_paiement_nom') or '',
+            'receipt_ids':          item.get('receipt_ids'),
+            'compte_bancaire_id':   item.get('compte_bancaire_id'),
+            'compte_tresorerie_id': item.get('compte_tresorerie_id'),
+            'compte_vente_id':      item.get('compte_vente_id'),
+            'compte_frais_service_id': item.get('compte_frais_service_id'),
+            'frais_pourcentage':    float(item.get('frais_pourcentage') or 0),
+            'frais_fixe':           float(item.get('frais_fixe') or 0),
+            'type_taxe_id':         item.get('type_taxe_id'),
+            'type_taxe_nom':        item.get('type_taxe_nom') or '',
+            'total_ht':             float(item.get('total_ht') or 0),
+            'total_tva':            float(item.get('total_tva') or 0),
+            'total_ttc_global':     float(item.get('total_ttc_global') or 0),
+        }
+        return json.dumps(payload)
+
+    for item in a_comptabiliser:
+        item['_json'] = _make_json(item)
+
     flash(f"✅ {len(a_comptabiliser)} éléments à comptabiliser pour le mode '{mode}'", 'info')
-    # ✅ Utiliser get_all_with_comptes qui inclut déjà les noms des comptes
     modes_paiement = g.models.mode_paiement_pos_model.get_all_with_comptes(user_id, actif_only=False)
     
     return render_template('pos/compta_review.html', 
