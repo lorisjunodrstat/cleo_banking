@@ -1284,6 +1284,14 @@ def banking_evolution():
             fin = date(maintenant.year, maintenant.month + 1, 1) - timedelta(days=1)
             
     # 4. Récupérer les données d'évolution
+
+    logger.info(f"🚀 Appel get_evolution_multi_comptes avec:")
+    logger.info(f"   - user_id: {user_id}")
+    logger.info(f"   - compte_ids: {compte_ids}")
+    logger.info(f"   - date_debut: {debut}")
+    logger.info(f"   - date_fin: {fin}")
+    logger.info(f"   - mode: {mode}")
+    
     evolution_data = g.models.transaction_financiere_model.get_evolution_multi_comptes(
         user_id=user_id,
         compte_ids=compte_ids,
@@ -1291,6 +1299,9 @@ def banking_evolution():
         date_fin=fin,
         mode=mode
     )
+    
+    logger.info(f"📊 Résultat: {len(evolution_data.get('dates', []))} dates, "
+               f"{len(evolution_data.get('series', {}))} séries")
     
     # 5. Générer le graphique SVG (Lignes pour les soldes, Barres pour les flux)
     svg_code = None
