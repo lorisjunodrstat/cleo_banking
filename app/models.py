@@ -6042,6 +6042,7 @@ class TransactionFinanciere:
                     logger.warning("⚠️ Aucun compte trouvé")
                     return {'dates': [], 'series': {}}
                 
+                # 🔧 CORRECTION : Utiliser 'nom_compte' depuis la BDD et créer 'nom' dans compte_map
                 compte_map = {c['id']: {'nom': c['nom_compte'], 'solde_initial': Decimal(str(c['solde_initial'] or 0))} for c in comptes}
                 
                 # 2. 🔧 CORRECTION : Convertir date_fin en datetime 23:59:59 pour inclure toute la journée
@@ -6070,7 +6071,8 @@ class TransactionFinanciere:
                     dates_list.append(current_date)
                     current_date += timedelta(days=1)
                 
-                series_data = {c['nom']: [0.0] * len(dates_list) for c in comptes}
+                # 🔧 CORRECTION : Utiliser compte_map au lieu de comptes
+                series_data = {info['nom']: [0.0] * len(dates_list) for info in compte_map.values()}
                 series_data['Total'] = [0.0] * len(dates_list)
                 
                 # 5. Déterminer le solde de départ pour chaque compte (si mode 'solde')
@@ -6139,7 +6141,6 @@ class TransactionFinanciere:
         except Exception as e:
             logger.error(f"❌ Erreur dans get_evolution_multi_comptes: {e}", exc_info=True)
             return {'dates': [], 'series': {}}
-
 class CategorieTransaction:
     """Classe pour gérer les catégories de transactions"""
 
