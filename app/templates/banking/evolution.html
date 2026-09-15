@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">📊 {{ titre_mode }}</h2>
+    
+    <!-- Formulaire de filtrage -->
+    <form method="GET" action="{{ url_for('banking.banking_evolution') }}" class="card p-4 mb-4 shadow-sm">
+        <div class="row g-3">
+            <!-- Période -->
+            <div class="col-md-3">
+                <label class="form-label fw-bold">Période</label>
+                <select name="periode" class="form-select" id="periodeSelect" onchange="toggleDateInputs()">
+                    <option value="mois" {% if periode == 'mois' %}selected{% endif %}>Ce mois</option>
+                    <option value="semaine" {% if periode == 'semaine' %}selected{% endif %}>Cette semaine</option>
+                    <option value="annee" {% if periode == 'annee' %}selected{% endif %}>Cette année</option>
+                    <option value="personnalisee" {% if periode == 'personnalisee' %}selected{% endif %}>Personnalisée</option>
+                </select>
+            </div>
+            
+            <!-- Dates personnalisées -->
+            <div class="col-md-2 date-inputs" style="display: {% if periode == 'personnalisee' %}block{% else %}none{% endif %};">
+                <label class="form-label fw-bold">Du</label>
+                <input type="date" name="date_debut" class="form-control" value="{{ date_debut }}">
+            </div>
+            <div class="col-md-2 date-inputs" style="display: {% if periode == 'personnalisee' %}block{% else %}none{% endif %};">
+                <label class="form-label fw-bold">Au</label>
+                <input type="date" name="date_fin" class="form-control" value="{{ date_fin }}">
+            </div>
+            
+            <!-- Mode d'affichage -->
+            <div class="col-md-3">
+                <label class="form-label fw-bold">Type de données</label>
+                <select name="mode" class="form-select">
+                    <option value="solde" {% if mode == 'solde' %}selected{% endif %}>Évolution du solde</option>
+                    <option value="entrees" {% if mode == 'entrees' %}selected{% endif %}>Montants entrants (Recettes)</option>
+                    <option value="sorties" {% if mode == 'sorties' %}selected{% endif %}>Montants sortants (Dépenses)</option>
+                </select>
+            </div>
+            
+            <!-- Bouton -->
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100">Actualiser</button>
+            </div>
+        </div>
+        
+        <!-- Sélection des comptes -->
+        <div class="row mt-4 pt-3 border-top">
+            <div class="col-12">
+                <label class="form-label fw-bold mb-2">Comptes à afficher :</label>
+                <div class="d-flex flex-wrap gap-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="select_all" onchange="toggleAllComptes(this)">
+                        <label class="form-check-label fw-bold" for="select_all">Tous les comptes</label>
+                    </div>
+                    {% for compte in comptes %}
+                    <div class="form-check">
+                        <input class="form-check-input compte-checkbox" type="checkbox" name="comptes" value="{{ compte.id }}" 
+                               id="compte_{{ compte.id }}" {% if compte.id|string in comptes_selectionnes %}checked{% endif %}>
+                        <label class="form-check-label" for="compte_{{ compte.id }}">{{ compte.nom_compte }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <!-- Affichage du graphique SVG -->
+    {% if svg_code %}
+        <div class="card p-3 mb-4 shadow-sm">
+            <div class="text-center overflow-auto">
+                {{ svg_code | safe }}
+            </div>
+        </div>
+    {% else %}
+        <div class="alert alert-info text-center">
+            Aucune donnée disponible pour la période et les comptes sélectionnés.
+        </div>
+    {% endif %}
+</div>
+
+<script>
+// Petit script utilitaire pour l'UX (afficher/masquer les champs de date)
+function toggleDateInputs() {
+    const periode = document.getElementById('periodeSelect').value;
+    const dateInputs = document.querySelectorAll('.date-inputs');
+    dateInputs.forEach(input => {
+        input.style.display = (periode === 'personnalisee') ? 'block' : 'none';
+    });
+}
+
+// Script pour cocher/décocher tous les comptes
+function toggleAllComptes(source) {
+    const checkboxes = document.querySelectorAll('.compte-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = source.checked;
+    });
+}
+</script>
+{% endblock %}

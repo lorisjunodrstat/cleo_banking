@@ -1236,6 +1236,89 @@ def banking_compte_evolution_echanges(compte_id):
                         couleur=couleur,
                         cumuler=cumuler)
 
+@bp.route('/banking/evolution', methods=['GET', 'POST'])
+@login_required
+def banking_evolution():
+    user_id = current_user.id
+    
+    # 1. Récupérer tous les comptes pour le sélecteur
+    comptes = g.models.compte_model.get_by_user_id(user_id)
+    
+    # 2. Paramètres de la requête
+    periode = request.args.get('periode', 'mois')
+    mode = request.args.get('mode', 'solde')  # 'solde', 'entrees', 'sorties'
+    comptes_selectionnes = request.args.getlist('comptes')
+    
+    # Si aucun compte sélectionné, on prend tous les comptes par défaut
+    if not comptes_selectionnes:
+        comptes_selectionnes = [str(c['id']) for c in comptes]
+    
+    compte_ids = [int(cid) for cid in comptes_selectionnes if cid.isdigit()]
+    
+    # 3. Calcul des dates selon la période
+    maintenant = datetime.now()
+    date_debut_str = request.args.get('date_debut')
+    date_fin_str = request.args.get('date_fin')
+    debut = None
+    fin = None
+    
+    if periode == 'personnalisee' and date_debut_str and date_fin_str:
+        try:
+            debut = datetime.strptime(date_debut_str, '%Y-%m-%d').date()
+            fin = datetime.strptime(date_fin_str, '%Y-%m-%d').date()
+        except ValueError:
+            flash('Dates personnalisées invalides', 'error')
+            debut = maintenant.replace(day=1).date()
+            fin = maintenant.date()
+    elif periode == 'annee':
+        debut = maintenant.replace(month=1, day=1).date()
+        fin = maintenant.replace(month=12, day=31).date()
+    elif periode == 'semaine':
+        debut = (maintenant - timedelta(days=maintenant.weekday())).date()
+        fin = (debut + timedelta(days=6)).date()
+    else:  # 'mois' par défaut
+        debut = maintenant.replace(day=1).date()
+        if maintenant.month == 12:
+            fin = date(maintenant.year + 1, 1, 1) - timedelta(days=1)
+        else:
+            fin = date(maintenant.year, maintenant.month + 1, 1) - timedelta(days=1)
+            
+    # 4. Récupérer les données d'évolution
+    evolution_data = g.models.transaction_financiere_model.get_evolution_multi_comptes(
+        user_id=user_id,
+        compte_ids=compte_ids,
+        date_debut=debut,
+        date_fin=fin,
+        mode=mode
+    )
+    
+    # 5. Générer le graphique SVG (Lignes pour les soldes, Barres pour les flux)
+    svg_code = None
+    if evolution_data.get('dates'):
+        if mode == 'solde':
+            svg_code = g.models.transaction_financiere_model.generer_graphique_echanges_temporel_lignes(evolution_data)
+        else:
+            svg_code = g.models.transaction_financiere_model.generer_graphique_echanges_temporel_barres(evolution_data)
+            
+    # 6. Contexte pour le template
+    context = {
+        'comptes': comptes,
+        'comptes_selectionnes': comptes_selectionnes,
+        'periode': periode,
+        'date_debut': debut.strftime('%Y-%m-%d'),
+        'date_fin': fin.strftime('%Y-%m-%d'),
+        'mode': mode,
+        'evolution_data': evolution_data,
+        'svg_code': svg_code,
+        'titre_mode': {
+            'solde': 'Évolution des soldes',
+            'entrees': 'Évolution des entrées (Recettes)',
+            'sorties': 'Évolution des sorties (Dépenses)'
+        }.get(mode, 'Évolution')
+    }
+    
+    return render_template('banking/evolution.html', **context)
+
 @bp.route("/compte/<int:compte_id>/set_periode_favorite", methods=["POST"])
 @login_required
 def create_periode_favorite(compte_id):

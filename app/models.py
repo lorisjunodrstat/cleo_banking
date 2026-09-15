@@ -2293,6 +2293,7 @@ class TransactionFinanciere:
         except Error as e:
             logger.error(f"Erreur récupération solde initial: {e}")
             return Decimal('0')
+
     def _get_solde_possible(self, compte_type: str, compte_id: int) -> Decimal:
         """Récupère le solde possible d'un compte"""
         logger.debug(f"Récupération du solde possible pour {compte_type} ID {compte_id}")
@@ -3235,6 +3236,7 @@ class TransactionFinanciere:
             return 'debit'
 
         return 'unknown'
+
     def _verifier_existence_compte_with_cursor(self, cursor, compte_type: str, compte_id: int) -> bool:
         """
         Vérifie simplement si un compte existe (sans vérifier l'appartenance à un utilisateur).
@@ -3258,6 +3260,7 @@ class TransactionFinanciere:
         except Exception as e:
             logger.error(f"Erreur lors de la vérification d'existence du compte: {e}")
             return False
+
     def _verifier_appartenance_compte_with_cursor(self, cursor, compte_type: str, compte_id: int, user_id: int) -> bool:
         """
         Vérifie si un compte appartient à un utilisateur donné.
@@ -4796,8 +4799,6 @@ class TransactionFinanciere:
             logger.error(f"Erreur récupération transactions sans écritures: {e}")
             return []
 
-
-
     def get_stats_transactions_comptables(self, user_id: int) -> Dict:
         """Retourne les statistiques des transactions par statut comptable"""
         try:
@@ -6010,6 +6011,116 @@ class TransactionFinanciere:
         except Exception as e:
             logger.error(f"Erreur mise à jour statut comptable: {e}")
             return False, f"Erreur: {str(e)}"
+        
+    def get_evolution_multi_comptes(self, user_id: int, compte_ids: list, 
+                                    date_debut: date, date_fin: date, 
+                                    mode: str = 'solde') -> dict:
+        """
+        Récupère l'évolution quotidienne (solde, entrées ou sorties) pour une liste de comptes.
+        :param mode: 'solde', 'entrees', ou 'sorties'
+        :return: Dictionnaire avec 'dates' et 'series' (compatible avec vos générateurs SVG)
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                # 1. Récupérer les comptes sélectionnés (ou tous si la liste est vide)
+                if not compte_ids:
+                    cursor.execute("SELECT id, nom_compte, solde_initial FROM comptes_principaux WHERE utilisateur_id = %s", (user_id,))
+                else:
+                    placeholders = ','.join(['%s'] * len(compte_ids))
+                    cursor.execute(
+                        f"SELECT id, nom_compte, solde_initial FROM comptes_principaux WHERE id IN ({placeholders}) AND utilisateur_id = %s", 
+                        tuple(compte_ids) + (user_id,)
+                    )
+                
+                comptes = cursor.fetchall()
+                if not comptes:
+                    return {'dates': [], 'series': {}}
+                
+                compte_map = {c['id']: {'nom': c['nom_compte'], 'solde_initial': Decimal(str(c['solde_initial'] or 0))} for c in comptes}
+                
+                # 2. Récupérer toutes les transactions de ces comptes dans la période
+                placeholders = ','.join(['%s'] * len(compte_map.keys()))
+                query = f"""
+                    SELECT compte_principal_id, date_transaction, montant, type_transaction
+                    FROM transactions
+                    WHERE compte_principal_id IN ({placeholders})
+                    AND date_transaction >= %s AND date_transaction <= %s
+                    ORDER BY date_transaction ASC
+                """
+                params = list(compte_map.keys()) + [date_debut, date_fin]
+                cursor.execute(query, params)
+                transactions = cursor.fetchall()
+                
+                # 3. Initialiser les structures de données
+                dates_list = []
+                current_date = date_debut
+                while current_date <= date_fin:
+                    dates_list.append(current_date)
+                    current_date += timedelta(days=1)
+                
+                series_data = {c['nom']: [0.0] * len(dates_list) for c in comptes}
+                series_data['Total'] = [0.0] * len(dates_list)
+                
+                # 4. Déterminer le solde de départ pour chaque compte (si mode 'solde')
+                soldes_courants = {}
+                for cid, info in compte_map.items():
+                    if mode == 'solde':
+                        cursor.execute("""
+                            SELECT solde_apres FROM transactions
+                            WHERE compte_principal_id = %s AND date_transaction < %s
+                            ORDER BY date_transaction DESC, id DESC LIMIT 1
+                        """, (cid, date_debut))
+                        res = cursor.fetchone()
+                        if res and res['solde_apres'] is not None:
+                            soldes_courants[cid] = Decimal(str(res['solde_apres']))
+                        else:
+                            soldes_courants[cid] = info['solde_initial']
+                    else:
+                        soldes_courants[cid] = Decimal('0')
+                
+                # 5. Agréger les transactions par jour et par compte
+                tx_par_date = defaultdict(lambda: defaultdict(lambda: {'entrees': Decimal('0'), 'sorties': Decimal('0')}))
+                
+                for tx in transactions:
+                    dt = tx['date_transaction'].date()
+                    cid = tx['compte_principal_id']
+                    montant = Decimal(str(tx['montant']))
+                    type_tx = tx['type_transaction']
+                    
+                    if type_tx in ['depot', 'transfert_entrant', 'recredit_annulation', 'transfert_sous_vers_compte']:
+                        tx_par_date[dt][cid]['entrees'] += montant
+                    elif type_tx in ['retrait', 'transfert_sortant', 'transfert_externe', 'transfert_compte_vers_sous']:
+                        tx_par_date[dt][cid]['sorties'] += montant
+                
+                # 6. Construire les séries de données jour par jour
+                for i, current_dt in enumerate(dates_list):
+                    daily_total = Decimal('0')
+                    for cid, info in compte_map.items():
+                        nom = info['nom']
+                        tx_info = tx_par_date[current_dt][cid]
+                        
+                        if mode == 'solde':
+                            soldes_courants[cid] += tx_info['entrees'] - tx_info['sorties']
+                            val = soldes_courants[cid]
+                        elif mode == 'entrees':
+                            val = tx_info['entrees']
+                        elif mode == 'sorties':
+                            val = tx_info['sorties']
+                        else:
+                            val = Decimal('0')
+                            
+                        series_data[nom][i] = float(val)
+                        daily_total += val
+                    
+                    series_data['Total'][i] = float(daily_total)
+                    
+                return {
+                    'dates': [d.strftime('%Y-%m-%d') for d in dates_list],
+                    'series': series_data
+                }
+        except Exception as e:
+            logger.error(f"Erreur dans get_evolution_multi_comptes: {e}")
+            return {'dates': [], 'series': {}}
 
 class CategorieTransaction:
     """Classe pour gérer les catégories de transactions"""
