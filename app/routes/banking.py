@@ -1241,21 +1241,25 @@ def banking_compte_evolution_echanges(compte_id):
 def banking_evolution():
     user_id = current_user.id
     
-    # 1. Récupérer tous les comptes pour le sélecteur
+    # 1. Récupérer tous les comptes
     comptes = g.models.compte_model.get_by_user_id(user_id)
     
-    # 2. Paramètres de la requête
+    # 2. Paramètres
     periode = request.args.get('periode', 'mois')
-    mode = request.args.get('mode', 'solde')  # 'solde', 'entrees', 'sorties'
+    mode = request.args.get('mode', 'solde')
+    afficher_total = request.args.get('afficher_total', 'oui') == 'oui'
     comptes_selectionnes = request.args.getlist('comptes')
     
-    # Si aucun compte sélectionné, on prend tous les comptes par défaut
-    if not comptes_selectionnes:
+    # Accepter soit 'compte_id' soit 'comptes'
+    compte_id_unique = request.args.get('compte_id', type=int)
+    if compte_id_unique:
+        comptes_selectionnes = [str(compte_id_unique)]
+    elif not comptes_selectionnes:
         comptes_selectionnes = [str(c['id']) for c in comptes]
     
     compte_ids = [int(cid) for cid in comptes_selectionnes if cid.isdigit()]
     
-    # 3. Calcul des dates selon la période
+    # 3. Calcul des dates
     maintenant = datetime.now()
     date_debut_str = request.args.get('date_debut')
     date_fin_str = request.args.get('date_fin')
@@ -1276,42 +1280,33 @@ def banking_evolution():
     elif periode == 'semaine':
         debut = (maintenant - timedelta(days=maintenant.weekday())).date()
         fin = (debut + timedelta(days=6)).date()
-    else:  # 'mois' par défaut
+    else:
         debut = maintenant.replace(day=1).date()
         if maintenant.month == 12:
             fin = date(maintenant.year + 1, 1, 1) - timedelta(days=1)
         else:
             fin = date(maintenant.year, maintenant.month + 1, 1) - timedelta(days=1)
-            
-    # 4. Récupérer les données d'évolution
-
-    logger.info(f"🚀 Appel get_evolution_multi_comptes avec:")
-    logger.info(f"   - user_id: {user_id}")
-    logger.info(f"   - compte_ids: {compte_ids}")
-    logger.info(f"   - date_debut: {debut}")
-    logger.info(f"   - date_fin: {fin}")
-    logger.info(f"   - mode: {mode}")
     
+    # 4. Récupérer les données
     evolution_data = g.models.transaction_financiere_model.get_evolution_multi_comptes(
         user_id=user_id,
         compte_ids=compte_ids,
         date_debut=debut,
         date_fin=fin,
-        mode=mode
+        mode=mode,
+        inclure_total=afficher_total
     )
     
-    logger.info(f"📊 Résultat: {len(evolution_data.get('dates', []))} dates, "
-               f"{len(evolution_data.get('series', {}))} séries")
-    
-    # 5. Générer le graphique SVG (Lignes pour les soldes, Barres pour les flux)
+    # 5. Générer le graphique avec la nouvelle méthode
     svg_code = None
     if evolution_data.get('dates'):
-        if mode == 'solde':
-            svg_code = g.models.transaction_financiere_model.generer_graphique_echanges_temporel_lignes(evolution_data)
-        else:
-            svg_code = g.models.transaction_financiere_model.generer_graphique_echanges_temporel_barres(evolution_data)
-            
-    # 6. Contexte pour le template
+        svg_code = g.models.transaction_financiere_model.generer_graphique_evolution_multi_comptes(
+            evolution_data,
+            mode=mode,
+            afficher_total=afficher_total
+        )
+    
+    # 6. Contexte
     context = {
         'comptes': comptes,
         'comptes_selectionnes': comptes_selectionnes,
@@ -1319,6 +1314,7 @@ def banking_evolution():
         'date_debut': debut.strftime('%Y-%m-%d'),
         'date_fin': fin.strftime('%Y-%m-%d'),
         'mode': mode,
+        'afficher_total': afficher_total,
         'evolution_data': evolution_data,
         'svg_code': svg_code,
         'titre_mode': {

@@ -6014,18 +6014,19 @@ class TransactionFinanciere:
         
     def get_evolution_multi_comptes(self, user_id: int, compte_ids: list, 
                                 date_debut: date, date_fin: date, 
-                                mode: str = 'solde') -> dict:
+                                mode: str = 'solde', inclure_total: bool = True) -> dict:
         """
         Récupère l'évolution quotidienne (solde, entrées ou sorties) pour une liste de comptes.
         :param mode: 'solde', 'entrees', ou 'sorties'
-        :return: Dictionnaire avec 'dates' et 'series' (compatible avec vos générateurs SVG)
+        :param inclure_total: Si True, ajoute une série 'Total' qui cumule tous les comptes
+        :return: Dictionnaire avec 'dates', 'series', et 'donnees_brutes' pour le tableau
         """
         try:
             logger.info(f"🔍 get_evolution_multi_comptes: user={user_id}, comptes={compte_ids}, "
-                    f"debut={date_debut}, fin={date_fin}, mode={mode}")
+                    f"debut={date_debut}, fin={date_fin}, mode={mode}, total={inclure_total}")
             
             with self.db.get_cursor() as cursor:
-                # 1. Récupérer les comptes sélectionnés (ou tous si la liste est vide)
+                # 1. Récupérer les comptes sélectionnés
                 if not compte_ids:
                     cursor.execute("SELECT id, nom_compte, solde_initial FROM comptes_principaux WHERE utilisateur_id = %s", (user_id,))
                 else:
@@ -6040,15 +6041,14 @@ class TransactionFinanciere:
                 
                 if not comptes:
                     logger.warning("⚠️ Aucun compte trouvé")
-                    return {'dates': [], 'series': {}}
+                    return {'dates': [], 'series': {}, 'donnees_brutes': {}}
                 
-                # 🔧 CORRECTION : Utiliser 'nom_compte' depuis la BDD et créer 'nom' dans compte_map
                 compte_map = {c['id']: {'nom': c['nom_compte'], 'solde_initial': Decimal(str(c['solde_initial'] or 0))} for c in comptes}
                 
-                # 2. 🔧 CORRECTION : Convertir date_fin en datetime 23:59:59 pour inclure toute la journée
+                # 2. Convertir date_fin en datetime 23:59:59
                 date_fin_datetime = datetime.combine(date_fin, datetime.max.time())
                 
-                # 3. Récupérer toutes les transactions de ces comptes dans la période
+                # 3. Récupérer toutes les transactions
                 placeholders = ','.join(['%s'] * len(compte_map.keys()))
                 query = f"""
                     SELECT compte_principal_id, date_transaction, montant, type_transaction
@@ -6058,24 +6058,25 @@ class TransactionFinanciere:
                     ORDER BY date_transaction ASC
                 """
                 params = list(compte_map.keys()) + [date_debut, date_fin_datetime]
-                
-                logger.info(f"🔎 Exécution requête transactions avec params: {params}")
                 cursor.execute(query, params)
                 transactions = cursor.fetchall()
                 logger.info(f"📝 Transactions trouvées: {len(transactions)}")
                 
-                # 4. Initialiser les structures de données
+                # 4. Initialiser les structures
                 dates_list = []
                 current_date = date_debut
                 while current_date <= date_fin:
                     dates_list.append(current_date)
                     current_date += timedelta(days=1)
                 
-                # 🔧 CORRECTION : Utiliser compte_map au lieu de comptes
                 series_data = {info['nom']: [0.0] * len(dates_list) for info in compte_map.values()}
-                series_data['Total'] = [0.0] * len(dates_list)
+                if inclure_total:
+                    series_data['Total'] = [0.0] * len(dates_list)
                 
-                # 5. Déterminer le solde de départ pour chaque compte (si mode 'solde')
+                # 5. Données brutes pour le tableau (par compte et par jour)
+                donnees_brutes = {info['nom']: {} for info in compte_map.values()}
+                
+                # 6. Solde de départ pour chaque compte
                 soldes_courants = {}
                 for cid, info in compte_map.items():
                     if mode == 'solde':
@@ -6087,14 +6088,12 @@ class TransactionFinanciere:
                         res = cursor.fetchone()
                         if res and res['solde_apres'] is not None:
                             soldes_courants[cid] = Decimal(str(res['solde_apres']))
-                            logger.info(f"💰 Solde initial pour compte {cid}: {soldes_courants[cid]}")
                         else:
                             soldes_courants[cid] = info['solde_initial']
-                            logger.info(f"💰 Solde initial (défaut) pour compte {cid}: {soldes_courants[cid]}")
                     else:
                         soldes_courants[cid] = Decimal('0')
                 
-                # 6. Agréger les transactions par jour et par compte
+                # 7. Agréger les transactions par jour
                 tx_par_date = defaultdict(lambda: defaultdict(lambda: {'entrees': Decimal('0'), 'sorties': Decimal('0')}))
                 
                 for tx in transactions:
@@ -6108,11 +6107,11 @@ class TransactionFinanciere:
                     elif type_tx in ['retrait', 'transfert_sortant', 'transfert_externe', 'transfert_compte_vers_sous']:
                         tx_par_date[dt][cid]['sorties'] += montant
                 
-                logger.info(f"📅 Jours avec transactions: {len(tx_par_date)}")
-                
-                # 7. Construire les séries de données jour par jour
+                # 8. Construire les séries jour par jour
                 for i, current_dt in enumerate(dates_list):
                     daily_total = Decimal('0')
+                    date_str = current_dt.strftime('%Y-%m-%d')
+                    
                     for cid, info in compte_map.items():
                         nom = info['nom']
                         tx_info = tx_par_date[current_dt][cid]
@@ -6128,19 +6127,197 @@ class TransactionFinanciere:
                             val = Decimal('0')
                             
                         series_data[nom][i] = float(val)
+                        donnees_brutes[nom][date_str] = {
+                            'entrees': float(tx_info['entrees']),
+                            'sorties': float(tx_info['sorties']),
+                            'net': float(tx_info['entrees'] - tx_info['sorties']),
+                            'valeur': float(val)
+                        }
                         daily_total += val
                     
-                    series_data['Total'][i] = float(daily_total)
+                    if inclure_total:
+                        series_data['Total'][i] = float(daily_total)
                 
                 logger.info(f"✅ Données générées: {len(dates_list)} jours, {len(series_data)} séries")
                     
                 return {
                     'dates': [d.strftime('%Y-%m-%d') for d in dates_list],
-                    'series': series_data
+                    'series': series_data,
+                    'donnees_brutes': donnees_brutes
                 }
         except Exception as e:
             logger.error(f"❌ Erreur dans get_evolution_multi_comptes: {e}", exc_info=True)
-            return {'dates': [], 'series': {}}
+            return {'dates': [], 'series': {}, 'donnees_brutes': {}}
+
+    def generer_graphique_evolution_multi_comptes(self, donnees_structurees: Dict, 
+                                                mode: str = 'solde',
+                                                couleurs: List[str] = None,
+                                                afficher_total: bool = True) -> str:
+        """
+        Génère un graphique SVG avec gestion correcte des valeurs négatives.
+        Axe central à 0, barres/lignes positives vers le haut, négatives vers le bas.
+        """
+        if not donnees_structurees or not donnees_structurees.get('series') or not donnees_structurees.get('dates'):
+            return "<svg width='800' height='400'><text x='10' y='20'>Aucune donnée disponible.</text></svg>"
+        
+        dates = donnees_structurees['dates']
+        series = donnees_structurees['series']
+        
+        # Filtrer la série Total si demandé
+        if not afficher_total and 'Total' in series:
+            series = {k: v for k, v in series.items() if k != 'Total'}
+        
+        n_series = len(series)
+        if n_series == 0:
+            return "<svg width='800' height='400'><text x='10' y='20'>Aucune série à afficher.</text></svg>"
+        
+        # Couleurs
+        default_colors = ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac"]
+        if couleurs is None or len(couleurs) < n_series:
+            couleurs = (couleurs or []) + default_colors[len(couleurs or []):]
+        couleurs = couleurs[:n_series]
+        
+        # Paramètres du graphique
+        largeur_svg = 900
+        hauteur_svg = 500
+        marge_gauche = 80
+        marge_droite = 150  # Plus large pour la légende
+        marge_haut = 50
+        marge_bas = 70
+        largeur_graph = largeur_svg - marge_gauche - marge_droite
+        hauteur_graph = hauteur_svg - marge_haut - marge_bas
+        
+        # Trouver min et max pour l'échelle Y
+        all_values = []
+        for vals in series.values():
+            all_values.extend(vals)
+        
+        if not all_values:
+            return "<svg width='800' height='400'><text x='10' y='20'>Aucune donnée disponible.</text></svg>"
+        
+        max_val = max(all_values)
+        min_val = min(all_values)
+        
+        # S'assurer que 0 est inclus dans l'échelle
+        if max_val < 0:
+            max_val = 0
+        if min_val > 0:
+            min_val = 0
+        
+        # Ajouter un peu de marge
+        range_val = max_val - min_val
+        if range_val == 0:
+            range_val = 1
+            max_val = 1
+        
+        y_padding = range_val * 0.1
+        max_val += y_padding
+        min_val -= y_padding
+        range_val = max_val - min_val
+        
+        # Position de l'axe 0
+        y_zero = marge_haut + hauteur_graph - ((0 - min_val) / range_val) * hauteur_graph
+        
+        svg = f'<svg width="{largeur_svg}" height="{hauteur_svg}" xmlns="http://www.w3.org/2000/svg">\n'
+        svg += '<style>text { font-family: Arial, sans-serif; }</style>\n'
+        
+        # === AXES PRINCIPAUX ===
+        svg += f'<line x1="{marge_gauche}" y1="{marge_haut}" x2="{marge_gauche}" y2="{marge_haut + hauteur_graph}" stroke="black" stroke-width="2" />\n'
+        svg += f'<line x1="{marge_gauche}" y1="{marge_haut + hauteur_graph}" x2="{largeur_svg - marge_droite}" y2="{marge_haut + hauteur_graph}" stroke="black" stroke-width="2" />\n'
+        
+        # === LIGNE DE ZÉRO (plus épaisse si dans le graphique) ===
+        if min_val < 0 < max_val:
+            svg += f'<line x1="{marge_gauche}" y1="{y_zero}" x2="{largeur_svg - marge_droite}" y2="{y_zero}" stroke="#666" stroke-width="1.5" stroke-dasharray="4,2" />\n'
+        
+        # === QUADRILLAGE ET GRADUATIONS (Y) ===
+        pas = self._trouver_pas_gravitation(max(abs(max_val), abs(min_val)))
+        
+        # Graduations positives
+        current_val = pas
+        while current_val <= max_val:
+            y_pos = marge_haut + hauteur_graph - ((current_val - min_val) / range_val) * hauteur_graph
+            if y_pos >= marge_haut:
+                svg += f'<line x1="{marge_gauche}" y1="{y_pos}" x2="{largeur_svg - marge_droite}" y2="{y_pos}" stroke="#ddd" stroke-width="0.5" />\n'
+                svg += f'<text x="{marge_gauche - 10}" y="{y_pos + 4}" text-anchor="end" font-size="10">{current_val:.0f}</text>\n'
+            current_val += pas
+        
+        # Graduations négatives
+        current_val = -pas
+        while current_val >= min_val:
+            y_pos = marge_haut + hauteur_graph - ((current_val - min_val) / range_val) * hauteur_graph
+            if y_pos <= marge_haut + hauteur_graph:
+                svg += f'<line x1="{marge_gauche}" y1="{y_pos}" x2="{largeur_svg - marge_droite}" y2="{y_pos}" stroke="#ddd" stroke-width="0.5" />\n'
+                svg += f'<text x="{marge_gauche - 10}" y="{y_pos + 4}" text-anchor="end" font-size="10">{current_val:.0f}</text>\n'
+            current_val -= pas
+        
+        # Label 0
+        svg += f'<text x="{marge_gauche - 10}" y="{y_zero + 4}" text-anchor="end" font-size="10" font-weight="bold">0</text>\n'
+        
+        # === TRACER LES SÉRIES ===
+        if mode == 'solde':
+            # Mode LIGNES pour les soldes
+            for idx, (nom_serie, valeurs) in enumerate(series.items()):
+                couleur = couleurs[idx]
+                points = []
+                
+                for i, montant in enumerate(valeurs):
+                    x = marge_gauche + (i / (len(dates) - 1 if len(dates) > 1 else 1)) * largeur_graph
+                    y = marge_haut + hauteur_graph - ((montant - min_val) / range_val) * hauteur_graph
+                    points.append(f"{x},{y}")
+                    
+                    # Points
+                    svg += f'<circle cx="{x}" cy="{y}" r="2" fill="{couleur}" />\n'
+                
+                if len(points) > 1:
+                    svg += f'<polyline points="{" ".join(points)}" fill="none" stroke="{couleur}" stroke-width="2" />\n'
+        else:
+            # Mode BARRES pour entrées/sorties
+            n_dates = len(dates)
+            if n_dates <= 1:
+                largeur_groupe = largeur_graph * 0.5
+            else:
+                largeur_groupe = largeur_graph / n_dates * 0.8
+            
+            largeur_barre = largeur_groupe / n_series if n_series > 0 else largeur_groupe
+            
+            for i, dt in enumerate(dates):
+                x_groupe = marge_gauche + (i / (n_dates - 1 if n_dates > 1 else 1)) * largeur_graph - largeur_groupe / 2
+                
+                for j, (nom_serie, valeurs) in enumerate(series.items()):
+                    montant = valeurs[i] if i < len(valeurs) else 0
+                    couleur = couleurs[j]
+                    
+                    # Calcul de la hauteur et position
+                    hauteur = abs(montant) / range_val * hauteur_graph
+                    x = x_groupe + j * largeur_barre
+                    
+                    if montant >= 0:
+                        y = y_zero - hauteur
+                    else:
+                        y = y_zero
+                    
+                    svg += f'<rect x="{x}" y="{y}" width="{largeur_barre * 0.9}" height="{hauteur}" fill="{couleur}" opacity="0.8" />\n'
+        
+        # === LABELS DES DATES (X) ===
+        pas_label = max(1, len(dates) // 15)
+        for i, dt in enumerate(dates):
+            if i % pas_label == 0:
+                x = marge_gauche + (i / (len(dates) - 1 if len(dates) > 1 else 1)) * largeur_graph
+                dt_obj = datetime.strptime(dt, '%Y-%m-%d')
+                dt_str = dt_obj.strftime("%d.%m")
+                svg += f'<text x="{x}" y="{marge_haut + hauteur_graph + 20}" text-anchor="middle" font-size="9" transform="rotate(-45, {x}, {marge_haut + hauteur_graph + 20})">{dt_str}</text>\n'
+        
+        # === LÉGENDE ===
+        y_leg_start = marge_haut
+        for idx, nom_serie in enumerate(series.keys()):
+            y_leg = y_leg_start + idx * 20
+            svg += f'<rect x="{largeur_svg - marge_droite + 10}" y="{y_leg}" width="15" height="10" fill="{couleurs[idx]}" />\n'
+            nom_affiche = nom_serie[:20] + "..." if len(nom_serie) > 20 else nom_serie
+            svg += f'<text x="{largeur_svg - marge_droite + 30}" y="{y_leg + 8}" font-size="11">{nom_affiche}</text>\n'
+        
+        svg += '</svg>'
+        return svg
+
 class CategorieTransaction:
     """Classe pour gérer les catégories de transactions"""
 
