@@ -13928,6 +13928,10 @@ def pos_compta_review():
     pdv_id = request.args.get('pdv_id', type=int)
     mode = request.args.get('mode', 'jour')
     
+    # ✅ NOUVEAU : Récupération des filtres de date
+    date_from = request.args.get('date_from', type=str)
+    date_to = request.args.get('date_to', type=str)
+    
     if request.method == 'POST':
         selection = request.json.get('selection', [])
         succes, message = g.models.pos_comptabilisation_model.comptabiliser_selection(user_id, selection)
@@ -13936,11 +13940,16 @@ def pos_compta_review():
         else:
             return jsonify({'success': False, 'message': message}), 400
 
-    # GET : Afficher la page de revue
-    a_comptabiliser = g.models.pos_comptabilisation_model.get_a_comptabiliser(user_id, pdv_id, mode=mode)
+    # GET : Afficher la page de revue avec les filtres appliqués
+    a_comptabiliser = g.models.pos_comptabilisation_model.get_a_comptabiliser(
+        user_id, 
+        pdv_id, 
+        date_from=date_from,  # ✅ Passé au modèle
+        date_to=date_to,      # ✅ Passé au modèle
+        mode=mode
+    )
 
     # 🔧 Préparer les données JSON-sérialisables pour le template
-    # (évite l'erreur "Object of type Decimal/date/Undefined is not JSON serializable")
     import json
     from decimal import Decimal
     from datetime import date as _date, datetime as _datetime
@@ -13982,6 +13991,9 @@ def pos_compta_review():
     return render_template('pos/compta_review.html', 
                            a_comptabiliser=a_comptabiliser, 
                            mode=mode,
+                           pdv_id=pdv_id,             # ✅ Ajouté pour le lien de réinitialisation
+                           date_from=date_from,       # ✅ Passé au template
+                           date_to=date_to,           # ✅ Passé au template
                            modes_paiement=modes_paiement)
 
 @bp.route('/pos/compta-settings', methods=['GET', 'POST'])

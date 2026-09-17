@@ -567,7 +567,7 @@ class DatabaseManager:
                         description TEXT,
                         id_contact INT NULL,
                         reference VARCHAR(100),
-                        groupe_ecriture_id VARCHAR(50) NULL,
+                        groupe_ecriture_id VARCHAR(255) NULL,
                         type_ecriture ENUM('depense', 'recette') NOT NULL,
                         tva_taux DECIMAL(5,2) DEFAULT 0.00,
                         tva_montant DECIMAL(15,2) DEFAULT 0.00,

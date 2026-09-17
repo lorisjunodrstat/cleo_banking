@@ -10,6 +10,41 @@
 {% endblock %}
 
 {% block content %}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-light">
+        <h6 class="mb-0"><i class="bi bi-funnel me-2"></i>Filtres de recherche</h6>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('pos.pos_compta_review') }}" class="row g-3 align-items-end">
+            <input type="hidden" name="mode" value="{{ mode }}">
+            {% if pdv_id %}
+            <input type="hidden" name="pdv_id" value="{{ pdv_id }}">
+            {% endif %}
+            
+            <div class="col-md-3">
+                <label for="date_from" class="form-label">Date de début</label>
+                <input type="date" class="form-control" id="date_from" name="date_from" value="{{ date_from or '' }}">
+            </div>
+            
+            <div class="col-md-3">
+                <label for="date_to" class="form-label">Date de fin</label>
+                <input type="date" class="form-control" id="date_to" name="date_to" value="{{ date_to or '' }}">
+            </div>
+            
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="bi bi-search me-1"></i> Filtrer
+                </button>
+            </div>
+            
+            <div class="col-md-3">
+                <a href="{{ url_for('pos.pos_compta_review', mode=mode, pdv_id=pdv_id) }}" class="btn btn-outline-secondary w-100">
+                    <i class="bi bi-x-circle me-1"></i> Réinitialiser
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
 <div class="card shadow-sm">
     <div class="card-body">
         <form id="formCompta">
