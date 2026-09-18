@@ -20958,8 +20958,8 @@ class POSComptabilisation:
 
                     is_credit = self.modele_categorie.is_compte_passif(id_compte_vente, cursor=cursor)
 
-                    # ============================================================
-                    # ÉTAPE 2 : ÉCRITURES COMPTABLES
+                                        # ============================================================
+                    # ÉTAPE 2 : ÉCRITURES COMPTABLES (AVEC VÉRIFICATION D'IDEMPOTENCE)
                     # ============================================================
 
                     # A. TRÉSORERIE + FRAIS (une seule fois par (date, mode))
@@ -20974,45 +20974,29 @@ class POSComptabilisation:
                             montant_frais = round(montant_frais, 2)
 
                         montant_tresorerie_net = round(total_mode_ttc - montant_frais, 2)
+                        
+                        ref_tresorerie = f"JOURNAL-{date_ecriture}-TRESO-{mode_id}"
 
-                        data_tresorerie = {
-                            'date_ecriture': date_ecriture,
-                            'compte_bancaire_id': id_compte_bancaire_reel,
-                            'categorie_id': id_compte_tresorerie,
-                            'montant': montant_tresorerie_net,
-                            'montant_htva': montant_tresorerie_net,
-                            'devise': 'CHF',
-                            'description': f"Encaissement POS {mode_nom}",
-                            'reference': f"JOURNAL-{date_ecriture}-TRESO-{mode_id}",
-                            'groupe_ecriture_id': groupe_id,
-                            'type_ecriture': 'recette',
-                            'tva_taux': 0,
-                            'tva_montant': 0,
-                            'utilisateur_id': user_id,
-                            'statut': 'validée',
-                            'type_ecriture_comptable': 'principale'
-                        }
-
-                        if not self.modele_ecriture.create(self.modele_categorie, data_tresorerie, cursor=cursor):
-                            raise RuntimeError(f"Échec création écriture Trésorerie (item {idx})")
-
-                        nb_ecritures += 1
-                        logger.info(f"✅ Trésorerie : {montant_tresorerie_net} CHF net "
-                                    f"(total mode: {total_mode_ttc}, frais: {montant_frais})")
-
-                        # B. Frais de service
-                        if montant_frais > 0.01:
-                            data_frais = {
+                        # 🛡️ VÉRIFICATION D'IDEMPOTENCE : Cette écriture de trésorerie existe-t-elle déjà ?
+                        cursor.execute("""
+                            SELECT id FROM ecritures_comptables 
+                            WHERE reference = %s AND utilisateur_id = %s AND statut = 'validée'
+                        """, (ref_tresorerie, user_id))
+                        
+                        if cursor.fetchone():
+                            logger.warning(f"⚠️ Écriture Trésorerie {ref_tresorerie} DÉJÀ EXISTANTE. Ignorée (Idempotence).")
+                        else:
+                            data_tresorerie = {
                                 'date_ecriture': date_ecriture,
                                 'compte_bancaire_id': id_compte_bancaire_reel,
-                                'categorie_id': item['compte_frais_service_id'],
-                                'montant': montant_frais,
-                                'montant_htva': montant_frais,
+                                'categorie_id': id_compte_tresorerie,
+                                'montant': montant_tresorerie_net,
+                                'montant_htva': montant_tresorerie_net,
                                 'devise': 'CHF',
-                                'description': f"Frais de service - {mode_nom}",
-                                'reference': f"JOURNAL-{date_ecriture}-FRAIS-{mode_id}",
+                                'description': f"Encaissement POS {mode_nom}",
+                                'reference': ref_tresorerie,
                                 'groupe_ecriture_id': groupe_id,
-                                'type_ecriture': 'depense',
+                                'type_ecriture': 'recette',
                                 'tva_taux': 0,
                                 'tva_montant': 0,
                                 'utilisateur_id': user_id,
@@ -21020,39 +21004,84 @@ class POSComptabilisation:
                                 'type_ecriture_comptable': 'principale'
                             }
 
-                            if not self.modele_ecriture.create(self.modele_categorie, data_frais, cursor=cursor):
-                                raise RuntimeError(f"Échec création écriture Frais (item {idx})")
+                            if not self.modele_ecriture.create(self.modele_categorie, data_tresorerie, cursor=cursor):
+                                raise RuntimeError(f"Échec création écriture Trésorerie (item {idx})")
 
                             nb_ecritures += 1
-                            logger.info(f"✅ Frais : {montant_frais} CHF")
+                            logger.info(f"✅ Trésorerie : {montant_tresorerie_net} CHF net")
+
+                        # B. Frais de service (avec idempotence)
+                        if montant_frais > 0.01:
+                            ref_frais = f"JOURNAL-{date_ecriture}-FRAIS-{mode_id}"
+                            
+                            cursor.execute("""
+                                SELECT id FROM ecritures_comptables 
+                                WHERE reference = %s AND utilisateur_id = %s AND statut = 'validée'
+                            """, (ref_frais, user_id))
+                            
+                            if cursor.fetchone():
+                                logger.warning(f"⚠️ Écriture Frais {ref_frais} DÉJÀ EXISTANTE. Ignorée.")
+                            else:
+                                data_frais = {
+                                    'date_ecriture': date_ecriture,
+                                    'compte_bancaire_id': id_compte_bancaire_reel,
+                                    'categorie_id': item['compte_frais_service_id'],
+                                    'montant': montant_frais,
+                                    'montant_htva': montant_frais,
+                                    'devise': 'CHF',
+                                    'description': f"Frais de service - {mode_nom}",
+                                    'reference': ref_frais,
+                                    'groupe_ecriture_id': groupe_id,
+                                    'type_ecriture': 'depense',
+                                    'tva_taux': 0,
+                                    'tva_montant': 0,
+                                    'utilisateur_id': user_id,
+                                    'statut': 'validée',
+                                    'type_ecriture_comptable': 'principale'
+                                }
+
+                                if not self.modele_ecriture.create(self.modele_categorie, data_frais, cursor=cursor):
+                                    raise RuntimeError(f"Échec création écriture Frais (item {idx})")
+
+                                nb_ecritures += 1
+                                logger.info(f"✅ Frais : {montant_frais} CHF")
 
                         processed_modes.add(unique_mode_key)
 
-                    # C. VENTE / PASSIF (une par type de taxe)
-                    data_vente = {
-                        'date_ecriture': date_ecriture,
-                        'compte_bancaire_id': id_compte_bancaire_reel,
-                        'categorie_id': id_compte_vente,
-                        'montant': total_ht,
-                        'montant_htva': total_ht,
-                        'devise': 'CHF',
-                        'description': f"Ventes POS {item.get('type_taxe_nom')} - {mode_nom}",
-                        'reference': f"JOURNAL-{date_ecriture}-VENTE-{item.get('type_taxe_id')}",
-                        'groupe_ecriture_id': groupe_id,
-                        'type_ecriture': 'recette',
-                        'tva_taux': round((total_tva / total_ht * 100), 2) if total_ht > 0 else 0,
-                        'tva_montant': total_tva,
-                        'utilisateur_id': user_id,
-                        'statut': 'validée',
-                        'type_ecriture_comptable': 'principale'
-                    }
+                    # C. VENTE / PASSIF (avec idempotence)
+                    ref_vente = f"JOURNAL-{date_ecriture}-VENTE-{item.get('type_taxe_id')}"
+                    
+                    cursor.execute("""
+                        SELECT id FROM ecritures_comptables 
+                        WHERE reference = %s AND utilisateur_id = %s AND statut = 'validée'
+                    """, (ref_vente, user_id))
+                    
+                    if cursor.fetchone():
+                        logger.warning(f"⚠️ Écriture Vente {ref_vente} DÉJÀ EXISTANTE. Ignorée.")
+                    else:
+                        data_vente = {
+                            'date_ecriture': date_ecriture,
+                            'compte_bancaire_id': id_compte_bancaire_reel,
+                            'categorie_id': id_compte_vente,
+                            'montant': total_ht,
+                            'montant_htva': total_ht,
+                            'devise': 'CHF',
+                            'description': f"Ventes POS {item.get('type_taxe_nom')} - {mode_nom}",
+                            'reference': ref_vente,
+                            'groupe_ecriture_id': groupe_id,
+                            'type_ecriture': 'recette',
+                            'tva_taux': round((total_tva / total_ht * 100), 2) if total_ht > 0 else 0,
+                            'tva_montant': total_tva,
+                            'utilisateur_id': user_id,
+                            'statut': 'validée',
+                            'type_ecriture_comptable': 'principale'
+                        }
 
-                    if not self.modele_ecriture.create(self.modele_categorie, data_vente, cursor=cursor):
-                        raise RuntimeError(f"Échec création écriture Vente (item {idx})")
+                        if not self.modele_ecriture.create(self.modele_categorie, data_vente, cursor=cursor):
+                            raise RuntimeError(f"Échec création écriture Vente (item {idx})")
 
-                    nb_ecritures += 1
-                    logger.info(f"✅ Vente : Catégorie {id_compte_vente}")
-
+                        nb_ecritures += 1
+                        logger.info(f"✅ Vente : Catégorie {id_compte_vente}")
                     # ============================================================
                     # ÉTAPE 3 : TRANSACTIONS BANCAIRES
                     # ============================================================
