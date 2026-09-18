@@ -7875,12 +7875,15 @@ class EcritureComptable:
         else:
             return montant_principal * (taux / 100)
 
-    def _get_secondary_type(self, type_principal, type_complement):
-        if type_complement in ('recette', 'depense'):
-            return type_complement
+    def _get_secondary_type(self, type_principal: str, type_complement: str) -> str:
         if type_complement == 'tva':
-            return 'recette' if type_principal == 'depense' else 'depense'
-        return type_principal
+            # La TVA suit le sens comptable de l'opération principale :
+            # - Vente ('recette') -> Crédit du Produit + Crédit du Passif (TVA due)
+            # - Achat ('depense') -> Débit de la Charge + Débit de l'Actif (TVA déductible)
+            return type_principal
+        else:
+            # Pour les autres compléments, on garde la même logique par défaut
+            return type_principal
 
     def _create_secondary_ecriture(self, cursor, ecriture_principale_id: int, data: Dict, comp_cat: Dict, montant_secondaire: float):
         """Crée une écriture secondaire individuelle (TVA, taxes, etc.)."""
@@ -11287,7 +11290,7 @@ class Rapport:
                         e.tva_taux,
                         COUNT(DISTINCT e.id) AS nb_operations,
                         SUM(e.montant_htva) AS base_ht,
-                        SUM(e.montant) AS tva_collectee,
+                        SUM(e.tva_montant) AS tva_collectee,
                         SUM(e.montant) AS total_ttc
                     FROM ecritures_comptables e
                     JOIN categories_comptables c ON e.categorie_id = c.id
@@ -11307,7 +11310,7 @@ class Rapport:
                         e.tva_taux,
                         COUNT(DISTINCT e.id) AS nb_operations,
                         SUM(e.montant_htva) AS base_ht,
-                        SUM(e.montant) AS tva_deductible,
+                        SUM(e.tva_montantz) AS tva_deductible,
                         SUM(e.montant) AS total_ttc
                     FROM ecritures_comptables e
                     JOIN categories_comptables c ON e.categorie_id = c.id
@@ -20616,7 +20619,7 @@ class POSComptaMapping:
                     VALUES (%s, %s, %s, %s)
                     ON DUPLICATE KEY UPDATE 
                     compte_vente_id = VALUES(compte_vente_id)
-                """, (user_id, type_taxe_id, compte_vente_id))
+                """, (user_id, magasin_id, type_taxe_id, compte_vente_id))
                 return True
         except Exception as e:
             logger.error(f"Erreur set_mapping: {e}")
