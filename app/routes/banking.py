@@ -4967,7 +4967,7 @@ def nouvelle_ecriture_from_selected():
                     
                     # Lier l'écriture à la transaction
                     transaction_id = int(selected_transaction_ids[i])
-                    g.models.ecriture_comptable_model.link_ecriture_to_transaction(transaction_id, ecriture_id, current_user.id)
+                    g.models.ecriture_comptable_model.link_ecriture_to_transaction(ecriture_id, transaction_id, current_user.id)
                 else:
                     errors.append(f"Transaction {i+1}: Erreur lors de l'enregistrement")
                     
@@ -5540,6 +5540,9 @@ def creer_ecritures_multiple_auto(transaction_id):
                                    statut_comptable=statut_comptable))
 
         success_count = 0
+        # 🔧 CHANGEMENT : compteur dédié aux écritures secondaires
+        secondary_count = 0
+
         for i in range(len(categories_ids)):
             try:
                 if not categories_ids[i] or not montants[i]:
@@ -5555,7 +5558,7 @@ def creer_ecritures_multiple_auto(transaction_id):
                 if taux_tva > 0:
                     montant_htva_calcule = montant_ttc / (1 + taux_tva / Decimal('100'))
                 else:
-                    montant_htva_calcule = montant_ttc # Si pas de TVA, HTVA = TTC
+                    montant_htva_calcule = montant_ttc  # Si pas de TVA, HTVA = TTC
 
                 data = {
                     'date_ecriture': transaction['date_transaction'],
@@ -5565,22 +5568,41 @@ def creer_ecritures_multiple_auto(transaction_id):
                     # 🔥 AJOUTER LE MONTANT HTVA CALCULÉ POUR CETTE LIGNE
                     'montant_htva': montant_htva_calcule,
                     'description': descriptions[i] if i < len(descriptions) and descriptions[i] else transaction['description'],
-                    'id_contact': transaction.get('id_contact'), # Contact principal du modal
+                    'id_contact': transaction.get('id_contact'),  # Contact principal du modal
                     'reference': transaction.get('reference', ''),
-                    'type_ecriture': 'depense' if montant_ttc < 0 else 'recette', # Ou utiliser la logique de map_type_transaction_to_ecriture
-                    'tva_taux': taux_tva, # Sauvegarder le taux fourni
+                    'type_ecriture': 'depense' if montant_ttc < 0 else 'recette',
+                    'tva_taux': taux_tva,
                     # 🔥 CALCULER LE MONTANT DE LA TVA POUR CETTE LIGNE
                     'tva_montant': montant_ttc - montant_htva_calcule if taux_tva > 0 else Decimal('0'),
                     'utilisateur_id': current_user.id,
                     'statut': 'pending',
                     'devise': 'CHF',
-                    'type_ecriture_comptable' : 'principale'
+                    'type_ecriture_comptable': 'principale'
                 }
 
-                if g.models.ecriture_comptable_model.create(data):
-                    ecriture_id = g.models.ecriture_comptable_model.get_last_insert_id()
-                    g.models.ecriture_comptable_model.link_ecriture_to_transaction(transaction_id, ecriture_id, current_user.id)
+                # 🔧 CHANGEMENT 1 : passer categorie_comptable_model + return_id=True
+                #     → les secondaires (TVA, règles en cascade) sont créées par create()
+                #     → on récupère l'ID de la principale pour la lier à la transaction
+                ecriture_id = g.models.ecriture_comptable_model.create(
+                    g.models.categorie_comptable_model,
+                    data,
+                    return_id=True
+                )
+
+                if ecriture_id:
+                    # 🔧 CHANGEMENT 2 : plus de get_last_insert_id()
+                    #     link_ecriture_to_transaction lie AUSSI les écritures secondaires
+                    #     (voir l'implémentation du modèle : elle parcourt ecriture_principale_id)
+                    g.models.ecriture_comptable_model.link_ecriture_to_transaction(
+                        ecriture_id, transaction_id, current_user.id
+                    )
                     success_count += 1
+
+                    # 🔧 CHANGEMENT 3 : compter les secondaires pour le message utilisateur
+                    secondaires = g.models.ecriture_comptable_model.get_ecritures_complementaires(
+                        ecriture_id, current_user.id
+                    )
+                    secondary_count += len(secondaires)
                 else:
                     flash(f"Erreur lors de la création de l'écriture {i+1}", "error")
 
@@ -5589,7 +5611,11 @@ def creer_ecritures_multiple_auto(transaction_id):
                 flash(f"Erreur lors de la création de l'écriture {i+1}: {str(e)}", "error")
 
         if success_count > 0:
-            flash(f"{success_count} écriture(s) créée(s) avec succès avec statut 'En attente'", "success")
+            # 🔧 CHANGEMENT 4 : mentionner les secondaires dans le message de succès
+            msg = f"{success_count} écriture(s) créée(s) avec succès avec statut 'En attente'"
+            if secondary_count > 0:
+                msg += f" ({secondary_count} écriture(s) secondaire(s) créée(s))"
+            flash(msg, "success")
         else:
             flash("Aucune écriture n'a pu être créée", "error")
 
@@ -5607,8 +5633,6 @@ def creer_ecritures_multiple_auto(transaction_id):
                            date_from=date_from,
                            date_to=date_to,
                            statut_comptable=statut_comptable))
-
-
 @bp.route('/comptabilite/ecritures/<int:ecriture_id>/secondaires')
 @login_required
 def details_ecriture_secondaires(ecriture_id):

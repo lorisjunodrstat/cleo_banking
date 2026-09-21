@@ -7721,6 +7721,15 @@ class EcritureComptable:
         Si `cursor` est fourni, on l'utilise (transaction partagée avec l'appelant).
         Sinon, on ouvre une nouvelle connexion.
         """
+        if isinstance(categorie_comptable_model, dict):
+            if cursor is None and data is not None:
+                cursor = data
+            data = categorie_comptable_model
+            categorie_comptable_model = None
+
+        if not isinstance(data, dict):
+            raise TypeError(f"create() attend un dict en 2ᵉ argument, reçu {type(data).__name__}")
+
         if data.get('id_contact'):
             if not self._is_categorie_valid_for_contact(
                 data['id_contact'], data['categorie_id'], data['utilisateur_id']
@@ -7755,7 +7764,9 @@ class EcritureComptable:
                     self._create_secondary_ecritures(cur, ecriture_principale_id, data)
                 else:
                     logger.info(f"Catégorie {data['categorie_id']} sans complémentaire.")
-            return True
+
+            # 🔄 MODIF 2 : on retourne l'ID (ou True) selon le flag
+            return ecriture_principale_id if return_id else True
 
         # Cas 1 : cursor externe fourni → laisser remonter les exceptions
         if cursor is not None:
@@ -7767,7 +7778,8 @@ class EcritureComptable:
                 return _do_insert(new_cursor)
         except Error as e:
             logger.error(f"Erreur création écriture: {e}")
-            return False
+            # 🔄 MODIF 3 : None au lieu de False quand return_id=True
+        return None if return_id else False
 
     def _create_secondary_ecritures(self, cursor, ecriture_principale_id: int, data: Dict):
         """Crée les écritures secondaires (TVA, taxes, etc.)."""
