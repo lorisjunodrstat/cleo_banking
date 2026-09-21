@@ -7715,7 +7715,7 @@ class EcritureComptable:
             print("❌ Dossier n'existe pas")
             return False
 
-    def create(self, categorie_comptable_model, data: Dict, cursor=None) -> bool:
+    def create(self, categorie_comptable_model, data: Dict, cursor=None, return_id=False) -> bool:
         """Crée une écriture comptable.
 
         Si `cursor` est fourni, on l'utilise (transaction partagée avec l'appelant).
@@ -7779,7 +7779,7 @@ class EcritureComptable:
         except Error as e:
             logger.error(f"Erreur création écriture: {e}")
             # 🔄 MODIF 3 : None au lieu de False quand return_id=True
-        return None if return_id else False
+            return None if return_id else False
 
     def _create_secondary_ecritures(self, cursor, ecriture_principale_id: int, data: Dict):
         """Crée les écritures secondaires (TVA, taxes, etc.)."""
