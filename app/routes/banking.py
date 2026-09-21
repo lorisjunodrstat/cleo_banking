@@ -3768,13 +3768,16 @@ def edit_categorie(categorie_id):
     types_tva = ['', 'taux_plein', 'taux_reduit', 'taux_zero', 'exonere']
     types_ecriture = ['', 'depense', 'recette']
     
+    regles = g.models.categorie_comptable_model.get_regles_pour_categorie(categorie_id)
+
     return render_template('comptabilite/edit_categorie.html',
                         all_plan=all_plan, 
                         categories=categories,
                         categorie=categorie,
                         types_compte=types_compte,
                         types_tva=types_tva,
-                        types_ecriture=types_ecriture)
+                        types_ecriture=types_ecriture,
+                        regles=regles)
 
 @bp.route('/comptabilite/categories/<int:categorie_id>/delete', methods=['POST'])
 @login_required

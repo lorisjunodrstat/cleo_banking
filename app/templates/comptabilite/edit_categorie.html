@@ -236,7 +236,7 @@
                                         name="nouvelle_regle_destination">
                                     <option value="">Sélectionner...</option>
                                     {% for cat in categories %}
-                                        {% if cat.id != categorie.id %}
+                                        {% if cat.id != categorie['id'] %}
                                         <option value="{{ cat.id }}" 
                                                 {% if nouvelle_regle and nouvelle_regle.destination == cat.id %}selected{% endif %}>
                                             {{ cat.numero }} - {{ cat.nom }}
