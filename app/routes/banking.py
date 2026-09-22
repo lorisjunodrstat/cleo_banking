@@ -5542,6 +5542,10 @@ def creer_ecritures_multiple_auto(transaction_id):
                                    date_to=date_to,
                                    statut_comptable=statut_comptable))
 
+        TYPE_TRANSACTION_SORTIE = ('retrait', 'transfert_sortant')
+
+        type_tx = (transaction.get('type_transaction') or '').lower()
+        type_ecriture_ligne = 'depense' if type_tx in TYPE_TRANSACTION_SORTIE else 'recette'
         success_count = 0
         # 🔧 CHANGEMENT : compteur dédié aux écritures secondaires
         secondary_count = 0
@@ -5562,6 +5566,7 @@ def creer_ecritures_multiple_auto(transaction_id):
                     montant_htva_calcule = montant_ttc / (1 + taux_tva / Decimal('100'))
                 else:
                     montant_htva_calcule = montant_ttc  # Si pas de TVA, HTVA = TTC
+                
 
                 data = {
                     'date_ecriture': transaction['date_transaction'],
@@ -5573,7 +5578,7 @@ def creer_ecritures_multiple_auto(transaction_id):
                     'description': descriptions[i] if i < len(descriptions) and descriptions[i] else transaction['description'],
                     'id_contact': transaction.get('id_contact'),  # Contact principal du modal
                     'reference': transaction.get('reference', ''),
-                    'type_ecriture': 'depense' if montant_ttc < 0 else 'recette',
+                    'type_ecriture': type_ecriture_ligne,
                     'tva_taux': taux_tva,
                     # 🔥 CALCULER LE MONTANT DE LA TVA POUR CETTE LIGNE
                     'tva_montant': montant_ttc - montant_htva_calcule if taux_tva > 0 else Decimal('0'),
@@ -5636,6 +5641,8 @@ def creer_ecritures_multiple_auto(transaction_id):
                            date_from=date_from,
                            date_to=date_to,
                            statut_comptable=statut_comptable))
+
+
 @bp.route('/comptabilite/ecritures/<int:ecriture_id>/secondaires')
 @login_required
 def details_ecriture_secondaires(ecriture_id):
