@@ -21064,7 +21064,7 @@ class POSComptabilisation:
                         processed_modes.add(unique_mode_key)
 
                     # C. VENTE / PASSIF (avec idempotence)
-                    ref_vente = f"JOURNAL-{date_ecriture}-VENTE-{item.get('type_taxe_id')}"
+                    ref_vente = f"JOURNAL-{date_ecriture}-VENTE-{mode_id}-{item.get('type_taxe_id')}"
                     
                     cursor.execute("""
                         SELECT id FROM ecritures_comptables 

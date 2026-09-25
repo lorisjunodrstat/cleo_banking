@@ -3768,7 +3768,7 @@ def edit_categorie(categorie_id):
     types_tva = ['', 'taux_plein', 'taux_reduit', 'taux_zero', 'exonere']
     types_ecriture = ['', 'depense', 'recette']
     
-    regles = g.models.categorie_comptable_model.get_regles_pour_categorie(categorie_id)
+    regles = g.models.categorie_comptable_model.get_regles_for_categorie(categorie_id)
 
     return render_template('comptabilite/edit_categorie.html',
                         all_plan=all_plan, 
