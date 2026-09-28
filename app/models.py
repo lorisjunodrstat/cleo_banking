@@ -6656,7 +6656,7 @@ class StatistiquesBancaires(BaseRepository):
                 'unite': 'CHF'
             }
         except MySQLError as e:
-            logger.exception(f"Erreur préparation graphique trésorerie}")
+            logger.exception(f"Erreur préparation graphique trésorerie")
             return None
 
     def preparer_graphique_tresorerie_cumulee(self, user_id: int, compte_id: int, date_debut: date, date_fin: date) -> Optional[Dict]:
