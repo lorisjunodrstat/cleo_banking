@@ -8,6 +8,13 @@ import statistics
 from dbutils.pooled_db import PooledDB
 import pymysql
 from pymysql import Error, MySQLError
+from pymysql.err import (
+    IntegrityError,
+    OperationalError,
+    ProgrammingError,
+    DataError,
+    InterfaceError,
+)
 from datetime import datetime, date, timedelta
 from email.utils import parsedate_to_datetime
 import calendar
@@ -25,12 +32,9 @@ import traceback
 from contextlib import contextmanager
 from flask_login import UserMixin
 import logging
- 
 import secrets
 
 logger = logging.getLogger(__name__)
-
-
 
 class Utilisateur(UserMixin):
     def __init__(self, id, nom=None, prenom=None, email=None, mot_de_passe=None, created_at=None):
@@ -41,6 +45,15 @@ class Utilisateur(UserMixin):
         self.mot_de_passe = mot_de_passe
         self.created_at = created_at
 
+    def __repr__(self):
+        return f"<Utilisateur id = {self.id} email={self.email!r}>"
+    
+    def __eq__(self, other):
+        return isinstance(other, Utilisateur) and self.id == other.id
+
+    def __hash__(self):
+        return hash(self.id)
+    
     # Méthodes requises par Flask-Login
     @property
     def is_authenticated(self):
@@ -68,10 +81,10 @@ class Utilisateur(UserMixin):
                     # On envoie l'ID en premier pour correspondre au nouveau __init__
                     return Utilisateur(row['id'], row['nom'], row['prenom'], row['email'], row['mot_de_passe'], row['created_at'])
                 return None
-        except Exception as e:
+        except MySQLError as e:
             # Note: évite logger ici pour ne pas relancer la récursion
-            print(f"Erreur lors de la récupération de l'utilisateur: {e}")
-            return None
+            logger.exception("Erreur MySQL de récupération de l'utilisateur")
+            raise
 
     @staticmethod
     def get_by_email(email: str, db):
@@ -99,9 +112,10 @@ class Utilisateur(UserMixin):
                         row['mot_de_passe']
                     )
                 return None
-        except Exception as e:
+        except MySQLError as e:
+            logger.exception("Erreur MySQL de récupération de l'utilisateur")
             print(f"Erreur lors de la récupération de l'utilisateur par email: {e}")
-            return None
+            raise
 
     @staticmethod
     def create(nom: str, prenom: str, email: str, mot_de_passe: str, db):
@@ -119,11 +133,9 @@ class Utilisateur(UserMixin):
                 user_id = cursor.lastrowid
                 logger.info(f"Utilisateur créé avec ID: {user_id}")
             return user_id
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur création utilisateur : {e}")
             return False
-
-
 
 class DatabaseManager:
     """
@@ -133,6 +145,23 @@ class DatabaseManager:
     def __init__(self, db_config):
         self.db_config = db_config
         self._connection_pool = None
+
+    def __enter__(self):
+        self._get_connection_pool()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            self.close_connection()
+        except Exception:
+            logger.exception("Erreur lors de la fermeture du pool")
+        return False
+
+    def __del__(self):
+        try:
+            self.close_connection()
+        except Exception:
+            pass
 
 
     def _get_connection_pool(self):
@@ -179,7 +208,6 @@ class DatabaseManager:
         """
         Fournit un curseur de base de données depuis le pool.
         Gère automatiquement la connexion et la fermeture des ressources.
-
         :param dictionary: Si True, retourne un curseur de type dictionnaire
         :param commit: Si True, commit la transaction après l'exécution
         """
@@ -202,24 +230,24 @@ class DatabaseManager:
             if commit:
                 connection.commit()
         except Exception as e:
-            logger.error(f"Erreur dans le gestionnaire de curseur : {e}", exc_info=True)
+            logger.exception(f"Erreur dans le gestionnaire de curseur : {e}", exc_info=True)
             if connection:
                 try:
                     connection.rollback()  # Annule les changements en cas d'erreur
                 except Exception as rollback_error:
-                    logger.error(f"Erreur lors du rollback : {rollback_error}", exc_info=True)
+                    logger.exception(f"Erreur lors du rollback : {rollback_error}", exc_info=True)
             raise  # Relance l'exception
         finally:
             if cursor:
                 try:
                     cursor.close()
                 except Exception as close_error:
-                    logger.error(f"Erreur lors de la fermeture du curseur : {close_error}", exc_info=True)
+                    logger.exception(f"Erreur lors de la fermeture du curseur : {close_error}", exc_info=True)
             if connection:
                 try:
                     connection.close()  # Retourne la connexion au pool
                 except Exception as close_error:
-                    logger.error(f"Erreur lors de la fermeture de la connexion : {close_error}", exc_info=True)
+                    logger.exception(f"Erreur lors de la fermeture de la connexion : {close_error}", exc_info=True)
 
     def create_tables(self):
         """Crée toutes les tables de la base de données si elles n'existent pas."""
@@ -227,7 +255,6 @@ class DatabaseManager:
         try:
             with self.get_cursor() as cursor:
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
-
                 # ========================================================================
                 # TABLES GÉNÉRALES & FINANCIÈRES (inchangées)
                 # ========================================================================
@@ -397,6 +424,7 @@ class DatabaseManager:
                     iban VARCHAR(34),
                     bic VARCHAR(11),
                     type_compte ENUM('courant', 'epargne', 'compte_jeune', 'autre') DEFAULT 'courant',
+                    solde_initial DECIMAL(15,2) DEFAULT -10000.00,
                     solde DECIMAL(15,2) DEFAULT 0.00,
                     solde_possible DECIMAL(15,2) DEFAULT -10000.00,
                     devise VARCHAR(3) DEFAULT 'CHF',
@@ -419,6 +447,7 @@ class DatabaseManager:
                     couleur VARCHAR(7) DEFAULT '#28a745',
                     icone VARCHAR(50) DEFAULT 'piggy-bank',
                     date_objectif DATE,
+                    utilisateur_id INT NOT NULL,
                     actif BOOLEAN DEFAULT TRUE,
                     date_creation TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (compte_principal_id) REFERENCES comptes_principaux(id)
@@ -498,24 +527,30 @@ class DatabaseManager:
                 );""")
 
                 cursor.execute("""
-                CREATE TABLE IF NOT EXISTS categories_comptables (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    numero VARCHAR(10) NOT NULL,
-                    nom VARCHAR(255) NOT NULL,
-                    parent_id INT,
-                    type_compte ENUM('Actif', 'Passif', 'Charge', 'Revenus', 'Groupe') NOT NULL,
-                    compte_systeme VARCHAR(50) DEFAULT NULL,
-                    compte_associe VARCHAR(10),
-                    type_tva ENUM('taux_plein', 'taux_reduit', 'taux_zero', 'exonere') DEFAULT 'taux_plein',
-                    actif BOOLEAN DEFAULT TRUE,
-                    categorie_complementaire_id INT NULL,
-                    type_ecriture_complementaire VARCHAR(255) NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    UNIQUE KEY uq_numero (numero),
-                    FOREIGN KEY (parent_id) REFERENCES categories_comptables(id),
-                    FOREIGN KEY (categorie_complementaire_id) REFERENCES categories_comptables(id) ON DELETE SET NULL
-                );""")
+                    CREATE TABLE IF NOT EXISTS categories_comptables (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        numero VARCHAR(10) NOT NULL,
+                        nom VARCHAR(255) NOT NULL,
+                        parent_id INT,
+                        type_compte ENUM('Actif', 'Passif', 'Charge', 'Revenus', 'Groupe') NOT NULL,
+                        compte_systeme VARCHAR(50) DEFAULT NULL,
+                        compte_associe VARCHAR(10),
+                        type_tva ENUM('taux_plein', 'taux_reduit', 'taux_zero', 'exonere') DEFAULT 'taux_plein',
+                        actif BOOLEAN DEFAULT TRUE,
+                        categorie_complementaire_id INT NULL,
+                        type_ecriture_complementaire VARCHAR(255) NULL,
+                        utilisateur_id INT NOT NULL,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        UNIQUE KEY uq_user_numero (utilisateur_id, numero),
+                        KEY fk_parent (parent_id),
+                        KEY fk_categorie_complementaire (categorie_complementaire_id),
+                        CONSTRAINT fk_parent FOREIGN KEY (parent_id)
+                            REFERENCES categories_comptables(id),
+                        CONSTRAINT fk_categorie_complementaire FOREIGN KEY (categorie_complementaire_id)
+                            REFERENCES categories_comptables(id) ON DELETE SET NULL
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                """)
 
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS taux_tva (
@@ -1462,13 +1497,18 @@ class DatabaseManager:
             print("✅ Toutes les tables ont été créées ou vérifiées.")
             
         except Exception as e:
-            logger.error(f"Erreur lors de la création des tables : {e}")
+            logger.exception(f"Erreur lors de la création des tables : {e}")
             raise e
 
-class PeriodeFavorite:
+class BaseRepository:
+    __slots__ = ("db",)
+
     def __init__(self, db):
         self.db = db
+    def __repr__(self):
+        return f"<{type(self).__name} db ={id(self.db):#x}>"
 
+class PeriodeFavorite(BaseRepository):
     def get_by_user_id(self, user_id: int) -> List[Dict]:
         """Récupère toutes les périodes favorites d'un utilisateur"""
         periodes = []
@@ -1483,7 +1523,7 @@ class PeriodeFavorite:
                 cursor.execute(query, (user_id,))
                 periodes = cursor.fetchall()
                 return periodes
-        except Error as e:
+        except MySQLError as e:
             logger.error(f"Erreur lors de la récupération des périodes favorites: {e}")
             return []
         return periodes
@@ -1545,11 +1585,11 @@ class PeriodeFavorite:
             logger.error(f"Erreur lors de la récupération de la période favorite: {e}")
             return None
 
-class Banque:
+class Banque(BaseRepository):
     """Modèle pour les banques - nettoyé de toute logique transactionnelle"""
+    def __repr__(self):
+        return f"<Banque db ={id(self.db):#x}>"
 
-    def __init__(self, db):
-        self.db = db
     def get_all(self) -> List[Dict]:
         """Récupère toutes les banques actives"""
         banques = []
@@ -1592,8 +1632,11 @@ class Banque:
                 """
                 cursor.execute(query, (nom, code_banque, pays, couleur, site_web, logo_url))
                 return True
-        except Error as e:
-            logger.error(f"Erreur lors de la création de la banque: {e}")
+        except IntegrityError:
+            logger.warning(f"Erreur lors de la création de la banque: {code_banque}")
+            return False
+        except MySQLError as e:
+            logger.exception(f"Erreur de création de la banque : {e}")
             return False
 
     def update_banque(self, banque_id: int, nom: str, code_banque: str, pays: str, couleur: str, site_web: str, logo_url: str) -> bool:
@@ -1607,7 +1650,10 @@ class Banque:
                 """
                 cursor.execute(query, (nom, code_banque, pays, couleur, site_web, logo_url, banque_id))
                 return cursor.rowcount > 0 # Returns True if at least one row was updated
-        except Error as e:
+        except IntegrityError:
+            logger.warning(f"Erreur lors de la mise à jour de la banque: {code_banque}")
+            return False
+        except MySQLError as e:
             logger.error(f"Erreur lors de la mise à jour de la banque: {e}")
             return False
 
@@ -1622,12 +1668,8 @@ class Banque:
             logger.error(f"Erreur lors de la suppression de la banque: {e}")
             return False
 
-class ComptePrincipal:
+class ComptePrincipal(BaseRepository):
     """Modèle pour les comptes principaux"""
-
-    def __init__(self, db):
-        self.db = db
-
     def get_by_user_id(self, user_id: int) -> List[Dict]:
         """Récupère tous les comptes d'un utilisateur"""
         try:
@@ -1686,12 +1728,10 @@ class ComptePrincipal:
                 if not cursor.fetchone():
                     logger.error(f"746 Erreur: Utilisateur avec ID {data['utilisateur_id']} n'existe pas")
                     return False
-
                 cursor.execute("SELECT id FROM banques WHERE id = %s", (data['banque_id'],))
                 if not cursor.fetchone():
                     logger.error(f"Erreur: Banque avec ID {data['banque_id']} n'existe pas")
                     return False
-
                 query = """
                 INSERT INTO comptes_principaux
                 (utilisateur_id, banque_id, nom_compte, numero_compte, iban, bic,
@@ -1741,7 +1781,9 @@ class ComptePrincipal:
         except MySQLError as e:
             logger.error(f"808 Erreur lors du calcul du solde total pour le compte {compte_id}: {e}")
             return Decimal('0')
-
+    def __repr__(self):
+        return f"<Compte Prinicpal db ={id(self.db):#x}>"    
+    
     def get_solde_avec_ecritures(self, compte_id: int, date_jusqua: date = None) -> Decimal:
         try:
             # Correction de la syntaxe 'with self.db.get.cursor()'
@@ -1749,7 +1791,6 @@ class ComptePrincipal:
                 cursor.execute("SELECT solde FROM comptes_principaux WHERE id = %s", (compte_id,))
                 result = cursor.fetchone()
                 solde = Decimal(str(result[0])) if result and result[0] else Decimal('0')
-
                 query = """
                 SELECT SUM(CASE
                     WHEN type_ecriture = 'recette' THEN montant
@@ -1766,7 +1807,6 @@ class ComptePrincipal:
                 cursor.execute(query, tuple(params))
                 result = cursor.fetchone()
                 ajustement = Decimal(str(result[0])) if result and result[0] else Decimal('0')
-
                 # Suppression des fermetures de connexion/curseur inutiles
                 return solde + ajustement
         except Error as e:
@@ -1792,9 +1832,7 @@ class ComptePrincipal:
                 JOIN banques b ON c.banque_id = b.id
                 JOIN utilisateurs u ON c.utilisateur_id = u.id
                 WHERE c.actif = TRUE
-                
                 UNION ALL
-                
                 SELECT
                     sc.id as id, 
                     c.utilisateur_id,
@@ -1820,8 +1858,7 @@ class ComptePrincipal:
                 JOIN comptes_principaux c ON sc.compte_principal_id = c.id
                 JOIN banques b ON c.banque_id = b.id
                 JOIN utilisateurs u ON c.utilisateur_id = u.id
-                WHERE sc.actif = TRUE AND c.utilisateur_id = %s
-                
+                WHERE sc.actif = TRUE AND c.utilisateur_id = %s 
                 ORDER BY banque_nom, nom_compte
                 """
                 cursor.execute(query, (user_id,))
@@ -1831,16 +1868,16 @@ class ComptePrincipal:
             logger.error(f"Erreur SQL: {e}")
             return []
 
-
-class ComptePrincipalRapport:
+class ComptePrincipalRapport(BaseRepository):
+    __slots__ = ["categorie_comptable_model"]
     def __init__(self, db):
         """
         Initialise le générateur de rapports.
         :param db: Instance de connexion à la base de données.
         :param transaction_model: Instance de TransactionFinanciere pour accéder aux méthodes existantes.
         """
-        self.db = db
-        self.categorie_comptable_model = CategorieComptable(self.db)
+        super().__init__(db)
+        self.categorie_comptable_model = CategorieComptable(db)
     def _get_solde_avant_periode(self, compte_id: int, user_id: int, debut_periode: date) -> Decimal:
         """Retourne le solde juste avant le début de la période."""
         with self.db.get_cursor() as cursor:
@@ -1874,7 +1911,6 @@ class ComptePrincipalRapport:
         """
         if date_reference is None:
             date_reference = date.today()
-
         # 1. Déterminer la plage de dates selon la période
         if periode == 'hebdomadaire':
             debut = date_reference - timedelta(days=date_reference.weekday())  # Lundi
@@ -1898,11 +1934,9 @@ class ComptePrincipalRapport:
         stats = self.categorie_comptable_model.get_statistiques_compte('compte_principal', compte_id, user_id,
                                                       date_debut=debut.strftime('%Y-%m-%d'),
                                                       date_fin=fin.strftime('%Y-%m-%d'))
-
         # 3. Récupérer le solde au début et à la fin de la période
         solde_initial = self._get_solde_avant_periode(compte_id, user_id, debut)
         solde_final = self.categorie_comptable_model.get_solde_courant('compte_principal', compte_id, user_id)
-
         # 4. Récupérer les transactions
         transactions, _ = self.tx_model.get_all_user_transactions(
             user_id=user_id,
@@ -1912,16 +1946,13 @@ class ComptePrincipalRapport:
             compte_dest_id=compte_id,
             per_page=1000  # Assure la récupération de tout
         )
-
         # 5. Catégorisation des transactions
         categories = self.categorie_comptable_model.get_categories_par_type('compte_principal', compte_id, user_id,
                                                            date_debut=debut.strftime('%Y-%m-%d'),
                                                            date_fin=fin.strftime('%Y-%m-%d'))
-
         # 6. Génération des graphiques SVG
         graph_flux = self._generer_graphique_flux_journalier(compte_id, user_id, debut, fin)
         graph_categories = self._generer_graphique_categories(categories)
-
         return {
             "meta": {
                 "compte_id": compte_id,
@@ -1958,61 +1989,49 @@ class ComptePrincipalRapport:
             ]
         }
 
-
     def _generer_graphique_flux_journalier(self, compte_id: int, user_id: int, debut: date, fin: date) -> str:
         """Génère un graphique SVG en barres des flux quotidiens."""
 
         # Récupérer recettes et dépenses quotidiennes
         recettes = self.categorie_comptable_model._get_daily_balances(compte_id, debut, fin, 'recette')
         depenses = self.categorie_comptable_model._get_daily_balances(compte_id, debut, fin, 'depense')
-
         dates = sorted(set(recettes.keys()) | set(depenses.keys()))
         if not dates:
             return "<svg width='600' height='300'><text x='10' y='20'>Aucune donnée</text></svg>"
-
         # Valeurs
         vals_recette = [float(recettes.get(d, 0)) for d in dates]
         vals_depense = [float(depenses.get(d, 0)) for d in dates]
         vals_net = [r - d for r, d in zip(vals_recette, vals_depense)]
-
         # Échelle
         max_abs = max(max(vals_recette), max(vals_depense), max(abs(v) for v in vals_net)) or 1
-
         # Dimensions SVG
         w, h = 700, 350
         ml, mr, mt, mb = 60, 40, 40, 60
         graph_w = w - ml - mr
         graph_h = h - mt - mb
-
         # Génération SVG
         svg = f'<svg width="{w}" height="{h}" xmlns="http://www.w3.org/2000/svg">\n'
         svg += '<style>text { font-family: Arial, sans-serif; font-size: 10px; }</style>\n'
-
         # Axes
         y0 = mt + graph_h / 2
         svg += f'<line x1="{ml}" y1="{y0}" x2="{ml+graph_w}" y2="{y0}" stroke="#000" stroke-dasharray="2"/>\n'
-
         # Barres
         nb = len(dates)
         for i, dt in enumerate(dates):
             x = ml + (i + 0.5) * (graph_w / nb)
             rec = vals_recette[i]
             dep = vals_depense[i]
-
             # Barre recette (haut)
             h_rec = (rec / max_abs) * (graph_h / 2)
             svg += f'<rect x="{x-6}" y="{y0 - h_rec}" width="12" height="{h_rec}" fill="#4CAF50"/>\n'
             # Barre dépense (bas)
             h_dep = (dep / max_abs) * (graph_h / 2)
             svg += f'<rect x="{x-6}" y="{y0}" width="12" height="{h_dep}" fill="#F44336"/>\n'
-
             # Label date
             svg += f'<text x="{x}" y="{mt+graph_h+15}" text-anchor="middle" transform="rotate(45,{x},{mt+graph_h+15})">{dt.strftime("%d.%m")}</text>\n'
-
         # Légende
         svg += f'<rect x="{ml}" y="{mt-20}" width="12" height="6" fill="#4CAF50"/><text x="{ml+15}" y="{mt-12}">Recettes</text>\n'
         svg += f'<rect x="{ml+80}" y="{mt-20}" width="12" height="6" fill="#F44336"/><text x="{ml+95}" y="{mt-12}">Dépenses</text>\n'
-
         svg += '</svg>'
         return svg
 
@@ -2020,20 +2039,17 @@ class ComptePrincipalRapport:
         """Génère un graphique en camembert ou en barres horizontales selon le nombre de catégories."""
         if not categories:
             return "<svg width='500' height='300'><text x='10' y='20'>Aucune catégorie</text></svg>"
-
         # Trier et limiter à 10 catégories principales
         items = sorted(categories.items(), key=lambda x: x[1], reverse=True)[:10]
         noms = [item[0] for item in items]
         montants = [float(item[1]) for item in items]
         total = sum(montants) or 1
-
         # Graphique en barres horizontales (plus lisible)
         h_svg = max(300, len(noms) * 30)
         w_svg = 600
         ml, mr, mt, mb = 200, 40, 30, 30
         graph_w = w_svg - ml - mr
         graph_h = h_svg - mt - mb
-
         svg = f'<svg width="{w_svg}" height="{h_svg}" xmlns="http://www.w3.org/2000/svg">\n'
         for i, (nom, montant) in enumerate(items):
             y = mt + i * (graph_h / len(items))
@@ -2045,16 +2061,11 @@ class ComptePrincipalRapport:
         svg += '</svg>'
         return svg
 
-class SousCompte:
+class SousCompte(BaseRepository):
     """Modèle pour les sous-comptes d'épargne"""
-
-    def __init__(self, db):
-        self.db = db
-
     def get_by_compte_principal_id(self, compte_principal_id: int) -> List[Dict]:
         """Récupère tous les sous-comptes d'un compte principal"""
         logger.debug(f"Récupération des sous-comptes pour le compte principal {compte_principal_id}")
-
         try:
             with self.db.get_cursor() as cursor:
                 query = """
@@ -2072,10 +2083,8 @@ class SousCompte:
                 """
                 cursor.execute(query, (compte_principal_id,))
                 result = cursor.fetchall()
-
                 logger.debug(f"Résultat de la requête: {result}")
                 return result
-
         except Error as e:
             logger.error(f"Erreur lors de la récupération des sous-comptes: {e}")
             return []
@@ -2083,7 +2092,6 @@ class SousCompte:
     def get_all_sous_comptes_by_user_id(self, user_id) -> List:
         """Récupère tous les sous-comptes d'un utilisateur"""
         logger.debug(f"Récupération de tous les sous-comptes pour l'utilisateur {user_id}")
-
         try:
             with self.db.get_cursor() as cursor:
                 query = """
@@ -2094,7 +2102,6 @@ class SousCompte:
                 """
                 cursor.execute(query, (user_id,))
                 result = cursor.fetchall()
-
                 return result
         except Error as e:
             logger.error(f"Erreur lors de la récupération des sous-comptes: {e}")
@@ -2170,11 +2177,9 @@ class SousCompte:
                 # Vérifier si le sous-compte a un solde
                 cursor.execute("SELECT solde FROM sous_comptes WHERE id = %s", (sous_compte_id,))
                 result = cursor.fetchone()
-
                 if result and Decimal(str(result['solde'])) > 0:
                     logger.warning(f"Impossible de supprimer le sous-compte {sous_compte_id} car son solde n'est pas nul.")
                     return False
-
                 # Soft delete
                 cursor.execute("UPDATE sous_comptes SET actif = FALSE WHERE id = %s", (sous_compte_id,))
                 return cursor.rowcount > 0
@@ -2201,18 +2206,13 @@ class SousCompte:
                 cursor.execute(query, (sous_compte_id,))
                 result = cursor.fetchone()
                 return float(result['solde']) if result and 'solde' in result else 0.0
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération du solde : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la récupération du solde : {e}")
             return 0.0
 
-class TransactionFinanciere:
-    """
-    Classe unifiée pour gérer toutes les transactions financières avec optimisation des soldes
-    """
-    def __init__(self, db):
-        self.db = db
+class TransactionFinanciere(BaseRepository):
+    """Classe unifiée pour gérer toutes les transactions financières avec optimisation des soldes"""
     # ===== VALIDATION ET UTILITAIRES =====
-
     def _valider_solde_suffisant(self, compte_type: str, compte_id: int, montant: Decimal) -> Tuple[bool, Decimal]:
         """Vérifie si le solde est suffisant pour l'opération"""
         logger.debug(f"Vérification du solde pour {compte_type} ID {compte_id}")
@@ -2316,14 +2316,12 @@ class TransactionFinanciere:
                                       solde_apres_insere: Decimal) -> Optional[Decimal]:
         """Met à jour les soldes des transactions suivantes après une insertion ou modification"""
         logger.debug("Mise à jour des transactions suivantes")
-
         if compte_type == 'compte_principal':
             condition = """compte_principal_id = %s OR
             compte_source_id = %s OR
             compte_destination_id = %s
             """
             params = (compte_id, compte_id, compte_id, date_transaction, date_transaction, transaction_id)
-
         else:
             condition = """(
             sous_compte_id = %s OR
@@ -2331,7 +2329,6 @@ class TransactionFinanciere:
             sous_compte_destination_id = %s
             )"""
             params = (compte_id, compte_id, compte_id, date_transaction, date_transaction, transaction_id)
-
         # Récupérer les transactions suivantes
         query = f"""
             SELECT id, type_transaction, montant, compte_source_id, compte_destination_id, sous_compte_destination_id,
@@ -2340,20 +2337,15 @@ class TransactionFinanciere:
         WHERE {condition} AND (date_transaction > %s OR (date_transaction = %s AND id > %s))
         ORDER BY date_transaction ASC, id ASC
         """
-
         cursor.execute(query, params)
         subsequent_transactions = cursor.fetchall()
-
         solde_courant = solde_apres_insere
         dernier_solde = None
-
         for transaction in subsequent_transactions:
             montant = Decimal(str(transaction['montant']))
             t_type = transaction['type_transaction']
-        
             # 3. Déterminer dynamiquement si le mouvement est un crédit (+) ou un débit (-) pour ce compte
             est_credit = False
-            
             if t_type in ['depot', 'recredit_annulation']:
                 est_credit = True
             elif t_type == 'retrait':
@@ -2369,18 +2361,15 @@ class TransactionFinanciere:
                 # Sinon, si c'est la source -> c'est un débit (-)
                 else:
                     est_credit = False
-
             # Application de l'opération
             if est_credit:
                 solde_courant += montant
             else:
                 solde_courant -= montant
-
             # 4. Mise à jour en base de données (on garde le Decimal !)
             update_query = "UPDATE transactions SET solde_apres = %s WHERE id = %s"
             cursor.execute(update_query, (solde_courant, transaction['id']))
             dernier_solde = solde_courant
-
         return dernier_solde
 
     def _inserer_transaction(self, compte_type: str, compte_id: int, type_transaction: str,
@@ -2445,8 +2434,8 @@ class TransactionFinanciere:
                 if not self._mettre_a_jour_solde(compte_type, compte_id, solde_final):
                     raise Exception("Erreur lors de la mise à jour du solde")
                 return True, "Transaction insérée avec succès", transaction_id
-        except Exception as e:
-            logger.error(f"Erreur insertion transaction: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur insertion transaction")
             return False, f"Erreur lors de l'insertion: {str(e)}", None
 
     def _recalculer_soldes_apres_date(self, compte_type: str, compte_id: int, date_modification: datetime) -> bool:
@@ -2478,26 +2467,22 @@ class TransactionFinanciere:
                 else:
                     solde_initial = self._get_solde_initial(compte_type, compte_id)
                     solde_courant = solde_initial
-
                 for transaction in transactions:
                     montant = Decimal(str(transaction['montant']))
                     if transaction['type_transaction'] in ['depot', 'transfert_entrant', 'recredit_annulation']:
                         solde_courant += montant
                     elif transaction['type_transaction'] in ['retrait', 'transfert_sortant', 'transfert_externe']:
                         solde_courant -= montant
-
                     cursor.execute("""
                         UPDATE transactions
                         SET solde_apres = %s
                         WHERE id = %s
                     """, (solde_courant, transaction['id']))#float(solde_courant)
-
                 if not self._mettre_a_jour_solde(compte_type, compte_id, solde_courant):
                     raise Exception("Erreur lors de la mise à jour du solde")
-
                 return True
-        except Exception as e:
-            logger.error(f"Erreur recalcul soldes: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur recalcul soldes: {e}")
             return False
 
     def _recalculer_soldes_apres_date_with_cursor(self, cursor, compte_type: str, compte_id: int, date_modification: datetime) -> bool:
@@ -2509,7 +2494,6 @@ class TransactionFinanciere:
                 condition_compte = "compte_principal_id = %s"
             else:
                 condition_compte = "sous_compte_id = %s"
-
             query = f"""
             SELECT id, montant, type_transaction, date_transaction
             FROM transactions
@@ -2543,9 +2527,9 @@ class TransactionFinanciere:
             if not self._mettre_a_jour_solde_with_cursor(cursor, compte_type, compte_id, solde_courant):
                 raise Exception("Erreur lors de la mise à jour du solde")
             return True
-        except Exception as e:
-            logger.error(f"Erreur recalcul soldes: {e}")
-            return False
+        except MySQLError as e:
+            logger.exception(f"Erreur recalcul soldes: {e}")
+            raise
 
     def get_solde_historique(self, compte_type: str, compte_id: int, user_id: int,
                         date_debut: str = None, date_fin: str = None) -> List[Dict]:
@@ -2631,8 +2615,6 @@ class TransactionFinanciere:
                 ancien_montant = Decimal(str(transaction['montant']))
                 ancienne_date = transaction['date_transaction']
                 #ancien_type = transaction['type_transaction'] # On garde l'ancien type pour la logique
-
-
                 # Préparer les champs à mettre à jour
                 update_fields = []
                 update_params = []
@@ -2657,12 +2639,10 @@ class TransactionFinanciere:
                 # Si rien n'a changé, on ne fait rien
                 if not update_fields:
                     return True, "Aucune modification nécessaire"
-
                 # Construire et exécuter la requête de mise à jour
                 update_params.append(transaction_id)
                 query = f"UPDATE transactions SET {', '.join(update_fields)} WHERE id = %s"
                 cursor.execute(query, update_params)
-
                 # Déterminer si un recalcul des soldes est nécessaire
                 recalcul_necessaire = (
                     (nouveau_montant is not None and nouveau_montant != ancien_montant) or
@@ -2683,8 +2663,6 @@ class TransactionFinanciere:
                     update_params_autre = update_params[:-1]  # Même modifications sauf l'ID
                     update_params_autre.append(autre_tx['id'])
                     cursor.execute(query, update_params_autre)
-
-
                 if recalcul_necessaire:
                     # Déterminer la date de référence pour le recalcul
                     # Si la date a changé, on prend la plus ancienne pour être sûr de tout recalculer
@@ -2695,7 +2673,6 @@ class TransactionFinanciere:
                     else:
                         # Si seule le montant change, on garde l'ancienne date (qui est aussi la nouvelle)
                         date_reference = ancienne_date if isinstance(ancienne_date, datetime) else datetime.combine(ancienne_date, datetime.min.time())
-
                     #compte_type = 'compte_principal' if transaction['compte_principal_id'] else 'sous_compte'
                     #compte_id = transaction['compte_principal_id'] or transaction['sous_compte_id']
                     success1 = self._recalculer_soldes_apres_date_with_cursor(cursor, compte_type, compte_id, date_reference)
@@ -2719,9 +2696,8 @@ class TransactionFinanciere:
                             else:
                                 logger.info("Recalcul des soldes réussi de l'autre transaction du transfert après modification")
                 return True, "Transaction modifiée avec succès"
-
-        except Exception as e:
-            logger.error(f"Erreur modification transaction: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur modification transaction")
             return False, f"Erreur lors de la modification: {str(e)}"
 
     def supprimer_transaction(self, transaction_id: int, user_id: int) -> Tuple[bool, str]:
@@ -2742,7 +2718,6 @@ class TransactionFinanciere:
                     WHERE t.id = %s
                 """, (transaction_id,))
                 transaction = cursor.fetchone()
-
                 if not transaction:
                     return False, "Transaction non trouvée"
                     logger.info(f'Transaction {transaction_id} non trouvée pour suppression')
@@ -2787,28 +2762,22 @@ class TransactionFinanciere:
                     owner_row = cursor.fetchone()
                     if not owner_row or owner_row['utilisateur_id'] != user_id:
                         return False, "Non autorisé à annuler ce transfert"
-
                     # Supprimer les deux transactions
                     cursor.execute("DELETE FROM transactions WHERE reference = %s", (reference_transfert,))
-
                     # Recalculer les soldes pour chaque compte impliqué
                     for tx in transactions_liees:
                         tx_compte_type = 'compte_principal' if tx['compte_principal_id'] else 'sous_compte'
                         tx_compte_id = tx['compte_principal_id'] or tx['sous_compte_id']
                         tx_date = tx['date_transaction']
-
                         # On ne recalcule que si l'utilisateur est propriétaire (sécurité)
                         if not self._verifier_appartenance_compte_with_cursor(cursor, tx_compte_type, tx_compte_id, user_id):
                             continue
-
                         success = self._recalculer_soldes_apres_date_with_cursor(
                             cursor, tx_compte_type, tx_compte_id, tx_date
                         )
                         if not success:
                             raise Exception(f"Échec du recalcul du solde pour le compte {tx_compte_type} ID {tx_compte_id}")
-
                     return True, "Transfert annulé avec succès"
-
                 # === CAS NORMAL : transaction simple (dépôt, retrait, etc.) ===
                 else:
                     # Supprimer la transaction unique
@@ -2823,11 +2792,9 @@ class TransactionFinanciere:
                     logger.info(f"Recalcul des soldes après suppression de la transaction {transaction_id} du compte {compte_id} en date du {date_transaction} {'réussi' if success else 'échoué'}")
                     if not success:
                         raise Exception("Erreur lors du recalcul des soldes")
-
                     return True, "Transaction supprimée avec succès"
-
-        except Exception as e:
-            logger.error(f"Erreur lors de la suppression de la transaction {transaction_id}: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.error(f"Erreur lors de la suppression de la transaction {transaction_id}")
             return False, f"Erreur lors de la suppression : {str(e)}"
 
     def reparer_soldes_compte(self, compte_type: str, compte_id: int, user_id: int) -> Tuple[bool, str]:
@@ -2849,7 +2816,6 @@ class TransactionFinanciere:
                     condition = "compte_principal_id = %s"
                 else:
                     condition = "sous_compte_id = %s"
-
                 query = f"""
                 SELECT id, type_transaction, montant, date_transaction
                 FROM transactions
@@ -2858,7 +2824,6 @@ class TransactionFinanciere:
                 """
                 cursor.execute(query, (compte_id,))
                 transactions = cursor.fetchall()
-
                 # Mettre à jour le solde_apres de chaque transaction
                 for tx in transactions:
                     montant = Decimal(str(tx['montant']))
@@ -2866,23 +2831,19 @@ class TransactionFinanciere:
                         solde_courant += montant
                     elif tx['type_transaction'] in ['retrait', 'transfert_sortant', 'transfert_externe', 'transfert_compte_vers_sous']:
                         solde_courant -= montant
-
                     cursor.execute(
                         "UPDATE transactions SET solde_apres = %s WHERE id = %s",
                         (solde_courant, tx['id'])#(float(solde_courant), tx['id'])
                     )
                     logger.info(f"  - Transaction ID {tx['id']} ({tx['type_transaction']} {montant} le {tx['date_transaction']}): solde_apres mis à jour à {solde_courant}")
-
                 # Mettre à jour le solde final du compte
                 if not self._mettre_a_jour_solde_with_cursor(cursor, compte_type, compte_id, solde_courant):
                     logger.error(f"Échec de la mise à jour du solde {solde_courant} du compte {compte_id} de type {compte_type}après réparation")
                     raise Exception("Échec de la mise à jour du solde du compte")
-
                 logger.info(f"✅ Soldes du {compte_type} ID {compte_id} réparés avec succès. Nouveau solde: {solde_courant}")
                 return True, "Soldes réparés avec succès"
-
-        except Exception as e:
-            logger.error(f"Erreur lors de la réparation des soldes: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la réparation des soldes")
             return False, f"Erreur: {str(e)}"
 
     def _verifier_appartenance_compte(self, compte_type: str, compte_id: int, user_id: int) -> bool:
@@ -2902,7 +2863,6 @@ class TransactionFinanciere:
                 else:
                     logger.error("Type de compte invalide")
                     return False
-
                 result = cursor.fetchone()
                 appartenance = result and result['utilisateur_id'] == user_id
                 logger.debug(f"Résultat vérification appartenance: {appartenance}")
@@ -2951,8 +2911,8 @@ class TransactionFinanciere:
                     transaction['montant'] = Decimal(str(transaction['montant']))
                     transaction['solde_apres'] = Decimal(str(transaction['solde_apres']))
                 return transactions
-        except Exception as e:
-            logger.error(f"Erreur récupération transactions par compte: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération transactions par compte: {e}")
             return []
 
     def get_all_user_transactions(self,
@@ -3014,40 +2974,30 @@ class TransactionFinanciere:
                 #        SELECT id FROM comptes_principaux WHERE utilisateur_id = %(user_id)s
                 #    ))
                 #)
-                
-
                 # Préparer les paramètres
                 params = {'user_id': user_id}
-
                 # === Filtres ===
                 if date_from:
                     base_query += " AND DATE(t.date_transaction) >= %(date_from)s"
                     params['date_from'] = date_from
-
                 if date_to:
                     base_query += " AND DATE(t.date_transaction) <= %(date_to)s"
                     params['date_to'] = date_to
-
                 if compte_source_id:
                     base_query += " AND t.compte_principal_id = %(compte_source_id)s"
                     params['compte_source_id'] = compte_source_id
-
                 if compte_dest_id:
                     base_query += " AND t.compte_destination_id = %(compte_dest_id)s"
                     params['compte_dest_id'] = compte_dest_id
-
                 if sous_compte_source_id:
                     base_query += " AND t.sous_compte_id = %(sous_compte_source_id)s"
                     params['sous_compte_source_id'] = sous_compte_source_id
-
                 if sous_compte_dest_id:
                     base_query += " AND t.sous_compte_destination_id = %(sous_compte_dest_id)s"
                     params['sous_compte_dest_id'] = sous_compte_dest_id
-
                 if reference:
                     base_query += " AND t.reference = %(reference)s"
                     params['reference'] = reference
-
                 if q and q.strip():
                     q_clean = f"%{q.strip()}%"
                     base_query += """ AND (
@@ -3060,12 +3010,9 @@ class TransactionFinanciere:
                     )"""
                     params['q'] = q_clean
                 count_query = "SELECT COUNT(*) as total FROM (" + base_query + ") AS filtered"
-                
-
                 # === Compter le total ===
                 cursor.execute(count_query, params)
                 total = cursor.fetchone()['total']
-
                 # === Ajouter l'ordre et la pagination ===
                 base_query += " ORDER BY t.date_transaction DESC, t.id DESC"
                 if page and per_page:
@@ -3073,21 +3020,17 @@ class TransactionFinanciere:
                     base_query += " LIMIT %(limit)s OFFSET %(offset)s"
                     params['limit'] = per_page
                     params['offset'] = offset
-
                 cursor.execute(base_query, params)
                 transactions = cursor.fetchall()
-
                 # Convertir les montants en Decimal (optionnel mais cohérent avec le reste)
                 for tx in transactions:
                     if 'montant' in tx and tx['montant'] is not None:
                         tx['montant'] = Decimal(str(tx['montant']))
                     if 'solde_apres' in tx and tx['solde_apres'] is not None:
                         tx['solde_apres'] = Decimal(str(tx['solde_apres']))
-
                 return list(transactions), total
-
-        except Exception as e:
-            logger.error(f"Erreur dans get_all_user_transactions: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur dans get_all_user_transactions: {e}", exc_info=True)
             return [], 0
 
    # ===== DÉPÔTS ET RETRAITS =====
@@ -3096,21 +3039,16 @@ class TransactionFinanciere:
                     description: str = "", compte_type: str = 'compte_principal',
                     date_transaction: datetime = None) -> Tuple[bool, str]:
         """Crée un dépôt sur un compte"""
-
         if montant <= 0:
             return False, "Le montant doit être positif"
-
         if not self._verifier_appartenance_compte(compte_type, compte_id, user_id):
             return False, "Compte non trouvé ou non autorisé"
-
         if date_transaction is None:
             date_transaction = datetime.now()
-
         try:
             with self.db.get_cursor(dictionary=True, commit=True) as cursor:
                 compte_destination_id = None
                 sous_compte_destinatin_id = None
-
                 if compte_type == 'compte_principal':
                     compte_destination_id = compte_id
                 elif compte_type == 'sous_compte':
@@ -3123,8 +3061,8 @@ class TransactionFinanciere:
                     receipt_id=None
                 )
                 return success, message
-        except Exception as e:
-            logger.error(f"Erreur création dépôt: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur création dépôt: {e}")
             return False, f"Erreur lors de la création du dépôt: {str(e)}"
 
     def create_retrait(self, compte_id: int, user_id: int, montant: Decimal,
@@ -3146,21 +3084,19 @@ class TransactionFinanciere:
                                                                             compte_type, compte_id, 'retrait', 
                                                                             montant, description, user_id, date_transaction, False, receipt_id=None)
             return success, message
-        except Exception as e:
-            logger.error(f"Erreur création retrait: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur création retrait: {e}")
             return False, f"Erreur lors de la création du retrait: {str(e)}"
 
     def _valider_solde_suffisant_with_cursor(self, cursor, compte_type: str, compte_id: int, montant: Decimal) -> Tuple[bool, Decimal]:
         """
         Vérifie si le solde d'un compte est suffisant pour une opération.
         Cette fonction utilise un curseur de base de données déjà ouvert.
-
         Args:
             cursor: Le curseur de la base de données.
             compte_type (str): 'compte_principal' ou 'sous_compte'.
             compte_id (int): L'identifiant du compte.
             montant (Decimal): Le montant à vérifier.
-
         Returns:
             Tuple[bool, Decimal]: Un tuple contenant un booléen (True si le solde est suffisant)
                                 et le solde actuel du compte.
@@ -3173,19 +3109,18 @@ class TransactionFinanciere:
             else:
                 # Type de compte inconnu
                 return False, Decimal('0')
-
             result = cursor.fetchone()
             if not result:
                 # Compte non trouvé
                 return False, Decimal('0')
-
             # Assurer la précision décimale en convertissant le résultat de la requête
             solde_actuel = Decimal(str(result['solde']))
             solde_limite = Decimal(str(result['solde_possible'])) if 'solde_possible' in result else Decimal('0')
             return (solde_actuel - montant) >= solde_limite, solde_actuel
-        except Exception as e:
-            logger.error(f"Erreur lors de la validation du solde: {e}")
-            return False, Decimal('0')
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la validation du solde: {e}")
+            #return False, Decimal('0')
+            raise
 
 # ===== TRANSFERTS INTERNES =====
 
@@ -3211,8 +3146,8 @@ class TransactionFinanciere:
                 solde = Decimal(result['solde']) if result  and 'solde' in result else Decimal('0')
                 logger.debug(f"Solde trouvé: {solde}")
                 return solde
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération du solde: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la récupération du solde: {e}")
             return Decimal('0')
 
     def _get_transaction_effect(self, transaction_type: str, compte_type: str) -> str:
@@ -3222,25 +3157,20 @@ class TransactionFinanciere:
         """
         credit_types = ['depot', 'transfert_entrant', 'recredit_annulation']
         debit_types = ['retrait', 'transfert_sortant', 'transfert_externe']
-
         # Types spéciaux qui dépendent du type de compte
         if transaction_type == 'transfert_compte_vers_sous':
             return 'debit' if compte_type == 'compte_principal' else 'credit'
         elif transaction_type == 'transfert_sous_vers_compte':
             return 'debit' if compte_type == 'sous_compte' else 'credit'
-
         # Types normaux
         if transaction_type in credit_types:
             return 'credit'
         elif transaction_type in debit_types:
             return 'debit'
-
         return 'unknown'
 
     def _verifier_existence_compte_with_cursor(self, cursor, compte_type: str, compte_id: int) -> bool:
-        """
-        Vérifie simplement si un compte existe (sans vérifier l'appartenance à un utilisateur).
-        """
+        """Vérifie simplement si un compte existe (sans vérifier l'appartenance à un utilisateur)."""
         try:
             if compte_type == 'compte_principal':
                 cursor.execute(
@@ -3254,24 +3184,22 @@ class TransactionFinanciere:
                 )
             else:
                 return False
-            
             result = cursor.fetchone()
             return result is not None
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur lors de la vérification d'existence du compte: {e}")
-            return False
+            #returnFalse
+            raise
 
     def _verifier_appartenance_compte_with_cursor(self, cursor, compte_type: str, compte_id: int, user_id: int) -> bool:
         """
         Vérifie si un compte appartient à un utilisateur donné.
         Utilise un curseur de base de données déjà ouvert.
-
         Args:
             cursor: Le curseur de la base de données.
             compte_type (str): 'compte_principal' ou 'sous_compte'.
             compte_id (int): L'identifiant du compte.
             user_id (int): L'identifiant de l'utilisateur.
-
         Returns:
             bool: True si le compte appartient à l'utilisateur, False sinon.
         """
@@ -3296,19 +3224,18 @@ class TransactionFinanciere:
                 return result is not None
             else:
                 return False
-        except Exception as e:
-            logger.error(f"Erreur lors de la vérification de l'appartenance du compte: {e}")
-            return False
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la vérification de l'appartenance du compte: {e}")
+            #return False
+            raise
 
     def _get_solde_compte_with_cursor(self, cursor, compte_type: str, compte_id: int) -> Decimal:
         """
         Récupère le solde d'un compte en utilisant un curseur existant.
-
         Args:
             cursor: Le curseur de la base de données.
             compte_type (str): 'compte_principal' ou 'sous_compte'.
             compte_id (int): L'identifiant du compte.
-
         Returns:
             Decimal: Le solde du compte, ou 0 si une erreur ou un compte non trouvé.
         """
@@ -3323,14 +3250,14 @@ class TransactionFinanciere:
                 return Decimal(str(result['solde'])) if result and 'solde' in result else Decimal('0')
             else:
                 return Decimal('0')
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération du solde : {e}", exc_info=True)
-            return Decimal('0')
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la récupération du solde : {e}", exc_info=True)
+            #return Decimal('0')
+            raise
 
     def valider_transfert_sous_compte(sous_compte_id, compte_principal_id, sous_comptes):
         """
         Valide qu'un sous-compte appartient bien à un compte principal.
-
         Args:
             sous_compte_id (int): L'identifiant du sous-compte.
             compte_principal_id (int): L'identifiant du compte principal.
@@ -3357,7 +3284,6 @@ class TransactionFinanciere:
                 solde_possible = Decimal(str(res_sp['solde_possible'])) if res_sp and 'solde_possible' in res_sp else Decimal('0')
             # Trouver la transaction précédente pour calculer le solde_avant
             previous = self._get_previous_transaction_with_cursor(cursor, compte_type, compte_id, date_transaction)
-
             # Calculer le solde_avant
             if previous:
                 solde_avant = Decimal(str(previous[2]))
@@ -3365,13 +3291,11 @@ class TransactionFinanciere:
                 # Si aucune transaction précédente, utiliser le solde initial du compte
                 solde_initial = self._get_solde_initial_with_cursor(cursor, compte_type, compte_id)
                 solde_avant = solde_initial
-
             # Pour les transactions de débit, vérifier le solde suffisant si demandé
             if validate_balance and type_transaction in ['retrait', 'transfert_sortant', 'transfert_externe', 'transfert_compte_vers_sous', 'transfert_sous_vers_compte']:
                 solde_limite = solde_possible if compte_type == 'compte_principal' else Decimal('0')
                 if solde_avant - montant < solde_limite:
                     return False, "Solde insuffisant", None
-
             # Calculer le nouveau solde
             if type_transaction in ['depot', 'transfert_entrant', 'recredit_annulation']:
                 solde_apres = solde_avant + montant
@@ -3391,16 +3315,13 @@ class TransactionFinanciere:
                     solde_apres = solde_avant + montant   # Crédit sur le compte principal
             else:
                 return False, f"Type de transaction non reconnu: {type_transaction}", None
-
             if reference_transfert is None:
                 reference_transfert = f"TRF_{int(time.time())}_{user_id}_{secrets.token_hex(6)}"
-
             # Déterminer les IDs source et destination
             compte_principal_id = None
             sous_compte_id = None
             compte_source_id = None
             sous_compte_source_id = None
-
             # Pour les colonnes source
             if compte_type == 'compte_principal':
                 compte_principal_id = compte_id
@@ -3408,7 +3329,6 @@ class TransactionFinanciere:
             else:  # sous_compte
                 sous_compte_id = compte_id
                 sous_compte_source_id = compte_id
-
             # Pour les colonnes destination - si non fournies, utiliser les mêmes que la source pour les dépôts
             if compte_destination_id is None and sous_compte_destination_id is None:
                 if type_transaction == 'depot':
@@ -3417,7 +3337,6 @@ class TransactionFinanciere:
                         compte_destination_id = compte_id
                     else:
                         sous_compte_destination_id = compte_id
-
             # Insérer la transaction avec toutes les colonnes
             query = """
             INSERT INTO transactions
@@ -3427,30 +3346,24 @@ class TransactionFinanciere:
             compte_source_id, sous_compte_source_id, receipt_id)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
-
             cursor.execute(query, (
                 compte_principal_id, sous_compte_id, type_transaction, float(montant),
                 description, user_id, date_transaction, float(solde_apres), reference_transfert,
                 compte_destination_id, sous_compte_destination_id,
                 compte_source_id, sous_compte_source_id, receipt_id
             ))
-
             transaction_id = cursor.lastrowid
-
             # Mettre à jour les transactions suivantes
             dernier_solde = self._update_subsequent_transactions_with_cursor(
                 cursor, compte_type, compte_id, date_transaction, transaction_id, solde_apres
             )
-
             # Mettre à jour le solde final du compte principal/sous-compte
             solde_final = dernier_solde if dernier_solde is not None else solde_apres
             if not self._mettre_a_jour_solde_with_cursor(cursor, compte_type, compte_id, solde_final):
                 return False, "Erreur lors de la mise à jour du solde", None
-
             return True, "Transaction insérée avec succès", transaction_id
-
-        except Exception as e:
-            logger.error(f"Erreur lors de l'insertion de la transaction: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de l'insertion de la transaction")
             return False, f"Erreur lors de l'insertion: {str(e)}", None
 
     def _get_previous_transaction_with_cursor(self, cursor, compte_type: str, compte_id: int, date_transaction: datetime) -> Optional[tuple]:
@@ -3463,7 +3376,6 @@ class TransactionFinanciere:
                 condition = "compte_principal_id = %s"
             else:
                 condition = "sous_compte_id = %s"
-
             query_simple = f"""
             SELECT id, date_transaction, solde_apres
             FROM transactions
@@ -3471,16 +3383,15 @@ class TransactionFinanciere:
             ORDER BY date_transaction DESC, id DESC
             LIMIT 1
             """
-
             cursor.execute(query_simple, (compte_id, date_transaction))
             result = cursor.fetchone()
             if result:
                 return (result['id'], result['date_transaction'], result['solde_apres'])
             return None
-
-        except Exception as e:
-            logger.error(f"Erreur lors de la recherche de la transaction précédente: {e}")
-            return None
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la recherche de la transaction précédente: {e}")
+            #return None
+            raise
 
     def _get_solde_initial_with_cursor(self, cursor, compte_type: str, compte_id: int) -> Decimal:
         """
@@ -3491,21 +3402,17 @@ class TransactionFinanciere:
                 cursor.execute("SELECT solde_initial FROM comptes_principaux WHERE id = %s", (compte_id,))
             else:
                 cursor.execute("SELECT solde_initial FROM sous_comptes WHERE id = %s", (compte_id,))
-
             result = cursor.fetchone()
             return Decimal(str(result['solde_initial'])) if result and 'solde_initial' in result else Decimal('0')
-
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur lors de la récupération du solde initial: {e}")
-            return Decimal('0')
+            #return Decimal('0')
+            raise
 
     def _mettre_a_jour_solde_with_cursor(self, cursor, compte_type: str, compte_id: int, nouveau_solde: Decimal) -> bool:
-        """
-        Met à jour le solde d'un compte en utilisant un curseur existant.
-        """
+        """Met à jour le solde d'un compte en utilisant un curseur existant."""
         try:
             logger.info(f"➡️ Mise à jour solde: compte_type={compte_type}, compte_id={compte_id}, solde={nouveau_solde} (type={type(nouveau_solde)})")
-
             if compte_type == 'compte_principal':
                 query = "UPDATE comptes_principaux SET solde = %s WHERE id = %s"
             else:
@@ -3515,9 +3422,10 @@ class TransactionFinanciere:
             if cursor.rowcount > 0:
                 logger.info(f"✅ Nombre de lignes mises à jour : {cursor.rowcount}")
             return True
-        except Exception as e:
-            logger.error(f"Erreur lors de la mise à jour du solde: {e}")
-            return False
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la mise à jour du solde: {e}")
+            #return False
+            raise
 
     def _update_subsequent_transactions_with_cursor(self, cursor, compte_type: str, compte_id: int,
                                                 date_transaction: datetime, transaction_id: int,
@@ -3530,7 +3438,6 @@ class TransactionFinanciere:
             condition = "compte_principal_id = %s"
         else:
             condition = "sous_compte_id = %s"
-
         query = f"""
         SELECT id, type_transaction, montant, date_transaction
         FROM transactions
@@ -3540,17 +3447,13 @@ class TransactionFinanciere:
         )
         ORDER BY date_transaction ASC, id ASC
         """
-
         cursor.execute(query, (compte_id, date_transaction, date_transaction, transaction_id))
         subsequent_transactions = cursor.fetchall()
-
         solde_courant = solde_apres_insere
         dernier_solde = None
-
         for transaction in subsequent_transactions:
             montant_val = Decimal(str(transaction['montant']))
             type_transaction_val = transaction['type_transaction']
-
             # Gestion de tous les types de transactions
             if type_transaction_val in ['depot', 'transfert_entrant', 'recredit_annulation', 'transfert_sous_vers_compte']:
                 solde_courant += montant_val
@@ -3563,7 +3466,6 @@ class TransactionFinanciere:
             update_query = "UPDATE transactions SET solde_apres = %s WHERE id = %s"
             cursor.execute(update_query, (solde_courant, transaction['id'])) #cursor.execute(update_query, (float(solde_courant), transaction['id']))
             dernier_solde = solde_courant
-
         return dernier_solde
 
     def _verifier_existence_compte(self, compte_type: str, compte_id: int) -> bool:
@@ -3583,10 +3485,9 @@ class TransactionFinanciere:
                 else:
                     return False
                 return cursor.fetchone() is not None
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur vérification existence compte: {e}")
             return False
-
 
     def create_transfert_interne(self, source_type: str, source_id: int,
                                 dest_type: str, dest_id: int, user_id: int,
@@ -3594,7 +3495,6 @@ class TransactionFinanciere:
                                 date_transaction: datetime = None) -> Tuple[bool, str]:
         """
         Exécute un transfert interne entre deux comptes gérés.
-
         Args:
             source_type (str): Le type du compte source ('compte_principal' ou 'sous_compte').
             source_id (int): L'ID du compte source.
@@ -3618,7 +3518,6 @@ class TransactionFinanciere:
         if source_type == dest_type and source_id == dest_id:
             logger.warning("❌ Échec: Les comptes source et destination doivent être différents")
             return False, "Les comptes source et destination doivent être différents"
-
         if date_transaction is None:
             date_transaction = datetime.now()
         try:
@@ -3677,21 +3576,16 @@ class TransactionFinanciere:
                     dest_compte_id, dest_sous_compte_id,
                     debit_tx_id, credit_tx_id
                 ))
-
                 # Optionnel : loguer les IDs des transactions créées
                 logger.info(f"✅ Transfert interne réussi : débit={debit_tx_id}, crédit={credit_tx_id}")
-
                 # Le commit est automatique à la sortie du bloc 'with'
                 return True, "Transfert interne effectué avec succès"
-
-        except Exception as e:
-            logger.error(f"❌ Erreur lors du transfert interne: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"❌ Erreur lors du transfert interne")
             return False, f"Erreur lors du transfert: {str(e)}"
 
     def transfert_compte_vers_sous_compte(self, compte_id, sous_compte_id, montant, user_id, description="", date_transaction = datetime.now(), reference_transfert=None):
-        """
-        Transfert d'un compte principal vers un sous-compte.
-        """
+        """Transfert d'un compte principal vers un sous-compte."""
         try:
             with self.db.get_cursor() as cursor:
                 # Vérifier que le sous-compte appartient au compte
@@ -3701,7 +3595,6 @@ class TransactionFinanciere:
                 )
                 if not cursor.fetchone():
                     return False, "Le sous-compte n'appartient pas à ce compte"
-
                 # Vérifier le solde du compte
                 cursor.execute("SELECT solde, COALESCE(solde_possible, 0) AS solde_possible FROM comptes_principaux WHERE id = %s", (compte_id,))
                 result = cursor.fetchone()
@@ -3711,7 +3604,6 @@ class TransactionFinanciere:
                 solde_possible = Decimal(str(result['solde_possible']))
                 if solde_compte - montant < solde_possible:
                     return False, "Solde insuffisant sur le compte"
-
                 # Générer référence et description
                 timestamp = int(time.time())
                 reference = f"TRF_CP_SC_{timestamp}"
@@ -3719,7 +3611,6 @@ class TransactionFinanciere:
                 reference_transfert = f"TRF_{int(time.time())}_{user_id}_{secrets.token_hex(6)}"
                 if date_transaction is None:
                     date_transaction = datetime.now()
-
                 # ⚠️ UTILISER _inserer_transaction_with_cursor pour DÉBIT sur le compte principal
                 success, message, debit_transaction_id = self._inserer_transaction_with_cursor(
                     cursor,
@@ -3736,7 +3627,6 @@ class TransactionFinanciere:
                 )
                 if not success:
                     return False, f"Erreur débit compte principal: {message}"
-
                 # ⚠️ UTILISER _inserer_transaction_with_cursor pour CRÉDIT sur le sous-compte
                 success, message, credit_transaction_id = self._inserer_transaction_with_cursor(
                     cursor,
@@ -3753,7 +3643,6 @@ class TransactionFinanciere:
                 )
                 if not success:
                     return False, f"Erreur crédit sous-compte: {message}"
-
                 # Mettre à jour les relations entre les deux transactions
                 update_query = """
                 UPDATE transactions SET
@@ -3764,17 +3653,13 @@ class TransactionFinanciere:
                 cursor.execute(update_query, (
                     compte_id, sous_compte_id, debit_transaction_id, credit_transaction_id
                 ))
-
                 return True, "Transfert effectué avec succès"
-
-        except Exception as e:
-            logger.error(f"Erreur transfert compte → sous-compte: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur transfert compte → sous-compte")
             return False, f"Erreur lors du transfert: {str(e)}"
 
     def transfert_sous_compte_vers_compte(self, sous_compte_id, compte_id, montant, user_id, description="", date_transaction = datetime.now()):
-        """
-        Transfert d'un sous-compte vers un compte principal.
-        """
+        """ Transfert d'un sous-compte vers un compte principal."""
         try:
             with self.db.get_cursor() as cursor:
                 # Vérifier que le sous-compte appartient au compte
@@ -3784,7 +3669,6 @@ class TransactionFinanciere:
                 )
                 if not cursor.fetchone():
                     return False, "Le sous-compte n'appartient pas à ce compte"
-
                 # Vérifier le solde du sous-compte
                 cursor.execute("SELECT solde FROM sous_comptes WHERE id = %s", (sous_compte_id,))
                 result = cursor.fetchone()
@@ -3793,7 +3677,6 @@ class TransactionFinanciere:
                 solde_sous_compte = Decimal(str(result['solde']))
                 if solde_sous_compte < montant:
                     return False, "Solde insuffisant sur le sous-compte"
-
                 # Générer référence et description
                 timestamp = int(time.time())
                 reference = f"TRF_SC_CP_{timestamp}"
@@ -3801,7 +3684,6 @@ class TransactionFinanciere:
                 desc_complete = f"{description} (Réf: {reference})"
                 if date_transaction is None:
                     date_transaction = datetime.now()
-
                 # ⚠️ UTILISER _inserer_transaction_with_cursor pour DÉBIT sur le sous-compte
                 success, message, debit_transaction_id = self._inserer_transaction_with_cursor(
                     cursor,
@@ -3818,7 +3700,6 @@ class TransactionFinanciere:
                 )
                 if not success:
                     return False, f"Erreur débit sous-compte: {message}"
-
                 # ⚠️ UTILISER _inserer_transaction_with_cursor pour CRÉDIT sur le compte principal
                 success, message, credit_transaction_id = self._inserer_transaction_with_cursor(
                     cursor,
@@ -3835,7 +3716,6 @@ class TransactionFinanciere:
                 )
                 if not success:
                     return False, f"Erreur crédit compte principal: {message}"
-
                 # Mettre à jour les relations
                 update_query = """
                 UPDATE transactions SET
@@ -3846,11 +3726,9 @@ class TransactionFinanciere:
                 cursor.execute(update_query, (
                     sous_compte_id, compte_id, debit_transaction_id, credit_transaction_id
                 ))
-
                 return True, "Transfert effectué avec succès"
-
-        except Exception as e:
-            logger.error(f"Erreur transfert sous-compte → compte: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur transfert sous-compte → compte")
             return False, f"Erreur lors du transfert: {str(e)}"
 
     # ===== TRANSFERTS EXTERNES =====
@@ -3868,11 +3746,9 @@ class TransactionFinanciere:
             return False, "Le montant doit être positif"
         if not iban_dest or len(iban_dest.strip()) < 15:
             return False, "IBAN destination invalide"
-        
         # Utiliser la date actuelle si non spécifiée
         if date_transaction is None:
             date_transaction = datetime.now()
-        
         try:
             with self.db.get_cursor() as cursor:
                 # Vérifier l'existence du compte
@@ -3891,10 +3767,8 @@ class TransactionFinanciere:
                     date_transaction,
                     True  # validate_balance
                 )
-
                 if not success:
                     return False, message
-
                 # Créer l'ordre de transfert externe
                 query_ordre = """
                 INSERT INTO transferts_externes (
@@ -3910,11 +3784,9 @@ class TransactionFinanciere:
                     float(montant), 
                     devise
                 ))
-
                 return True, "Ordre de transfert externe créé avec succès"
-
-        except Exception as e:
-            logger.error(f"Erreur transfert externe: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur transfert externe")
             return False, f"Erreur lors du transfert externe: {str(e)}"
         
     def get_historique_compte(self, compte_type: str, compte_id: int, user_id: int,
@@ -4004,7 +3876,7 @@ class TransactionFinanciere:
                     transaction['montant'] = Decimal(str(transaction['montant']))#transaction['montant'] = float(transaction['montant'])
                     transaction['solde_apres'] = Decimal(str(transaction['solde_apres']))#transaction['date_transaction'] = transaction['date_transaction'].isoformat()
                 return transactions
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur récupération historique: {e}")
             return []
 
@@ -4014,12 +3886,10 @@ class TransactionFinanciere:
             with self.db.get_cursor() as cursor:
                 if not self._verifier_existence_compte_with_cursor(cursor, compte_type, compte_id):
                     return {}
-
                 if compte_type == 'compte_principal':
                     condition_compte = "t.compte_principal_id = %s"
                 else:
                     condition_compte = "t.sous_compte_id = %s"
-
                 query = f"""
                 SELECT
                     SUM(CASE
@@ -4045,8 +3915,8 @@ class TransactionFinanciere:
                         'montant_moyen': float(stats['montant_moyen'] or 0)
                     }
                 return {}
-        except Exception as e:
-            logger.error(f"Erreur récupération statistiques: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération statistiques: {e}")
             return {}
 
     def get_transferts_externes_pending(self, user_id: int) -> List[Dict]:
@@ -4071,9 +3941,8 @@ class TransactionFinanciere:
                 """
                 cursor.execute(query, (user_id,))
                 return cursor.fetchall()
-
-        except Exception as e:
-            logger.error(f"Erreur récupération transferts externes: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération transferts externes: {e}")
             return []
 
     def annuler_transfert_externe(self, transfert_externe_id: int, user_id: int) -> Tuple[bool, str]:
@@ -4090,13 +3959,10 @@ class TransactionFinanciere:
                 """
                 cursor.execute(query, (transfert_externe_id,))
                 transfert = cursor.fetchone()
-
                 if not transfert:
                     return False, "Transfert externe non trouvé ou déjà traité"
-
                 #if transfert['utilisateur_id'] != user_id:
                 #    return False, "Non autorisé à annuler ce transfert"
-
                 # Déterminer le type et l'ID du compte source
                 if transfert['compte_principal_id']:
                     compte_type = 'compte_principal'
@@ -4104,29 +3970,23 @@ class TransactionFinanciere:
                 else:
                     compte_type = 'sous_compte'
                     compte_id = transfert['sous_compte_id']
-
                 # Recréditer le compte source
                 montant = Decimal(str(transfert['montant']))
-
                 # Utiliser la méthode d'insertion pour créer une transaction de recrédit
                 success, message, _ = self._inserer_transaction_with_cursor(
                     cursor, compte_type, compte_id, 'recredit_annulation', montant,
                     f"Annulation transfert externe vers {transfert['iban_dest']}",
                     user_id, datetime.now(), False
                 )
-
                 if not success:
                     return False, f"Erreur lors du recrédit: {message}"
-
                 # Marquer le transfert comme annulé
                 cursor.execute("UPDATE transferts_externes SET statut = 'cancelled' WHERE id = %s",
                             (transfert_externe_id,))
-
                 return True, "Transfert externe annulé et compte recrédité"
-
-        except Exception as e:
+        except MySQLError as e:
             # Le rollback est géré automatiquement par le bloc 'with'
-            logger.error(f"Erreur annulation transfert externe: {e}")
+            logger.exception(f"Erreur annulation transfert externe")
             return False, f"Erreur lors de l'annulation: {str(e)}"
 
     def get_evolution_soldes_quotidiens_compte(self, compte_id: int, user_id: int, date_debut: str = None, date_fin: str = None) -> List[Dict]:
@@ -4193,13 +4053,10 @@ class TransactionFinanciere:
                         'date': current_date,
                         'solde_apres': float(current_solde) # Convertir en float pour l'utilisation dans la vue
                     })
-
                     current_date += timedelta(days=1)
-
                 return jours_complets
-
-        except Exception as e:
-            logger.error(f"Erreur récupération évolution soldes compte: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération évolution soldes compte: {e}")
             return []
 
 
@@ -4210,7 +4067,6 @@ class TransactionFinanciere:
         """
         try:
             with self.db.get_cursor() as cursor:
-
                 # --- 1. Définition de la période ---
                 date_fin_dt = date.today()
                 date_debut_dt = date_fin_dt - timedelta(days=nb_jours - 1)
@@ -4218,11 +4074,8 @@ class TransactionFinanciere:
                 # Conversion au format string pour la requête SQL
                 date_debut_str = date_debut_dt.strftime('%Y-%m-%d')
                 date_fin_str = date_fin_dt.strftime('%Y-%m-%d')
-
                 # NOTE: Il faudrait idéalement une vérification d'appartenance du sous-compte au user_id ici.
-
                 # --- 2. Requête SQL (Récupération des soldes de fin de journée pour les jours AVEC transaction) ---
-
                 # Nous utilisons la méthode ROW_NUMBER() plus moderne comme dans la version compte principal
                 query = """
                     SELECT date_transaction, solde_apres
@@ -4244,44 +4097,33 @@ class TransactionFinanciere:
                 """
                 cursor.execute(query, (sous_compte_id, date_debut_str, date_fin_str))
                 transactions_par_jour = cursor.fetchall()
-
                 if not transactions_par_jour:
                     return []
-
                 # --- 3. Logique de Remplissage des Jours Manquants (Report de Solde) ---
-
                 soldes_fin_journee = {t['date_transaction'].date(): Decimal(str(t['solde_apres'])) for t in transactions_par_jour}
-
                 # Déterminer le solde APRES la dernière transaction AVANT date_debut
                 cursor.execute("""
                     SELECT solde_apres FROM transactions
                     WHERE sous_compte_id = %s AND date_transaction < %s
                     ORDER BY date_transaction DESC, id DESC LIMIT 1
                 """, (sous_compte_id, date_debut_str))
-
                 # Dans un sous-compte, on part souvent de 0.0 si aucune transaction passée n'est trouvée.
                 solde_initial_report = Decimal(str(cursor.fetchone()['solde_apres'])) if cursor.rowcount else Decimal('0.00')
-
                 jours_complets = []
                 current_solde = solde_initial_report
                 current_date = date_debut_dt
-
                 while current_date <= date_fin_dt:
                     if current_date in soldes_fin_journee:
                         # Mise à jour avec le solde réel de fin de journée
                         current_solde = soldes_fin_journee[current_date]
                     # Sinon, le solde est reporté (current_solde reste inchangé)
-
                     jours_complets.append({
                         'date': current_date,
                         'solde_apres': float(current_solde)
                     })
-
                     current_date += timedelta(days=1)
-
                 return jours_complets
-
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur récupération évolution soldes sous-compte: {e}")
             return []
 
@@ -4323,8 +4165,8 @@ class TransactionFinanciere:
                 """
                 cursor.execute(query, (transaction_id,))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur récupération transaction: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération transaction: {e}")
             return None
         
     def get_transactions_by_receipt(self, receipt_id: int, user_id: int) -> List[Dict]:
@@ -4345,15 +4187,13 @@ class TransactionFinanciere:
                 """
                 cursor.execute(query, (receipt_id, user_id, user_id))
                 transactions = cursor.fetchall()
-                
                 for tx in transactions:
                     tx['montant'] = Decimal(str(tx['montant']))
                     if tx['solde_apres'] is not None:
                         tx['solde_apres'] = Decimal(str(tx['solde_apres']))
-                
                 return transactions
-        except Exception as e:
-            logger.error(f"Erreur récupération transactions pour reçu {receipt_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération transactions pour reçu {receipt_id}: {e}")
             return []
     
     def get_solde_courant(self, compte_type: str, compte_id: int, user_id: int) -> Decimal:
@@ -4372,7 +4212,7 @@ class TransactionFinanciere:
                     """, (compte_id, user_id))
                 result = cursor.fetchone()
                 return Decimal(str(result['solde'])) if result and 'solde' in result else Decimal('0')
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur récupération solde courant: {e}")
             return Decimal('0')
 
@@ -4396,21 +4236,19 @@ class TransactionFinanciere:
                 for sc in sous_comptes:
                     solde_total += Decimal(str(sc['solde']))
                 return solde_total
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur calcul solde total: {e}")
             return Decimal('0')
 
     def get_categories_par_type(self, compte_type: str, compte_id: int, user_id: int, date_debut: str, date_fin: str) -> Dict[str, Decimal]:
         """
-        Récupère la répartition des transactions par catégorie pour un compte donné sur une période.
-
+        Récupère la répartition des transactions par catégorie pour un compte donné sur une période
         Args:
             compte_type (str): 'compte_principal' ou 'sous_compte'
             compte_id (int): ID du compte
             user_id (int): ID de l'utilisateur
             date_debut (str): Date de début au format 'YYYY-MM-DD'
             date_fin (str): Date de fin au format 'YYYY-MM-DD'
-
         Returns:
             Dict[str, Decimal]: Dictionnaire {catégorie: montant_total}
         """
@@ -4424,20 +4262,17 @@ class TransactionFinanciere:
             'transfert_externe': 'Transferts externes',
             'recredit_annulation': 'Annulations / Recrédits'
         }
-
         try:
             with self.db.get_cursor() as cursor:
                 # Vérifier l'appartenance du compte
                 if not self._verifier_existence_compte_with_cursor(cursor, compte_type, compte_id):
                     logger.warning(f"Compte inexistant: compte={compte_id} ({compte_type})")
                     return {}
-
                 # Construire la condition selon le type de compte
                 if compte_type == 'compte_principal':
                     condition_compte = "compte_principal_id = %s"
                 else:
                     condition_compte = "sous_compte_id = %s"
-
                 query = f"""
                 SELECT
                     type_transaction,
@@ -4450,7 +4285,6 @@ class TransactionFinanciere:
                 """
                 cursor.execute(query, (compte_id, date_debut, date_fin))
                 rows = cursor.fetchall()
-
                 result = {}
                 for row in rows:
                     type_tx = row['type_transaction']
@@ -4459,11 +4293,9 @@ class TransactionFinanciere:
                     # Inclure dans la catégorie correspondante
                     cat = mapping_categories.get(type_tx, 'Autres')
                     result[cat] = result.get(cat, Decimal('0')) + montant
-
                 return result
-
-        except Exception as e:
-            logger.error(f"Erreur dans get_categories_par_type: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur dans get_categories_par_type: {e}", exc_info=True)
             return {}
 
     def get_categories_par_type_complet(self, user_id: int, date_debut: str, date_fin: str) -> Dict[str, Decimal]:
@@ -4480,7 +4312,6 @@ class TransactionFinanciere:
             'transfert_externe': 'Transferts externes',
             'recredit_annulation': 'Annulations / Recrédits'
         }
-
         try:
             with self.db.get_cursor() as cursor:
                 query = """
@@ -4502,17 +4333,14 @@ class TransactionFinanciere:
                 """
                 cursor.execute(query, (user_id, date_debut, date_fin))
                 rows = cursor.fetchall()
-
                 result = {}
                 for row in rows:
                     type_tx = row['type_transaction']
                     montant = Decimal(str(row['total'] or '0'))
                     cat = mapping_categories.get(type_tx, 'Autres')
                     result[cat] = result.get(cat, Decimal('0')) + montant
-
                 return result
-
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur dans get_categories_par_type_complet: {e}", exc_info=True)
             return {}
 
@@ -4527,7 +4355,6 @@ class TransactionFinanciere:
             'retrait': 'Retraits directs',
             # Tu peux adapter selon ce qui est pertinent pour les sous-comptes
         }
-
         try:
             with self.db.get_cursor() as cursor:
                 # Vérifier que le sous-compte appartient à l'utilisateur
@@ -4540,7 +4367,6 @@ class TransactionFinanciere:
                 if not cursor.fetchone():
                     logger.warning(f"Accès refusé au sous-compte {sous_compte_id} pour user {user_id}")
                     return {}
-
                 query = """
                 SELECT
                     type_transaction,
@@ -4552,18 +4378,15 @@ class TransactionFinanciere:
                 """
                 cursor.execute(query, (sous_compte_id, date_debut, date_fin))
                 rows = cursor.fetchall()
-
                 result = {}
                 for row in rows:
                     type_tx = row['type_transaction']
                     montant = Decimal(str(row['total'] or '0'))
                     cat = mapping_categories.get(type_tx, 'Autres')
                     result[cat] = result.get(cat, Decimal('0')) + montant
-
                 return result
-
-        except Exception as e:
-            logger.error(f"Erreur dans get_categories_par_type_sous_compte: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur dans get_categories_par_type_sous_compte: {e}", exc_info=True)
             return {}
 
     def get_transaction_with_ecritures_total(self, transaction_id: int, user_id: int) -> Optional[Dict]:
@@ -4593,11 +4416,9 @@ class TransactionFinanciere:
                     WHERE t.id = %s
                     GROUP BY t.id, cp.utilisateur_id, cp.nom_compte, sc.nom_sous_compte
                 """, (transaction_id,))
-
                 tx = cursor.fetchone()
                 if not tx:
                     return None
-
                 ## Vérification de propriété améliorée
                 #owner_id = tx.get('owner_user_id')
                 #if not owner_id or owner_id != user_id:
@@ -4614,9 +4435,8 @@ class TransactionFinanciere:
                 #            return None
                 #    else:
                 #        return None
-
                 return tx
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur get_transaction_with_ecritures_total: {e}")
             return None
 
@@ -4636,11 +4456,10 @@ class TransactionFinanciere:
                     LEFT JOIN comptes_principaux cp ON t.compte_principal_id = cp.id
                     WHERE t.id = %s
                 """, (transaction_id,))
-
                 result = cursor.fetchone()
                 return result and result['owner_user_id'] == user_id
-        except Exception as e:
-            logger.error(f"Erreur vérification propriété transaction: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur vérification propriété transaction: {e}")
             return False
 
     def get_contacts_avec_transactions(self, user_id: int) -> List[Dict]:
@@ -4686,7 +4505,6 @@ class TransactionFinanciere:
                 """
                 cursor.execute(query_internes, (user_id,))
                 comptes = {row['id']: row for row in cursor.fetchall()}
-
                 # 2. Comptes liés à des contacts (externes)
                 query_contacts = """
                     SELECT DISTINCT
@@ -4708,7 +4526,6 @@ class TransactionFinanciere:
                 for row in cursor.fetchall():
                     if row['id'] not in comptes:
                         comptes[row['id']] = row
-
                 # 3. Comptes apparaissant dans les transactions (source ou destination)
                 query_transactions = """
                     SELECT DISTINCT
@@ -4738,12 +4555,10 @@ class TransactionFinanciere:
                         ]:
                             row['type_compte_origine'] = 'externe'
                         comptes[row['id']] = row
-
                 # Retourner la liste finale
                 return list(comptes.values())
-
-        except Exception as e:
-            logger.error(f"Erreur dans get_comptes_interagis: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur dans get_comptes_interagis: {e}", exc_info=True)
             return []
 
     def get_transactions_sans_ecritures(self, user_id: int, date_from: str = None, date_to: str = None,
@@ -4772,7 +4587,6 @@ class TransactionFinanciere:
                 )
                 """
                 params = [user_id, user_id]
-
                 # Filtres optionnels
                 if date_from:
                     query += " AND DATE(t.date_transaction) >= %s"
@@ -4783,7 +4597,6 @@ class TransactionFinanciere:
                 if statut_comptable:
                     query += " AND t.statut_comptable = %s"
                     params.append(statut_comptable)
-
                 query += """
                 GROUP BY t.id
                 HAVING nb_ecritures_liees = 0
@@ -4791,11 +4604,9 @@ class TransactionFinanciere:
                 LIMIT %s
                 """
                 params.append(limit)
-
                 cursor.execute(query, params)
                 return cursor.fetchall()
-
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur récupération transactions sans écritures: {e}")
             return []
 
@@ -4819,15 +4630,13 @@ class TransactionFinanciere:
                 """
                 cursor.execute(query, (user_id, user_id))
                 stats = cursor.fetchall()
-
                 return {
                     'statistiques': stats,
                     'total_transactions': sum(s['nb_transactions'] for s in stats),
                     'total_montant': sum(float(s['total_montant'] or 0) for s in stats)
                 }
-
-        except Exception as e:
-            logger.error(f"Erreur statistiques transactions comptables: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur statistiques transactions comptables: {e}")
             return {}
 
     def creer_ecriture_automatique(self, transaction_id: int, user_id: int, categorie_id: int = None) -> Tuple[bool, str]:
@@ -4838,16 +4647,13 @@ class TransactionFinanciere:
                 transaction = self.get_transaction_by_id(transaction_id)
                 if not transaction or transaction.get('owner_user_id') != user_id:
                     return False, "Transaction non trouvée ou non autorisée"
-
                 # Déterminer le type d'écriture basé sur le type de transaction
                 type_ecriture = self._determiner_type_ecriture(transaction['type_transaction'])
-
                 # Déterminer la catégorie par défaut si non fournie
                 if not categorie_id:
                     categorie_id = self._get_categorie_par_defaut(type_ecriture, user_id)
                     if not categorie_id:
                         return False, "Aucune catégorie par défaut trouvée"
-
                 # Créer l'écriture comptable avec statut 'pending'
                 ecriture_data = {
                     'date_ecriture': transaction['date_transaction'],
@@ -4861,26 +4667,22 @@ class TransactionFinanciere:
                     'statut': 'pending',  # Statut en attente par défaut
                     'transaction_id': transaction_id
                 }
-
                 # Utiliser votre modèle d'écriture comptable existant
                 success = self.ecriture_model.create(ecriture_data)
-
                 if success:
                     # Marquer la transaction comme comptabilisée
                     self.update_statut_comptable(transaction_id, user_id, 'comptabilise')
                     return True, "Écriture créée automatiquement avec statut 'en attente'"
                 else:
                     return False, "Erreur lors de la création de l'écriture"
-
-        except Exception as e:
-            logger.error(f"Erreur création écriture automatique: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur création écriture automatique: {e}")
             return False, f"Erreur: {str(e)}"
 
     def _determiner_type_ecriture(self, type_transaction: str) -> str:
         """Détermine le type d'écriture basé sur le type de transaction"""
         types_depense = ['retrait', 'transfert_sortant', 'transfert_externe']
         types_recette = ['depot', 'transfert_entrant', 'recredit_annulation']
-
         if type_transaction in types_depense:
             return 'depense'
         elif type_transaction in types_recette:
@@ -4904,11 +4706,10 @@ class TransactionFinanciere:
                         WHERE utilisateur_id = %s AND type_compte = 'Revenus'
                         LIMIT 1
                     """, (user_id,))
-
                 result = cursor.fetchone()
                 return result['id'] if result else None
-        except Exception as e:
-            logger.error(f"Erreur récupération catégorie par défaut: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération catégorie par défaut: {e}")
             return None
 
     def get_transactions_sans_ecritures_par_compte(self, compte_id: int, user_id: int,
@@ -4924,7 +4725,6 @@ class TransactionFinanciere:
                 )
                 if not cursor.fetchone():
                     return []
-
                 query = """
                 SELECT
                     t.*,
@@ -4955,7 +4755,6 @@ class TransactionFinanciere:
                 #    --    FROM ecritures_comptables
                 #        WHERE id IS NOT NULL
                 params = [compte_id]
-
                 # Filtres optionnels
                 if date_from:
                     query += " AND DATE(t.date_transaction) >= %s"
@@ -4966,18 +4765,15 @@ class TransactionFinanciere:
                 if statut_comptable:
                     query += " AND t.statut_comptable = %s"
                     params.append(statut_comptable)
-
                 query += """
                 GROUP BY t.id
                 HAVING nb_ecritures_liees = 0
                 ORDER BY t.date_transaction DESC
                 """
-
                 cursor.execute(query, params)
                 return cursor.fetchall()
-
-        except Exception as e:
-            logger.error(f"Erreur récupération transactions sans écritures par compte: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération transactions sans écritures par compte: {e}")
             return []
 
     def _get_daily_balances(self, compte_id: int, date_debut: date, date_fin: date,
@@ -4995,7 +4791,6 @@ class TransactionFinanciere:
                     cursor.execute("SELECT solde_initial FROM comptes_principaux WHERE id = %s", (compte_id,))
                     row = cursor.fetchone()
                     solde_initial = Decimal(str(row['solde_initial'])) if row and row['solde_initial'] is not None else Decimal('0')
-
                     # 2. Récupérer TOUTES les transactions du compte dans la période
                     cursor.execute("""
                         SELECT date_transaction, montant, type_transaction
@@ -5006,25 +4801,20 @@ class TransactionFinanciere:
                         ORDER BY date_transaction ASC
                     """, (compte_id, date_debut, date_fin))
                     txns = cursor.fetchall()
-
                     # 3. Préparer structure par date
                     recettes_par_jour = {}
                     depenses_par_jour = {}
                     solde_par_jour = {}
-
                     # Initialiser le solde courant
                     solde_courant = solde_initial
-
                     # Si on demande 'total', le solde_initial s'applique à date_debut
                     if type_transaction == 'total':
                         solde_par_jour[date_debut] = solde_initial
-
                     # 4. Parcourir les transactions
                     for tx in txns:
                         tx_date = tx['date_transaction'].date()
                         montant = Decimal(str(tx['montant']))
                         tx_type = tx['type_transaction']
-
                         # Classifier la transaction
                         if tx_type in ['depot', 'transfert_entrant', 'recredit_annulation', 'transfert_sous_vers_compte']:
                             # → Recette
@@ -5037,16 +4827,13 @@ class TransactionFinanciere:
                         else:
                             logger.warning(f"Type de transaction inconnu : {tx_type}")
                             continue
-
                         # Enregistrer le solde à cette date
                         if type_transaction == 'total':
                             solde_par_jour[tx_date] = solde_courant
-
                     # 5. Remplir les jours manquants (report de solde ou zéro pour flux)
                     current = date_debut
                     result = {}
                     last_solde = solde_initial
-
                     while current <= date_fin:
                         if type_transaction == 'total':
                             if current in solde_par_jour:
@@ -5059,11 +4846,9 @@ class TransactionFinanciere:
                         else:
                             result[current] = Decimal('0')
                         current += timedelta(days=1)
-
                     return result
-
-            except Exception as e:
-                logger.error(f"Erreur dans _get_daily_balances (compte {compte_id}): {e}")
+            except MySQLError as e:
+                logger.exception(f"Erreur dans _get_daily_balances (compte {compte_id}): {e}")
                 return {}
 
     def compare_comptes_soldes_barres_horizontales(self, compte_id_1: int, compte_id_2: int,
@@ -5073,12 +4858,9 @@ class TransactionFinanciere:
         """
         Génère un graphique en BARRES SVG comparant l'évolution des soldes de deux comptes.
         """
-        from datetime import timedelta
-
         # Récupérer les soldes quotidiens pour chaque compte et type
         soldes_1 = self._get_daily_balances(compte_id_1, date_debut, date_fin, type_1)
         soldes_2 = self._get_daily_balances(compte_id_2, date_debut, date_fin, type_2)
-
         # Trier les dates
         toutes_dates = sorted(set(soldes_1.keys()) | set(soldes_2.keys()))
         if not toutes_dates:
@@ -5258,40 +5040,31 @@ class TransactionFinanciere:
         Axe X horizontal : valeurs des soldes (compte 1 à gauche, compte 2 à droite, axe Y au centre)
         Axe Y vertical descendant : dates (sur le côté gauche)
         """
-        from datetime import timedelta
-
         # Récupérer les soldes quotidiens pour chaque compte et type
         soldes_1 = self._get_daily_balances(compte_id_1, date_debut, date_fin, type_1)
         soldes_2 = self._get_daily_balances(compte_id_2, date_debut, date_fin, type_2)
-
         # Trier les dates
         toutes_dates = sorted(set(soldes_1.keys()) | set(soldes_2.keys()))
         if not toutes_dates:
             return "<svg width='800' height='400'><text x='10' y='20'>Aucune donnée pour les dates sélectionnées.</text></svg>"
-
         # Obtenir les valeurs
         valeurs_1 = [soldes_1.get(dt, Decimal('0')) for dt in toutes_dates]
         valeurs_2 = [soldes_2.get(dt, Decimal('0')) for dt in toutes_dates]
-
         # Calculer les valeurs absolues pour l'échelle X
         toutes_valeurs = valeurs_1 + valeurs_2
         if not toutes_valeurs:
             return "<svg width='800' height='400'><text x='10' y='20'>Aucune donnée pour les dates sélectionnées.</text></svg>"
-
         max_val = max(abs(float(v)) for v in toutes_valeurs)
         if max_val == 0:
             max_val = 1  # Éviter la division par zéro
-
         # --- Paramètres du graphique ---
         largeur_svg, hauteur_svg = 900, 500
         marge_gauche, marge_droite = 120, 40  # Augmenter la marge gauche pour les labels de dates
         marge_haut, marge_bas = 40, 40
         largeur_graph = largeur_svg - marge_gauche - marge_droite
         hauteur_graph = hauteur_svg - marge_haut - marge_bas
-
         # Échelle pour les valeurs (axe X)
         echelle_x = largeur_graph / (2 * max_val)  # Pour couvrir -max à +max
-
         # Échelle pour les dates (axe Y)
         nb_dates = len(toutes_dates)
         if nb_dates <= 1:
@@ -5300,18 +5073,14 @@ class TransactionFinanciere:
         else:
             hauteur_barre = hauteur_graph / nb_dates * 0.8  # 80% de la place pour la barre
             espacement = hauteur_graph / nb_dates - hauteur_barre
-
         svg_content = f'<svg width="{largeur_svg}" height="{hauteur_svg}" xmlns="http://www.w3.org/2000/svg">\n'
-
         # Ligne centrale (valeur 0 sur l'axe X)
         x_zero = marge_gauche + largeur_graph / 2
         svg_content += f'<line x1="{x_zero}" y1="{marge_haut}" x2="{x_zero}" y2="{marge_haut + hauteur_graph}" stroke="#000" stroke-dasharray="4" />\n'
-
         # Dessiner les barres pour chaque date
         for i, (dt, val_1, val_2) in enumerate(zip(toutes_dates, valeurs_1, valeurs_2)):
             # Position Y centrale pour ce groupe de barres
             y_centre = marge_haut + (i * (hauteur_barre + espacement)) + (hauteur_barre + espacement) / 2
-
             # Barre Compte 1 (à gauche de l'axe Y)
             largeur_1 = abs(float(val_1)) * echelle_x
             if val_1 >= 0:
@@ -5320,7 +5089,6 @@ class TransactionFinanciere:
             else:
                 x_1 = x_zero + float(val_1) * echelle_x # Commence à la position négative
             svg_content += f'<rect x="{x_1 + largeur_1}" y="{y_centre - hauteur_barre/2}" width="{abs(largeur_1)}" height="{hauteur_barre}" fill="{couleur_1}" />\n'
-
             # Barre Compte 2 (à droite de l'axe Y)
             largeur_2 = abs(float(val_2)) * echelle_x
             if val_2 >= 0:
@@ -5329,18 +5097,15 @@ class TransactionFinanciere:
                 x_2 = x_zero + float(val_2) * echelle_x # Commence à la position négative
                 largeur_2 = -largeur_2 # Barre vers la gauche
             svg_content += f'<rect x="{x_2}" y="{y_centre - hauteur_barre/2}" width="{abs(largeur_2)}" height="{hauteur_barre}" fill="{couleur_2}" />\n'
-
         # Ajouter les labels des dates sur l'axe Y (à gauche)
         for i, dt in enumerate(toutes_dates):
             y_centre = marge_haut + (i * (hauteur_barre + espacement)) + (hauteur_barre + espacement) / 2
             svg_content += f'<text x="{marge_gauche - 10}" y="{y_centre}" text-anchor="end" dominant-baseline="middle" font-size="10">{dt.strftime("%d.%m")}</text>\n'
-
         # Ajouter une légende simple
         svg_content += f'<rect x="{marge_gauche}" y="{marge_haut - 25}" width="15" height="10" fill="{couleur_1}" />\n'
         svg_content += f'<text x="{marge_gauche + 20}" y="{marge_haut - 15}" font-size="12">Compte 1 ({type_1})</text>\n'
         svg_content += f'<rect x="{marge_gauche + 150}" y="{marge_haut - 25}" width="15" height="10" fill="{couleur_2}" />\n'
         svg_content += f'<text x="{marge_gauche + 170}" y="{marge_haut - 15}" font-size="12">Compte 2 ({type_2})</text>\n'
-
         svg_content += '</svg>'
         return svg_content
 
@@ -5352,40 +5117,31 @@ class TransactionFinanciere:
         Génère un graphique en BARRES SVG comparant l'évolution des soldes de deux comptes.
         Axes épais, quadrillage fin, et graduations automatiques.
         """
-        from datetime import timedelta
-
         # Récupérer les soldes quotidiens pour chaque compte et type
         soldes_1 = self._get_daily_balances(compte_id_1, date_debut, date_fin, type_1)
         soldes_2 = self._get_daily_balances(compte_id_2, date_debut, date_fin, type_2)
-
         # Trier les dates
         toutes_dates = sorted(set(soldes_1.keys()) | set(soldes_2.keys()))
         if not toutes_dates:
             return "<svg width='800' height='400'><text x='10' y='20'>Aucune donnée pour les dates sélectionnées.</text></svg>"
-
         # Obtenir les valeurs
         valeurs_1 = [soldes_1.get(dt, Decimal('0')) for dt in toutes_dates]
         valeurs_2 = [soldes_2.get(dt, Decimal('0')) for dt in toutes_dates]
-
         # Calculer les valeurs absolues pour l'échelle X
         toutes_valeurs = valeurs_1 + valeurs_2
         if not toutes_valeurs:
             return "<svg width='800' height='400'><text x='10' y='20'>Aucune donnée pour les dates sélectionnées.</text></svg>"
-
         max_val = max(abs(float(v)) for v in toutes_valeurs)
         if max_val == 0:
             max_val = 1  # Éviter la division par zéro
-
         # --- Paramètres du graphique ---
         largeur_svg, hauteur_svg = 900, 500
         marge_gauche, marge_droite = 120, 40
         marge_haut, marge_bas = 40, 40
         largeur_graph = largeur_svg - marge_gauche - marge_droite
         hauteur_graph = hauteur_svg - marge_haut - marge_bas
-
         # Échelle pour les valeurs (axe X)
         echelle_x = largeur_graph / (2 * max_val)
-
         # Échelle pour les dates (axe Y)
         nb_dates = len(toutes_dates)
         if nb_dates <= 1:
@@ -5394,9 +5150,7 @@ class TransactionFinanciere:
         else:
             hauteur_barre = hauteur_graph / nb_dates * 0.8
             espacement = hauteur_graph / nb_dates - hauteur_barre
-
         svg_content = f'<svg width="{largeur_svg}" height="{hauteur_svg}" xmlns="http://www.w3.org/2000/svg">\n'
-
         # === AXES PRINCIPAUX (plus épais) ===
         x_zero = marge_gauche + largeur_graph / 2
         y_haut = marge_haut
@@ -5407,7 +5161,6 @@ class TransactionFinanciere:
         svg_content += f'<line x1="{marge_gauche}" y1="{y_haut}" x2="{marge_gauche + largeur_graph}" y2="{y_haut}" stroke="#000" stroke-width="2" />\n'
         # Axe X (horizontal du bas)
         svg_content += f'<line x1="{marge_gauche}" y1="{y_bas}" x2="{marge_gauche + largeur_graph}" y2="{y_bas}" stroke="#000" stroke-width="2" />\n'
-
         # === QUADRILLAGE FIN ===
         svg_content += '<g stroke="#ddd" stroke-width="0.5">\n'
         # Lignes horizontales (une par date)
@@ -5415,7 +5168,6 @@ class TransactionFinanciere:
             y_pos = marge_haut + (i * (hauteur_barre + espacement)) + (hauteur_barre + espacement) / 2
             svg_content += f'  <line x1="{marge_gauche}" y1="{y_pos}" x2="{marge_gauche + largeur_graph}" y2="{y_pos}" />\n'
         svg_content += '</g>\n'
-
         # === GRADUATIONS SUR L'AXE X (valeurs) ===
         def trouver_pas_gravitation(max_val):
             """Détermine un pas de graduation lisible."""
@@ -5435,7 +5187,6 @@ class TransactionFinanciere:
                 return 5
             else:
                 return 1
-
         pas = trouver_pas_gravitation(max_val)
         # Générer les marques et labels
         svg_content += '<g font-size="10" fill="#000">\n'
@@ -5447,7 +5198,6 @@ class TransactionFinanciere:
                 svg_content += f'  <line x1="{x_pos}" y1="{y_haut}" x2="{x_pos}" y2="{y_bas}" stroke="#ccc" stroke-width="0.8" />\n'
                 svg_content += f'  <text x="{x_pos}" y="{y_bas + 15}" text-anchor="middle">{int(current_val)}</text>\n'
             current_val += pas
-
         # Côté négatif (gauche de l'axe Y)
         current_val = pas
         while current_val <= max_val + pas:
@@ -5457,11 +5207,9 @@ class TransactionFinanciere:
                 svg_content += f'  <text x="{x_pos}" y="{y_bas + 15}" text-anchor="middle">-{int(current_val)}</text>\n'
             current_val += pas
         svg_content += '</g>\n'
-
         # === BARRES DE DONNÉES ===
         for i, (dt, val_1, val_2) in enumerate(zip(toutes_dates, valeurs_1, valeurs_2)):
             y_centre = marge_haut + (i * (hauteur_barre + espacement)) + (hauteur_barre + espacement) / 2
-
             # Barre Compte 1 (gauche)
             largeur_1 = abs(float(val_1)) * echelle_x
             if val_1 >= 0:
@@ -5470,7 +5218,6 @@ class TransactionFinanciere:
             else:
                 x_1 = x_zero + float(val_1) * echelle_x
             svg_content += f'<rect x="{x_1 + largeur_1}" y="{y_centre - hauteur_barre/2}" width="{abs(largeur_1)}" height="{hauteur_barre}" fill="{couleur_1}" />\n'
-
             # Barre Compte 2 (droite)
             largeur_2 = abs(float(val_2)) * echelle_x
             if val_2 >= 0:
@@ -5479,18 +5226,15 @@ class TransactionFinanciere:
                 x_2 = x_zero + float(val_2) * echelle_x
                 largeur_2 = -largeur_2
             svg_content += f'<rect x="{x_2}" y="{y_centre - hauteur_barre/2}" width="{abs(largeur_2)}" height="{hauteur_barre}" fill="{couleur_2}" />\n'
-
         # === LABELS DES DATES (Axe Y à gauche) ===
         for i, dt in enumerate(toutes_dates):
             y_centre = marge_haut + (i * (hauteur_barre + espacement)) + (hauteur_barre + espacement) / 2
             svg_content += f'<text x="{marge_gauche - 10}" y="{y_centre}" text-anchor="end" dominant-baseline="middle" font-size="10">{dt.strftime("%d.%m")}</text>\n'
-
         # === LÉGENDE ===
         svg_content += f'<rect x="{marge_gauche}" y="{marge_haut - 25}" width="15" height="10" fill="{couleur_1}" />\n'
         svg_content += f'<text x="{marge_gauche + 20}" y="{marge_haut - 15}" font-size="12">Compte 1 ({type_1})</text>\n'
         svg_content += f'<rect x="{marge_gauche + 150}" y="{marge_haut - 25}" width="15" height="10" fill="{couleur_2}" />\n'
         svg_content += f'<text x="{marge_gauche + 170}" y="{marge_haut - 15}" font-size="12">Compte 2 ({type_2})</text>\n'
-
         svg_content += '</svg>'
         return svg_content
 
@@ -5604,9 +5348,8 @@ class TransactionFinanciere:
                 resultats = cursor.fetchall()
                 logger.debug(f"{len(resultats)} Résultats obtenus: {resultats}")
                 return [dict(row) for row in resultats]
-
-        except Exception as e:
-            logger.error(f"Erreur dans get_top_comptes_echanges: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur dans get_top_comptes_echanges: {e}")
             return []
 
     def generer_graphique_top_comptes_echanges(self, donnees: List[Dict],
@@ -5676,9 +5419,7 @@ class TransactionFinanciere:
     def get_transactions_avec_comptes(self, compte_principal_id: int, user_id: int,
                                     comptes_cibles_ids: List[int],
                                     date_debut: str, date_fin: str) -> List[Dict]:
-        """
-        Récupère la liste des transactions entre un compte principal et une liste de comptes cibles.
-        """
+        """Récupère la liste des transactions entre un compte principal et une liste de comptes cibles."""
         try:
             with self.db.get_cursor() as cursor:
                 # Vérifier que le compte source appartient à l'utilisateur
@@ -5730,12 +5471,10 @@ class TransactionFinanciere:
                 """
                 # Pour UNION ALL, on a besoin de répéter les paramètres
                 params = [compte_principal_id, date_debut, date_fin] + comptes_cibles_ids + [compte_principal_id, date_debut, date_fin] + comptes_cibles_ids
-
                 cursor.execute(query, params)
                 resultats = cursor.fetchall()
                 return [dict(row) for row in resultats]
-
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur dans get_transactions_avec_comptes: {e}")
             return []
 
@@ -5964,7 +5703,6 @@ class TransactionFinanciere:
                 if not cursor.fetchone():
                     logger.warning(f"Tentative d'accès non autorisé ou compte inexistant: compte={compte_id}, user={user_id}")
                     return Decimal('0')
-
                 # Récupérer la dernière transaction avant la date de début de la période
                 cursor.execute("""
                     SELECT solde_apres
@@ -5974,7 +5712,6 @@ class TransactionFinanciere:
                     LIMIT 1
                 """, (compte_id, debut_periode))
                 result = cursor.fetchone()
-
                 if result and result['solde_apres'] is not None:
                     # Retourner le solde après la dernière transaction avant la période
                     return Decimal(str(result['solde_apres']))
@@ -5990,8 +5727,8 @@ class TransactionFinanciere:
                     else:
                         # Si le solde_initial n'est pas non plus défini, retourner 0
                         return Decimal('0')
-        except Exception as e:
-            logger.error(f"Erreur dans _get_solde_avant_periode (compte {compte_id}, date {debut_periode}): {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur dans _get_solde_avant_periode (compte {compte_id}, date {debut_periode}): {e}")
             return Decimal('0')
     def update_statut_comptable(self, transaction_id: int, user_id: int, statut_comptable: str) -> Tuple[bool, str]:
         """Met à jour le statut comptable d'une transaction"""
@@ -6008,8 +5745,8 @@ class TransactionFinanciere:
                 if cursor.rowcount == 0:
                     return False, "Transaction non trouvée ou non autorisée"
             return True, "Statut comptable mis à jour avec succès"
-        except Exception as e:
-            logger.error(f"Erreur mise à jour statut comptable: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur mise à jour statut comptable")
             return False, f"Erreur: {str(e)}"
         
     def get_evolution_multi_comptes(self, user_id: int, compte_ids: list, 
@@ -6024,7 +5761,6 @@ class TransactionFinanciere:
         try:
             logger.info(f"🔍 get_evolution_multi_comptes: user={user_id}, comptes={compte_ids}, "
                     f"debut={date_debut}, fin={date_fin}, mode={mode}, total={inclure_total}")
-            
             with self.db.get_cursor() as cursor:
                 # 1. Récupérer les comptes sélectionnés
                 if not compte_ids:
@@ -6035,19 +5771,14 @@ class TransactionFinanciere:
                         f"SELECT id, nom_compte, solde_initial FROM comptes_principaux WHERE id IN ({placeholders}) AND utilisateur_id = %s", 
                         tuple(compte_ids) + (user_id,)
                     )
-                
                 comptes = cursor.fetchall()
                 logger.info(f"📊 Comptes trouvés: {len(comptes)}")
-                
                 if not comptes:
                     logger.warning("⚠️ Aucun compte trouvé")
                     return {'dates': [], 'series': {}, 'donnees_brutes': {}}
-                
                 compte_map = {c['id']: {'nom': c['nom_compte'], 'solde_initial': Decimal(str(c['solde_initial'] or 0))} for c in comptes}
-                
                 # 2. Convertir date_fin en datetime 23:59:59
                 date_fin_datetime = datetime.combine(date_fin, datetime.max.time())
-                
                 # 3. Récupérer toutes les transactions
                 placeholders = ','.join(['%s'] * len(compte_map.keys()))
                 query = f"""
@@ -6060,22 +5791,18 @@ class TransactionFinanciere:
                 params = list(compte_map.keys()) + [date_debut, date_fin_datetime]
                 cursor.execute(query, params)
                 transactions = cursor.fetchall()
-                logger.info(f"📝 Transactions trouvées: {len(transactions)}")
-                
+                logger.info(f"📝 Transactions trouvées: {len(transactions)}") 
                 # 4. Initialiser les structures
                 dates_list = []
                 current_date = date_debut
                 while current_date <= date_fin:
                     dates_list.append(current_date)
                     current_date += timedelta(days=1)
-                
                 series_data = {info['nom']: [0.0] * len(dates_list) for info in compte_map.values()}
                 if inclure_total:
                     series_data['Total'] = [0.0] * len(dates_list)
-                
                 # 5. Données brutes pour le tableau (par compte et par jour)
                 donnees_brutes = {info['nom']: {} for info in compte_map.values()}
-                
                 # 6. Solde de départ pour chaque compte
                 soldes_courants = {}
                 for cid, info in compte_map.items():
@@ -6092,26 +5819,21 @@ class TransactionFinanciere:
                             soldes_courants[cid] = info['solde_initial']
                     else:
                         soldes_courants[cid] = Decimal('0')
-                
                 # 7. Agréger les transactions par jour
                 tx_par_date = defaultdict(lambda: defaultdict(lambda: {'entrees': Decimal('0'), 'sorties': Decimal('0')}))
-                
                 for tx in transactions:
                     dt = tx['date_transaction'].date() if hasattr(tx['date_transaction'], 'date') else tx['date_transaction']
                     cid = tx['compte_principal_id']
                     montant = Decimal(str(tx['montant']))
                     type_tx = tx['type_transaction']
-                    
                     if type_tx in ['depot', 'transfert_entrant', 'recredit_annulation', 'transfert_sous_vers_compte']:
                         tx_par_date[dt][cid]['entrees'] += montant
                     elif type_tx in ['retrait', 'transfert_sortant', 'transfert_externe', 'transfert_compte_vers_sous']:
                         tx_par_date[dt][cid]['sorties'] += montant
-                
                 # 8. Construire les séries jour par jour
                 for i, current_dt in enumerate(dates_list):
                     daily_total = Decimal('0')
                     date_str = current_dt.strftime('%Y-%m-%d')
-                    
                     for cid, info in compte_map.items():
                         nom = info['nom']
                         tx_info = tx_par_date[current_dt][cid]
@@ -6124,8 +5846,7 @@ class TransactionFinanciere:
                         elif mode == 'sorties':
                             val = tx_info['sorties']
                         else:
-                            val = Decimal('0')
-                            
+                            val = Decimal('0')  
                         series_data[nom][i] = float(val)
                         donnees_brutes[nom][date_str] = {
                             'entrees': float(tx_info['entrees']),
@@ -6134,19 +5855,16 @@ class TransactionFinanciere:
                             'valeur': float(val)
                         }
                         daily_total += val
-                    
                     if inclure_total:
                         series_data['Total'][i] = float(daily_total)
-                
                 logger.info(f"✅ Données générées: {len(dates_list)} jours, {len(series_data)} séries")
-                    
                 return {
                     'dates': [d.strftime('%Y-%m-%d') for d in dates_list],
                     'series': series_data,
                     'donnees_brutes': donnees_brutes
                 }
-        except Exception as e:
-            logger.error(f"❌ Erreur dans get_evolution_multi_comptes: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"❌ Erreur dans get_evolution_multi_comptes: {e}", exc_info=True)
             return {'dates': [], 'series': {}, 'donnees_brutes': {}}
 
     def generer_graphique_evolution_multi_comptes(self, donnees_structurees: Dict, 
@@ -6318,12 +6036,8 @@ class TransactionFinanciere:
         svg += '</svg>'
         return svg
 
-class CategorieTransaction:
+class CategorieTransaction(BaseRepository):
     """Classe pour gérer les catégories de transactions"""
-
-    def __init__(self, db):
-        self.db = db
-
     def get_categories_utilisateur(self, user_id: int, type_categorie: str = None) -> List[Dict]:
         """Récupère les catégories de transactions pour un utilisateur donné"""
         try:
@@ -6334,17 +6048,14 @@ class CategorieTransaction:
                     WHERE utilisateur_id = %s AND actif = TRUE
                 """
                 params = [user_id]
-
                 if type_categorie:
                     query += " AND type_categorie = %s"
                     params.append(type_categorie)
-
                 query += " ORDER BY type_categorie, nom ASC"
-
                 cursor.execute(query, params)
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération catégories: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération catégories: {e}")
             return []
 
     def creer_categorie(self, user_id: int, nom: str, type_categorie: str = "Dépense",
@@ -6357,20 +6068,16 @@ class CategorieTransaction:
                     SELECT id FROM categories_transactions
                     WHERE utilisateur_id = %s AND nom = %s AND type_categorie = %s
                 """, (user_id, nom, type_categorie))
-
                 if cursor.fetchone():
                     return False, "Cette catégorie existe déjà"
-
                 # Couleur par défaut si non fournie
                 if not couleur:
                     couleur = self._generer_couleur_aleatoire()
-
                 cursor.execute("""
                     INSERT INTO categories_transactions
                     (utilisateur_id, nom, description, type_categorie, couleur, icone, budget_mensuel)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """, (user_id, nom, description, type_categorie, couleur, icone, budget_mensuel))
-
                 return True, "Catégorie créée avec succès"
         except Exception as e:
             logger.error(f"Erreur création catégorie: {e}")
@@ -6409,24 +6116,9 @@ class CategorieTransaction:
 
                 cursor.execute(query, valeurs)
                 return True, "Catégorie modifiée avec succès"
-        except Exception as e:
-            logger.error(f"Erreur mise à jour catégorie: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur mise à jour catégorie: {e}")
             return False, f"Erreur: {str(e)}"
-
-    #def get_categorie_complementaire(self, categorie_id: int, user_id: int) -> Optional[Dict]:
-    #    """Récupère la catégorie complémentaire associée à une catégorie donnée"""
-    #    try:
-    #        with self.db.get_cursor() as cursor:
-    #            cursor.execute("""
-    #                SELECT ct2.id, ct2.nom, ct2.description, ct2.couleur, ct2.icone, ct2.type_categorie, ct2.budget_mensuel
-    #                FROM categories_transactions ct1
-    #                JOIN categories_transactions ct2 ON ct1.categorie_complementaire_id = ct2.id
-    #                WHERE ct1.id = %s AND ct1.utilisateur_id = %s AND ct2.actif = TRUE
-    #            """, (categorie_id, user_id))
-    #            return cursor.fetchone()
-    #    except Exception as e:
-    #        logger.error(f"Erreur récupération catégorie complémentaire: {e}")
-    #        return None
 
     def supprimer_categorie(self, categorie_id: int, user_id: int) -> Tuple[bool, str]:
         """Supprime une catégorie de transaction (soft delete)"""
@@ -6439,23 +6131,20 @@ class CategorieTransaction:
                     WHERE categorie_id = %s
                 """, (categorie_id,))
                 result = cursor.fetchone()
-
                 if result and result['count'] > 0:
                     return False, "Impossible de supprimer : catégorie utilisée dans des transactions"
-
                 # Soft delete
                 cursor.execute("""
                     UPDATE categories_transactions
                     SET actif = FALSE
                     WHERE id = %s AND utilisateur_id = %s
                 """, (categorie_id, user_id))
-
                 if cursor.rowcount > 0:
                     return True, "Catégorie supprimée avec succès"
                 else:
                     return False, "Catégorie non trouvée ou non autorisée"
-        except Exception as e:
-            logger.error(f"Erreur suppression catégorie: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur suppression catégorie: {e}")
             return False, f"Erreur: {str(e)}"
 
     def get_categorie_for_transaction(self, transaction_id: int, user_id: int) ->List[Dict]:
@@ -6467,9 +6156,9 @@ class CategorieTransaction:
                 WHERE transaction_id = %s AND utilisateur_id=%s; 
                 """, (transaction_id, user_id))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur de récupération de la catégorie de la transaction {transaction_id} : {e}")
-
+        except MySQLError as e:
+            logger.exception(f"Erreur de récupération de la catégorie de la transaction {transaction_id} : {e}")
+            return None
     def associer_categorie_transaction(self, transaction_id: int, categorie_id: int, user_id: int) -> Tuple[bool, str]:
         """Associe une catégorie à une transaction (évite les doublons)"""
         try:
@@ -6478,19 +6167,16 @@ class CategorieTransaction:
                     SELECT id FROM transaction_categories
                     WHERE transaction_id = %s AND categorie_id = %s AND utilisateur_id = %s
                 """, (transaction_id, categorie_id, user_id))
-
                 if cursor.fetchone():
                     return False, "Cette catégorie est déjà associée à la transaction"
-
                 # Créer la nouvelle association
                 cursor.execute("""
                     INSERT INTO transaction_categories (transaction_id, categorie_id, utilisateur_id)
                     VALUES (%s, %s, %s)
                 """, (transaction_id, categorie_id, user_id))
-
                 return True, "Catégorie associée avec succès"
-        except Exception as e:
-            logger.error(f"Erreur association catégorie à transaction: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur association catégorie à transaction: {e}")
             return False, f"Erreur: {str(e)}"
 
     def update_associer_categorie_transaction(self, categorie_id: int, transaction_id: int, user_id: int) -> Tuple[bool, str]:
@@ -6502,12 +6188,11 @@ class CategorieTransaction:
                     SET categorie_id = %s
                     WHERE transaction_id = %s AND utilisateur_id = %s
                 """, (categorie_id, transaction_id, user_id))
-
                 if cursor.rowcount > 0:
                     return True, "Catégorie mise à jour avec succès"
                 return False, "Aucune association trouvée à mettre à jour"
-        except Exception as e:
-            logger.error(f"Erreur mise à jour catégorie transaction: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur mise à jour catégorie transaction: {e}")
             return False, f"Erreur: {str(e)}"
 
     def verifier_categorie_existence(self, categorie_id: int, user_id: int) -> bool:
@@ -6518,10 +6203,9 @@ class CategorieTransaction:
                     WHERE id = %s AND utilisateur_id = %s
                 """, (categorie_id, user_id))
                 return cursor.fetchone() is not None
-        except Exception as e:
-            logger.error(f"Erreur vérification catégorie {categorie_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur vérification catégorie {categorie_id}")
             return False
-
 
     def dissocier_categorie_transaction(self, transaction_id: int, user_id: int, categorie_id: Optional[int] = None) -> Tuple[bool, str]:
         """Dissocie une ou toutes les catégories d'une transaction"""
@@ -6529,21 +6213,16 @@ class CategorieTransaction:
             with self.db.get_cursor() as cursor:
                 query = "DELETE FROM transaction_categories WHERE transaction_id = %s AND utilisateur_id = %s"
                 params = [transaction_id, user_id]
-
                 if categorie_id is not None:
                     query += " AND categorie_id = %s"
                     params.append(categorie_id)
-
                 cursor.execute(query, params)
-
                 if cursor.rowcount > 0:
                     return True, "Dissociation réussie"
                 return False, "Aucune association correspondante trouvée"
-        except Exception as e:
-            logger.error(f"Erreur dissociation catégorie: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur dissociation catégorie")
             return False, f"Erreur: {str(e)}"
-
-
 
     def get_categorie_par_id(self, categorie_id: int, user_id: int) -> Optional[Dict]:
         """Récupère une catégorie par son ID pour un utilisateur donné"""
@@ -6555,8 +6234,8 @@ class CategorieTransaction:
                     WHERE id = %s AND utilisateur_id = %s AND actif = TRUE
                 """, (categorie_id, user_id))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur récupération catégorie par ID: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération catégorie par ID")
             return None
 
     def get_transactions_par_categorie(self, categorie_id: int, user_id: int,
@@ -6586,7 +6265,7 @@ class CategorieTransaction:
                 cursor.execute(query, params)
                 return cursor.fetchall()
         except Exception as e:
-            logger.error(f"Erreur récupération transactions par catégorie: {e}")
+            logger.exception(f"Erreur récupération transactions par catégorie:")
             return []
 
     def get_statistiques_categories(self, user_id: int, date_debut: str = None, date_fin: str = None) -> List[Dict]:
@@ -6615,20 +6294,17 @@ class CategorieTransaction:
                     WHERE c.utilisateur_id = %s AND c.actif = TRUE
                 """
                 params = [user_id]
-
                 if date_debut and date_fin:
                     query += " AND t.date_transaction BETWEEN %s AND %s"
                     params.extend([date_debut, date_fin])
-
                 query += """
                     GROUP BY c.id, c.nom, c.type_categorie, c.couleur, c.icone, c.budget_mensuel
                     ORDER BY c.type_categorie, total_montant DESC
                 """
-
                 cursor.execute(query, params)
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération statistiques catégories: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération statistiques catégories:")
             return []
 
     def _generer_couleur_aleatoire(self) -> str:
@@ -6647,8 +6323,8 @@ class CategorieTransaction:
                     WHERE tc.transaction_id = %s AND tc.utilisateur_id = %s
                 """, (transaction_id, user_id))
                 return cursor.fetchall()  # Retourne une LISTE
-        except Exception as e:
-            logger.error(f"Erreur récupération catégories transaction: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération catégories transaction")
             return []
     def get_categories_pour_plusieurs_transactions(self, transaction_ids: List[int], user_id: int) -> Dict[int, List[Dict]]:
         """
@@ -6657,7 +6333,6 @@ class CategorieTransaction:
         """
         if not transaction_ids:
             return {}
-
         try:
             with self.db.get_cursor() as cursor:
                 # Utilisation de IN (%s, %s, ...) pour filtrer par IDs
@@ -6670,18 +6345,15 @@ class CategorieTransaction:
                 """
                 cursor.execute(query, tuple(transaction_ids) + (user_id,))
                 rows = cursor.fetchall()
-
                 # On organise le résultat par ID de transaction
                 resultat = {tid: [] for tid in transaction_ids}
                 for row in rows:
                     tid = row.pop('transaction_id') # On retire l'ID de la transaction du dict de la catégorie
                     resultat[tid].append(row)
                 return resultat
-
-        except Exception as e:
-            logger.error(f"Erreur récupération groupée catégories: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération groupée catégories")
             return {}
-    
 
     def dissocier_toutes_categories_transaction(self, transaction_id: int, user_id: int) -> Tuple[bool, str]:
         """Dissocie TOUTES les catégories d'une transaction"""
@@ -6692,49 +6364,38 @@ class CategorieTransaction:
                     WHERE transaction_id = %s AND utilisateur_id = %s
                 """, (transaction_id, user_id))
                 return True, "Toutes les catégories ont été dissociées"
-        except Exception as e:
-            logger.error(f"Erreur dissociation catégories de transaction: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur dissociation catégories de transaction: {e}")
             return False, f"Erreur: {str(e)}"
 
-class StatistiquesBancaires:
+class StatistiquesBancaires(BaseRepository):
     """Classe pour générer des statistiques bancaires"""
-
-    def __init__(self, db):
-        # L'instance 'db' doit avoir une méthode get_cursor()
-        self.db = db
-
     def get_resume_utilisateur(self, user_id: int, statut: str = 'validée') -> Dict:
         """Résumé financier complet en utilisant les classes existantes"""
         try:
             # Récupérer les comptes principaux en utilisant la classe existante
             compte_model = ComptePrincipal(self.db)
             comptes = compte_model.get_by_user_id(user_id)
-
             # Calculer les totaux des comptes principaux
             nb_comptes = len(comptes)
             noms_banques = set(compte['nom_banque'] for compte in comptes)
             nb_banques = len(noms_banques)
             solde_total_principal = sum(Decimal(str(compte['solde'])) for compte in comptes)
-
             # Récupérer et calculer les totaux des sous-comptes
             sous_compte_model = SousCompte(self.db)
             nb_sous_comptes = 0
             epargne_totale = Decimal('0')
             objectifs_totaux = Decimal('0')
-
             for compte in comptes:
                 sous_comptes = sous_compte_model.get_by_compte_principal_id(compte['id'])
                 nb_sous_comptes += len(sous_comptes)
                 epargne_totale += sum(Decimal(str(sc['solde'])) for sc in sous_comptes)
                 objectifs_totaux += sum(Decimal(str(sc['objectif_montant'] or '0')) for sc in sous_comptes)
-
             # Calculer le patrimoine total
             patrimoine_total = solde_total_principal + epargne_totale
-
             # Récupérer les transactions du mois en utilisant TransactionFinanciere
             transaction_model = TransactionFinanciere(self.db)
             nb_transactions_mois = 0
-
             # Pour chaque compte, compter les transactions du mois
             for compte in comptes:
                 transactions = transaction_model.get_historique_compte(
@@ -6743,7 +6404,6 @@ class StatistiquesBancaires:
                     date_to=datetime.now().strftime('%Y-%m-%d')
                 )
                 nb_transactions_mois += len(transactions)
-
             # Pour les sous-comptes
             for compte in comptes:
                 sous_comptes = sous_compte_model.get_by_compte_principal_id(compte['id'])
@@ -6754,7 +6414,6 @@ class StatistiquesBancaires:
                         date_to=datetime.now().strftime('%Y-%m-%d')
                     )
                     nb_transactions_mois += len(transactions)
-
             # Pour les écritures comptables, nous utilisons une requête directe
             with self.db.get_cursor() as cursor:
                 query = """
@@ -6769,17 +6428,14 @@ class StatistiquesBancaires:
                 """
                 cursor.execute(query, (user_id, statut))
                 stats_ecritures = cursor.fetchone()
-
             nb_ecritures_mois = stats_ecritures['nb_ecritures_mois'] or 0
             total_depenses = Decimal(str(stats_ecritures['total_depenses'] or '0'))
             total_recettes = Decimal(str(stats_ecritures['total_recettes'] or '0'))
             solde_mois = total_recettes - total_depenses
-
             # Calculer la progression de l'épargne
             progression_epargne = Decimal('0')
             if objectifs_totaux and objectifs_totaux > 0:
                 progression_epargne = (epargne_totale / objectifs_totaux) * 100
-
             return {
                 'nb_comptes': nb_comptes,
                 'nb_banques': nb_banques,
@@ -6796,9 +6452,8 @@ class StatistiquesBancaires:
                 'progression_epargne': float(round(progression_epargne, 2)),
                 'statut_utilise': statut
             }
-
-        except Exception as e:
-            logger.error(f"Erreur lors du calcul des statistiques: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors du calcul des statistiques")
             # Retourner des valeurs par défaut en cas d'erreur
             return {
                 'nb_comptes': 0,
@@ -6848,8 +6503,8 @@ class StatistiquesBancaires:
             result.sort(key=lambda x: x['montant_total'], reverse=True)
 
             return result
-        except Exception as e:
-            logger.error(f"Erreur lors du calcul de la répartition par banque: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors du calcul de la répartition par banque")
             return []
 
     def get_evolution_epargne(self, user_id: int, nb_mois: int = 6, statut: str = 'validée') -> List[Dict]:
@@ -6874,8 +6529,8 @@ class StatistiquesBancaires:
                 cursor.execute(query, (user_id, nb_mois))
                 evolution = cursor.fetchall()
                 return evolution
-        except Exception as e:
-            logger.error(f"Erreur lors du calcul de l'évolution: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors du calcul de l'évolution:")
             return []
 
     def get_evolution_soldes_quotidiens(self, user_id: int, nb_jours: int = 30) -> Dict[str, List]:
@@ -6932,8 +6587,8 @@ class StatistiquesBancaires:
                     'sous_comptes': evolution_sous_comptes,
                     'total': []  # On ne calcule pas le total ici
                 }
-        except Error as e:
-            logger.error(f"Erreur lors du calcul de l'évolution quotidienne: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors du calcul de l'évolution quotidienne")
             return {'comptes_principaux': [], 'sous_comptes': [], 'total': []}
 
     def preparer_svg_tresorie(self, user_id: int, compte_id: int, date_debut: date, date_fin : date):
@@ -6973,8 +6628,8 @@ class StatistiquesBancaires:
                 'max': max_val,
                 'unite': 'CHF'
             }
-        except Exception as e:
-            logger.error(f"Erreur préparation graphique solde quotidien: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur préparation graphique solde quotidien")
             return None
 
     def preparer_graphique_tresorerie(self, user_id: int, compte_id: int, date_debut: date, date_fin: date) -> Optional[Dict]:
@@ -6990,10 +6645,8 @@ class StatistiquesBancaires:
             )
             if not stats:
                 return None
-
             recettes = stats.get('total_entrees', 0.0)
             depenses = stats.get('total_sorties', 0.0)
-
             return {
                 'type': 'bar',
                 'titre': 'Trésorerie',
@@ -7002,8 +6655,8 @@ class StatistiquesBancaires:
                 'couleurs': ['#28a745', '#dc3545'],
                 'unite': 'CHF'
             }
-        except Exception as e:
-            logger.error(f"Erreur préparation graphique trésorerie: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur préparation graphique trésorerie}")
             return None
 
     def preparer_graphique_tresorerie_cumulee(self, user_id: int, compte_id: int, date_debut: date, date_fin: date) -> Optional[Dict]:
@@ -7067,8 +6720,8 @@ class StatistiquesBancaires:
                 'max': max(soldes_cumules),
                 'unite': 'CHF'
             }
-        except Exception as e:
-            logger.error(f"Erreur préparation trésorerie cumulée: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur préparation trésorerie cumulée")
             return None
 
     def preparer_graphique_categories(self, user_id: int, compte_id: int, date_debut: date, date_fin: date) -> Optional[Dict]:
@@ -7106,10 +6759,8 @@ class StatistiquesBancaires:
             )
             if not stats:
                 return None
-
             recettes = float(stats.get('total_entrees', 0.0))
             depenses = float(stats.get('total_sorties', 0.0))
-
             return {
                 'type': 'bar_compare',
                 'titre': 'Recettes vs Dépenses',
@@ -7118,16 +6769,12 @@ class StatistiquesBancaires:
                 'couleurs': ['#28a745', '#dc3545'],  # vert, rouge
                 'unite': 'CHF'
             }
-        except Exception as e:
-            logger.error(f"Erreur préparation graphique comparaison trésorerie: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur préparation graphique comparaison trésorerie")
             return None
 
-class PlanComptable:
+class PlanComptable(BaseRepository):
     """Modèle pour gérer le plan comptable"""
-
-    def __init__(self, db):
-        self.db = db
-
     def create_plan(self, data: Dict) -> Optional[int]:
         """Crée un nouveau plan comptable"""
         try:
@@ -7144,8 +6791,8 @@ class PlanComptable:
                 )
                 cursor.execute(query, values)
                 return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur création plan comptable: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur création plan comptable")
             return None
 
     def modifier_plan(self, plan_id: int, data: Dict) -> bool:
@@ -7164,8 +6811,8 @@ class PlanComptable:
                     ORDER BY nom
                 """, (utilisateur_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur liste plans: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur liste plans")
             return []
 
     def get_plan_with_categories(self, plan_id: int, utilisateur_id: int) -> Optional[Dict]:
@@ -7180,7 +6827,6 @@ class PlanComptable:
                 plan = cursor.fetchone()
                 if not plan:
                     return None
-
                 # 2. Récupérer les catégories liées (sans le filtre utilisateur_id sur la table 'c')
                 cursor.execute("""
                     SELECT c.*
@@ -7189,12 +6835,10 @@ class PlanComptable:
                     WHERE pc.plan_id = %s
                     ORDER BY c.numero
                 """, (plan_id,)) # 🔴 Un seul paramètre ici maintenant !
-                
                 plan['categories'] = cursor.fetchall()
                 return plan
-                
-        except Exception as e:
-            logger.error(f"Erreur plan + catégories: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur plan + catégories")
             return None
 
     def add_categorie_to_plan(self, plan_id: int, categorie_id: int, utilisateur_id: int) -> bool:
@@ -7202,20 +6846,19 @@ class PlanComptable:
         try:
             with self.db.get_cursor() as cursor:
                 # Vérifier que les deux existent et appartiennent à l'utilisateur
-                cursor.execute("SELECT id FROM plans_comptables WHERE id = %s", (plan_id, ))
+                cursor.execute("SELECT id FROM plans_comptables WHERE id = %s AND utilisateur_id = %s", (plan_id, utilisateur_id))
                 if not cursor.fetchone():
                     return False
-                cursor.execute("SELECT id FROM categories_comptables WHERE id = %s AND s", (categorie_id, ))
+                cursor.execute("SELECT id FROM categories_comptables WHERE id = %s AND utilisateur_id = %s", (categorie_id, utilisateur_id))
                 if not cursor.fetchone():
                     return False
-
                 cursor.execute("""
                     INSERT IGNORE INTO plan_categorie (plan_id, categorie_id)
                     VALUES (%s, %s)
                 """, (plan_id, categorie_id))
                 return True
-        except Exception as e:
-            logger.error(f"Erreur ajout catégorie au plan: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur ajout catégorie au plan")
             return False
 
     def remove_categorie_from_plan(self, plan_id: int, categorie_id: int) -> bool:
@@ -7227,8 +6870,8 @@ class PlanComptable:
                     WHERE plan_id = %s AND categorie_id = %s
                 """, (plan_id, categorie_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur retrait catégorie du plan: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur retrait catégorie du plan")
             return False
     
     def get_categories_for_plan(self, plan_id: int, utilisateur_id: int) -> List[Dict]:
@@ -7244,8 +6887,8 @@ class PlanComptable:
                     ORDER BY c.numero
                 """, (plan_id, utilisateur_id))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur catégories du plan: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur catégories du plan")
             return []
     
     def link_all_categories_to_plan(self, plan_id: int) -> bool:
@@ -7257,8 +6900,8 @@ class PlanComptable:
                     SELECT %s, id FROM categories_comptables WHERE actif = 1
                 """, (plan_id,))
                 return True
-        except Exception as e:
-            logger.error(f"Erreur liaison catégories au plan: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur liaison catégories au plan")
             return False
     def get_plan_for_categorie(self, categorie_id: int, utilisateur_id: int) -> Optional[Dict]:
         """Récupère le plan actuellement lié à une catégorie pour cet utilisateur"""
@@ -7272,22 +6915,20 @@ class PlanComptable:
                     LIMIT 1
                 """, (categorie_id, utilisateur_id))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur récupération plan de la catégorie: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération plan de la catégorie")
             return None
 
-
-class CategorieComptable:
-    def __init__(self, db):
-        self.db = db
+class CategorieComptable(BaseRepository):
     def create(self, data: Dict) -> Optional[int]:
         """Crée une nouvelle catégorie comptable"""
+        numero = data['numero']
         try:
             with self.db.get_cursor() as cursor:
                 query = """
                 INSERT INTO categories_comptables
-                (numero, nom, parent_id, type_compte, compte_systeme, compte_associe, type_tva, actif)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                (numero, nom, parent_id, type_compte, compte_systeme, compte_associe, type_tva, categorie_complementaire_id, type_ecriture_complementaire, actif, utilisateur_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 values = (
                     data['numero'],
@@ -7297,13 +6938,20 @@ class CategorieComptable:
                     data.get('compte_systeme'),
                     data.get('compte_associe'),
                     data.get('type_tva'),
-                    data.get('actif', True)
+                    data.get('categorie_complementaire_id'),
+                    data.get('type_ecriture_complementaire'),
+                    data.get('actif', True),
+                    data['utilisateur_id']
                 )
                 cursor.execute(query, values)
                 # Le commit est géré par le context manager dans la classe DatabaseManager
-            return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur lors de la création de la catégorie comptable: {e}")
+            new_id = cursor.lastrowid
+            return new_id
+        except IntegrityError:
+            logger.warning(f"numero déjà utilisé : {numero}")
+            return False
+        except MySQLError as e:
+            logger.exceètion(f"Erreur lors de la création de la catégorie comptable")
             return False
 
     def modifier_plan(self, plan_id: int, data: Dict, utilisateur_id: int) -> bool:
@@ -7317,7 +6965,6 @@ class CategorieComptable:
                 )
                 if not cursor.fetchone():
                     return False
-
                 query = """
                 UPDATE plans_comptables
                 SET nom = %s, description = %s, devise = %s
@@ -7332,8 +6979,8 @@ class CategorieComptable:
                 )
                 cursor.execute(query, values)
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur mise à jour plan comptable: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur mise à jour plan comptable")
             return False
 
     def update(self, categorie_id: int, data: Dict) -> bool:
@@ -7343,45 +6990,35 @@ class CategorieComptable:
                 # ✅ Construire la requête dynamiquement pour n'update que les champs fournis
                 fields = []
                 values = []
-                
                 # Champs obligatoires
                 if 'nom' in data:
                     fields.append("nom = %s")
                     values.append(data['nom'])
-                
                 if 'type_compte' in data:
                     fields.append("type_compte = %s")
                     values.append(data['type_compte'])
-                
                 # Champs optionnels
                 if 'parent_id' in data:
                     fields.append("parent_id = %s")
                     values.append(data['parent_id'])
-                
                 if 'compte_systeme' in data:
                     fields.append("compte_systeme = %s")
                     values.append(data['compte_systeme'])
-                
                 if 'compte_associe' in data:
                     fields.append("compte_associe = %s")
                     values.append(data['compte_associe'])
-                
                 if 'type_tva' in data:
                     fields.append("type_tva = %s")
                     values.append(data['type_tva'])
-                
                 if 'actif' in data:
                     fields.append("actif = %s")
                     values.append(data['actif'])
-                
                 if 'categorie_complementaire_id' in data:
                     fields.append("categorie_complementaire_id = %s")
                     values.append(data['categorie_complementaire_id'])
-                
                 if 'type_ecriture_complementaire' in data:
                     fields.append("type_ecriture_complementaire = %s")
                     values.append(data['type_ecriture_complementaire'])
-                
                 # ✅ NE PAS modifier le numéro s'il existe déjà
                 # Si vous voulez permettre la modification du numéro, faites une vérification d'unicité
                 if 'numero' in data and data['numero']:
@@ -7394,26 +7031,22 @@ class CategorieComptable:
                         raise ValueError(f"Le numéro {data['numero']} est déjà utilisé par une autre catégorie")
                     fields.append("numero = %s")
                     values.append(data['numero'])
-                
                 if not fields:
                     return False
-                
                 # Ajouter l'ID pour la clause WHERE
                 values.append(categorie_id)
-                
                 query = f"""
                     UPDATE categories_comptables
                     SET {', '.join(fields)}
                     WHERE id = %s
                 """
-                
                 cursor.execute(query, values)
             return True
         except ValueError as e:
             logger.error(f"Erreur de validation: {e}")
             return False
-        except Exception as e:
-            logger.error(f"Erreur lors de la mise à jour de la catégorie comptable: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la mise à jour de la catégorie comptable")
             return False
 
     def delete(self, categorie_id: int) -> bool:
@@ -7424,8 +7057,8 @@ class CategorieComptable:
                 cursor.execute(query, (categorie_id,))
                 # Le commit est géré par le context manager
             return True
-        except Error as e:
-            logger.error(f"Erreur lors de la suppression de la catégorie comptable: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la suppression de la catégorie comptable")
             return False
 
     def get_by_id(self, categorie_id: int) -> Optional[Dict]:
@@ -7436,8 +7069,8 @@ class CategorieComptable:
                 cursor.execute(query, (categorie_id,))
                 categorie = cursor.fetchone()
             return categorie
-        except Error as e:
-            logger.error(f"Erreur lors de la récupération de la catégorie comptable: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la récupération de la catégorie comptable")
             return None
 
     def get_all_categories(self, utilisateur_id: int = None) -> List[Dict]:
@@ -7480,8 +7113,8 @@ class CategorieComptable:
                     """
                     cursor.execute(query)
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur get_all_categories: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_all_categories")
             return []
 
     def get_by_numero(self, numero: str, utilisateur_id: int) -> Optional[Dict]:
@@ -7492,8 +7125,8 @@ class CategorieComptable:
                 cursor.execute(query, (numero, utilisateur_id))
                 categorie = cursor.fetchone()
             return categorie
-        except Error as e:
-            logger.error(f"Erreur lors de la récupération de la catégorie comptable: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la récupération de la catégorie comptable")
             return None
 
     def get_by_type(self, type_compte: str, utilisateur_id: int) -> List[Dict]:
@@ -7504,8 +7137,8 @@ class CategorieComptable:
                 cursor.execute(query, (type_compte, utilisateur_id))
                 categories = cursor.fetchall()
             return categories
-        except Error as e:
-            logger.error(f"Erreur lors de la récupération des catégories comptables: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la récupération des catégories comptables")
             return []
 
     def get_by_type_for_pos(self, type_compte: str, utilisateur_id: int) -> List[Dict]:
@@ -7528,8 +7161,8 @@ class CategorieComptable:
                 """
                 cursor.execute(query, (utilisateur_id, type_compte))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur get_by_type_for_pos: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_by_type_for_pos")
             return []
 
     def get_categories_avec_complementaires(self, utilisateur_id: int) -> List[Dict]:
@@ -7559,8 +7192,8 @@ class CategorieComptable:
                 # Il y a 1 seul placeholder '%s' dans la requête corrigée.
                 cursor.execute(query, (utilisateur_id,)) # On passe 1 seul argument.
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur get_categories_avec_complementaires: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_categories_avec_complementaires")
             return []
 
     def ajouter_categorie_complementaire(self, categorie_id: int, categorie_complementaire_id: int,
@@ -7580,8 +7213,8 @@ class CategorieComptable:
                 """
                 cursor.execute(query, (categorie_id, categorie_complementaire_id, utilisateur_id, type_complement, taux))
                 return True
-        except Exception as e:
-            logger.error(f"Erreur ajouter_categorie_complementaire: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur ajouter_categorie_complementaire")
             return False
 
     def has_categorie_complementaire(self, categorie_id: int) -> bool:
@@ -7600,8 +7233,8 @@ class CategorieComptable:
                 has_complementaire = result['count'] > 0
                 logger.info(f"Catégorie ID {categorie_id} a une catégorie complémentaire: {has_complementaire}")
                 return has_complementaire
-        except Exception as e:
-            logger.error(f"Erreur dans has_categorie_complementaire: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur dans has_categorie_complementaire")
             return False
 
     def get_categorie_complementaire(self, categorie_id: int, utilisateur_id: int)-> List[Dict]:
@@ -7618,9 +7251,9 @@ class CategorieComptable:
                 result = cursor.fetchall()
                 logger.info(f'La categorie avec id {categorie_id} a : {result}')
                 return result
-        except Exception as e:
-            logger.error(f'Erreur dans la recherche de catégorie complémentaire: {e}')
-            return None
+        except MySQLError as e:
+            logger.exception(f'Erreur dans la recherche de catégorie complémentaire')
+            return []
 
     def get_by_system_tag(self, tag: str, utilisateur_id: int) -> Optional[Dict]:
         """Exemple : Récupère automatiquement le compte bancaire configuré par Bexio"""
@@ -7632,8 +7265,8 @@ class CategorieComptable:
                 """
                 cursor.execute(query, (tag, utilisateur_id))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur recherche par tag système {tag}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur recherche par tag système {tag}")
             return None
 
     def is_compte_passif(self, compte_id: int, cursor=None) -> bool:
@@ -7651,23 +7284,17 @@ class CategorieComptable:
                 res.get('type_compte') == 'Passif' or 
                 str(res.get('numero', '')).startswith('2')
             )
-
         if cursor is not None:
             return _do_query(cursor)
-
         try:
             with self.db.get_cursor(dictionary=True) as new_cursor:
                 return _do_query(new_cursor)
-        except Exception as e:
-            logger.error(f"Erreur is_compte_passif: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur is_compte_passif")
             return False
         
-class EcritureComptable:
+class EcritureComptable(BaseRepository):
     """Modèle pour gérer les écritures comptables"""
-
-    def __init__(self, db):
-        self.db = db
-
     @property
     def upload_folder(self):
         """Fournit le dossier d'upload à la demande, sans effet de bord à l'initialisation"""
@@ -7688,23 +7315,19 @@ class EcritureComptable:
         print(f"=== TEST DOSSIER UPLOAD ===")
         print(f"Chemin absolu: {os.path.abspath(self.upload_folder)}")
         print(f"Dossier existe: {os.path.exists(self.upload_folder)}")
-
         if os.path.exists(self.upload_folder):
             print(f"Permissions lecture: {os.access(self.upload_folder, os.R_OK)}")
             print(f"Permissions écriture: {os.access(self.upload_folder, os.W_OK)}")
-
             # Test d'écriture
             test_file = os.path.join(self.upload_folder, 'test.txt')
             try:
                 with open(test_file, 'w') as f:
                     f.write('test écriture')
                 print("✓ Test écriture réussi")
-
                 # Lire pour vérifier
                 with open(test_file, 'r') as f:
                     content = f.read()
                 print(f"✓ Contenu lu: {content}")
-
                 os.remove(test_file)
                 print("✓ Test suppression réussi")
                 return True
@@ -7776,8 +7399,8 @@ class EcritureComptable:
         try:
             with self.db.get_cursor(dictionary=True) as new_cursor:
                 return _do_insert(new_cursor)
-        except Error as e:
-            logger.error(f"Erreur création écriture: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur création écriture")
             # 🔄 MODIF 3 : None au lieu de False quand return_id=True
             return None if return_id else False
 
@@ -7785,10 +7408,8 @@ class EcritureComptable:
         """Crée les écritures secondaires (TVA, taxes, etc.)."""
         try:
             logger.info(f"Début de la vérification des écritures secondaires pour l'écriture principale ID: {ecriture_principale_id}")
-
             categorie_id = data['categorie_id']
             utilisateur_id = data['utilisateur_id']
-
             query = """
             SELECT DISTINCT
                 cc.categorie_complementaire_id,
@@ -7806,36 +7427,29 @@ class EcritureComptable:
             AND cc.actif = TRUE
             AND cc.categorie_complementaire_id IS NOT NULL
             """
-
             cursor.execute(query, (categorie_id, utilisateur_id))
             result = cursor.fetchone()
-
             if not result:
                 logger.info(f"Aucune catégorie complémentaire configurée pour la catégorie ID {categorie_id}.")
                 return
-
             categorie_complementaire_id = result['categorie_complementaire_id']
             type_tva_config = result['type_tva']  # 'recette' ou 'depense' lu du plan comptable
             categorie_nom = result['categorie_nom']
             categorie_numero = result['categorie_numero']
             categorie_complementaire_nom = result.get('categorie_complementaire_nom', 'N/A')
             categorie_complementaire_numero = result.get('categorie_complementaire_numero', 'N/A')
-
             # 🔧 Le sens comptable vient du plan comptable (type_tva), pas d'une convention codée en dur
             # - 'recette' → la TVA due (Passif) est créditée
             # - 'depense' → l'impôt préalable (Actif) est débité
             sens_comptable = type_tva_config if type_tva_config in ('recette', 'depense') else 'recette'
-
             logger.info(
                 f"Catégorie '{categorie_numero} - {categorie_nom}' a une catégorie complémentaire "
                 f"'{categorie_complementaire_numero} - {categorie_complementaire_nom}' "
                 f"(ID: {categorie_complementaire_id}) détectée. Sens comptable: '{sens_comptable}'"
             )
-
             # Le calcul du montant reste basé sur la TVA
             montant_secondaire = data.get('tva_montant', 0.0)
             taux_secondaire = data.get('tva_taux', 0.0)
-
             if abs(montant_secondaire) > 0.01:
                 comp_cat_simulated = {
                     'categorie_complementaire_id': categorie_complementaire_id,
@@ -7850,9 +7464,8 @@ class EcritureComptable:
                 )
             else:
                 logger.info(f"Montant secondaire négligeable ({montant_secondaire:.2f} CHF), pas de création d'écriture.")
-
         except Exception as e:
-            logger.error(f"Erreur lors de la création des écritures secondaires pour écriture ID {ecriture_principale_id}: {e}")
+            logger.exception(f"Erreur lors de la création des écritures secondaires pour écriture ID {ecriture_principale_id}")
             raise
 
     def has_secondary_ecritures(self, ecriture_id: int, user_id: int) -> bool:
@@ -7860,8 +7473,8 @@ class EcritureComptable:
         try:
             secondaires = self.get_ecritures_complementaires(ecriture_id, user_id)
             return len(secondaires) > 0
-        except Exception as e:
-            logger.error(f"Erreur vérification écritures secondaires: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur vérification écritures secondaires")
             return False
 
     def _calculate_secondary_amount(self, data: Dict, type_complement: str, taux: float) -> float:
@@ -7869,7 +7482,6 @@ class EcritureComptable:
         montant_principal = data['montant']
         montant_htva = data.get('montant_htva', montant_principal)
         tva_taux = data.get('tva_taux', 0)
-
         if type_complement == 'tva':
             # Logique de calcul TVA
             if data.get('tva_montant') is not None:
@@ -7879,11 +7491,9 @@ class EcritureComptable:
                 return base_calcul * (tva_taux / 100)
             else:
                 return 0
-
         elif type_complement == 'taxe':
             # Calcul pour autres taxes
             return montant_principal * (taux / 100)
-
         else:
             return montant_principal * (taux / 100)
 
@@ -7902,13 +7512,11 @@ class EcritureComptable:
         try:
             # Déterminer le type d'écriture pour la secondaire
             type_ecriture_secondaire = self._get_secondary_type(data['type_ecriture'], comp_cat['type_complement'])
-
             logger.info(
                 f"Création d'une écriture secondaire de type '{type_ecriture_secondaire}' "
                 f"pour la catégorie complémentaire ID {comp_cat['categorie_complementaire_id']}, "
                 f"montant: {montant_secondaire:.2f} CHF."
             )
-
             query = """
             INSERT INTO ecritures_comptables(
                 date_ecriture, compte_bancaire_id, categorie_id, montant, montant_htva, devise,
@@ -7918,7 +7526,6 @@ class EcritureComptable:
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
-
             values = (
                 data['date_ecriture'],
                 data['compte_bancaire_id'],
@@ -7939,17 +7546,14 @@ class EcritureComptable:
                 ecriture_principale_id,
                 'complementaire'
             )
-
             cursor.execute(query, values)
             ecriture_secondaire_id = cursor.lastrowid
             logger.info(f"Écriture secondaire insérée avec succès (ID: {ecriture_secondaire_id}, groupe: {data.get('groupe_ecriture_id')}).")
-
             # Préparer les données pour la cascade (en conservant le groupe)
             data_cascade = data.copy()
             data_cascade['montant'] = abs(montant_secondaire)
             data_cascade['categorie_id'] = comp_cat['categorie_complementaire_id']
             # data_cascade['groupe_ecriture_id'] est déjà inclus via data.copy()
-
             # Appliquer les règles en cascade sur cette écriture secondaire
             self._appliquer_regles_en_cascade(
                 cursor,
@@ -7958,10 +7562,10 @@ class EcritureComptable:
                 comp_cat['categorie_complementaire_id'],
                 0
             )
-
         except Exception as e:
-            logger.error(f"Erreur lors de la création de l'écriture secondaire: {e}")
+            logger.exception(f"Erreur lors de la création de l'écriture secondaire")
             raise
+
     def get_regles_for_categorie(self, categorie_id: int) -> List[Dict]:
         """Récupère toutes les règles actives pour une catégorie donnée"""
         try:
@@ -7973,8 +7577,8 @@ class EcritureComptable:
                     ORDER BY ordre
                 """, (categorie_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération règles pour catégorie {categorie_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération règles pour catégorie {categorie_id}")
             return []
 
     def _appliquer_regles_en_cascade(self, cursor, ecriture_principale_id: int, data: Dict, categorie_id: int, niveau: int = 0):
@@ -7985,19 +7589,14 @@ class EcritureComptable:
         if niveau > 10:
             logger.warning(f"⚠️ Niveau de cascade maximum atteint (10) pour l'écriture {ecriture_principale_id}")
             return
-        
         # Récupérer les règles pour cette catégorie
         regles = self.get_regles_for_categorie(categorie_id)
-        
         if not regles:
             return
-        
         logger.info(f"📋 {len(regles)} règle(s) trouvée(s) pour la catégorie ID {categorie_id} (niveau {niveau})")
-        
         for regle in regles:
             # Calculer le montant selon la règle
             montant_source = Decimal(str(data.get('montant', 0)))
-            
             if regle['mode_calcul'] == 'montant_transaction':
                 montant_secondaire = montant_source
             elif regle['mode_calcul'] == 'pourcentage':
@@ -8007,16 +7606,13 @@ class EcritureComptable:
                 montant_secondaire = Decimal(str(regle.get('valeur', 0)))
             else:
                 continue
-            
             if abs(montant_secondaire) <= 0.01:
                 logger.info(f"ℹ️ Montant secondaire négligeable ({montant_secondaire:.2f} CHF) pour la règle {regle['id']}")
                 continue
-            
             # Déterminer le type d'écriture
             type_ecriture = data.get('type_ecriture')
             if regle.get('sens') == 'oppose':
                 type_ecriture = 'recette' if type_ecriture == 'depense' else 'depense'
-            
             # Créer l'écriture secondaire
             query = """
             INSERT INTO ecritures_comptables(
@@ -8027,7 +7623,6 @@ class EcritureComptable:
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
-            
             values = (
                 data.get('date_ecriture'),
                 data.get('compte_bancaire_id'),
@@ -8048,11 +7643,9 @@ class EcritureComptable:
                 ecriture_principale_id,
                 'complementaire'
             )
-            
             cursor.execute(query, values)
             ecriture_secondaire_id = cursor.lastrowid
             logger.info(f"✅ Écriture secondaire créée (ID: {ecriture_secondaire_id}) pour la règle {regle['id']}")
-            
             # 🔥 CASCADE : Cette écriture secondaire peut déclencher d'autres règles
             self._appliquer_regles_en_cascade(
                 cursor, 
@@ -8076,19 +7669,16 @@ class EcritureComptable:
                     WHERE e.id = %s AND e.utilisateur_id = %s
                 """, (ecriture_id, user_id))
                 ecriture_principale = cursor.fetchone()
-
                 if not ecriture_principale:
                     return None
-
                 # Récupérer les écritures secondaires
                 ecritures_secondaires = self.get_ecritures_complementaires(ecriture_id, user_id)
-
                 return {
                     'principale': ecriture_principale,
                     'secondaires': ecritures_secondaires
                 }
-        except Exception as e:
-            logger.error(f"Erreur get_ecriture_avec_secondaires: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_ecriture_avec_secondaires")
             return None
 
     def get_ecritures_complementaires_batch(self, ecriture_ids: List[int], user_id: int) -> Dict[int, List[Dict]]:
@@ -8117,8 +7707,8 @@ class EcritureComptable:
                         result[parent_id] = []
                     result[parent_id].append(row)
                 return result
-        except Exception as e:
-            logger.error(f"Erreur batch secondaires: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur batch secondaires: {e}", exc_info=True)
             return {}
 
 
@@ -8153,7 +7743,6 @@ class EcritureComptable:
                     impact['messages'].append("Écriture introuvable.")
                     return impact
                 impact['ecriture'] = ecriture
-
                 if ecriture.get('transaction_id'):
                     impact['est_liee_transaction'] = True
                     cursor.execute("""
@@ -8179,7 +7768,6 @@ class EcritureComptable:
                         else:
                             impact['niveau_alerte'] = 'warning'
                             impact['messages'].append("Liée à une transaction bancaire.")
-
                 if ecriture.get('type_ecriture_comptable') == 'principale':
                     cursor.execute("""
                         SELECT e.*, c.numero as categorie_numero, c.nom as categorie_nom
@@ -8194,7 +7782,6 @@ class EcritureComptable:
                             impact['niveau_alerte'] = 'warning'
                         impact['messages'].append(
                             f"La suppression entraînera celle de {len(secondaires)} écriture(s) secondaire(s).")
-
                 if ecriture.get('ecriture_principale_id'):
                     impact['est_secondaire'] = True
                     cursor.execute("""
@@ -8203,10 +7790,9 @@ class EcritureComptable:
                     """, (ecriture['ecriture_principale_id'], user_id))
                     impact['principale'] = cursor.fetchone()
                     impact['messages'].append("Écriture secondaire : la principale restera intacte.")
-
                 return impact
-        except Exception as e:
-            logger.error(f"Erreur analyse impact: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur analyse impact: ")
             impact['peut_supprimer'] = False
             impact['messages'].append(f"Erreur technique: {str(e)}")
             return impact
@@ -8233,16 +7819,12 @@ class EcritureComptable:
                     WHERE e.id = %s AND e.utilisateur_id = %s
                 """, (ecriture_id, user_id))
                 ecriture = cursor.fetchone()
-
                 if not ecriture:
                     return False, "Écriture introuvable."
-
                 groupe_id = ecriture.get('groupe_ecriture_id')
                 transaction_id = ecriture.get('transaction_id')
-
                 # 2. Collecter TOUTES les écritures à supprimer
                 ecritures_a_supprimer = {ecriture_id}
-
                 # 2a. Les complémentaires liées à cette écriture (si principale)
                 if ecriture.get('type_ecriture_comptable') == 'principale':
                     cursor.execute("""
@@ -8252,7 +7834,6 @@ class EcritureComptable:
                         AND statut != 'supprimee'
                     """, (ecriture_id, user_id))
                     ecritures_a_supprimer.update(r['id'] for r in cursor.fetchall())
-
                 # 2b. La principale si on supprime une complémentaire
                 if ecriture.get('ecriture_principale_id'):
                     ecritures_a_supprimer.add(ecriture['ecriture_principale_id'])
@@ -8264,7 +7845,6 @@ class EcritureComptable:
                         AND statut != 'supprimee'
                     """, (ecriture['ecriture_principale_id'], user_id))
                     ecritures_a_supprimer.update(r['id'] for r in cursor.fetchall())
-
                 # 2c. Toutes les écritures du même groupe
                 if groupe_id:
                     cursor.execute("""
@@ -8274,11 +7854,9 @@ class EcritureComptable:
                         AND statut != 'supprimee'
                     """, (groupe_id, user_id))
                     ecritures_a_supprimer.update(r['id'] for r in cursor.fetchall())
-
                 # 3. Collecter les transactions et receipts impactés
                 transactions_impactees = set()
                 receipts_impactes = set()
-
                 placeholders = ','.join(['%s'] * len(ecritures_a_supprimer))
                 cursor.execute(f"""
                     SELECT id, transaction_id, reference, categorie_id, montant, description, type_ecriture
@@ -8286,18 +7864,15 @@ class EcritureComptable:
                     WHERE id IN ({placeholders}) AND utilisateur_id = %s
                 """, list(ecritures_a_supprimer) + [user_id])
                 ecritures_completes = cursor.fetchall()
-
                 for e in ecritures_completes:
                     if e['transaction_id']:
                         transactions_impactees.add(e['transaction_id'])
-
                 for tx_id in transactions_impactees:
                     cursor.execute("""
                         SELECT id FROM pos_receipts
                         WHERE transaction_id = %s AND utilisateur_id = %s
                     """, (tx_id, user_id))
                     receipts_impactes.update(r['id'] for r in cursor.fetchall())
-
                 # 4. Délier toutes les écritures des transactions concernées
                 if transactions_impactees:
                     tx_placeholders = ','.join(['%s'] * len(transactions_impactees))
@@ -8307,7 +7882,6 @@ class EcritureComptable:
                         WHERE transaction_id IN ({tx_placeholders})
                         AND utilisateur_id = %s
                     """, list(transactions_impactees) + [user_id])
-
                 # 5. Soft delete de toutes les écritures
                 cursor.execute(f"""
                     UPDATE ecritures_comptables
@@ -8315,7 +7889,6 @@ class EcritureComptable:
                     WHERE id IN ({placeholders}) AND utilisateur_id = %s
                 """, list(ecritures_a_supprimer) + [user_id])
                 nb_supprimees = cursor.rowcount
-
                 # 6. Supprimer les transactions bancaires devenues orphelines
                 nb_tx_supprimees = 0
                 for tx_id in transactions_impactees:
@@ -8340,7 +7913,6 @@ class EcritureComptable:
                         """, (tx_id, user_id))
                         if cursor.rowcount > 0:
                             nb_tx_supprimees += 1
-
                 # 7. Réinitialiser les receipts concernés
                 for r_id in receipts_impactes:
                     cursor.execute("""
@@ -8350,7 +7922,6 @@ class EcritureComptable:
                             date_comptabilisation = NULL
                         WHERE id = %s AND utilisateur_id = %s
                     """, (r_id, user_id))
-
                 # 7b. NOUVEAU : Via le groupe_ecriture_id (extrait les receipt IDs)
                 if groupe_id and groupe_id.startswith('POS-'):
                     # Format : POS-YYYY-MM-DD-mode_id-receipt_ids
@@ -8374,7 +7945,6 @@ class EcritureComptable:
                                 WHERE id IN ({placeholders}) AND utilisateur_id = %s
                             """, receipt_ids + [user_id])
                             logger.info(f"🔄 {cursor.rowcount} receipt(s) réinitialisé(s) via groupe {groupe_id}")
-
                 # 8. Historique
                 try:
                     for e in ecritures_completes:
@@ -8402,18 +7972,15 @@ class EcritureComptable:
                         ))
                 except Exception as e_hist:
                     logger.warning(f"⚠️ Impossible d'enregistrer l'historique: {e_hist}")
-
                 # 9. Retour
                 msg = f"{nb_supprimees} écriture(s) supprimée(s)"
                 if nb_tx_supprimees:
                     msg += f", {nb_tx_supprimees} transaction(s) bancaire(s) annulée(s)"
                 if receipts_impactes:
                     msg += f", {len(receipts_impactes)} reçu(s) réinitialisé(s)"
-
                 logger.info(f"✅ {msg} (écriture de départ #{ecriture_id})")
                 return True, msg
-
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur suppression avec impact: {e}", exc_info=True)
             return False, f"Erreur: {str(e)}"
         
@@ -8434,9 +8001,8 @@ class EcritureComptable:
                     AND e.statut = 'validée'
                     AND c.type_compte = 'TVA'  -- Supposant que vous avez une catégorie TVA
                 """, (user_id, date_debut, date_fin))
-
                 return cursor.fetchone() or {'tva_collectee': 0, 'tva_deductible': 0, 'solde_tva': 0}
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur get_solde_tva_par_periode: {e}")
             return {'tva_collectee': 0, 'tva_deductible': 0, 'solde_tva': 0}
 
@@ -8495,7 +8061,7 @@ class EcritureComptable:
                 """, (ecriture_principale_id, user_id))
                 ecritures = cursor.fetchall()
                 return ecritures
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur lors de la récupération des écritures complémentaires: {e}")
             return []
 
@@ -8520,10 +8086,8 @@ class EcritureComptable:
                     )
                     AND e.utilisateur_id = %s
                 """, (ecriture_complementaire_id, user_id, user_id))
-
                 return cursor.fetchone()
-
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur lors de la récupération de l'écriture principale: {e}")
             return None
     # *** MÉTHODE POUR METTRE À JOUR UNE ÉCRITURE PRINCIPALE ET SES COMPLÉMENTAIRES ***
@@ -8542,7 +8106,6 @@ class EcritureComptable:
                 ecriture_principale_avant = cursor.fetchone()
                 if not ecriture_principale_avant:
                     return False, "Écriture principale non trouvée ou non autorisée"
-
                 # 2. Mettre à jour l'écriture principale
                 champs = []
                 valeurs = []
@@ -8550,10 +8113,8 @@ class EcritureComptable:
                     if valeur is not None and champ not in ['id', 'utilisateur_id', 'ecriture_principale_id', 'type_ecriture_comptable']:
                         champs.append(f"{champ} = %s")
                         valeurs.append(valeur)
-
                 if not champs:
                     return False, "Aucune modification valide spécifiée pour l'écriture principale"
-
                 # Ajouter les conditions pour la mise à jour
                 valeurs.extend([ecriture_principale_id, user_id])
                 query_update_principale = f"""
@@ -8564,15 +8125,12 @@ class EcritureComptable:
                 cursor.execute(query_update_principale, valeurs)
                 if cursor.rowcount == 0:
                     return False, "Aucune ligne mise à jour pour l'écriture principale (vérifiez les permissions ou l'existence)"
-
                 # 3. Vérifier si des champs impactant les écritures complémentaires ont changé
                 montant_change = 'montant' in kwargs and kwargs['montant'] != ecriture_principale_avant['montant']
                 tva_taux_change = 'tva_taux' in kwargs and kwargs['tva_taux'] != ecriture_principale_avant['tva_taux']
-
                 if montant_change or tva_taux_change:
                     # 4. Récupérer les écritures complémentaires
                     ecritures_complementaires = self.get_ecritures_complementaires(ecriture_principale_id, user_id)
-
                     # 5. Mettre à jour chaque écriture complémentaire
                     for ecriture_comp in ecritures_complementaires:
                         # Exemple de logique de mise à jour : recalculer la TVA si le montant principal change
@@ -8582,7 +8140,6 @@ class EcritureComptable:
                         ancien_taux_tva = ecriture_principale_avant['tva_taux'] or 0
                         nouveau_montant_principal = kwargs.get('montant', ancien_montant_principal)
                         nouveau_taux_tva = kwargs.get('tva_taux', ancien_taux_tva) or 0
-
                         # Exemple de recalcul de la TVA
                         # ATTENTION : La logique réelle peut être plus complexe (TVA sur le prix HT, etc.)
                         # Ici, on fait un recalcul simple basé sur le nouveau montant et le nouveau taux
@@ -8606,7 +8163,6 @@ class EcritureComptable:
                             else:
                                 # Aucun changement de taux, montant changé mais taux à 0, donc TVA devrait rester à 0
                                 nouveau_montant_tva_calc = 0.0
-
                             cursor.execute("""
                                 UPDATE ecritures_comptables
                                 SET montant = %s, montant_htva = %s -- Mettre à jour le montant de la complémentaire
@@ -8615,7 +8171,7 @@ class EcritureComptable:
                             logger.info(f"Écriture complémentaire {ecriture_comp['id']} mise à jour en fonction de la modification de la principale {ecriture_principale_id}.")
 
                 return True, "Écriture principale mise à jour, complémentaires recalculées si nécessaire."
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur lors de la mise à jour de l'écriture (principale ou complémentaire): {e}")
             return False, f"Erreur: {str(e)}"
 
@@ -8674,32 +8230,26 @@ class EcritureComptable:
                     (ecriture_id, user_id)
                 )
                 ecriture = cursor.fetchone()
-
                 if not ecriture:
                     return False, "Écriture non trouvée ou non autorisée"
-
                 if ecriture['transaction_id']:
                     cursor.execute(
                         "UPDATE ecritures_comptables SET transaction_id = NULL WHERE id = %s",
                         (ecriture_id,)
                     )
-
                 ecritures_secondaires_ids = []
                 if ecriture['type_ecriture_comptable'] == 'principale':
                     secondaires = self.get_ecritures_complementaires(ecriture_id, user_id)
                     ecritures_secondaires_ids = [sec['id'] for sec in secondaires]
-
                 for sec_id in ecritures_secondaires_ids:
                     cursor.execute(
                         "DELETE FROM ecritures_comptables WHERE id = %s AND utilisateur_id = %s",
                         (sec_id, user_id)
                     )
-
                 cursor.execute(
                     "DELETE FROM ecritures_comptables WHERE id = %s AND utilisateur_id = %s",
                     (ecriture_id, user_id)
                 )
-
                 if cursor.rowcount > 0:
                     message = f"Écriture {ecriture_id} supprimée avec succès"
                     if ecritures_secondaires_ids:
@@ -8707,8 +8257,7 @@ class EcritureComptable:
                     return True, message
                 else:
                     return False, "Erreur lors de la suppression de l'écriture"
-
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur lors de la suppression de l'écriture {ecriture_id}: {e}")
             return False, f"Erreur lors de la suppression: {str(e)}"
 
@@ -8721,21 +8270,17 @@ class EcritureComptable:
                     (ecriture_id, user_id)
                 )
                 ecriture = cursor.fetchone()
-
                 if not ecriture:
                     return False, "Écriture non trouvée ou non autorisée"
-
                 if ecriture['transaction_id']:
                     cursor.execute(
                         "UPDATE ecritures_comptables SET transaction_id = NULL WHERE id = %s",
                         (ecriture_id,)
                     )
-
                 ecritures_secondaires_ids = []
                 if ecriture['type_ecriture_comptable'] == 'principale':
                     secondaires = self.get_ecritures_complementaires(ecriture_id, user_id)
                     ecritures_secondaires_ids = [sec['id'] for sec in secondaires]
-
                 if soft_delete:
                     success_count = 0
                     for sec_id in ecritures_secondaires_ids:
@@ -8746,13 +8291,11 @@ class EcritureComptable:
                         """, (sec_id, user_id))
                         if cursor.rowcount > 0:
                             success_count += 1
-
                     cursor.execute("""
                         UPDATE ecritures_comptables
                         SET statut = 'supprimee'
                         WHERE id = %s AND utilisateur_id = %s
                     """, (ecriture_id, user_id))
-
                     if cursor.rowcount > 0:
                         success_count += 1
                         message = f"Écriture {ecriture_id} marquée comme supprimée"
@@ -8778,8 +8321,7 @@ class EcritureComptable:
                         return True, message
                     else:
                         return False, "Erreur lors de la suppression de l'écriture"
-
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur lors de la suppression de l'écriture {ecriture_id}: {e}")
             return False, f"Erreur lors de la suppression: {str(e)}"
 
@@ -8795,20 +8337,17 @@ class EcritureComptable:
                     WHERE h.utilisateur_id = %s
                 """
                 params = [user_id]
-                
                 if date_from:
                     query += " AND h.date_suppression >= %s"
                     params.append(date_from)
                 if date_to:
                     query += " AND h.date_suppression <= %s"
                     params.append(date_to)
-                
                 query += " ORDER BY h.date_suppression DESC LIMIT %s"
                 params.append(limit)
-                
                 cursor.execute(query, tuple(params))
                 return cursor.fetchall()
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur récupération historique suppressions: {e}", exc_info=True)
             return []
 
@@ -8956,7 +8495,6 @@ class EcritureComptable:
     def _validate_date(date_str: str) -> bool:
         """Valide le format d'une chaîne de date YYYY-MM-DD"""
         try:
-            from datetime import datetime
             datetime.strptime(date_str, '%Y-%m-%d')  # Corrigé: %m ajouté
             return True
         except (ValueError, TypeError):
@@ -8997,17 +8535,14 @@ class EcritureComptable:
         if not (self._validate_date(date_from) and self._validate_date(date_to)):
             logger.error("Format de date invalide dans get_compte_de_resultat")
             return {}
-
         try:
             produits = self._fetch_ecritures_by_type(user_id, date_from, date_to, 'recette')
             charges = self._fetch_ecritures_by_type(user_id, date_from, date_to, 'depense')
-
             total_produits = sum(p['montant'] for p in produits)
             total_produits_ttc = sum(p['montant_ttc'] for p in produits)
             total_charges = sum(c['montant'] for c in charges)
             total_charges_ttc = sum(c['montant_ttc'] for c in charges)
             resultat = total_produits - total_charges
-
             return {
                 'produits': produits,
                 'charges': charges,
@@ -9019,7 +8554,7 @@ class EcritureComptable:
                 'date_from': date_from,
                 'date_to': date_to
             }
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur génération compte de résultat: {e}")
             return {}
 
@@ -9030,7 +8565,6 @@ class EcritureComptable:
         if not self._validate_date(date_bilan):
             logger.error("Format de date invalide pour le bilan")
             return {}
-
         try:
             with self.db.get_cursor() as cursor:
                 # Récupérer TOUTES les écritures validées jusqu'à la date du bilan
@@ -9059,18 +8593,14 @@ class EcritureComptable:
                     GROUP BY c.id, c.numero, c.nom, c.type_compte
                     ORDER BY c.numero
                 """, (user_id, date_bilan))
-
                 lignes = cursor.fetchall()
-
             # Répartir entre actif, passif, capitaux
             actif = []
             passif = []
             capitaux = []
-
             total_actif = 0.0
             total_passif = 0.0
             total_capitaux = 0.0
-
             for ligne in lignes:
                 solde = float(ligne['solde'] or 0.0)
                 item = {
@@ -9079,7 +8609,6 @@ class EcritureComptable:
                     'nom': ligne['categorie_nom'],
                     'solde': solde
                 }
-
                 if ligne['type_compte'] == 'Actif':
                     actif.append(item)
                     total_actif += solde
@@ -9089,10 +8618,8 @@ class EcritureComptable:
                 elif ligne['type_compte'] in ('Capitaux propres', 'Capital', 'Fonds propres'):
                     capitaux.append(item)
                     total_capitaux += solde
-
             total_passif_et_capitaux = total_passif + total_capitaux
             écart = total_actif - total_passif_et_capitaux
-
             return {
                 'actif': actif,
                 'passif': passif,
@@ -9104,8 +8631,7 @@ class EcritureComptable:
                 'écart': écart,  # doit être ~0
                 'date_bilan': date_bilan
             }
-
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur génération bilan: {e}")
             return {}
     def get_ecritures_by_categorie_period(self, user_id: int, type_categorie: str = None,
@@ -9113,7 +8639,6 @@ class EcritureComptable:
                                             date_to: str = None, statut: str = 'validée') -> Tuple[List[Dict], float, str]:
         """
         Récupère les écritures par catégorie et période avec calcul du total et génération du titre
-        
         Returns:
             Tuple: (ecritures, total, titre)
         """
@@ -9145,10 +8670,9 @@ class EcritureComptable:
                     WHERE e.utilisateur_id = %s
                     AND e.date_ecriture BETWEEN %s AND %s
                     AND e.statut = %s
-                    AND e.type_ecriture_comptable = 'principale'  ← ✅ EXCLURE LES SECONDAIRES
+                    AND e.type_ecriture_comptable = 'principale'
                 """
                 params = [user_id, date_from, date_to, statut]
-
                 # ✅ CORRECTION : Si categorie_id est spécifié, filtrer uniquement sur celui-ci
                 if categorie_id and categorie_id != 'all':
                     query += " AND e.categorie_id = %s"
@@ -9159,28 +8683,21 @@ class EcritureComptable:
                         query += " AND (c.type_compte IN ('Revenus', 'Actif') AND e.type_ecriture = 'recette')"
                     elif type_categorie == 'charge':
                         query += " AND (c.type_compte IN ('Charges', 'Passif') AND e.type_ecriture = 'depense')"
-
                 query += " ORDER BY e.date_ecriture DESC, e.id DESC"
                 cursor.execute(query, tuple(params))
                 ecritures = cursor.fetchall()
-
                 # Calculer le total
                 total = sum(float(e['montant']) for e in ecritures) if ecritures else 0
-
                 # Générer le titre
                 titre = self._generate_titre_detail(cursor, type_categorie, categorie_id, ecritures, date_from[:4])
-
                 return ecritures, total, titre
-
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur lors de la récupération des écritures par catégorie: {e}", exc_info=True)
             return [], 0, ""
 
     def get_totaux_tva_par_categorie(self, user_id: int, categorie_id: int = None,
                                   date_from: str = None, date_to: str = None) -> Dict:
-        """
-        Calcule les totaux TVA pour une catégorie ou une période donnée
-        """
+        """Calcule les totaux TVA pour une catégorie ou une période donnée """
         try:
             with self.db.get_cursor() as cursor:
                 query = """
@@ -9196,22 +8713,17 @@ class EcritureComptable:
                     AND e.type_ecriture_comptable = 'principale'
                 """
                 params = [user_id]
-
                 if categorie_id:
                     query += " AND e.categorie_id = %s"
                     params.append(categorie_id)
-
                 if date_from:
                     query += " AND e.date_ecriture >= %s"
                     params.append(date_from)
-
                 if date_to:
                     query += " AND e.date_ecriture <= %s"
                     params.append(date_to)
-
                 cursor.execute(query, tuple(params))
                 result = cursor.fetchone()
-
                 return {
                     'total_htva': float(result['total_htva'] or 0),
                     'total_tva': float(result['total_tva'] or 0),
@@ -9219,7 +8731,7 @@ class EcritureComptable:
                     'nb_ecritures': result['nb_ecritures'] or 0,
                     'taux_moyen': float(result['taux_moyen'] or 0)
                 }
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur calcul totaux TVA: {e}")
             return {
                 'total_htva': 0,
@@ -9449,7 +8961,7 @@ class EcritureComptable:
                 cursor.execute(query, (user_id,))
                 annees = [row['annee'] for row in cursor.fetchall()]
                 return annees
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur lors de la récupération des années disponibles : {e}")
             return []
 
@@ -9558,7 +9070,6 @@ class EcritureComptable:
             with self.db.get_cursor() as cursor:
                 query = "SELECT COUNT(*) as total FROM ecritures_comptables e WHERE e.utilisateur_id = %s"
                 params = [user_id]
-
                 if date_from:
                     query += " AND e.date_ecriture >= %s"
                     params.append(date_from)
@@ -9589,11 +9100,10 @@ class EcritureComptable:
                 if date_created_to:
                     query += " AND e.created_at <= %s"
                     params.append(date_created_to)
-
                 cursor.execute(query, tuple(params))
                 result = cursor.fetchone()
                 return result['total'] if result else 0
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur count_with_filters: {e}", exc_info=True)
             return 0
 
@@ -9695,7 +9205,6 @@ class EcritureComptable:
                 )
                 if not cursor.fetchone():
                     return False
-
                 # Vérifier que la transaction existe et appartient à l'utilisateur
                 cursor.execute("""
                     SELECT t.id
@@ -9705,14 +9214,13 @@ class EcritureComptable:
                 """, (transaction_id, user_id, user_id))
                 if not cursor.fetchone():
                     return False
-
                 # Lier l'écriture à la transaction
                 cursor.execute(
                     "UPDATE ecritures_comptables SET transaction_id = %s WHERE id = %s",
                     (transaction_id, ecriture_id)
                 )
                 return cursor.rowcount > 0
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur lien écriture-transaction : {e}")
             return False
 
@@ -9750,13 +9258,12 @@ class EcritureComptable:
                 )
                 if not cursor.fetchone():
                     return False
-
                 cursor.execute(
                     "UPDATE ecritures_comptables SET transaction_id = NULL WHERE id = %s",
                     (ecriture_id,)
                 )
                 return cursor.rowcount > 0
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur lors du délien de l'écriture {ecriture_id}: {e}")
             return False
 
@@ -9776,7 +9283,6 @@ class EcritureComptable:
                 if not ecriture:
                     logger.error(f"Écriture {ecriture_id} non trouvée ou non autorisée")
                     return False
-
                 # 2. Vérifier que la transaction existe et appartient à l'utilisateur
                 cursor.execute("""
                     SELECT t.id, t.montant
@@ -9788,7 +9294,6 @@ class EcritureComptable:
                 if not transaction:
                     logger.error(f"Transaction {transaction_id} non trouvée ou non autorisée")
                     return False
-
                 # 3. Récupérer toutes les écritures à lier
                 ecritures_a_lier = [ecriture_id]
                 
@@ -9803,7 +9308,6 @@ class EcritureComptable:
                     for sec in secondaires:
                         ecritures_a_lier.append(sec['id'])
                     logger.info(f"Écriture principale {ecriture_id} a {len(secondaires)} écriture(s) secondaire(s) à lier")
-
                 # 4. Vérifier que le total ne dépasse pas le montant de la transaction
                 # Calculer le total actuel des écritures déjà liées à cette transaction
                 cursor.execute("""
@@ -9812,8 +9316,7 @@ class EcritureComptable:
                     WHERE transaction_id = %s AND utilisateur_id = %s
                 """, (transaction_id, user_id))
                 result = cursor.fetchone()
-                total_actuel = Decimal(str(result['total'])) if result and result['total'] else Decimal('0')
-                
+                total_actuel = Decimal(str(result['total'])) if result and result['total'] else Decimal('0')      
                 # Calculer le total des écritures à lier (en excluant celles déjà liées)
                 placeholders = ','.join(['%s'] * len(ecritures_a_lier))
                 cursor.execute(f"""
@@ -9827,13 +9330,11 @@ class EcritureComptable:
                 
                 nouveau_total = total_actuel + total_a_ajouter
                 montant_transaction = Decimal(str(transaction['montant']))
-                
                 if nouveau_total > montant_transaction:
                     logger.warning(
                         f"Total des écritures ({nouveau_total:.2f}) dépasse le montant de la transaction ({montant_transaction:.2f})"
                     )
                     return False
-
                 # 5. Lier toutes les écritures
                 count = 0
                 for e_id in ecritures_a_lier:
@@ -9844,11 +9345,9 @@ class EcritureComptable:
                     if cursor.rowcount > 0:
                         count += 1
                         logger.info(f"Écriture {e_id} liée à la transaction {transaction_id}")
-
                 logger.info(f"{count} écriture(s) liée(s) à la transaction {transaction_id}")
                 return count > 0
-
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur lors du lien écriture {ecriture_id} → transaction {transaction_id}: {e}")
             return False
     
@@ -9871,13 +9370,12 @@ class EcritureComptable:
                 """, (transaction_id, user_id, user_id))
                 if not cursor.fetchone():
                     return 0
-
                 cursor.execute(
                     "UPDATE ecritures_comptables SET transaction_id = NULL WHERE transaction_id = %s AND utilisateur_id = %s",
                     (transaction_id, user_id)
                 )
                 return cursor.rowcount
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur lors du délien de toutes les écritures de la transaction {transaction_id}: {e}")
             return 0
 
@@ -9902,7 +9400,7 @@ class EcritureComptable:
                     WHERE plan_id IN ({placeholders}) AND categorie_id = %s
                 """, plan_ids + [categorie_id])
                 return cursor.fetchone() is not None
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur validation catégorie pour contact {contact_id}: {e}")
             return False
 
@@ -9947,36 +9445,29 @@ class EcritureComptable:
             # 1. Vérifications de base
             if not fichier or fichier.filename == '':
                 return False, "Aucun fichier sélectionné"
-
             logger.info(f"Tentative d'upload - Fichier: {fichier.filename}, Taille: {fichier.content_length}")
-
             # 2. Vérification et création du dossier d'upload
             if not os.path.exists(self.upload_folder):
                 try:
                     os.makedirs(self.upload_folder, exist_ok=True)
                     logger.info(f"Dossier créé: {self.upload_folder}")
-                except Exception as e:
-                    logger.error(f"Erreur création dossier: {e}")
+                except OSError as e:
+                    logger.exception(f"Erreur création dossier: {e}")
                     return False, f"Erreur création dossier: {str(e)}"
-
             # 3. Vérification des permissions d'écriture
             if not os.access(self.upload_folder, os.W_OK):
                 logger.error(f"Pas de permission d'écriture dans: {self.upload_folder}")
                 return False, "Pas de permission d'écriture sur le serveur"
-
             # 4. Vérification du type de fichier
             if not self._allowed_file(fichier.filename):
                 return False, "Type de fichier non autorisé (formats acceptés: pdf, png, jpg, jpeg, gif, bmp, webp)"
-
             # 5. Lecture et validation de la taille du fichier
             fichier_data = fichier.read()
             if len(fichier_data) == 0:
                 return False, "Le fichier est vide"
-
             max_size = 10 * 1024 * 1024  # 10 Mo
             if len(fichier_data) > max_size:
                 return False, f"Fichier trop volumineux (max {max_size // (1024*1024)} Mo)"
-
             # 6. Vérification en base de données (propriété de l'écriture)
             with self.db.get_cursor() as cursor:
                 cursor.execute(
@@ -9985,25 +9476,20 @@ class EcritureComptable:
                 )
                 if not cursor.fetchone():
                     return False, "Écriture non trouvée ou vous n'êtes pas autorisé à la modifier"
-
                 # 7. Génération d'un nom de fichier unique et sécurisé
                 nouveau_nom = self._generate_filename(ecriture_id, fichier.filename, user_id)
                 file_path = self._get_file_path(nouveau_nom)
-
                 # 8. Sauvegarde du fichier sur le filesystem
                 try:
                     with open(file_path, 'wb') as f:
                         f.write(fichier_data)
-
                     # Vérification post-écriture (sécurité accrue)
                     if not os.path.exists(file_path) or os.path.getsize(file_path) != len(fichier_data):
                         logger.error("Incohérence après écriture du fichier sur le disque!")
                         return False, "Erreur lors de l'écriture physique du fichier"
-
-                except Exception as e:
-                    logger.error(f"Erreur écriture fichier sur disque: {e}")
+                except OSError as e:
+                    logger.exception(f"Erreur écriture fichier sur disque: {e}")
                     return False, f"Erreur lors de l'enregistrement du fichier: {str(e)}"
-
                 # 9. Mise à jour de la base de données (Correspond aux nouvelles colonnes)
                 cursor.execute("""
                     UPDATE ecritures_comptables
@@ -10020,13 +9506,15 @@ class EcritureComptable:
                     ecriture_id,
                     user_id
                 ))
-
                 logger.info(f"✅ Fichier joint ajouté avec succès pour l'écriture {ecriture_id}")
                 return True, "Fichier joint ajouté avec succès"
 
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur critique ajout fichier écriture {ecriture_id}: {e}", exc_info=True)
             return False, f"Erreur interne lors de l'ajout du fichier: {str(e)}"
+        except OSError as e:                               # ✅ ciblé : erreur disque
+            logger.exception(f"Erreur disque ajout fichier écriture {ecriture_id}")
+            return False, "Impossible d'enregistrer le fichier sur le serveur"
         
     def get_fichier(self, ecriture_id: int, user_id: int) -> Optional[Dict]:
         """
@@ -10047,9 +9535,16 @@ class EcritureComptable:
                     file_path = self._get_file_path(result['justificatif_url'])
 
 
-                    # Vérifier que le fichier existe physiquement
-                    if os.path.exists(file_path):
-                        return {
+                    try:
+                        fichier_existe = os.path.exists(file_path)
+                    except OSError as e:
+                        logger.exception(f"Erreur accès disque pour {file_path}")
+                        return None
+
+                    if not fichier_existe:
+                        logger.warning(f"Fichier manquant sur le disque: {file_path}")
+                        return None
+                    return {
                             'nom_original': result['nom_fichier'],
                             'chemin_physique': result['justificatif_url'],
                             'type_mime': result['type_mime'],
@@ -10057,9 +9552,7 @@ class EcritureComptable:
                             'chemin_complet': file_path,
                             'stockage': 'filesystem'
                         }
-                    else:
-                        logger.warning(f"Fichier manquant sur le disk: {file_path}")
-                        return None
+
                 elif result['fichier_joint']:
                     return {
                     'nom_original': result['nom_fichier'],
@@ -10069,8 +9562,11 @@ class EcritureComptable:
                     'stockage': 'blob'
                 }
                 return None
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur récupération fichier écriture {ecriture_id}: {e}")
+            return None
+        except OSError as e:                               # ✅ ciblé : erreur disque
+            logger.exception(f"Erreur disque récupération fichier écriture {ecriture_id}")
             return None
 
     def supprimer_fichier(self, ecriture_id: int, user_id: int) -> Tuple[bool, str]:
@@ -10079,7 +9575,6 @@ class EcritureComptable:
         """
         try:
             logger.info(f"📍 Début suppression fichier - Écriture: {ecriture_id}, User: {user_id}")
-
             with self.db.get_cursor() as cursor:
                 # Récupérer les infos du fichier avant suppression
                 cursor.execute("""
@@ -10087,15 +9582,12 @@ class EcritureComptable:
                     FROM ecritures_comptables
                     WHERE id = %s AND utilisateur_id = %s
                 """, (ecriture_id, user_id))
-
                 result = cursor.fetchone()
                 if not result:
                     logger.error(f"❌ Écriture {ecriture_id} non trouvée pour l'utilisateur {user_id}")
                     return False, "Écriture non trouvée ou non autorisée"
-
                 fichier_supprime = False
                 message_suppression = ""
-
                 # Supprimer le fichier physique s'il existe (justificatif_url)
                 if result['justificatif_url']:
                     file_path = self._get_file_path(result['justificatif_url'])
@@ -10105,12 +9597,11 @@ class EcritureComptable:
                             fichier_supprime = True
                             message_suppression = f"Fichier physique supprimé: {file_path}"
                             logger.info(f"✓ {message_suppression}")
-                        except Exception as e:
-                            logger.error(f"❌ Erreur suppression fichier physique: {e}")
+                        except OSError as e:
+                            logger.exception(f"❌ Erreur suppression fichier physique: {e}")
                             return False, f"Erreur suppression fichier: {str(e)}"
                     else:
                         logger.warning(f"⚠️ Fichier physique non trouvé: {file_path}")
-
                 # Mettre à jour la base de données
                 cursor.execute("""
                     UPDATE ecritures_comptables
@@ -10121,23 +9612,22 @@ class EcritureComptable:
                         fichier_joint = NULL
                     WHERE id = %s AND utilisateur_id = %s
                 """, (ecriture_id, user_id))
-
                 if cursor.rowcount > 0:
                     if fichier_supprime:
                         message = f"Fichier '{result['nom_fichier']}' supprimé avec succès"
                     else:
                         message = f"Informations fichier supprimées (fichier physique non trouvé)"
-
                     logger.info(f"✓ Suppression réussie: {message}")
                     return True, message
                 else:
                     logger.error(f"❌ Aucune ligne mise à jour dans la base")
                     return False, "Erreur lors de la suppression en base de données"
-
-        except Exception as e:
-            logger.error(f"❌ Erreur suppression fichier écriture {ecriture_id}: {e}")
-            logger.error(f"❌ Traceback: {traceback.format_exc()}")
+        except MySQLError as e:
+            logger.exception(f"❌ Erreur suppression fichier écriture {ecriture_id}: {e}")
             return False, f"Erreur lors de la suppression: {str(e)}"
+        except OSError as e:                               # ✅ ciblé : erreur disque
+            logger.exception(f"❌ Erreur disque suppression fichier écriture {ecriture_id}")
+            return False, "Impossible de supprimer le fichier sur le serveur"
 
     def get_chemin_fichier_physique(self, ecriture_id: int, user_id: int) -> Optional[str]:
         """
@@ -10146,9 +9636,7 @@ class EcritureComptable:
         fichier_info = self.get_fichier(ecriture_id, user_id)
         return fichier_info['chemin_complet'] if fichier_info else None
 
-class RegleEcriture:
-    def __init__(self, db):
-        self.db = db
+class RegleEcriture(BaseRepository):
     def create(self, data):
         try:
             with self.db.get_cursor() as cursor:
@@ -10177,19 +9665,15 @@ class RegleEcriture:
                 )
                 cursor.execute(query, values)
                 return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur création règle : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur création règle")
             return None
 
     def update(self, regle_id: int, data: Dict) -> bool:
-
         try:
-
             with self.db.get_cursor() as cursor:
-
                 query = """
                 UPDATE regles_ecritures
-
                 SET
                     categorie_source_id=%s,
                     categorie_destination_id=%s,
@@ -10199,12 +9683,9 @@ class RegleEcriture:
                     valeur=%s,
                     ordre=%s,
                     actif=%s
-
                 WHERE id=%s
                 """
-
                 values = (
-
                     data["categorie_source_id"],
                     data["categorie_destination_id"],
                     data["type_regle"],
@@ -10214,120 +9695,79 @@ class RegleEcriture:
                     data["ordre"],
                     data["actif"],
                     regle_id
-
                 )
-
                 cursor.execute(query, values)
-
                 return cursor.rowcount > 0
-
-        except Exception as e:
-
-            logger.error(f"Erreur update : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur update")
             return False
+    
     def delete(self, regle_id: int) -> bool:
-
         try:
-
             with self.db.get_cursor() as cursor:
-
                 cursor.execute("""
-
                     UPDATE regles_ecritures
                     SET actif=FALSE
                     WHERE id=%s
-
                 """, (regle_id,))
-
                 return cursor.rowcount > 0
-
-        except Exception as e:
-
-            logger.error(f"Erreur delete : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur delete")
             return False
+    
     def get_by_id(self, regle_id: int) -> Optional[Dict]:
-
         try:
-
             with self.db.get_cursor() as cursor:
-
                 cursor.execute("""
                     SELECT *
                     FROM regles_ecritures
                     WHERE id=%s
                 """, (regle_id,))
-
                 return cursor.fetchone()
-
-        except Exception as e:
-            logger.error(f"Erreur get_by_id : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_by_id ")
             return None
+    
     def get_by_categorie(self, categorie_id: int) -> List[Dict]:
-
         try:
-
             with self.db.get_cursor() as cursor:
-
                 cursor.execute("""
-
                     SELECT *
                     FROM regles_ecritures
                     WHERE categorie_source_id=%s
                     AND actif=TRUE
                     ORDER BY ordre
-
                 """, (categorie_id,))
-
                 return cursor.fetchall()
-
-        except Exception as e:
-
-            logger.error(f"Erreur get_by_categorie : {e}")
+        except MySQLError  as e:
+            logger.exception(f"Erreur get_by_categorie")
             return []
+
     def get_all(self, )-> List[Dict]:
         try:
-
             with self.db.get_cursor() as cursor:
-
                 cursor.execute("""
-
                 SELECT
                     r.*,
-
                     cs.numero AS source_numero,
                     cs.nom AS source_nom,
-
                     cd.numero AS destination_numero,
                     cd.nom AS destination_nom
-
                 FROM regles_ecritures r
-
                 INNER JOIN categories_comptables cs
                     ON r.categorie_source_id = cs.id
-
                 INNER JOIN categories_comptables cd
                     ON r.categorie_destination_id = cd.id
-
                 ORDER BY
                     cs.numero,
                     r.ordre
-
                 """)
-
                 return cursor.fetchall()
-
-        except Exception as e:
-            logger.error(f"Erreur get_all : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_all")
             return []
 
-
-
-
-
-class TauxTva:
-    def __init__(self, db):
-        self.db = db
-
+class TauxTva(BaseRepository):
     def create(self, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
@@ -10338,8 +9778,11 @@ class TauxTva:
                 values = (data['annee'], data['pays'], data['nom'], data['taux'], data.get('actif', True))
                 cursor.execute(query, values)
                 return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur création taux TVA: {e}")
+        except IntegrityError as e: 
+            logger.warning(f"Taux TVA déjà existant pour annee={data.get('annee')}, nom={data.get('nom')}")
+            return None
+        except MySQLError as e: 
+            logger.exception(f"Erreur DB création taux TVA")
             return None
 
     def update(self, taux_id: int, data: Dict) -> bool:
@@ -10352,8 +9795,8 @@ class TauxTva:
                 values = (data['annee'], data['nom'], data['taux'], data.get('actif', True), data['pays'], taux_id)
                 cursor.execute(query, values)
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur update taux TVA: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur update taux TVA: {e}")
             return False
 
     def delete(self, taux_id: int) -> bool:
@@ -10362,8 +9805,8 @@ class TauxTva:
             with self.db.get_cursor() as cursor:
                 cursor.execute("UPDATE taux_tva SET actif = FALSE WHERE id = %s", (taux_id,))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur delete taux TVA: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur delete taux TVA: {e}")
             return False
 
     def get_all(self) -> List[Dict]:
@@ -10371,8 +9814,8 @@ class TauxTva:
             with self.db.get_cursor() as cursor:
                 cursor.execute("SELECT * FROM taux_tva WHERE actif = TRUE ORDER BY annee DESC, taux DESC")
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur get_all taux TVA: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_all taux TVA: {e}")
             return []
 
     def get_by_id(self, taux_id: int) -> Optional[Dict]:
@@ -10380,8 +9823,8 @@ class TauxTva:
             with self.db.get_cursor() as cursor:
                 cursor.execute("SELECT * FROM taux_tva WHERE id = %s", (taux_id,))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur get_by_id taux TVA: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_by_id taux TVA: {e}")
             return None
 
     def get_taux_by_date(self, date_str: str) -> List[Dict]:
@@ -10399,8 +9842,8 @@ class TauxTva:
                     ORDER BY taux DESC
                 """, (annee,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur get_taux_by_date: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_taux_by_date:")
             return []
 
     def get_taux_for_select(self, annee: int = None) -> List[Dict]:
@@ -10427,15 +9870,15 @@ class TauxTva:
                         ORDER BY annee DESC, taux DESC
                     """)
                 return cursor.fetchall()
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur get_taux_for_select: {e}")
             return []
 
-class FormulaireTVA:
+class FormulaireTVA(BaseRepository):
     """Données du formulaire officiel de décompte TVA suisse + clôture des trimestres."""
 
     def __init__(self, db):
-        self.db = db
+        super().__init__(db)
         self._ensure_table()
 
     def _ensure_table(self):
@@ -10453,8 +9896,8 @@ class FormulaireTVA:
                         FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
                     )
                 """)
-        except Exception as e:
-            logger.error(f"Erreur création table tva_clotures: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur création table tva_clotures: {e}")
 
     @staticmethod
     def dates_trimestre(annee: int, trimestre: int):
@@ -10488,8 +9931,8 @@ class FormulaireTVA:
                     FROM ecritures_comptables WHERE utilisateur_id = %s
                 """, (user_id,))
                 annees |= {r['annee'] for r in cursor.fetchall() if r['annee']}
-        except Exception as e:
-            logger.error(f"Erreur périodes TVA: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur périodes TVA: {e}")
         return [{'annee': a, 'trimestre': t} for a in sorted(annees, reverse=True) for t in (4, 3, 2, 1)]
 
     def get_donnees_formulaire(self, user_id: int, annee: int, trimestre: int) -> Dict:
@@ -10517,7 +9960,6 @@ class FormulaireTVA:
                 """, (user_id, date_debut, date_fin))
                 row = cursor.fetchone()
                 chiffres['c200'] = round(float(row['ca_ht'] or 0), 2)
-
                 # --- Prestations HT + impôt dû, par taux ---
                 cursor.execute("""
                     SELECT e.tva_taux,
@@ -10537,7 +9979,6 @@ class FormulaireTVA:
                     if cle == 'normal':   chiffres['p303'] += base; chiffres['i302'] += tva
                     elif cle == 'reduit': chiffres['p313'] += base; chiffres['i312'] += tva
                     elif cle == 'special':chiffres['p343'] += base; chiffres['i342'] += tva
-
                 # --- Impôt préalable (via compte_systeme) ---
                 cursor.execute("""
                     SELECT c.compte_systeme, COALESCE(SUM(e.montant), 0) AS total
@@ -10556,7 +9997,6 @@ class FormulaireTVA:
                     if cle:
                         chiffres[cle] += float(row['total'] or 0)
                 for k in chiffres: chiffres[k] = round(chiffres[k], 2)
-
                 # --- Journal de TVA ---
                 cursor.execute("""
                     SELECT e.id, e.date_ecriture, e.description, e.reference,
@@ -10590,8 +10030,8 @@ class FormulaireTVA:
                         'description': row['description'] or '',
                         'sens': sens, 'base': base, 'taux': taux, 'tva': round(tva, 2),
                     })
-        except Exception as e:
-            logger.error(f"Erreur get_donnees_formulaire TVA: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur get_donnees_formulaire TVA: {e}", exc_info=True)
         return {'annee': annee, 'trimestre': trimestre, 'taux': self.taux_selon_annee(annee),
                 'chiffres': chiffres, 'journal': journal}
 
@@ -10603,8 +10043,8 @@ class FormulaireTVA:
                     WHERE utilisateur_id = %s AND annee = %s AND trimestre = %s
                 """, (user_id, annee, trimestre))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur get_cloture TVA: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_cloture TVA: {e}")
             return None
 
     def cloturer(self, user_id: int, annee: int, trimestre: int, chiffres: Dict) -> bool:
@@ -10616,15 +10056,11 @@ class FormulaireTVA:
                     ON DUPLICATE KEY UPDATE donnees_json = VALUES(donnees_json), cloture_at = NOW()
                 """, (user_id, annee, trimestre, json.dumps(chiffres)))
                 return True
-        except Exception as e:
-            logger.error(f"Erreur clôture TVA: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur clôture TVA: {e}")
             return False
 
-
-class ContactPlan:
-    def __init__(self, db):
-        self.db = db
-
+class ContactPlan(BaseRepository):
     def get_plans_for_contact(self, contact_id: int, user_id: int) -> List[Dict]:
         with self.db.get_cursor() as cursor:
             cursor.execute("""
@@ -10657,10 +10093,7 @@ class ContactPlan:
             cursor.execute("INSERT IGNORE INTO contact_plans (contact_id, plan_id) VALUES (%s, %s)", (contact_id, plan_id))
             return True
 
-class Contacts:
-    def __init__(self, db):
-        self.db = db
-
+class Contacts(BaseRepository):
     def create(self, data: Dict) -> bool:
         """
         Crée un nouveau contact.
@@ -10898,10 +10331,7 @@ class Contacts:
             logger.error(f"Erreur lors de la récupération des comptes disponibles: {e}")
             return []
         
-class ContactCompte:
-    def __init__(self, db):
-        self.db = db
-
+class ContactCompte(BaseRepository):
     def link_to_compte(self, contact_id: int, compte_id: int, utilisateur_id: int) -> bool:
         """Lie un contact à un compte bancaire"""
         try:
@@ -10933,7 +10363,7 @@ class ContactCompte:
             logger.error(f"Erreur SQL dans link_to_compte : {e}")
             return False
         except Exception as e:
-            logger.error(f"Erreur liaison contact-compte : {e}")
+            logger.exception(f"Erreur liaison contact-compte : {e}")
             return False
 
     def unlink_from_compte(self, contact_id: int, compte_id: int, utilisateur_id: int) -> bool:
@@ -10949,7 +10379,7 @@ class ContactCompte:
             logger.error(f"Erreur SQL dans unlink_from_compte : {e}")
             return False
         except Exception as e:
-            logger.error(f"Erreur déliaison contact-compte : {e}")
+            logger.exception(f"Erreur déliaison contact-compte : {e}")
             return False
 
     def get_comptes_for_contact(self, contact_id: int, utilisateur_id: int) -> List[Dict]:
@@ -10971,7 +10401,7 @@ class ContactCompte:
             logger.error(f"Erreur SQL dans get_comptes_for_contact : {e}")
             return []
         except Exception as e:
-            logger.error(f"Erreur récupération comptes pour contact : {e}")
+            logger.exception(f"Erreur récupération comptes pour contact : {e}")
             return []
 
     def get_contacts_for_compte(self, compte_id: int, utilisateur_id: int) -> List[Dict]:
@@ -10987,7 +10417,7 @@ class ContactCompte:
                 """, (compte_id, utilisateur_id))
                 return cursor.fetchall()
         except Exception as e:
-            logger.error(f"Erreur récupération contacts pour compte : {e}")
+            logger.exception(f"Erreur récupération contacts pour compte : {e}")
             return []
 
     def get_contact_by_compte(self, compte_id: int, utilisateur_id: int) -> Optional[Dict]:
@@ -11003,30 +10433,24 @@ class ContactCompte:
                 """, (compte_id, utilisateur_id))
                 return cursor.fetchone()
         except Exception as e:
-            logger.error(f"Erreur récupération contact par compte : {e}")
+            logger.exception(f"Erreur récupération contact par compte : {e}")
             return None
 
-class Rapport:
-    def __init__(self, db):
-        self.db = db
-
+class Rapport(BaseRepository):
     def generate_rapport_mensuel(self, ecriture_comptable, user_id: int, annee: int, mois: int, statut: str = 'validée') -> Dict:
         """Génère un rapport mensuel avec filtrage par statut"""
         date_debut = date(annee, mois, 1)
         date_fin = date(annee, mois + 1, 1) if mois < 12 else date(annee + 1, 1, 1)
         date_fin = date_fin - timedelta(days=1)
-
         ecritures = ecriture_comptable.get_stats_by_categorie(
             user_id,
             str(date_debut),
             str(date_fin),
             statut
         )
-
         # Les appels aux autres classes doivent être faits ici si nécessaire
         # Exemple: stats = StatistiquesBancaires(self.db).get_resume_utilisateur(user_id)
         # exemple: repartition = StatistiquesBancaires(self.db).get_repartition_par_banque(user_id)
-
         return {
             'periode': f"{mois}/{annee}",
             'date_debut': date_debut,
@@ -11036,36 +10460,30 @@ class Rapport:
             'ecritures_par_categorie': ecritures,
             'statut': statut
         }
-
     def generate_rapport_annuel(self, user_id: int, annee: int, statut: str = 'validée') -> Dict:
         """Génère un rapport annuel avec filtrage par statut"""
         date_debut = date(annee, 1, 1)
         date_fin = date(annee, 12, 31)
-
         ecriture_comptable = EcritureComptable(self.db)
-
         donnees_mensuelles = []
         for mois in range(1, 13):
             donnees_mensuelles.append(
                 self.generate_rapport_mensuel(
                     ecriture_comptable, user_id, annee, mois, statut))
-
         compte_resultat = ecriture_comptable.get_compte_de_resultat(
             user_id, str(date_debut), str(date_fin))
-
         return {
             'annee': annee,
             'donnees_mensuelles': donnees_mensuelles,
             'compte_resultat': compte_resultat,
             'statut': statut
         }
-
+    
     def generate_rapport_comparatif(self, user_id: int, annee: int) -> Dict:
         """Génère un rapport comparatif avec différents statuts"""
         rapport_valide = self.generate_rapport_annuel(user_id, annee, 'validée')
         rapport_pending = self.generate_rapport_annuel(user_id, annee, 'pending')
         rapport_rejetee = self.generate_rapport_annuel(user_id, annee, 'rejetée')
-
         return {
             'annee': annee,
             'rapport_valide': rapport_valide,
@@ -11086,10 +10504,8 @@ class Rapport:
         ecritures = ecriture_comptable.get_stats_by_categorie(
             user_id, date_from, date_to, statut
         )
-
         total_depenses = sum(item['total_depenses'] or 0 for item in ecritures)
         total_recettes = sum(item['total_recettes'] or 0 for item in ecritures)
-
         return {
             'periode': f"{date_from} à {date_to}",
             'date_debut': date_from,
@@ -11109,7 +10525,6 @@ class Rapport:
                                       statut: str = 'validée') -> Dict:
         """
         Génère un compte de résultat détaillé.
-
         Seules les écritures PRINCIPALES sur les comptes Revenus/Charge sont prises
         en compte. Les TVA (complémentaires) et les trésoreries (Actif) sont exclues.
         """
@@ -11136,7 +10551,6 @@ class Rapport:
                     ORDER BY c.numero
                 """, (user_id, date_from, date_to, statut))
                 produits = cursor.fetchall()
-
                 # Charges : comptes Charge, écritures principales uniquement
                 cursor.execute("""
                     SELECT 
@@ -11158,17 +10572,13 @@ class Rapport:
                     ORDER BY c.numero
                 """, (user_id, date_from, date_to, statut))
                 charges = cursor.fetchall()
-
             total_produits_ht = sum(float(p['total_ht'] or 0) for p in produits)
             total_produits_ttc = sum(float(p['total_ttc'] or 0) for p in produits)
             total_charges_ht = sum(float(c['total_ht'] or 0) for c in charges)
             total_charges_ttc = sum(float(c['total_ttc'] or 0) for c in charges)
-
             resultat_brut = total_produits_ht - total_charges_ht
-
             marge_brute_pct = (resultat_brut / total_produits_ht * 100) if total_produits_ht > 0 else 0
             ratio_charges = (total_charges_ht / total_produits_ht * 100) if total_produits_ht > 0 else 0
-
             return {
                 'type_document': 'compte_resultat',
                 'titre': f"Compte de résultat du {date_from} au {date_to}",
@@ -11195,7 +10605,7 @@ class Rapport:
                 'date_generation': datetime.now().isoformat()
             }
         except Exception as e:
-            logger.error(f"Erreur génération compte de résultat détaillé: {e}")
+            logger.exception(f"Erreur génération compte de résultat détaillé: {e}")
             return {'erreur': str(e)}
     # ============================================
     # 2. BILAN (Complet avec vérification d'équilibre)
@@ -11210,14 +10620,11 @@ class Rapport:
         try:
             ecriture_model = EcritureComptable(self.db)
             bilan_base = ecriture_model.get_bilan(user_id, date_bilan)
-
             if not bilan_base or 'erreur' in bilan_base:
                 return {'erreur': 'Impossible de générer le bilan'}
-
             # Résultat de l'exercice : Produits - Charges depuis le 01/01
             annee = date_bilan[:4]
             date_debut_exercice = f"{annee}-01-01"
-
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
                     SELECT
@@ -11235,16 +10642,13 @@ class Rapport:
                     AND e.type_ecriture_comptable = 'principale'
                 """, (user_id, date_debut_exercice, date_bilan))
                 resultat_exercice_data = cursor.fetchone()
-
                 resultat_exercice = (
                     float(resultat_exercice_data['total_produits'] or 0)
                     - float(resultat_exercice_data['total_charges'] or 0)
                 )
-
             total_capitaux_avec_resultat = bilan_base['total_capitaux'] + resultat_exercice
             total_passif_complet = bilan_base['total_passif'] + total_capitaux_avec_resultat
             equilibre = abs(bilan_base['total_actif'] - total_passif_complet) < 0.01
-
             return {
                 'type_document': 'bilan',
                 'titre': f"Bilan au {date_bilan}",
@@ -11272,7 +10676,7 @@ class Rapport:
                 'date_generation': datetime.now().isoformat()
             }
         except Exception as e:
-            logger.error(f"Erreur génération bilan détaillé: {e}")
+            logger.exception(f"Erreur génération bilan détaillé: {e}")
             return {'erreur': str(e)}
     # ============================================
     # 3. DÉCLARATION TVA TRIMESTRIELLE
@@ -11281,7 +10685,6 @@ class Rapport:
                                             trimestre: int) -> Dict:
         """
         Génère une déclaration TVA trimestrielle.
-
         Avec la nouvelle architecture (partie double + écritures complémentaires),
         la TVA due est sur les comptes Passif 22xx, l'impôt préalable sur les
         comptes Actif 117x. On filtre donc par numéro de compte, pas par type_ecriture.
@@ -11294,7 +10697,6 @@ class Rapport:
                 date_fin = date(annee, 12, 31)
             else:
                 date_fin = date(annee, mois_fin + 1, 1) - timedelta(days=1)
-
             with self.db.get_cursor() as cursor:
                 # 🔵 TVA COLLECTÉE : comptes Passif 22xx (2200, 2201, ...)
                 cursor.execute("""
@@ -11315,7 +10717,6 @@ class Rapport:
                     ORDER BY e.tva_taux DESC
                 """, (user_id, str(date_debut), str(date_fin)))
                 tva_collectee_detail = cursor.fetchall()
-
                 # 🔴 TVA DÉDUCTIBLE : comptes Actif 117x (1170, 1171, ...)
                 cursor.execute("""
                     SELECT 
@@ -11335,7 +10736,6 @@ class Rapport:
                     ORDER BY e.tva_taux DESC
                 """, (user_id, str(date_debut), str(date_fin)))
                 tva_deductible_detail = cursor.fetchall()
-
                 # Chiffre d'affaires total HT (comptes de Revenus, écritures principales)
                 cursor.execute("""
                     SELECT COALESCE(SUM(e.montant_htva), 0) AS ca_ht
@@ -11348,11 +10748,9 @@ class Rapport:
                     AND c.type_compte IN ('Revenus', 'Produits')
                 """, (user_id, str(date_debut), str(date_fin)))
                 ca_ht = float(cursor.fetchone()['ca_ht'] or 0)
-
             total_tva_collectee = sum(float(t['tva_collectee'] or 0) for t in tva_collectee_detail)
             total_tva_deductible = sum(float(t['tva_deductible'] or 0) for t in tva_deductible_detail)
             solde_tva = total_tva_collectee - total_tva_deductible
-
             if solde_tva > 0:
                 nature_solde = 'dette_tva'
                 message_solde = f"Montant dû à l'administration: {solde_tva:.2f} CHF"
@@ -11362,7 +10760,6 @@ class Rapport:
             else:
                 nature_solde = 'nul'
                 message_solde = "Solde TVA nul"
-
             return {
                 'type_document': 'declaration_tva',
                 'titre': f"Déclaration TVA - T{trimestre} {annee}",
@@ -11389,7 +10786,7 @@ class Rapport:
                 'date_generation': datetime.now().isoformat()
             }
         except Exception as e:
-            logger.error(f"Erreur génération déclaration TVA: {e}")
+            logger.exception(f"Erreur génération déclaration TVA: {e}")
             return {'erreur': str(e)}
         
     # ============================================
@@ -11400,7 +10797,6 @@ class Rapport:
         """
         Génère le grand livre : détail de toutes les écritures par compte,
         avec solde progressif (comme un vrai grand livre comptable).
-
         Sens comptable :
         - Actif / Charge   : 'recette' = DÉBIT,  'depense' = CRÉDIT
         - Passif / Revenus : 'recette' = CRÉDIT, 'depense' = DÉBIT
@@ -11431,16 +10827,12 @@ class Rapport:
                     AND e.statut = %s
                 """
                 params = [user_id, date_from, date_to, statut]
-
                 if categorie_id:
                     query += " AND c.id = %s"
                     params.append(categorie_id)
-
                 query += " ORDER BY c.numero, e.date_ecriture, e.id"
-
                 cursor.execute(query, params)
                 ecritures = cursor.fetchall()
-
             # Organiser par compte avec solde progressif
             comptes = {}
             for ecriture in ecritures:
@@ -11455,11 +10847,9 @@ class Rapport:
                         'total_credit': 0.0,
                         'solde': 0.0
                     }
-
                 montant = float(ecriture['montant'] or 0)
                 type_compte = ecriture['type_compte']
                 type_ecriture = ecriture['type_ecriture']
-
                 # 🔧 Croisement type_compte × type_ecriture
                 if type_compte in ('Actif', 'Charge'):
                     # Sens naturel : débit
@@ -11467,14 +10857,12 @@ class Rapport:
                 else:
                     # Passif / Revenus : sens naturel crédit
                     est_debit = (type_ecriture == 'depense')
-
                 if est_debit:
                     comptes[compte_key]['total_debit'] += montant
                     comptes[compte_key]['solde'] += montant
                 else:
                     comptes[compte_key]['total_credit'] += montant
                     comptes[compte_key]['solde'] -= montant
-
                 comptes[compte_key]['ecritures'].append({
                     'id': ecriture['ecriture_id'],
                     'date': str(ecriture['date_ecriture']),
@@ -11485,7 +10873,6 @@ class Rapport:
                     'credit': 0 if est_debit else montant,
                     'solde_progressif': comptes[compte_key]['solde']
                 })
-
             return {
                 'type_document': 'grand_livre',
                 'titre': f"Grand livre du {date_from} au {date_to}",
@@ -11496,7 +10883,7 @@ class Rapport:
                 'date_generation': datetime.now().isoformat()
             }
         except Exception as e:
-            logger.error(f"Erreur génération grand livre: {e}")
+            logger.exception(f"Erreur génération grand livre: {e}")
             return {'erreur': str(e)}
     # ============================================
     # 5. BALANCE GÉNÉRALE (Soldes de tous les comptes)
@@ -11505,7 +10892,6 @@ class Rapport:
         """
         Génère la balance générale : tableau récapitulatif de tous les comptes
         avec leurs mouvements (débit/crédit) et soldes à une date donnée.
-
         Sens comptable selon le type de compte :
         - Actif / Charge  → 'recette' = DÉBIT, 'depense' = CRÉDIT
         - Passif / Revenus → 'recette' = CRÉDIT, 'depense' = DÉBIT
@@ -11549,16 +10935,13 @@ class Rapport:
                     ORDER BY c.numero
                 """, (user_id, date_bilan))
                 lignes = cursor.fetchall()
-
             # Calcul des soldes et totaux
             total_debit = 0.0
             total_credit = 0.0
             balance = []
-
             for ligne in lignes:
                 debit = float(ligne['total_debit'] or 0)
                 credit = float(ligne['total_credit'] or 0)
-
                 # Calcul du solde selon la nature du compte
                 if ligne['type_compte'] in ('Actif', 'Charge'):
                     solde = debit - credit
@@ -11566,7 +10949,6 @@ class Rapport:
                 else:
                     solde = credit - debit
                     sens = 'crédit' if solde >= 0 else 'débit'
-
                 balance.append({
                     'numero': ligne['numero'],
                     'nom': ligne['nom'],
@@ -11576,12 +10958,9 @@ class Rapport:
                     'solde': abs(solde),
                     'sens': sens
                 })
-
                 total_debit += debit
                 total_credit += credit
-
             equilibre = abs(total_debit - total_credit) < 0.01
-
             return {
                 'type_document': 'balance_generale',
                 'titre': f"Balance générale au {date_bilan}",
@@ -11597,7 +10976,7 @@ class Rapport:
                 'date_generation': datetime.now().isoformat()
             }
         except Exception as e:
-            logger.error(f"Erreur génération balance générale: {e}")
+            logger.exception(f"Erreur génération balance générale: {e}")
             return {'erreur': str(e)}
     # ============================================
     # 6. JOURNAL GÉNÉRAL (Chronologique)
@@ -11606,7 +10985,6 @@ class Rapport:
                               statut: str = 'validée') -> Dict:
         """
         Génère le journal général : liste chronologique des écritures.
-
         Les totaux débit/crédit sont calculés en croisant type_compte × type_ecriture,
         conformément à la convention de la balance :
         - Actif / Charge   : 'recette' = DÉBIT,  'depense' = CRÉDIT
@@ -11640,26 +11018,21 @@ class Rapport:
                     ORDER BY e.date_ecriture, e.id
                 """, (user_id, date_from, date_to, statut))
                 ecritures = cursor.fetchall()
-
             # Calcul des totaux débit/crédit par croisement type_compte × type_ecriture
             total_debit = 0.0
             total_credit = 0.0
-
             for e in ecritures:
                 montant = float(e['montant'] or 0)
                 type_compte = e['type_compte']
                 type_ecriture = e['type_ecriture']
-
                 if type_compte in ('Actif', 'Charge'):
                     est_debit = (type_ecriture == 'recette')
                 else:
                     est_debit = (type_ecriture == 'depense')
-
                 if est_debit:
                     total_debit += montant
                 else:
                     total_credit += montant
-
             return {
                 'type_document': 'journal',
                 'titre': f"Journal général du {date_from} au {date_to}",
@@ -11675,7 +11048,7 @@ class Rapport:
                 'date_generation': datetime.now().isoformat()
             }
         except Exception as e:
-            logger.error(f"Erreur génération journal: {e}")
+            logger.exception(f"Erreur génération journal: {e}")
             return {'erreur': str(e)}
     # ============================================
     # 7. ÉTAT DES CRÉANCES ET DETTES (Aging)
@@ -11717,7 +11090,6 @@ class Rapport:
                 """, (date_reference, date_reference, date_reference, date_reference,
                       user_id, date_reference))
                 creances = cursor.fetchall()
-
                 # Dettes fournisseurs
                 cursor.execute("""
                     SELECT 
@@ -11748,7 +11120,6 @@ class Rapport:
                 """, (date_reference, date_reference, date_reference, date_reference,
                       user_id, date_reference))
                 dettes = cursor.fetchall()
-
             # Totaux par tranche
             def calculer_totaux_par_tranche(items):
                 tranches = {'0-30 jours': 0.0, '31-60 jours': 0.0, 
@@ -11757,7 +11128,6 @@ class Rapport:
                     tranche = item['tranche_anciennete']
                     tranches[tranche] += float(item['montant'] or 0)
                 return tranches
-
             return {
                 'type_document': 'creances_dettes',
                 'titre': f"État des créances et dettes au {date_reference}",
@@ -11777,7 +11147,7 @@ class Rapport:
                 'date_generation': datetime.now().isoformat()
             }
         except Exception as e:
-            logger.error(f"Erreur génération état créances/dettes: {e}")
+            logger.exception(f"Erreur génération état créances/dettes: {e}")
             return {'erreur': str(e)}
 
     # ============================================
@@ -11804,7 +11174,6 @@ class Rapport:
                       AND e.statut = 'validée'
                 """, (user_id, compte_id, date_to))
                 solde_comptable_data = cursor.fetchone()
-
                 # Opérations non rapprochées
                 cursor.execute("""
                     SELECT 
@@ -11822,12 +11191,9 @@ class Rapport:
                     ORDER BY e.date_ecriture
                 """, (user_id, compte_id, date_from, date_to))
                 operations = cursor.fetchall()
-
             operations_non_rapprochees = [op for op in operations if not op['transaction_id']]
             operations_rapprochees = [op for op in operations if op['transaction_id']]
-
             total_non_rapproche = sum(float(op['montant'] or 0) for op in operations_non_rapprochees)
-
             return {
                 'type_document': 'rapprochement_bancaire',
                 'titre': f"Rapprochement bancaire - Compte {compte_id}",
@@ -11844,7 +11210,7 @@ class Rapport:
                 'date_generation': datetime.now().isoformat()
             }
         except Exception as e:
-            logger.error(f"Erreur génération rapprochement bancaire: {e}")
+            logger.exception(f"Erreur génération rapprochement bancaire: {e}")
             return {'erreur': str(e)}
 
     # ============================================
@@ -11853,7 +11219,6 @@ class Rapport:
     def generer_document(self, user_id: int, type_document: str, **kwargs) -> Dict:
         """
         Méthode unifiée pour générer n'importe quel document comptable.
-        
         Args:
             type_document: 'compte_resultat', 'bilan', 'declaration_tva', 
                           'grand_livre', 'balance', 'journal', 'creances_dettes',
@@ -11895,7 +11260,7 @@ class Rapport:
         except KeyError as e:
             return {'erreur': f"Paramètre manquant: {e}"}
         except Exception as e:
-            logger.error(f"Erreur génération document {type_document}: {e}")
+            logger.exception(f"Erreur génération document {type_document}: {e}")
             return {'erreur': str(e)}
 
         # ============================================
@@ -12038,13 +11403,10 @@ class Rapport:
                     'meta': {'date_from': date_from, 'date_to': date_to,
                             'comp_from': comp_from, 'comp_to': comp_to}}
         except Exception as e:
-            logger.error(f"Erreur compte de résultat bexio: {e}", exc_info=True)
+            logger.exception(f"Erreur compte de résultat bexio: {e}", exc_info=True)
             return {'rows': [], 'meta': {}}
 
-class BaremeCotisation:
-    def __init__(self, db):
-        self.db = db
-
+class BaremeCotisation(BaseRepository):
     def modifier_bareme(self, type_cotisation_id: int, tranches: List[Dict]) -> bool:
         """
         Remplace entièrement le barème associé à un type de cotisation.
@@ -12087,8 +11449,8 @@ class BaremeCotisation:
                         i
                     ))
                 return True
-        except Exception as e:
-            logger.error(f"Erreur lors de la modification du barème pour type_cotisation {type_cotisation_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la modification du barème pour type_cotisation {type_cotisation_id}: {e}")
             return False
 
     def get_bareme(self, type_cotisation_id: int) -> List[Dict]:
@@ -12102,8 +11464,8 @@ class BaremeCotisation:
                     ORDER BY seuil_min
                 """, (type_cotisation_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération barème type {type_cotisation_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération barème type {type_cotisation_id}: {e}")
             return []
 
     def has_bareme(self, type_cotisation_id: int) -> bool:
@@ -12112,14 +11474,11 @@ class BaremeCotisation:
             with self.db.get_cursor() as cursor:
                 cursor.execute("SELECT 1 FROM baremes_cotisation WHERE type_cotisation_id = %s LIMIT 1", (type_cotisation_id,))
                 return cursor.fetchone() is not None
-        except Exception as e:
-            logger.error(f"Erreur vérification barème: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur vérification barème: {e}")
             return False
         
-class BaremeIndemnite:
-    def __init__(self, db):
-        self.db = db
-
+class BaremeIndemnite(BaseRepository):
     def modifier_bareme(self, type_indemnite_id: int, tranches: List[Dict]) -> bool:
         """
         Remplace entièrement le barème associé à un type d'indemnité.
@@ -12134,7 +11493,6 @@ class BaremeIndemnite:
             with self.db.get_cursor() as cursor:
                 # Supprimer les anciennes tranches
                 cursor.execute("DELETE FROM baremes_indemnite WHERE type_indemnite_id = %s", (type_indemnite_id,))
-
                 # Insérer les nouvelles
                 query = """
                 INSERT INTO baremes_indemnite
@@ -12151,7 +11509,6 @@ class BaremeIndemnite:
                     type_valeur = t.get('type_valeur', 'fixe')
                     if type_valeur not in ('taux', 'fixe'):
                         type_valeur = 'fixe'
-
                     cursor.execute(query, (
                         type_indemnite_id,
                         seuil_min,
@@ -12162,8 +11519,8 @@ class BaremeIndemnite:
                         i
                     ))
                 return True
-        except Exception as e:
-            logger.error(f"Erreur lors de la modification du barème pour type_indemnite {type_indemnite_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la modification du barème pour type_indemnite {type_indemnite_id}: {e}")
             return False
 
     def get_bareme(self, type_indemnite_id: int) -> List[Dict]:
@@ -12177,8 +11534,8 @@ class BaremeIndemnite:
                     ORDER BY seuil_min
                 """, (type_indemnite_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération barème type indemnité {type_indemnite_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération barème type indemnité {type_indemnite_id}: {e}")
             return []
 
     def has_bareme(self, type_indemnite_id: int) -> bool:
@@ -12187,13 +11544,11 @@ class BaremeIndemnite:
             with self.db.get_cursor() as cursor:
                 cursor.execute("SELECT 1 FROM baremes_indemnite WHERE type_indemnite_id = %s LIMIT 1", (type_indemnite_id,))
                 return cursor.fetchone() is not None
-        except Exception as e:
-            logger.error(f"Erreur vérification barème indemnité: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur vérification barème indemnité: {e}")
             return False
         
-class TypeCotisation:
-    def __init__(self, db):
-        self.db = db
+class TypeCotisation(BaseRepository):
     def create(self, user_id: int, nom: str, description: str ="", est_obligatoire: bool = False)-> int:
         """Crée un type de cotisation"""
         try:
@@ -12217,34 +11572,34 @@ class TypeCotisation:
                 ORDER BY nom"""
                 cursor.execute(query, (user_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération types_cotisation : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération types_cotisation : {e}")
             return []
     def update(self, type_id: int, user_id:int, data: Dict)-> bool:
         set_clause = ", ".join([f"{k} = %s" for k in data.keys()])
         params = list(data.values()) + [type_id, user_id]
         try:
             with self.db.get_cursor() as cursor:
-                query = """
+                query = f"""
                 UPDATE types_cotisation SET {set_clause}
                 WHERE id = %s AND user_id=%s"""
                 cursor.execute(query, params)
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur mise à jour type cotisation : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur mise à jour type cotisation : {e}")
+            return False
+        
     def delete(self, type_id:int, user_id:int)-> bool:
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("DELETE FROM types_cotisation WHERE id = %s AND user_id = %s",
                     (type_id, user_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur suppression type cotisation: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur suppression type cotisation: {e}")
             return False
 
-class TypeIndemnite:
-    def __init__(self, db):
-        self.db = db
+class TypeIndemnite(BaseRepository):
     def create(self, user_id: int, nom: str, description: str ="", est_obligatoire: bool = False)-> int:
         """Crée un type d'indemnité"""
         try:
@@ -12268,41 +11623,39 @@ class TypeIndemnite:
                 ORDER BY nom"""
                 cursor.execute(query, (user_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération types_indemnite : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération types_indemnite : {e}")
             return []
     def update(self, type_id: int, user_id:int, data: Dict)-> bool:
         set_clause = ", ".join([f"{k} = %s" for k in data.keys()])
         params = list(data.values()) + [type_id, user_id]
         try:
             with self.db.get_cursor() as cursor:
-                query = """
+                query = f"""
                 UPDATE types_indemnite SET {set_clause}
                 WHERE id = %s AND user_id=%s"""
                 cursor.execute(query, params)
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur mise à jour type indemnite : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur mise à jour type indemnite : {e}")
+            return False
+        
     def delete(self, type_id:int, user_id:int)-> bool:
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("DELETE FROM types_indemnite WHERE id = %s AND user_id = %s",
                     (type_id, user_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur suppression type indemnite: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur suppression type indemnite: {e}")
             return False
 
-class CotisationContrat:
-    def __init__(self, db):
-        self.db = db
-
+class CotisationContrat(BaseRepository):
     def calculer_montant_cotisation(self, bareme_cotisation_model, type_cotisation_id: int, base_montant, taux_fallback = 0.0):
         """
         Calcule le montant d'une cotisation.
         Retourne un float.
         """
-
         def to_decimal(val) -> Decimal:
             if val is None:
                 return Decimal('0')
@@ -12311,15 +11664,13 @@ class CotisationContrat:
             return Decimal(str(val))
         base = to_decimal(base_montant)
         taux = to_decimal(taux_fallback)
-
         if bareme_cotisation_model.has_bareme(type_cotisation_id):
             tranches = bareme_cotisation_model.get_bareme(type_cotisation_id)
             for tranche in tranches:
                 min_s = to_decimal(tranche['seuil_min'])
                 max_s = tranche['seuil_max']
                 if max_s is not None:
-                    max_s = to_decimal(max_s)
-                
+                    max_s = to_decimal(max_s)    
                 if base >= min_s and (max_s is None or base <= max_s):
                     if tranche['type_valeur'] == 'fixe':
                         montant = to_decimal(tranche['montant_fixe'])
@@ -12346,8 +11697,8 @@ class CotisationContrat:
                 """
                 cursor.execute(query, (contrat_id, type_cotisation_id, taux, base_calcul, annee))
                 return True
-        except Exception as e:
-            logger.error(f"Erreur assignation cotisation : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur assignation cotisation : {e}")
             return False
     
     def get_for_contrat(self, contrat_id: int)-> List[Dict]:
@@ -12361,8 +11712,8 @@ class CotisationContrat:
                 """
                 cursor.execute(query,(contrat_id))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération cotisation contrat : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération cotisation contrat : {e}")
             return []
     
     def get_for_contrat_and_annee(self, contrat_id: int, annee: int) -> List[Dict]:
@@ -12375,10 +11726,9 @@ class CotisationContrat:
                 WHERE cc.contrat_id = %s AND cc.annee = %s
                 """
                 cursor.execute(query,(contrat_id, annee))
-
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération cotisation contrat {contrat_id} pour annee {annee} : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération cotisation contrat {contrat_id} pour annee {annee} : {e}")
             return []
     
     def get_total_cotisations_par_mois(self, bareme_cotisation_model, user_id: int, annee: int, mois: int) -> List[Dict]:
@@ -12404,14 +11754,12 @@ class CotisationContrat:
                 """
                 cursor.execute(query, (user_id, annee))
                 cotisations = cursor.fetchall()
-
                 # Récupérer les heures réelles par contrat pour le mois
                 heures_par_contrat = {}
                 for item in cotisations:
                     contrat_id = item['contrat_id']
                     if contrat_id not in heures_par_contrat:
-                        total_h = self.db.get_cursor().connection  # ❌ Pas possible → on va faire autrement
-
+                        total_h = self.db.get_cursor().connection   # ❌ Pas possible → on va faire autrement
                 # → On précharge toutes les heures dans un dict
                 heures_query = """
                 SELECT id_contrat, SUM(total_h) AS total_heures
@@ -12422,7 +11770,6 @@ class CotisationContrat:
                 cursor.execute(heures_query, (user_id, annee, mois))
                 heures_rows = cursor.fetchall()
                 heures_par_contrat = {row['id_contrat']: float(row['total_heures']) for row in heures_rows}
-
                 # Calcul final
                 result = []
                 for item in cotisations:
@@ -12430,12 +11777,10 @@ class CotisationContrat:
                     heures = heures_par_contrat.get(contrat_id, 0.0)
                     salaire_horaire = float(item['salaire_horaire'])
                     brut = heures * salaire_horaire
-
                     # Pour simplifier, on suppose "base_calcul = brut"
                     # (une version avancée devrait inclure indemnités → nécessite appel à IndemniteContrat)
                     type_cotisation_id = item['type_cotisation_id']
                     montant = 0.0
-
                     # 1. Vérifier si un barème existe pour ce type
                     if bareme_cotisation_model.has_bareme(type_cotisation_id):
                         tranches = bareme_cotisation_model.get_bareme(type_cotisation_id)
@@ -12454,7 +11799,6 @@ class CotisationContrat:
                             montant = item['taux']  # montant fixe absolu
                         else:
                             montant = brut * (item['taux'] / 100)  # pourcentage
-
                     result.append({
                         'contrat_id': contrat_id,
                         'employeur': item['employeur'],
@@ -12467,11 +11811,11 @@ class CotisationContrat:
                         'montant': round(montant, 2)
                     })
                 return result
-        except Exception as e:
-            logger.error(f"Erreur get_total_cotisations_par_mois: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_total_cotisations_par_mois: {e}")
             return []
 
-    def prepare_svg_cotisations_mensuelles(self, user_id: int, annee: int, largeur_svg: int = 800, hauteur_svg: int = 400) -> Dict:
+    def prepare_svg_cotisations_mensuelles(self, bareme_cotisation_model, user_id: int, annee: int, largeur_svg: int = 800, hauteur_svg: int = 400) -> Dict:
         """
         Prépare les données SVG pour un graphique en barres des cotisations mensuelles totales.
         """
@@ -12483,22 +11827,18 @@ class CotisationContrat:
                 for c in self.get_total_cotisations_par_mois(user_id, annee, mois)
             )
             montants_mensuels.append(round(total, 2))
-
         # 2. Calcul des bornes
         min_val = min(montants_mensuels) if montants_mensuels else 0.0
         max_val = max(montants_mensuels) if montants_mensuels else 1.0
         if min_val == max_val:
             max_val = min_val + (10.0 if min_val == 0 else min_val * 0.1)
-
         # 3. Dimensions SVG
         margin_x = largeur_svg * 0.1
         margin_y = hauteur_svg * 0.1
         plot_width = largeur_svg * 0.8
         plot_height = hauteur_svg * 0.8
-
         def y_coord(val):
             return margin_y + plot_height - ((val - min_val) / (max_val - min_val)) * plot_height
-
         # 4. Ticks Y (tous les 50 CHF, ajustable)
         ticks = []
         step = 50
@@ -12510,7 +11850,6 @@ class CotisationContrat:
                     'y_px': y_coord(y_val)
                 })
             y_val += step
-
         # 5. Barres SVG
         colonnes_svg = []
         bar_width = plot_width / 12 * 0.7
@@ -12527,10 +11866,8 @@ class CotisationContrat:
                 'width': bar_width,
                 'height': height
             })
-
         # 6. Labels mois
         mois_labels = [f"{m:02d}/{annee}" for m in range(1, 13)]
-
         return {
             'colonnes': colonnes_svg,
             'mois_labels': mois_labels,
@@ -12563,8 +11900,8 @@ class CotisationContrat:
                 cursor.execute(query, (user_id,))
                 rows = cursor.fetchall()
                 return rows
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération des cotisations pour user_id={user_id}: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la récupération des cotisations pour user_id={user_id}: {e}", exc_info=True)
             return []
 
     # Dans la classe CotisationContrat
@@ -12577,20 +11914,16 @@ class CotisationContrat:
                 if c.get('employe_id') == employe_id
             )
             montants_mensuels.append(round(total, 2))
-
         min_val = min(montants_mensuels) if montants_mensuels else 0.0
         max_val = max(montants_mensuels) if montants_mensuels else 1.0
         if min_val == max_val:
             max_val = min_val + (10.0 if min_val == 0 else min_val * 0.1)
-
         margin_x = largeur_svg * 0.1
         margin_y = hauteur_svg * 0.1
         plot_width = largeur_svg * 0.8
         plot_height = hauteur_svg * 0.8
-
         def y_coord(val):
             return margin_y + plot_height - ((val - min_val) / (max_val - min_val)) * plot_height
-
         ticks = []
         step = 20
         y_val = math.floor(min_val / step) * step
@@ -12598,7 +11931,6 @@ class CotisationContrat:
             if y_val >= 0:
                 ticks.append({'value': int(y_val), 'y_px': y_coord(y_val)})
             y_val += step
-
         colonnes_svg = []
         bar_width = plot_width / 12 * 0.7
         for i, montant in enumerate(montants_mensuels):
@@ -12609,13 +11941,10 @@ class CotisationContrat:
                 height = 0
                 y_top = margin_y + plot_height
             colonnes_svg.append({'x': x, 'y': y_top, 'width': bar_width, 'height': height})
-
         mois_labels = [f"{m:02d}/{annee}" for m in range(1, 13)]
-        
         # Récupérer le nom de l'employé (optionnel, pour le titre)
         employe = employe_model.get_by_id(employe_id, user_id)
         employe_nom = f"{employe['prenom']} {employe['nom']}" if employe else "Employé inconnu"
-
         return {
             'colonnes': colonnes_svg,
             'mois_labels': mois_labels,
@@ -12650,21 +11979,17 @@ class CotisationContrat:
                     (user_id,)
                 )
                 return cursor.fetchone() is not None
-        except Exception as e:
-            logger.error(f"Erreur vérification types cotisation user {user_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur vérification types cotisation user {user_id}: {e}")
             return False
 
-class IndemniteContrat:
-    def __init__(self, db):
-        self.db = db
-
+class IndemniteContrat(BaseRepository):
     def calculer_montant_indemnite(self, bareme_indemnite_model, type_indemnite_id: int, base_montant, taux_fallback = 0.0):
         """
         Calcule le montant d'une indemnité.
         base_montant et taux_fallback peuvent être float ou Decimal.
         Retourne un float (pour compatibilité avec l'interface).
         """
-
         def to_decimal(val) -> Decimal:
             if val is None:
                 return Decimal('0')
@@ -12673,7 +11998,6 @@ class IndemniteContrat:
             return Decimal(str(val))
         base = to_decimal(base_montant)
         taux = to_decimal(taux_fallback)
-
         if bareme_indemnite_model.has_bareme(type_indemnite_id):
             tranches = bareme_indemnite_model.get_bareme(type_indemnite_id)
             for tranche in tranches:
@@ -12705,8 +12029,8 @@ class IndemniteContrat:
                 """
                 cursor.execute(query, (contrat_id, type_indemnite_id, taux, base_calcul, annee))
                 return True
-        except Exception as e:
-            logger.error(f"Erreur assignation cotisation : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur assignation cotisation : {e}")
             return False
     def get_for_contrat(self, contrat_id: int)-> List[Dict]:
         try:
@@ -12719,8 +12043,8 @@ class IndemniteContrat:
                 """
                 cursor.execute(query,(contrat_id))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération indemnite contrat : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération indemnite contrat : {e}")
             return []
     def get_for_contrat_and_annee(self, contrat_id: int, annee: int) -> List[Dict]:
         try:
@@ -12733,8 +12057,8 @@ class IndemniteContrat:
                 """
                 cursor.execute(query,(contrat_id, annee))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération indemnite contrat {contrat_id} pour annee {annee} : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération indemnite contrat {contrat_id} pour annee {annee} : {e}")
             return []
 
     def get_total_indemnites_par_mois(self, bareme_indemnite_model, user_id: int, annee: int, mois: int) -> List[Dict]:
@@ -12744,8 +12068,6 @@ class IndemniteContrat:
         Attention : cette version utilise uniquement le salaire BRUT comme base.
         Pour une version complète avec brut_tot, il faudrait charger aussi les cotisations → à implémenter dans Salaire.
         """
-
-
         def to_decimal(val) -> Decimal:
             if val is None:
                 return Decimal('0')
@@ -12771,7 +12093,6 @@ class IndemniteContrat:
                 """
                 cursor.execute(query_indem, (user_id, annee))
                 indemnites = cursor.fetchall()
-
                 # Étape 2 : précharger les heures réelles par contrat pour le mois
                 heures_query = """
                 SELECT id_contrat, SUM(total_h) AS total_heures
@@ -12782,7 +12103,6 @@ class IndemniteContrat:
                 cursor.execute(heures_query, (user_id, annee, mois))
                 heures_rows = cursor.fetchall()
                 heures_par_contrat = {row['id_contrat']: float(row['total_heures']) for row in heures_rows}
-
                 # Étape 3 : calculer les montants
                 result = []
                 for item in indemnites:
@@ -12797,7 +12117,6 @@ class IndemniteContrat:
                         taux_fallback=item['taux']
                     )
                     montant = round(montant, 2)
-
                     result.append({
                         'contrat_id': contrat_id,
                         'employeur': item['employeur'],
@@ -12810,11 +12129,11 @@ class IndemniteContrat:
                         'montant': montant
                     })
                 return result
-        except Exception as e:
-            logger.error(f"Erreur get_total_indemnites_par_mois: {e}")
+        except  MySQLError as e:
+            logger.exception(f"Erreur get_total_indemnites_par_mois: {e}")
             return []
     
-    def prepare_svg_indemnites_mensuelles(self, user_id: int, annee: int, largeur_svg: int = 800, hauteur_svg: int = 400) -> Dict:
+    def prepare_svg_indemnites_mensuelles(self, bareme_indemnite_model, user_id: int, annee: int, largeur_svg: int = 800, hauteur_svg: int = 400) -> Dict:
         """
         Prépare les données SVG pour un graphique en barres des indemnités mensuelles totales.
         """
@@ -12826,22 +12145,18 @@ class IndemniteContrat:
                 for i in self.get_total_indemnites_par_mois(user_id, annee, mois)
             )
             montants_mensuels.append(round(total, 2))
-
         # 2. Calcul des bornes
         min_val = min(montants_mensuels) if montants_mensuels else 0.0
         max_val = max(montants_mensuels) if montants_mensuels else 1.0
         if min_val == max_val:
             max_val = min_val + (10.0 if min_val == 0 else min_val * 0.1)
-
         # 3. Dimensions SVG
         margin_x = largeur_svg * 0.1
         margin_y = hauteur_svg * 0.1
         plot_width = largeur_svg * 0.8
         plot_height = hauteur_svg * 0.8
-
         def y_coord(val):
             return margin_y + plot_height - ((val - min_val) / (max_val - min_val)) * plot_height
-
         # 4. Ticks Y (tous les 50 CHF, ajustable)
         ticks = []
         step = 50
@@ -12853,7 +12168,6 @@ class IndemniteContrat:
                     'y_px': y_coord(y_val)
                 })
             y_val += step
-
         # 5. Barres SVG
         colonnes_svg = []
         bar_width = plot_width / 12 * 0.7
@@ -12870,10 +12184,8 @@ class IndemniteContrat:
                 'width': bar_width,
                 'height': height
             })
-
         # 6. Labels mois
         mois_labels = [f"{m:02d}/{annee}" for m in range(1, 13)]
-
         return {
             'colonnes': colonnes_svg,
             'mois_labels': mois_labels,
@@ -12890,6 +12202,7 @@ class IndemniteContrat:
             'max_val': max_val,
             'annee': annee
         }
+    
     def get_all_by_user(self, user_id: int) -> List[Dict]:
         """Récupère toutes les cotisations pour les contrats d'un utilisateur"""
         try:
@@ -12905,11 +12218,11 @@ class IndemniteContrat:
                 cursor.execute(query, (user_id,))
                 rows = cursor.fetchall()
                 return rows
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération des indemnites pour user_id={user_id}: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la récupération des indemnites pour user_id={user_id}: {e}", exc_info=True)
             return []
     # Dans la classe CotisationContrat
-    def prepare_svg_indemnites_mensuelles_employe(self, employe_model, user_id: int, employe_id: int, annee: int, largeur_svg: int = 800, hauteur_svg: int = 400) -> Dict:
+    def prepare_svg_indemnites_mensuelles_employe(self, bareme_indemnite_model, employe_model, user_id: int, employe_id: int, annee: int, largeur_svg: int = 800, hauteur_svg: int = 400) -> Dict:
         montants_mensuels = []
         for mois in range(1, 13):
             total = sum(
@@ -12918,20 +12231,16 @@ class IndemniteContrat:
                 if c.get('employe_id') == employe_id
             )
             montants_mensuels.append(round(total, 2))
-
         min_val = min(montants_mensuels) if montants_mensuels else 0.0
         max_val = max(montants_mensuels) if montants_mensuels else 1.0
         if min_val == max_val:
             max_val = min_val + (10.0 if min_val == 0 else min_val * 0.1)
-
         margin_x = largeur_svg * 0.1
         margin_y = hauteur_svg * 0.1
         plot_width = largeur_svg * 0.8
         plot_height = hauteur_svg * 0.8
-
         def y_coord(val):
             return margin_y + plot_height - ((val - min_val) / (max_val - min_val)) * plot_height
-
         ticks = []
         step = 20
         y_val = math.floor(min_val / step) * step
@@ -12939,7 +12248,6 @@ class IndemniteContrat:
             if y_val >= 0:
                 ticks.append({'value': int(y_val), 'y_px': y_coord(y_val)})
             y_val += step
-
         colonnes_svg = []
         bar_width = plot_width / 12 * 0.7
         for i, montant in enumerate(montants_mensuels):
@@ -12950,13 +12258,10 @@ class IndemniteContrat:
                 height = 0
                 y_top = margin_y + plot_height
             colonnes_svg.append({'x': x, 'y': y_top, 'width': bar_width, 'height': height})
-
         mois_labels = [f"{m:02d}/{annee}" for m in range(1, 13)]
-        
         # Récupérer le nom de l'employé (optionnel, pour le titre)
         employe = employe_model.get_by_id(employe_id, user_id)
         employe_nom = f"{employe['prenom']} {employe['nom']}" if employe else "Employé inconnu"
-
         return {
             'colonnes': colonnes_svg,
             'mois_labels': mois_labels,
@@ -12989,14 +12294,11 @@ class IndemniteContrat:
                     (user_id,)
                 )
                 return cursor.fetchone() is not None
-        except Exception as e:
-            logger.error(f"Erreur vérification types indemnité user {user_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur vérification types indemnité user {user_id}: {e}")
             return False
 
-class Contrat:
-    def __init__(self, db):
-        self.db = db
-        
+class Contrat(BaseRepository):   
     def user_has_types_cotisation_or_indemnite(self, user_id: int, cotisations_contrat_model, indemnites_contrat_model) -> bool:
         cotisations = cotisations_contrat_model.get_all_by_user(user_id) or []
         indemnites = indemnites_contrat_model.get_all_by_user(user_id) or []
@@ -13062,8 +12364,8 @@ class Contrat:
                     contrat_id = cursor.lastrowid
             return contrat_id
 
-        except Exception as e:
-            logger.error(f"Erreur lors de la création/mise à jour du contrat: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la création/mise à jour du contrat: {e}")
             return False
 
     def get_contrat_actuel(self, user_id: int, entreprise_id: int = None) -> Optional[Dict]:
@@ -13081,8 +12383,8 @@ class Contrat:
                 query += " AND (date_fin IS NULL OR date_fin >= CURDATE()) ORDER BY date_debut ASC LIMIT 1"
                 cursor.execute(query, params)
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération du contrat : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la récupération du contrat : {e}")
             return None
 
     def get_by_id(self, contrat_id: int) -> Optional[Dict]:
@@ -13090,8 +12392,8 @@ class Contrat:
             with self.db.get_cursor(dictionary=True) as cursor:
                 cursor.execute("SELECT * FROM contrats WHERE id = %s", (contrat_id,))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur get_by_id contrat {contrat_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_by_id contrat {contrat_id}: {e}")
             return None
 
     def get_all_contrats(self, user_id: int) -> List[Dict]:
@@ -13102,8 +12404,8 @@ class Contrat:
                 logger.debug(f"SQL: {query} | Params: {user_id}")
                 cursor.execute(query, (user_id,))  # ← CORRIGÉ : virgule ajoutée
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération des contrats: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la récupération des contrats: {e}")
             return []
 
     def delete(self, contrat_id: int) -> bool:
@@ -13113,8 +12415,8 @@ class Contrat:
                 query = "DELETE FROM contrats WHERE id = %s;"
                 cursor.execute(query, (contrat_id,))
                 return True
-        except Exception as e:
-            logger.error(f"Erreur lors de la suppression du contrat: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la suppression du contrat: {e}")
             return False
 
     def get_contrat_for_date(self, user_id: int, employeur: str, date_str: str) -> Optional[Dict]:
@@ -13132,8 +12434,8 @@ class Contrat:
                 """
                 cursor.execute(query, (user_id, employeur, date_str, date_str))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération du contrat pour la date {date_str}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la récupération du contrat pour la date {date_str}: {e}")
             return None
 
     def get_contrats_actifs(self, user_id: int) -> List[Dict]:
@@ -13148,8 +12450,8 @@ class Contrat:
                 """
                 cursor.execute(query, (user_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération des contrats actifs: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la récupération des contrats actifs: {e}")
             return []
 
     def get_contrat_for_employe(self, user_id: int, id_employe: int) -> Optional[Dict]:
@@ -13163,8 +12465,8 @@ class Contrat:
                 """
                 cursor.execute(query, (user_id, id_employe))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération du contrat pour l'employé {id_employe}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la récupération du contrat pour l'employé {id_employe}: {e}")
             return None
     
     def sauvegarder_cotisations_et_indemnites(self, cotisations_contrat_model, indemnites_contrat_model, contrat_id: int, user_id: int, data: Dict)-> bool:
@@ -13187,18 +12489,17 @@ class Contrat:
                 indemnites_contrat_model.assigner_a_contrat(
                     contrat_id=contrat_id,
                     type_indemnite_id=i['type_id'],
-                    valeur=i['valeur'],
+                    taux=i['valeur'],
                     annee=annee,
-                    unite=i.get('unite', 'taux')
+                    base_calcul=i.get('unite', 'taux')
                 )
             return True
 
-class Employe:
-
+class Employe(BaseRepository):
+    __slots__ = ["heure_model"]
     def __init__(self, db):
-        self.db = db
-        self.heure_model = HeureTravail(self.db)
-      
+        super().__init__(db)
+        self.heure_model = HeureTravail(db)
 
     def create(self, data: Dict) -> bool:
         """
@@ -13259,8 +12560,8 @@ class Employe:
                 """
                 cursor.execute(query, (user_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f'Erreur de récupération des employées pour user_id {user_id}: {e}')
+        except MySQLError as e:
+            logger.exception(f'Erreur de récupération des employées pour user_id {user_id}: {e}')
             return []
 
     def get_by_id(self, employe_id: int, user_id : int) -> Optional[Dict]:
@@ -13274,8 +12575,8 @@ class Employe:
                 """
                 cursor.execute(query, (employe_id, user_id))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f'Erreur de récupération employe ID {employe_id} de user_id {user_id}: {e}')
+        except MySQLError as e:
+            logger.exception(f'Erreur de récupération employe ID {employe_id} de user_id {user_id}: {e}')
             return None
 
     def update(self, employe_id : int, user_id : int, data: dict) -> bool:
@@ -13286,7 +12587,6 @@ class Employe:
         update_fields = {k: v for k, v in data.items() if k in allowed}
         if not update_fields:
             return False
-
         set_clause = ", ".join([f"{k} = %s" for k in update_fields])
         params = list(update_fields.values()) + [employe_id, user_id]
         try:
@@ -13297,8 +12597,8 @@ class Employe:
                         WHERE id = %s AND user_id = %s
                         """, params)
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f'Erreur lors de la mise à jour employe {employe_id} pour {data}: {e}')
+        except MySQLError as e:
+            logger.exception(f'Erreur lors de la mise à jour employe {employe_id} pour {data}: {e}')
             return False
 
     def delete(self, employe_id: int, user_id: int, entreprise_id: int) -> bool:
@@ -13312,8 +12612,8 @@ class Employe:
                             WHERE id = %s AND user_id = %s AND entreprise_id = %s
                             """, (employe_id, user_id, entreprise_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f'Erreur dans la suppresion employe {employe_id} de user {user_id}; {e}')
+        except MySQLError as e:
+            logger.exception(f'Erreur dans la suppresion employe {employe_id} de user {user_id}; {e}')
             return False
 
     def get_heures_mois(self, annee: int, mois: int) -> float:
@@ -13332,8 +12632,8 @@ class Employe:
                 cursor.execute(query, (self.id, annee, mois))
                 result = cursor.fetchone()
                 return float(result['total_heures']) if result and result['total_heures'] else 0.0
-        except Exception as e:
-            logger.error(f'Erreur récupération heures mois {annee}-{mois} : {e}')
+        except MySQLError as e:
+            logger.exception(f'Erreur récupération heures mois {annee}-{mois} : {e}')
             return 0.0
     def get_salaire_mois(self, annee: int, mois: int) -> dict:
         """
@@ -13352,8 +12652,8 @@ class Employe:
                     'total_salaire': float(result['total_salaire']) if result and result['total_salaire'] else 0.0,
                     'total_retentions': float(result['total']) if result and result['total'] else 0.0
                 }
-        except Exception as e:
-            logger.error(f'Erreur récupération salaire mois {annee}-{mois} : {e}')
+        except MySQLError as e:
+            logger.exception(f'Erreur récupération salaire mois {annee}-{mois} : {e}')
             return {'total_salaire': 0.0, 'total_retentions': 0.0}
 
     def recalculer_salaire_mois(self, annee: int, mois: int) -> bool:
@@ -13371,8 +12671,8 @@ class Employe:
             #
             #
             return True
-        except Exception as e:
-            logger.error(f'Erreur recalcul salaire mois {annee}-{mois} : {e}')
+        except MySQLError as e:
+            logger.exception(f'Erreur recalcul salaire mois {annee}-{mois} : {e}')
             return False
     
     def get_contrats_actifs(self) -> list:
@@ -13387,8 +12687,8 @@ class Employe:
                 """
                 cursor.execute(query, (self.id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f'Erreur récupération contrats actifs pour employe {self.id} : {e}')
+        except MySQLError as e:
+            logger.exception(f'Erreur récupération contrats actifs pour employe {self.id} : {e}')
             return []
     def get_employe_by_id_and_code(self, employe_id: int, code: str) -> Optional[Dict]:
         with self.db.get_cursor() as cursor:
@@ -13411,11 +12711,7 @@ class Employe:
             """, (employe_id, code))
             return cursor.fetchone()
 
-
-class HeureTravail:
-    def __init__(self, db):
-        self.db = db
-
+class HeureTravail(BaseRepository):
     def create_or_update(self, data: dict, cursor=None) -> bool:
         """Version améliorée acceptant un curseur externe"""
         if cursor:
@@ -13428,8 +12724,7 @@ class HeureTravail:
                     success = self._execute_create_or_update(data, new_cursor)
                     logger.info(f"create_or_update executed with success: {success} avec {data}")
                     return success
-            except Exception as e:
-                logger.info(f"create_or_update executed with: {success} avec {data}")
+            except MySQLError as e:
                 logger.error(f"Impossible d'obtenir une connexion ou erreur d'exécution: {str(e)}")
                 return False
 
@@ -13439,25 +12734,20 @@ class HeureTravail:
             if not data or not isinstance(data, dict):
                 logger.error(f"_execute_create_or_update: data est None ou invalide: {data}")
                 return False
-                
             cleaned_data = self._clean_data(data)
-            
             if not cleaned_data or not isinstance(cleaned_data, dict):
                 logger.error(f"_execute_create_or_update: cleaned_data est None ou invalide: {cleaned_data}")
                 return False
-                
             required_fields = ['date', 'user_id', 'employeur', 'type_heures']
             missing_fields = [field for field in required_fields if field not in cleaned_data]
             if missing_fields:
                 logger.error(f"_execute_create_or_update: Champs manquants dans cleaned_data: {missing_fields}")
                 return False
-                
             try:
                 date_obj = datetime.fromisoformat(cleaned_data['date']).date()
             except (ValueError, TypeError) as e:
                 logger.error(f"_execute_create_or_update: Format de date invalide pour {cleaned_data['date']}: {str(e)}")
                 return False
-
             # Vérifier si l'enregistrement existe déjà
             cursor.execute(
                 """
@@ -13481,12 +12771,10 @@ class HeureTravail:
                 cleaned_data['type_heures']
             ))
             existing = cursor.fetchone()
-            
             if existing:
                 heure_travail_id = existing['id']
             else:
                 heure_travail_id = None
-                
             # Préparer les valeurs avec fallback
             values = {
                 'date': date_obj,
@@ -13500,7 +12788,6 @@ class HeureTravail:
                 'semaine_annee': date_obj.isocalendar()[1],
                 'mois': date_obj.month
             }
-            
             if heure_travail_id:
                 cursor.execute("""
                 UPDATE heures_travail
@@ -13518,12 +12805,10 @@ class HeureTravail:
                 VALUES (%(date)s, %(user_id)s, %(employe_id)s, %(employeur)s, %(id_contrat)s, %(type_heures)s, %(vacances)s, %(jour_semaine)s, %(semaine_annee)s, %(mois)s)
                 """, values)
                 heure_travail_id = cursor.lastrowid
-            
             # Gestion des plages horaires
             plages = cleaned_data.get('plages')
             if plages is not None:
                 self._update_plages_horaires(cursor, heure_travail_id, plages)
-            
             # Calcul du total des heures
             try:
                 total_h = self.calculer_total_heures(heure_travail_id, cursor)
@@ -13539,9 +12824,8 @@ class HeureTravail:
             # ✅ LOG CORRECTEMENT PLACÉ - HORS DU BLOC EXCEPT
             logger.info(f"create_or_update réussi pour heure_travail_id {heure_travail_id} avec données: {cleaned_data}")
             return True
-            
-        except Exception as e:
-            logger.error(f"Erreur _execute_create_or_update: {str(e)}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur _execute_create_or_update: {str(e)}", exc_info=True)
             return False
         
     def _update_plages_horaires(self, cursor, heure_travail_id: int, plages: List[Dict]) -> None:
@@ -13559,8 +12843,8 @@ class HeureTravail:
                         INSERT INTO plages_horaires (heure_travail_id, ordre, debut, fin)
                         VALUES (%s, %s, %s, %s)
                     """, (heure_travail_id, index + 1, debut, fin))
-        except Exception as e:
-            logger.error(f"Erreur _update_plages_horaires: {str(e)}")
+        except MySQLError as e:
+            logger.exception(f"Erreur _update_plages_horaires: {str(e)}")
             raise
 
     def _clean_data(self, data: dict) -> dict:
@@ -13569,9 +12853,7 @@ class HeureTravail:
         if not data or not isinstance(data, dict):
             logger.error(f"_clean_data: données invalides reçues (type: {type(data)}): {data}")
             return {}
-        
         cleaned = data.copy()
-        
         # Nettoyage des plages horaires au format moderne [{'debut': '08:00', 'fin': '12:00'}, ...]
         if 'plages' in cleaned and isinstance(cleaned['plages'], list):
             plages_nettoyees = []
@@ -13594,7 +12876,6 @@ class HeureTravail:
             for field in time_fields:
                 val = cleaned.get(field)
                 field_values[field] = str(val).strip() if val else None
-            
             if field_values['h1d'] or field_values['h1f']:
                 cleaned['plages'].append({
                     'debut': field_values['h1d'],
@@ -13605,13 +12886,11 @@ class HeureTravail:
                     'debut': field_values['h2d'],
                     'fin': field_values['h2f']
                 })
-        
         # Normalisation du champ 'vacances'
         if 'vacances' in cleaned:
             cleaned['vacances'] = bool(cleaned['vacances'])
         else:
             cleaned['vacances'] = False
-        
         # Normalisation du champ 'employe_id'
         if 'employe_id' in cleaned and cleaned['employe_id'] is not None:
             try:
@@ -13621,40 +12900,33 @@ class HeureTravail:
                 cleaned['employe_id'] = None
         else:
             cleaned['employe_id'] = None
-        
         # Normalisation du champ 'type_heures'
         cleaned['type_heures'] = str(cleaned.get('type_heures', 'reelles')).strip().lower()
         if cleaned['type_heures'] not in ('reelles', 'simulees'):
             logger.warning(f"_clean_data: type_heures invalide '{cleaned['type_heures']}', corrigé en 'reelles'")
             cleaned['type_heures'] = 'reelles'
-        
         # ✅ VALIDATION SÉCURISÉE DES CHAMPS OBLIGATOIRES (sans lever d'exception)
         required_fields = ['user_id', 'date', 'employeur', 'id_contrat']
         missing_fields = []
-        
         for field in required_fields:
             if field not in cleaned or cleaned[field] is None or cleaned[field] == '':
                 logger.error(f"_clean_data: champ obligatoire manquant ou vide: '{field}'")
                 missing_fields.append(field)
-        
         if missing_fields:
             logger.error(f"_clean_data: échec de validation - champs manquants: {missing_fields}")
             return {}  # Retourner un dict vide pour signaler l'échec
-        
         # Conversion sécurisée de id_contrat en entier
         try:
             cleaned['id_contrat'] = int(cleaned['id_contrat'])
         except (ValueError, TypeError):
             logger.error(f"_clean_data: id_contrat invalide '{cleaned.get('id_contrat')}', ne peut pas convertir en entier")
             return {}
-        
         # Conversion sécurisée de user_id en entier
         try:
             cleaned['user_id'] = int(cleaned['user_id'])
         except (ValueError, TypeError):
             logger.error(f"_clean_data: user_id invalide '{cleaned.get('user_id')}', ne peut pas convertir en entier")
             return {}
-        
         # Nettoyage final de la date (s'assurer que c'est une chaîne ISO)
         if not isinstance(cleaned['date'], str):
             try:
@@ -13662,7 +12934,6 @@ class HeureTravail:
             except:
                 logger.error(f"_clean_data: date invalide '{cleaned.get('date')}'")
                 return {}
-        
         logger.debug(f"_clean_data: données nettoyées avec succès: {cleaned}")
         return cleaned
     
@@ -13692,7 +12963,6 @@ class HeureTravail:
         cursor.execute(query, (heure_travail_id,))
         plages = cursor.fetchall()
         total = 0.0
-
         for plage in plages:
             debut = plage['debut']
             fin = plage['fin']
@@ -13713,10 +12983,8 @@ class HeureTravail:
                     WHERE date = %s AND user_id = %s AND employeur = %s AND id_contrat = %s
                 """, (date_str, user_id, employeur, id_contrat))
                 row = cursor.fetchone()
-                
                 if not row:
                     return None
-
                 # 2. Récupérer les plages associées
                 cursor.execute("""
                     SELECT debut, fin
@@ -13730,12 +12998,10 @@ class HeureTravail:
                         'debut': plage['debut'],  # objet datetime.time
                         'fin': plage['fin']       # objet datetime.time
                     })
-
                 row['plages'] = plages
                 return row
-
-        except Exception as e:
-            logger.error(f"Erreur get_by_date pour {date_str}: {str(e)}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_by_date pour {date_str}: {str(e)}")
             return None
         
     def get_jour_travail(self, mois:int, semaine:int, user_id: int, employeur: str, id_contrat: int) -> List[Dict]:
@@ -13771,7 +13037,6 @@ class HeureTravail:
                     params = (mois, user_id, employeur, id_contrat)
                 cursor.execute(query, params)
                 jours = cursor.fetchall()
-
                 for jour in jours:
                     if jour['plages'] and jour['plages'][0] is not None:
                         try:
@@ -13779,7 +13044,7 @@ class HeureTravail:
                             for plage in jour['plages']:
                                 for field in ['debut', 'fin']:
                                     if plage.get(field) and hasattr(plage[field], 'total_seconds'):
-                                        total_seconds = plage[field].total_seconds
+                                        total_seconds = plage[field].total_seconds()
                                         hours = int(total_seconds // 3600)
                                         minutes  = int((total_seconds % 3600) // 60)
                                         plage[field] = f"{hours:02d}:{minutes:02d}"
@@ -13788,8 +13053,8 @@ class HeureTravail:
                     else:
                         jour['plages'] = []
                 return jours
-        except Exception as e:
-            logger.error(f"Erreur get_jour_travail: {str(e)}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_jour_travail: {str(e)}")
             return []
 
     def calculer_heures(self, h1d: str, h1f: str, h2d: str, h2f: str) -> float:
@@ -13801,10 +13066,8 @@ class HeureTravail:
                 delta = end - start
                 return max(delta.total_seconds() / 3600, 0)
             return 0.0
-
         total = diff_heures(h1d, h1f) + diff_heures(h2d, h2f)
         return round(total, 2)
-
     #def get_by_date(self, date_str: str, user_id: int, employeur: str, id_contrat: int) -> Optional[Dict]:
     #    """Récupère les données pour une date et un utilisateur donnés"""
     #    try:
@@ -13837,20 +13100,15 @@ class HeureTravail:
                 else:
                     query = "SELECT * FROM heures_travail WHERE mois = %s AND user_id = %s AND employeur = %s AND id_contrat = %s ORDER BY date"
                     params = (mois, user_id, employeur, id_contrat)
-
                 logger.debug(f"[get_jours_travail] Query: {query} avec params: {params}")
                 cursor.execute(query, params)
                 jours = cursor.fetchall()
-
                 logger.debug(f"[get_jours_travail] {len(jours)} jours trouvés")
-
                 for jour in jours:
                     self._convert_timedelta_fields(jour, ['h1d', 'h1f', 'h2d', 'h2f'])
-
                 return jours
-
-        except Exception as e:
-            logger.error(f"Erreur get_jours_travail: {str(e)}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_jours_travail: {str(e)}")
             return []
 
     def delete_by_date(self, date_str: str, user_id: int, employeur: str, id_contrat: int) -> bool:
@@ -13859,15 +13117,12 @@ class HeureTravail:
             with self.db.get_cursor(commit=True) as cursor:
                 query = "DELETE FROM heures_travail WHERE date = %s AND user_id = %s AND employeur = %s AND id_contrat = %s"
                 logger.debug(f"[delete_by_date] Query: {query} avec params: ({date_str}, {user_id}, {employeur}, {id_contrat})")
-
                 cursor.execute(query, (date_str, user_id, employeur, id_contrat))
                 rows_affected = cursor.rowcount
-
                 logger.debug(f"[delete_by_date] {rows_affected} ligne(s) supprimée(s) pour {date_str}")
                 return True
-
-        except Exception as e:
-            logger.error(f"Erreur delete_by_date pour {date_str}: {str(e)}")
+        except MySQLError as e:
+            logger.exception(f"Erreur delete_by_date pour {date_str}: {str(e)}")
             return False
 
     def _convert_timedelta_fields(self, record: dict, fields: list) -> None:
@@ -13887,25 +13142,25 @@ class HeureTravail:
 
     def get_total_heures_mois(self, user_id: int, employeur: str, id_contrat: int, annee: int, mois: int) -> float:
         try:
-            with self.db.get_cursor() as cursor:
+            with self.db.get_cursor(dictionary=True) as cursor:
                 query = """
-                SELECT SUM(total_h) FROM heures_travail
+                SELECT SUM(total_h) AS total FROM heures_travail
                 WHERE user_id = %s AND employeur = %s AND id_contrat = %s AND YEAR(date) = %s AND MONTH(date) = %s
                 """
                 cursor.execute(query, (user_id, employeur, id_contrat, annee, mois))
                 result = cursor.fetchone()
-                total = float(result['SUM(total_h)']) if result and result['SUM(total_h)'] else 0.0
+                total = float(result['total']) if result and result['total'] else 0.0
                 logger.info(f"get_total_heures_mois → user={user_id}, mois={mois}/{annee}, employeur={employeur}, contrat={id_contrat} → total={total}")
                 return total
-        except Exception as e:
-            logger.error(f"Erreur get_total_heures_mois: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_total_heures_mois: {e}")
             return 0.0
 
     def get_heures_periode(self, user_id: int, employeur: str, id_contrat: int, annee: int, mois: int, start_day: int, end_day: int) -> float:
         try:
-            with self.db.get_cursor() as cursor:
+            with self.db.get_cursor(dictionary=True) as cursor:
                 query = """
-                SELECT SUM(total_h) FROM heures_travail
+                SELECT SUM(total_h) AS total ROM heures_travail
                 WHERE user_id = %s AND employeur = %s AND id_contrat = %s
                 AND YEAR(date) = %s
                 AND MONTH(date) = %s
@@ -13913,11 +13168,11 @@ class HeureTravail:
                 """
                 cursor.execute(query, (user_id, employeur, id_contrat, annee, mois, start_day, end_day))
                 result = cursor.fetchone()
-                total = float(result['SUM(total_h)']) if result and result['SUM(total_h)'] else 0.0
+                total = float(result['total']) if result and result['total'] else 0.0
                 logger.info(f"get_heures_periode → user={user_id}, mois={mois}/{annee}, jours={start_day}-{end_day}, employeur={employeur}, contrat={id_contrat} → total={total}")
                 return total
-        except Exception as e:
-            logger.error(f"Erreur get_heures_periode: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_heures_periode: {e}")
             return 0.0
 
     def importer_depuis_csv(self, fichier_csv: str, user_id: int) -> int:
@@ -13931,7 +13186,6 @@ class HeureTravail:
             with self.db.get_cursor(commit=True) as cursor:
                 with open(fichier_csv, newline='', encoding='utf-8') as csvfile:
                     reader = csv.DictReader(csvfile)
-
                     for row in reader:
                         date_str = row.get('date')
                         employeur = row.get('employeur')
@@ -13946,25 +13200,21 @@ class HeureTravail:
                             continue
                         if not date_str or not employeur:
                             continue
-
                         try:
                             date_obj = datetime.fromisoformat(date_str).date()
                         except ValueError:
                             logger.warning(f"[Import CSV] Date invalide ignorée : {date_str}")
                             continue
-
                         h1d = row.get('h1d') or None
                         h1f = row.get('h1f') or None
                         h2d = row.get('h2d') or None
                         h2f = row.get('h2f') or None
                         vacances = True if str(row.get('vacances')).strip().lower() in ('1', 'true', 'oui') else False
-
                         cursor.execute(
                             "SELECT * FROM heures_travail WHERE date = %s AND user_id = %s AND employeur = %s AND id_contrat = %s",
                             (date_obj, user_id, employeur, id_contrat)
                         )
                         existing = cursor.fetchone()
-
                         if existing:
                             h1d = h1d or existing.get('h1d')
                             h1f = h1f or existing.get('h1f')
@@ -13972,7 +13222,6 @@ class HeureTravail:
                             h2f = h2f or existing.get('h2f')
                             vacances = vacances if row.get('vacances') else existing.get('vacances')
                             total_h = self.calculer_heures(h1d, h1f, h2d, h2f)
-
                             cursor.execute("""
                                 UPDATE heures_travail
                                 SET h1d = %s, h1f = %s, h2d = %s, h2f = %s,
@@ -13996,12 +13245,16 @@ class HeureTravail:
                                 h1d, h1f, h2d, h2f, total_h, vacances, user_id, employeur, id_contrat
                             ))
                         lignes_importees += 1
-
             logger.info(f"[Import CSV] {lignes_importees} lignes importées avec succès")
             return lignes_importees
-
-        except Exception as e:
-            logger.error(f"[Import CSV] Erreur : {e}")
+        except OSError as e:
+            logger.exception(f"[Import CSV] Impossible d'ouvrir le fichier : {fichier_csv}")
+            return 0
+        except csv.Error as e:
+            logger.exception(f"[Import CSV] Fichier CSV malformé")
+            return 0
+        except MySQLError as e:
+            logger.exception(f"[Import CSV] Erreur base de données")
             return 0
 
     def get_heures_employe_mois(self, employe_id: int, annee: int, mois: int) -> float:
@@ -14014,8 +13267,8 @@ class HeureTravail:
                 cursor.execute(query, (employe_id, annee, mois))
                 result = cursor.fetchone()
                 return float(result['SUM(total_h)']) if result and result['SUM(total_h)'] else 0.0
-        except Exception as e:
-            logger.error(f"Erreur get_heures_employe_mois: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_heures_employe_mois")
             return 0.0
 
     def get_heures_par_employe_mois(self, employe_id: int, annee: int, mois: int) -> List[Dict]:
@@ -14036,8 +13289,8 @@ class HeureTravail:
             
             # Appeler la méthode existante create_or_update
             return self.create_or_update(data)
-        except Exception as e:
-            logger.error(f"Erreur creer_shift: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur creer_shift: {e}")
             return False
     
     def get_shifts_by_employe_date(self, user_id: int, employe_id: int, date_str: str) -> List[Dict]:
@@ -14059,8 +13312,8 @@ class HeureTravail:
                 """
                 cursor.execute(query, (user_id, employe_id, date_str))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur get_shifts_by_employe_date: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_shifts_by_employe_date: {e}")
             return []
     
     def delete_shifts_for_employe_date(self, user_id: int, employe_id: int, date_str: str) -> bool:
@@ -14073,18 +13326,15 @@ class HeureTravail:
                     WHERE user_id = %s AND employe_id = %s AND date = %s
                     AND type_heures = 'simulees'
                 """, (user_id, employe_id, date_str))
-                
                 records = cursor.fetchall()
-                
                 for record in records:
                     # Supprimer les plages horaires
                     cursor.execute("DELETE FROM plages_horaires WHERE heure_travail_id = %s", (record['id'],))
                     # Supprimer l'enregistrement principal
                     cursor.execute("DELETE FROM heures_travail WHERE id = %s", (record['id'],))
-                
                 return True
-        except Exception as e:
-            logger.error(f"Erreur delete_shifts_for_employe_date: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur delete_shifts_for_employe_date: {e}")
             return False
     @staticmethod
     def calculer_heures_static(h1d: str, h1f: str, h2d: str, h2f: str) -> float:
@@ -14096,7 +13346,6 @@ class HeureTravail:
                 delta = end - start
                 return max(delta.total_seconds() / 3600, 0)
             return 0.0
-
         total = diff_heures(h1d, h1f) + diff_heures(h2d, h2f)
         return round(total, 2)
 
@@ -14113,8 +13362,8 @@ class HeureTravail:
                 cursor.execute(query, (user_id, employeur, id_contrat))
                 result = cursor.fetchone()
                 return result is not None
-        except Exception as e:
-            logger.error(f"Erreur has_hours_for_employeur: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur has_hours_for_employeur: {e}")
             return False
 
     def get_h1d_h2f_for_period(self, user_id: int, employeur: str, id_contrat: int, annee: int, mois: int = None, semaine: int = None) -> List[Dict]:
@@ -14150,19 +13399,12 @@ class HeureTravail:
                     raise ValueError("Vous devez spéciier soit 'mois', soit 'semaine'.")
                 cursor.execute(query, params)
                 rows = cursor.fetchall()
-
                 for row in rows:
                     self._convert_timedelta_fields(row, ['h1d', 'h2f'])
             return rows
-        except Exception as e:
-            logger.error("Erreur get_h1d_h2f_for period: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_h1d_h2f_for period: {e}")
             return []
-
-
-
-
-
-
 
     #def get_h1d_h2f_for_period(self, user_id: int, employeur: str, id_contrat: int, annee: int, mois: int = None, semaine: int = None) -> List[Dict]:
     #    """
@@ -14249,7 +13491,6 @@ class HeureTravail:
         contrats = contrat_model.get_all_contrats(user_id)
         if not contrats:
             return []
-
         # Extraire les paires (employeur, id_contrat)
         conditions = []
         params = [user_id, annee]
@@ -14258,7 +13499,6 @@ class HeureTravail:
             employeur_clause = "AND ht.employe_id = %s"
         else:
             employeur_clause = "AND ht.employe_id IS NULL"
-
         if semaine is not None:
             time_clause = "AND ht.semaine_annee = %s"
             params.append(semaine)
@@ -14267,7 +13507,6 @@ class HeureTravail:
             params.append(mois)
         else:
             raise ValueError("Spécifiez mois ou semaine")
-
         query = f"""
             SELECT ht.date, MIN(ph.debut) as h1d, MAX(ph.fin) as h2f
             FROM heures_travail ht
@@ -14305,22 +13544,16 @@ class HeureTravail:
                 """
                 cursor.execute(query, (user_id, start_date, end_date))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur get_shifts_for_week: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_shifts_for_week: {e}")
             return []
 
-class Salaire:
-    def __init__(self, db):
-        self.db = db
-
-
-
+class Salaire(BaseRepository):
     def create(self, data: dict) -> bool:
         try:
             with self.db.get_cursor() as cursor:
                 if not cursor:
                     return False
-
                 query = """
                 INSERT INTO salaires
                 (employe_id, mois, annee, heures_reelles, salaire_horaire,
@@ -14347,8 +13580,11 @@ class Salaire:
                 )
                 cursor.execute(query, values)
             return True
-        except Exception as e:
-            logger.error(f"Erreur création salaire: {e}")
+        except IntegrityError as e:
+            logger.warning(f"Salaire invalide : FK non respectée (user={data.get('user_id')}, contrat={data.get('id_contrat')})")
+            return False
+        except MySQLError as e:
+            logger.exception(f"Erreur DB création salaire")
             return False
 
     def update(self, salaire_id: int, data: dict) -> bool:
@@ -14358,23 +13594,19 @@ class Salaire:
             'acompte_25', 'acompte_10', 'acompte_25_estime',
             'acompte_10_estime', 'difference', 'difference_pourcent'
         }
-
         # Filtrer les champs autorisés
         update_data = {k: v for k, v in data.items() if k in allowed_fields}
-
         if not update_data:
             return False
-
         set_clauses = ", ".join([f"{k} = %s" for k in update_data.keys()])
         values = list(update_data.values()) + [salaire_id]
-
         try:
             with self.db.get_cursor() as cursor:
                 query = f"UPDATE salaires SET {set_clauses} WHERE id = %s"
                 cursor.execute(query, values)
             return True
-        except Exception as e:
-            logger.error(f"Erreur mise à jour salaire: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur mise à jour salaire: {e}")
             return False
 
     def delete(self, salaire_id: int) -> bool:
@@ -14385,8 +13617,8 @@ class Salaire:
                 query = "DELETE FROM salaires WHERE id = %s"
                 cursor.execute(query, (salaire_id,))
             return True
-        except Exception as e:
-            logger.error(f"Erreur suppression salaire: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur suppression salaire: {e}")
             return False
 
     def get_by_id(self, salaire_id: int) -> Optional[Dict]:
@@ -14413,19 +13645,22 @@ class Salaire:
                 result = cursor.fetchall()
                 logger.info(f'ligne 4785 salaire selectionné: {result}')
                 return result
-        except Exception as e:
-            logger.error(f"Erreur récupération salaire par mois/année: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération salaire par mois/année: {e}")
             return []
 
-
-    def get_cotisations_indemnites_mois(self, cotisations_contrat_model, indemnites_contrat_model, user_id: int, annee: int, mois: int) -> Dict:
-        cotis = cotisations_contrat_model.get_total_cotisations_par_mois(bareme_cotisation_model, user_id, annee, mois)
-        indem = indemnites_contrat_model.get_total_indemnites_par_mois(user_id, annee, mois)
-
+    def get_cotisations_indemnites_mois(self, cotisations_contrat_model, indemnites_contrat_model,
+                                    bareme_cotisation_model, bareme_indemnite_model,
+                                    user_id: int, annee: int, mois: int) -> Dict:
+        cotis = cotisations_contrat_model.get_total_cotisations_par_mois(
+            bareme_cotisation_model, user_id, annee, mois
+        )
+        indem = indemnites_contrat_model.get_total_indemnites_par_mois(
+            bareme_indemnite_model, user_id, annee, mois
+        )
         # Agréger par employé ou global
         total_cotisations = sum(item['total_cotisations'] for item in cotis)
         total_indemnites = sum(item['total_indemnites'] for item in indem)
-
         return {
             'cotisations_par_contrat': cotis,
             'indemnites_par_contrat': indem,
@@ -14437,23 +13672,20 @@ class Salaire:
         try:
             heures_reelles = round(heures_reelles, 2)
             return round(heures_reelles * float(salaire_horaire), 2)
-        except Exception as e:
-            logger.error(f"Erreur calcul salaire: {e}")
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Calcul salaire impossible : heures={heures_reelles}, taux={salaire_horaire}")
             return 0.0
 
     def calculer_salaire_net(self, heures_reelles: float, contrat: Dict) -> float:
         try:
             if not contrat or heures_reelles <= 0:
                 return 0.0
-
             sh = float(contrat.get('salaire_horaire', 24.05))
             brut = heures_reelles * sh
-
             # Fonction helper pour obtenir les taux
             def get_taux(key, default=0.0):
                 val = contrat.get(key, default)
                 return float(val) if val else default
-
             # Calcul des additions
             additions = sum([
                 brut * (get_taux('indemnite_vacances_tx') / 100),
@@ -14461,7 +13693,6 @@ class Salaire:
                 brut * (get_taux('indemnite_jour_conges_tx') / 100)
             ])
             brut_tot = round(brut + additions, 2)
-
             # Calcul des soustractions
             soustractions = sum([
                 brut_tot * (get_taux('cotisation_avs_tx') / 100),
@@ -14470,12 +13701,10 @@ class Salaire:
                 brut_tot * (get_taux('assurance_indemnite_maladie_tx') / 100),
                 get_taux('cap_tx')
             ])
-
             return round(brut + additions - soustractions, 2)
-        except Exception as e:
-            logger.error(f"Erreur calcul salaire net: {e}")
+        except (ValueError, TypeError, KeyError) as e:
+            logger.warning(f"Calcul salaire net impossible : contrat={contrat.get('id') if contrat else None}")
             return 0.0
-
 
     def calculer_salaire_net_avec_details(self, heure_model, cotisations_contrat_model, indemnites_contrat_model,
                                     bareme_indemnite_model, bareme_cotisation_model, heures_reelles: float, 
@@ -14492,8 +13721,6 @@ class Salaire:
                     'erreur': 'Paramètres invalides',
                     'details': {}
                 }
-
-
             # Conversion sécurisée en Decimal
             def to_decimal(val):
                 if val is None:
@@ -14501,24 +13728,20 @@ class Salaire:
                 if isinstance(val, Decimal):
                     return val
                 return Decimal(str(val))
-
             # Conversion en float pour les fonctions qui ne supportent pas Decimal
             def to_float(val):
                 if isinstance(val, Decimal):
                     return float(val)
                 return float(val) if val is not None else 0.0
-
             salaire_horaire = to_decimal(contrat.get('salaire_horaire', '24.05'))
             heures_reelles_dec = to_decimal(heures_reelles)
             salaire_brut = (heures_reelles_dec * salaire_horaire).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-            
             # Récupérer cotisations et indemnités dynamiques
             cotisations_contrat = cotisations_contrat_model.get_for_contrat_and_annee(contrat_id, annee)
             indemnites_contrat = indemnites_contrat_model.get_for_contrat_and_annee(contrat_id, annee)
             logger.info(f"DEBUG indemnites_contrat: {indemnites_contrat}")
             logger.info(f'Cotisations pour contrat {contrat_id}, année {annee}: {cotisations_contrat}')
             logger.info(f'Indemnites pour contrat {contrat_id}, année {annee}: {indemnites_contrat}')
-            
             # Calcul des indemnités - CORRECTION ICI
             indemnites_detail = {}
             total_indemnites = Decimal('0')
@@ -14533,7 +13756,6 @@ class Salaire:
                 )
                 montant_decimal = to_decimal(montant)
                 total_indemnites += montant_decimal
-                
                 # CORRECTION : Ajouter tous les champs attendus par le template
                 nom_indemnite = item.get('nom_indemnite', f"indemnite_{item.get('type_indemnite_id', 'inconnue')}")
                 indemnites_detail[nom_indemnite] = {
@@ -14544,9 +13766,7 @@ class Salaire:
                     'actif': bool(item.get('actif', True))  # ← Ajouté
                 }
                 logger.info(f"Calcul des indemnités {nom_indemnite}: taux={item['taux']}, montant={montant}, actif={item.get('actif', True)}")
-            
             salaire_brut_tot = (salaire_brut + total_indemnites).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-
             # Calcul des cotisations - CORRECTION ICI
             cotisations_detail = {}
             total_cotisations = Decimal('0')
@@ -14555,7 +13775,6 @@ class Salaire:
                 base_montant_decimal = salaire_brut_tot if base == 'brut_tot' else salaire_brut
                 # Convertir en float pour la compatibilité avec calculer_montant_cotisation
                 base_montant_float = to_float(base_montant_decimal)
-                
                 # CORRECTION : Récupérer le nom correctement
                 nom_cotisation = item.get('nom_cotisation', f"Cotisation {item.get('type_cotisation_id', 'inconnue')}")
                 montant = cotisations_contrat_model.calculer_montant_cotisation(
@@ -14568,7 +13787,6 @@ class Salaire:
                 montant_decimal = to_decimal(montant)
                 montant_arrondi = montant_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                 total_cotisations += montant_arrondi
-                
                 # CORRECTION : Ajouter tous les champs attendus par le template
                 cotisations_detail[nom_cotisation] = {
                     'nom': nom_cotisation,  # ← Ajouté
@@ -14577,9 +13795,7 @@ class Salaire:
                     'base': base,
                     'actif': bool(item.get('actif', True))  # ← Ajouté pour cohérence
                 }
-
             salaire_net = (salaire_brut_tot - total_cotisations).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-            
             # Acomptes
             versements = {}
             total_versements = Decimal('0')
@@ -14605,7 +13821,6 @@ class Salaire:
                         'taux': 25
                     }
                     total_versements += acompte_25_decimal   
-
                 if contrat.get('versement_10', False):
                     # Convertir salaire_horaire en float pour calculer_acompte_10
                     salaire_horaire_float = to_float(salaire_horaire)
@@ -14627,9 +13842,7 @@ class Salaire:
                         'taux': 10
                     }
                     total_versements += acompte_10_decimal
-
             salaire_net_final = salaire_net - total_versements
-        
             return {
                 'salaire_net': float(salaire_net_final.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)),
                 'erreur': None,
@@ -14653,13 +13866,12 @@ class Salaire:
                 }
             }
             
-        except Exception as e:
-            logger.error(f"Erreur dans calculer_salaire_net_avec_details: {str(e)}")
-            return {
-                'salaire_net': 0.0,
-                'erreur': str(e),
-                'details': {}
-            }
+        except MySQLError as e:                             # ✅ ciblé : erreur DB
+            logger.exception(f"Erreur DB dans calculer_salaire_net_avec_details")
+            return {'salaire_net': 0.0, 'erreur': 'Erreur technique, veuillez réessayer', 'details': {}}
+        except (ValueError, TypeError, KeyError) as e:      # ✅ ciblé : données invalides
+            logger.warning(f"Données invalides dans calculer_salaire_net_avec_details : {e}")
+            return {'salaire_net': 0.0, 'erreur': 'Données de contrat invalides', 'details': {}}
     
     def calculer_differences(self, salaire_calcule: float, salaire_verse: float) -> Tuple[float, float]:
         if salaire_verse is None:
@@ -14670,14 +13882,11 @@ class Salaire:
 
     def importer_depuis_csv(self, fichier_csv: str, user_id: int) -> bool:
         """Importe les salaires depuis un fichier CSV avec gestion de connexion sécurisée."""
-        import csv
-
         mois_nom_to_num = {
             'Janvier': 1, 'Février': 2, 'Mars': 3, 'Avril': 4,
             'Mai': 5, 'Juin': 6, 'Juillet': 7, 'Août': 8,
             'Septembre': 9, 'Octobre': 10, 'Novembre': 11, 'Décembre': 12
         }
-
         try:
             with self.db.get_cursor(commit=True) as cursor:
                 with open(fichier_csv, mode='r', encoding='utf-8') as f:
@@ -14728,8 +13937,8 @@ class Salaire:
                         )
                         cursor.execute(query, values)
             return True
-        except Exception as e:
-            logger.error(f"Erreur import salaires: {e}")
+        except (MySQLError, csv.Error, ValueError, OSError) as e:
+            logger.exception(f"Erreur import salaires: {e}")
             return False
 
     def get_by_user_and_month(self, user_id: int, 
@@ -14784,7 +13993,6 @@ class Salaire:
             heures_apres = 0.0
         result = round(heures_apres * salaire_horaire, 2)
         logger.info(f"calculer_acompte_10 → heures_apres={heures_apres}, result={result}")
-        logger.error(f"calculer_acompte_10 → heures_apres={heures_apres}, result={result}")
         return result
     def recalculer_salaire(self, heure_model, cotisations_contrat_model, indemnites_contrat_model, bareme_indemnite_model, bareme_cotisation_model, salaire_id: int, contrat: Dict) -> bool:
         try:
@@ -14863,8 +14071,8 @@ class Salaire:
 
             return self.update(salaire_id, update_data)
 
-        except Exception as e:
-            logger.error(f"Erreur recalcul salaire ID {salaire_id}: {e}", exc_info=True)
+        except (MySQLError, ValueError, KeyError) as e:
+            logger.exception(f"Erreur recalcul salaire ID {salaire_id}: {e}", exc_info=True)
             return False
     
     #def recalculer_salaire(self, salaire_id: int, contrat: Dict) -> bool:
@@ -14957,8 +14165,8 @@ class Salaire:
             
                 total = result['total_salaire']
                 return float(total) if total is not None else 0.0
-        except Exception as e:
-            logger.error(f"Erreur get_salaire_employe_mois: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_salaire_employe_mois: {e}")
             return 0.0
     def get_by_user_and_month_with_employe(self,user_id: int,annee: int,mois: int,employe_id: Optional[int] = None) -> List[Dict]:
         clause = "AND employe_id = %s" if employe_id is not None else "AND employe_id IS NULL"
@@ -14975,11 +14183,7 @@ class Salaire:
             cursor.execute(query, params)
             return cursor.fetchall()
 
-class SyntheseHebdomadaire:
-    def __init__(self, db):
-        self.db = db
-   
-    # Dans la classe SyntheseHebdomadaire
+class SyntheseHebdomadaire(BaseRepository):
     def calculate_for_week_by_contrat(self, user_id: int, annee: int, semaine: int) -> list[dict]:
         try:
             with self.db.get_cursor() as cursor:
@@ -14999,14 +14203,12 @@ class SyntheseHebdomadaire:
                 """
                 cursor.execute(query, (user_id, annee, semaine))
                 rows = cursor.fetchall()
-
                 resultats = []
                 for row in rows:
                     id_contrat = row['id_contrat']
                     employeur = row['employeur']
                     heures = float(row['total_heures'])
                     heures_simulees = 0.0  # à implémenter plus tard si besoin
-
                     resultats.append({
                         'user_id': user_id,
                         'annee': annee,
@@ -15019,8 +14221,8 @@ class SyntheseHebdomadaire:
                         'moyenne_mobile': 0.0,
                     })
                 return resultats
-        except Exception as e:
-            logger.error(f"Erreur calcul synthèse hebdo par contrat: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur calcul synthèse hebdo par contrat: {e}")
             return []
 
     def create_or_update(self, data: dict) -> bool:
@@ -15032,7 +14234,6 @@ class SyntheseHebdomadaire:
                     WHERE semaine_numero = %s AND annee = %s AND user_id = %s
                 """, (data['semaine_numero'], data['annee'], data['user_id']))
                 existing = cursor.fetchone()
-
                 if existing:
                     query = """
                     UPDATE synthese_hebdo
@@ -15077,7 +14278,6 @@ class SyntheseHebdomadaire:
                         data['id_contrat']
                     ))
                     existing = cursor.fetchone()
-
                     if existing:
                         query = """
                             UPDATE synthese_hebdo SET
@@ -15115,8 +14315,8 @@ class SyntheseHebdomadaire:
                             data['moyenne_mobile']
                         ))
             return True
-        except Exception as e:
-            logger.error(f"Erreur batch synthèse hebdo: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur batch synthèse hebdo: {e}")
             return False
 
     def get_by_user(self, user_id: int, limit: int = 12) -> List[Dict]:
@@ -15145,8 +14345,8 @@ class SyntheseHebdomadaire:
                 """
                 cursor.execute(query, (user_id, annee))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération synthèse hebdo année: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération synthèse hebdo année: {e}")
             return []
 
     def get_by_user_and_week(self, user_id: int, annee: int = None, semaine: int = None) -> List[Dict]:
@@ -15206,8 +14406,8 @@ class SyntheseHebdomadaire:
                 query += " ORDER BY annee DESC, semaine_numero DESC"
                 cursor.execute(query, tuple(params))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur filtre synthèse hebdo: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur filtre synthèse hebdo: {e}")
             return []
 
     def prepare_svg_data_hebdo(self, user_id: int, annee: int, largeur_svg: int = 800, hauteur_svg: int = 400) -> Dict:
@@ -15306,8 +14506,8 @@ class SyntheseHebdomadaire:
                     ORDER BY employeur
                 """, (user_id,))
                 return [row['employeur'] for row in cursor.fetchall()]
-        except Exception as e:
-            logger.error(f"Erreur employeurs: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur employeurs: {e}")
             return []
 
     def calculate_h2f_stats(self, heure_model, user_id: int, employeur: str, id_contrat: int, annee: int, seuil_h2f_minutes: int = 18 * 60) -> Dict:
@@ -15497,11 +14697,7 @@ class SyntheseHebdomadaire:
             'annee': annee
         }
 
-class SyntheseMensuelle:
-    def __init__(self, db):
-        self.db = db
-
-
+class SyntheseMensuelle(BaseRepository):
     def calculate_for_month_by_contrat(self, user_id: int, annee: int, mois: int) -> list[dict]:
         try:
             with self.db.get_cursor() as cursor:
@@ -15521,18 +14717,15 @@ class SyntheseMensuelle:
                 """
                 cursor.execute(query_contrats, (user_id, annee, mois))
                 rows = cursor.fetchall()
-
                 resultats = []
                 for row in rows:
                     id_contrat = row['id_contrat']
                     employeur = row['employeur']
                     heures_c = float(row['heures_contrat'])
-
                     cursor.execute("SELECT salaire_horaire FROM contrats WHERE id = %s", (id_contrat,))
                     contrat = cursor.fetchone()
                     taux = float(contrat['salaire_horaire']) if contrat and contrat['salaire_horaire'] else 0.0
                     salaire = heures_c * taux
-
                     resultats.append({
                         'user_id': user_id,
                         'annee': annee,
@@ -15545,8 +14738,8 @@ class SyntheseMensuelle:
                         'salaire_simule': 0.0,
                     })
                 return resultats
-        except Exception as e:
-            logger.error(f"Erreur calcul synthèse mensuelle par contrat: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur calcul synthèse mensuelle par contrat: {e}")
             return []
 
     def prepare_svg_data_mensuel(self, user_id: int, annee: int, largeur_svg: int = 800, hauteur_svg: int = 400) -> Dict:
@@ -15556,15 +14749,12 @@ class SyntheseMensuelle:
         """
         # Récupérer toutes les synthèses mensuelles de l'année
         synthese_list = self.get_by_user_and_year(user_id, annee)
-
         # Indexer par mois
         synthese_par_mois = {s['mois']: s for s in synthese_list}
-
         # Initialiser les listes pour les 12 mois
         salaire_reel_vals = []
         salaire_simule_vals = []
         mois_labels = []
-
         for mois in range(1, 13):
             s = synthese_par_mois.get(mois)
             if s:
@@ -15574,7 +14764,6 @@ class SyntheseMensuelle:
                 salaire_reel_vals.append(0.0)
                 salaire_simule_vals.append(0.0)
             mois_labels.append(f"{mois:02d}/{annee}")
-
         # Calcul des bornes
         all_vals = salaire_reel_vals + salaire_simule_vals
         min_val = min(all_vals) if all_vals else 0.0
@@ -15587,24 +14776,20 @@ class SyntheseMensuelle:
         margin_y = hauteur_svg * 0.1
         plot_width = largeur_svg * 0.8
         plot_height = hauteur_svg * 0.8
-
         # Fonction utilitaire pour coordonnée Y
         def y_coord(val):
             if max_val == min_val:
                 return margin_y + plot_height / 2
             return margin_y + plot_height - ((val - min_val) / (max_val - min_val)) * plot_height
-
         # === CALCUL DES TICKS POUR L'AXE Y ===
         tick_step_minor = 200
         tick_step_major = 1000
-
         y_axis_min = math.floor(min_val / tick_step_minor) * tick_step_minor
         y_axis_max = math.ceil(max_val / tick_step_minor) * tick_step_minor
         if y_axis_max <= y_axis_min:
             y_axis_max = y_axis_min + tick_step_major
         if max_val < tick_step_major:
             y_axis_max = tick_step_major
-
         ticks = []
         y_val = y_axis_min
         while y_val <= y_axis_max:
@@ -15617,7 +14802,6 @@ class SyntheseMensuelle:
                     'is_major': is_major
                 })
             y_val += tick_step_minor
-
         # === PRÉPARATION DES ÉLÉMENTS SVG ===
         # Colonnes (barres) pour salaire réel
         colonnes_svg = []
@@ -15635,13 +14819,11 @@ class SyntheseMensuelle:
                 'width': bar_width,
                 'height': height
             })
-
         # Lignes pour salaire simulé (points)
         points_simule = [
             f"{margin_x + (i + 0.5) * (plot_width / 12)},{y_coord(salaire_simule_vals[i])}"
             for i in range(12)
         ]
-
         return {
             'colonnes': colonnes_svg,
             'ligne_simule': points_simule,
@@ -15668,8 +14850,8 @@ class SyntheseMensuelle:
                 """
                 cursor.execute(query, (user_id, annee))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération synthèse annuelle: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération synthèse annuelle: {e}")
             return []
 
     def get_by_user_and_month(self, user_id: int, annee : int, mois: int) -> List[Dict]:
@@ -15682,8 +14864,8 @@ class SyntheseMensuelle:
                 """
                 cursor.execute(query, (user_id, annee, mois))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération synthèse annuelle: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération synthèse annuelle: {e}")
             return []
 
     def get_by_user_and_filters(self, user_id: int, annee: int = None, mois: int = None, employeur: str = None, contrat_id: int = None) -> List[Dict]:
@@ -15706,8 +14888,8 @@ class SyntheseMensuelle:
                 query += " ORDER BY annee DESC, mois DESC"
                 cursor.execute(query, tuple(params))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur filtre synthèse: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur filtre synthèse: {e}")
             return []
 
     def get_employeurs_distincts(self, user_id: int) -> List[str]:
@@ -15720,8 +14902,8 @@ class SyntheseMensuelle:
                     ORDER BY employeur
                 """, (user_id,))
                 return [row['employeur'] for row in cursor.fetchall()]
-        except Exception as e:
-            logger.error(f"Erreur employeurs: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur employeurs: {e}")
             return []
 
     def create_or_update(self, data: dict) -> bool:
@@ -15732,7 +14914,6 @@ class SyntheseMensuelle:
                     WHERE user_id = %s AND annee = %s AND mois = %s AND id_contrat = %s
                 """, (data['user_id'], data['annee'], data['mois'], data['id_contrat']))
                 existing = cursor.fetchone()
-
                 if existing:
                     query = """
                         UPDATE synthese_mensuelle SET
@@ -15770,8 +14951,8 @@ class SyntheseMensuelle:
                         data['salaire_simule']
                     ))
             return True
-        except Exception as e:
-            logger.error(f"Erreur synthèse mensuelle: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur synthèse mensuelle: {e}")
             return False
 
     def delete_by_user_and_year(self, user_id: int, annee: int):
@@ -15812,7 +14993,6 @@ class SyntheseMensuelle:
         Calcule les statistiques sur h2f pour un mois donné.
         """
         seuil_h2f_minutes = int(round(seuil_h2f_minutes))
-
         jours_mois = heure_model.get_h1d_h2f_for_period(user_id, employeur, id_contrat, annee, mois=mois)
         count = 0
         for jour in jours_mois:
@@ -15835,21 +15015,17 @@ class SyntheseMensuelle:
         Axe X: Jours du mois (1, 2, 3, ..., 31)
         Axe Y: Heures (6h en haut, 22h en bas)
         """
-
         jours_mois = heure_model.get_h1d_h2f_for_period(user_id, employeur, id_contrat, annee, mois=mois)
-
         # Constantes pour la conversion des heures en pixels
         heure_debut_affichage = 6
         heure_fin_affichage = 22
         minute_debut_affichage = heure_debut_affichage * 60
         minute_fin_affichage = heure_fin_affichage * 60
         plage_minutes = (heure_fin_affichage - heure_debut_affichage) * 60
-
         margin_x = largeur_svg * 0.1
         margin_y = hauteur_svg * 0.1
         plot_width = largeur_svg * 0.8
         plot_height = hauteur_svg * 0.8
-
         rectangles_svg = []
         # On suppose que `jours_mois` est trié par date
         for i, jour_data in enumerate(jours_mois):
@@ -15864,28 +15040,23 @@ class SyntheseMensuelle:
                 logger.warning(f"Type de date inattendu : {type(date_value)}")
                 continue
             jour_du_mois = date_obj.day
-
             h1d_minutes = heure_model.time_to_minutes(jour_data.get('h1d'))
             h2f_minutes = heure_model.time_to_minutes(jour_data.get('h2f'))
-
             # Coordonnée X basée sur le jour du mois
             # On suppose que le mois a au maximum 31 jours
             x_jour_debut = margin_x + (jour_du_mois - 1) * (plot_width / 31)
             x_jour_fin = margin_x + jour_du_mois * (plot_width / 31)
             largeur_rect = (x_jour_fin - x_jour_debut) * 0.8
             x_rect_debut = x_jour_debut + (x_jour_fin - x_jour_debut) * 0.1
-
             # Coordonnées Y
             if h1d_minutes != -1 and h1d_minutes >= minute_debut_affichage and h1d_minutes <= minute_fin_affichage:
                 y_h1d = margin_y + plot_height - ((h1d_minutes - minute_debut_affichage) / plage_minutes) * plot_height
             else:
                 y_h1d = None
-
             if h2f_minutes != -1 and h2f_minutes >= minute_debut_affichage and h2f_minutes <= minute_fin_affichage:
                 y_h2f = margin_y + plot_height - ((h2f_minutes - minute_debut_affichage) / plage_minutes) * plot_height
             else:
                 y_h2f = None
-
             if y_h1d is not None and y_h2f is not None:
                 y_top = min(y_h1d, y_h2f)
                 y_bottom = max(y_h1d, y_h2f)
@@ -15916,13 +15087,11 @@ class SyntheseMensuelle:
                     'jour': jour_data['date'],
                     'type': 'h2f_only'
                 })
-
         # Ticks Y
         ticks_y = []
         for h in range(heure_debut_affichage, heure_fin_affichage + 1):
              y_tick = margin_y + plot_height - ((h * 60 - minute_debut_affichage) / plage_minutes) * plot_height
              ticks_y.append({'heure': f"{h:02d}h", 'y': y_tick})
-
         # Labels X (jours du mois)
         labels_x = []
         # On affiche un label tous les 5 jours pour moins encombrer l'axe
@@ -15930,7 +15099,6 @@ class SyntheseMensuelle:
             if j % 5 == 0 or j == 1: # Label pour le 1er et tous les 5ème jour
                 x_label = margin_x + (j - 1) * (plot_width / 31)
                 labels_x.append({'jour': str(j), 'x': x_label})
-
         return {
             'rectangles': rectangles_svg,
             'ticks_y': ticks_y,
@@ -16064,11 +15232,7 @@ class SyntheseMensuelle:
             'moyenne_mobile': moyennes_mobiles
         }
 
-
-class Equipe:
-    def __init__(self, db):
-        self.db = db
-
+class Equipe(BaseRepository):
     def create(self, user_id, nom: str, description:str) -> int:
         try:
             with self.db.get_cursor() as cursor:
@@ -16102,8 +15266,8 @@ class Equipe:
                 cursor.execute("SELECT * FROM equipes WHERE user_id = %s AND id = %s", (user_id, id_equipe))
                 equipe = cursor.fetchone()
                 return equipe
-        except Exception as e:
-            logger.error(f"Erreur dans récupération equipe {id_equipe} : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur dans récupération equipe {id_equipe} : {e}")
             return False
 
     def supprimer(self, user_id: int, id_equipe: int) -> bool:
@@ -16113,8 +15277,8 @@ class Equipe:
                 cursor.execute("DELETE FROM equipes_employes WHERE equipe_id = %s", (id_equipe,))
                 cursor.execute("DELETE FROM equipes WHERE id = %s AND user_id = %s", (id_equipe, user_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur suppression equipe {id_equipe}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur suppression equipe {id_equipe}: {e}")
             return False
 
     def ajouter_employe_to_equipe(self, employe_model, id_equipe: int, employe_id: int, user_id: int) -> bool:
@@ -16129,8 +15293,8 @@ class Equipe:
                 """, (id_equipe, employe_id)
                 )
                 return True
-        except Exception as e:
-            logger.error(f"Erreur ajout employe {employe_id} à equipe {id_equipe}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur ajout employe {employe_id} à equipe {id_equipe}: {e}")
             return False
     def retirer_employe_to_equipe(self, id_equipe: int, employe_id: int) -> bool:
         try:
@@ -16140,8 +15304,8 @@ class Equipe:
                 WHERE id_equipe = %s AND employe_id = %s
                 """, (id_equipe, employe_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur retrait employe {employe_id} de l'equipe {id_equipe} : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur retrait employe {employe_id} de l'equipe {id_equipe} : {e}")
             return False
 
     def get_employes_from_equipe(self, user_id: int, id_equipe: int)-> List[Dict]:
@@ -16156,16 +15320,16 @@ class Equipe:
                 """
                 cursor.execute(query, (user_id, id_equipe))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur Récupération employé equipe {id_equipe}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur Récupération employé equipe {id_equipe}: {e}")
             return []
     def get_equipes_from_user(self, user_id:int)->List[Dict]:
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("SELECT * FROM equipes WHERE user_id = %s ORDER BY nom", (user_id))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération équipes user {user_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération équipes user {user_id}: {e}")
             return []
 
     def get_equipes_avec_employe(self, user_id: int)-> List[Dict]:
@@ -16198,8 +15362,8 @@ class Equipe:
                             'prenom': row['employe_prenom']
                         })
                 return list(equipes.values())
-        except Exception as e:
-            logger.error(f"Erreur récupération des équipes avec employes de user {user_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération des équipes avec employes de user {user_id}: {e}")
             return []
 
     def get_all_by_user(self, user_id: int) -> List[Dict]:
@@ -16207,13 +15371,11 @@ class Equipe:
             with self.db.get_cursor() as cursor:
                 cursor.execute("SELECT * FROM equipes WHERE user_id = %s ORDER BY nom", (user_id,))
                 return cursor.fetchall()
-        except Exception as e:  
-            logger.error(f"Erreur récupération équipes user {user_id}: {e}")
+        except MySQLError as e:  
+            logger.exception(f"Erreur récupération équipes user {user_id}: {e}")
             return []
 
-class Competence:
-    def __init__(self, db):
-        self.db = db
+class Competence(BaseRepository):
     def create(self, user_id: int, nom: str) -> int:
         try:
             with self.db.get_cursor(commit=True) as cursor:
@@ -16222,8 +15384,8 @@ class Competence:
                 VALUES (%s, %s, NOW())
                 """, (user_id, nom))
                 return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur créatio competence : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur créatio competence : {e}")
             return None
     def modifier(self, user_id:int, nom: str, id_competence: int)-> int:
         try:
@@ -16234,8 +15396,8 @@ class Competence:
                 WHERE id= %s AND user_id = %s
                 """, (nom, id_competence, user_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur mise à jour compétence : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur mise à jour compétence : {e}")
             return False
     def supprimer(self, user_id: int, id_competence: int)-> bool:
         try:
@@ -16244,8 +15406,8 @@ class Competence:
                 cursor.execute("DELETE FROM equipes_competences_requises WHERE id_competence = %s", (id_competence,))
                 cursor.execute("DELETE FROM competences WHERE id = %s AND user_id = %s", (id_competence, user_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur suppression compétence {id_competence} : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur suppression compétence {id_competence} : {e}")
             return False
     def assigner_employe_competence(self, employe_model, id_competence: int, employe_id: int, user_id:int) -> bool:
         if not employe_model.get_by_id(employe_id, user_id):
@@ -16257,8 +15419,8 @@ class Competence:
                     VALUES (%s, %s, NOW())
                 """, (id_competence, employe_id))
                 return True
-        except Exception as e:
-            logger.error(f"Erreur assignation compétence {id_competence} à employé {employe_id} : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur assignation compétence {id_competence} à employé {employe_id} : {e}")
             return False
     def retirer_de_employe(self, id_competence: int, employe_id: int) -> bool:
         try:
@@ -16268,8 +15430,8 @@ class Competence:
                     WHERE competence_id = %s AND employe_id = %s
                 """, (id_competence, employe_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur retrait compétence {id_competence} de employé {employe_id} : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur retrait compétence {id_competence} de employé {employe_id} : {e}")
             return False
 
     def get_competences_employe(self, employe_id: int) -> List[Dict]:
@@ -16282,8 +15444,8 @@ class Competence:
                     WHERE ec.employe_id = %s
                 """, (employe_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération compétences employé {employe_id} : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération compétences employé {employe_id} : {e}")
             return []
     def get_employes_avec_competence(self, user_id: int, id_competence: int) -> List[Dict]:
         try:
@@ -16295,8 +15457,8 @@ class Competence:
                     WHERE ec.competence_id = %s AND e.user_id = %s
                 """, (id_competence, user_id))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération employés compétence {id_competence} : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération employés compétence {id_competence} : {e}")
             return []
     def definir_competence_requise_equipe(self, equipe_model, user_id: int, equipe_id: int, id_competence: int, quantite_min: int = 1) -> bool:
         # Vérifier que l’équipe appartient à l’utilisateur
@@ -16311,8 +15473,8 @@ class Competence:
                     ON DUPLICATE KEY UPDATE quantite_min = VALUES(quantite_min)
                 """, (equipe_id, id_competence, quantite_min))
                 return True
-        except Exception as e:
-            logger.error(f"Erreur définition comp. requise équipe {equipe_id} : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur définition comp. requise équipe {equipe_id} : {e}")
             return False
     def get_competences_requises_equipe(self, user_id: int, equipe_id: int) -> List[Dict]:
         try:
@@ -16325,14 +15487,11 @@ class Competence:
                     WHERE eq.id = %s AND eq.user_id = %s
                 """, (equipe_id, user_id))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération comp. requises équipe {equipe_id} : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération comp. requises équipe {equipe_id} : {e}")
             return []
 
-class Planning:
-    def __init__(self, db):
-        self.db = db
-
+class Planning(BaseRepository):
     def creer_shift(self, data: Dict)-> bool:
         "Crée un créneau horaire"
         required = ('employe_id', 'date', 'heure_debut', 'heure_fin', 'type_shift')
@@ -16356,7 +15515,7 @@ class Planning:
                 cursor.execute(query, values)
                 return True
         except Error as e:
-            logger.error("Erreur création shift {e}")
+            logger.error(f"Erreur création shift {e}")
             return False
 
     def get_shifts_for_period(self, user_id: int, date_debut: str, date_fin: str)-> Dict:
@@ -16373,27 +15532,25 @@ class Planning:
                 """
                 cursor.execute(query, (user_id, date_debut, date_fin))
                 shifts = cursor.fetchall()
-
                 organized = {}
                 for shift in shifts:
                     employe_id = shift['employe_id']
                     date_str = str(shift['date'])
-                    
                     if employe_id not in organized:
                         organized[employe_id] = {}  # Correction : '=' au lieu de ':'
-                    
                     if date_str not in organized[employe_id]: # Correction : [] au lieu de ()
                         organized[employe_id][date_str] = []  # Correction : '=' au lieu de ':'
-                        
                     organized[employe_id][date_str].append(shift)
-
                 return organized
-        except Exception as e:
-            logger.error(f"Erreur récupération shifts: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération shifts: {e}")
+            return []
 
-class PlanningRegles:
-    def __init__(self, db):
-        self.db = db
+class PlanningRegles(BaseRepository):
+    def __init__(self, db, equipe_model, competence_model):
+        super().__init__(db)
+        self.equipe_model = equipe_model
+        self.competence_model = competence_model
 
     def create_regle(self, user_id: int, nom: str, type_regle: str, params: Dict[str, Any]) -> int:
         """
@@ -16408,8 +15565,8 @@ class PlanningRegles:
                     VALUES (%s, %s, %s, %s, NOW())
                 """, (user_id, nom, type_regle, json.dumps(params)))
                 return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur création règle planning : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur création règle planning : {e}")
             return None
 
     def get_regles_by_user(self, user_id: int) -> List[Dict]:
@@ -16425,8 +15582,8 @@ class PlanningRegles:
                     {**row, 'params': json.loads(row['params_json'])}
                     for row in cursor.fetchall()
                 ]
-        except Exception as e:
-            logger.error(f"Erreur récup règles user {user_id} : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récup règles user {user_id}")
             return []
 
     def delete_regle(self, user_id: int, regle_id: int) -> bool:
@@ -16434,8 +15591,8 @@ class PlanningRegles:
             with self.db.get_cursor(commit=True) as cursor:
                 cursor.execute("DELETE FROM planning_regles WHERE id = %s AND user_id = %s", (regle_id, user_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur suppression règle {regle_id} : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur suppression règle {regle_id} : {e}")
             return False
 
     def valider_periode_simulee(self, user_id: int, date_debut: date, date_fin: date) -> List[Dict]:
@@ -16444,13 +15601,13 @@ class PlanningRegles:
         """
         violations = []
         regles = self.get_regles_by_user(user_id)
-
         for regle in regles:
             if regle['type_regle'] == 'competence_min_simulee':
-                violations += self._valider_competence_min_simulee(user_id, regle, date_debut, date_fin)
+                violations += self._valider_competence_min_simulee(
+                    self.equipe_model, self.competence_model, user_id, regle, date_debut, date_fin)
             elif regle['type_regle'] == 'bilinguisme_simultane_simule':
-                violations += self._valider_bilinguisme_simultane_simule(user_id, regle, date_debut, date_fin)
-
+               violations += self._valider_bilinguisme_simultane_simule(
+                   self.equipe_model, self.competence_model, user_id, regle, date_debut, date_fin)
         return violations
 
     def _get_employes_simules_jour(self, user_id: int, equipe_id: int, date_jour: date) -> List[Dict]:
@@ -16463,13 +15620,14 @@ class PlanningRegles:
                     SELECT DISTINCT e.*
                     FROM employes e
                     JOIN heures_simulees hs ON e.id = hs.employe_id
-                    WHERE hs.user_id = %s
-                      AND hs.equipe_id = %s
-                      AND hs.date = %s
+                    WHERE ht.user_id = %s
+                      AND ht.equipe_id = %s
+                      AND ht.date = %s
+                      AND ht.type_heures = 'simulees'
                 """, (user_id, equipe_id, date_jour))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récup simulés {date_jour} équipe {equipe_id} : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récup simulés {date_jour} équipe {equipe_id} : {e}")
             return []
 
     def _valider_competence_min_simulee(self, equipe_model, competence_model, user_id: int, regle: Dict, debut: date, fin: date) -> List[Dict]:
@@ -16477,12 +15635,10 @@ class PlanningRegles:
         equipe_id = params.get('equipe_id')
         competence_id = params.get('competence_id')
         quantite_min = params.get('quantite_min', 1)
-
         # Vérifier propriété
         equipes = equipe_model.get_equipes_from_user(user_id)
         if not any(eq['id'] == equipe_id for eq in equipes):
             return []
-
         violations = []
         current = debut
         while current <= fin:
@@ -16515,14 +15671,12 @@ class PlanningRegles:
         comp_de = self._get_competence_by_nom(user_id, 'allemand')
         if not comp_fr or not comp_de:
             return [{'regle_id': regle['id'], 'violation': "Compétences langue non trouvées", 'date': debut.isoformat()}]
-
         violations = []
         current = debut
         while current <= fin:
             employes_presents = self._get_employes_simules_jour(user_id, equipe_id, current)
             a_fr = any(comp_fr['id'] in [c['id'] for c in competence_model.get_competences_employe(e['id'])] for e in employes_presents)
             a_de = any(comp_de['id'] in [c['id'] for c in competence_model.get_competences_employe(e['id'])] for e in employes_presents)
-
             if not (a_fr and a_de):
                 violations.append({
                     'regle_id': regle['id'],
@@ -16540,7 +15694,8 @@ class PlanningRegles:
             with self.db.get_cursor() as cursor:
                 cursor.execute("SELECT id, nom FROM competences WHERE user_id = %s AND nom = %s", (user_id, nom))
                 return cursor.fetchone()
-        except:
+        except MySQLError as e:
+            logger.exception(f"Erreur de récupération par nom {nom} : {e}")
             return None
 
     # --- Fonctionnalité bonus : contexte réel pour aide à la planification ---
@@ -16559,21 +15714,18 @@ class PlanningRegles:
                     FROM heures_travail
                     WHERE user_id = %s
                       AND employe_id = %s
-                      AND type_heure = 'reel'
-                      AND DAYOFWEEK(date) = %s + 1  -- MySQL: 1=Dim, donc +1
+                      AND type_heures = 'reelles'
+                      AND DAYOFWEEK(date) = %s + 2
                       AND date < %s
                     ORDER BY date DESC
                     LIMIT 20
                 """, (user_id, employe_id, jour_semaine, date_ref))
                 historique = cursor.fetchall()
-
                 if not historique:
                     return {'message': 'Aucun historique réel trouvé'}
-
                 # Convertir plage simulée en minutes
                 h1d_sim = self._time_to_minutes(plage_h1d)
                 h2f_sim = self._time_to_minutes(plage_h2f)
-
                 ecarts_h1d = []
                 ecarts_h2f = []
                 for h in historique:
@@ -16583,15 +15735,14 @@ class PlanningRegles:
                         ecarts_h1d.append(h1d_r - h1d_sim)
                     if h2f_r != -1 and h2f_sim != -1:
                         ecarts_h2f.append(h2f_r - h2f_sim)
-
                 return {
                     'moyenne_ecart_h1d_min': round(sum(ecarts_h1d) / len(ecarts_h1d), 1) if ecarts_h1d else 0,
                     'moyenne_ecart_h2f_min': round(sum(ecarts_h2f) / len(ecarts_h2f), 1) if ecarts_h2f else 0,
                     'nb_echantillons': len(historique),
                     'plage_simulee': f"{plage_h1d} → {plage_h2f}"
                 }
-        except Exception as e:
-            logger.error(f"Erreur contexte réel pour {employe_id} le {date_ref} : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur contexte réel pour {employe_id} le {date_ref} : {e}")
             return {'erreur': str(e)}
 
     def _time_to_minutes(self, t) -> int:
@@ -16604,12 +15755,8 @@ class PlanningRegles:
             return t.hour * 60 + t.minute
         return -1
 
-class ParametreUtilisateur:
+class ParametreUtilisateur(BaseRepository):
     """Modèle pour gérer les paramètres utilisateur"""
-
-    def __init__(self, db: DatabaseManager):
-        self.db = db
-
     def get(self, user_id: int) -> Dict:
         """Récupère tous les paramètres d'un utilisateur de manière sécurisée"""
         try:
@@ -16629,7 +15776,6 @@ class ParametreUtilisateur:
                 # Vérifie si l'utilisateur a déjà des paramètres
                 cursor.execute("SELECT 1 FROM parametres_utilisateur WHERE utilisateur_id = %s", (user_id,))
                 exists = cursor.fetchone()
-
                 if exists:
                     # Mise à jour
                     query = """
@@ -16662,17 +15808,13 @@ class ParametreUtilisateur:
                         data.get('alertes_solde', True),
                         data.get('seuil_alerte_solde', 500)
                     )
-
                 cursor.execute(query, values)
             return True
         except Error as e:
             logger.error(f"Erreur lors de la mise à jour des paramètres: {e}")
             return False
 
-class Entreprise:
-    def __init__(self, db):
-        self.db = db
-
+class Entreprise(BaseRepository):
     def get_or_create_for_user(self, user_id: int) -> Dict:
         """
         Récupère ou crée une entrée par défaut pour l'utilisateur.
@@ -16699,10 +15841,8 @@ class Entreprise:
         update_data = {k: v for k, v in data.items() if k in allowed}
         if not update_data:
             return False
-
         set_clause = ", ".join([f"{k} = %s" for k in update_data.keys()])
         values = list(update_data.values()) + [entreprise_id]
-
         with self.db.get_cursor() as cursor:
             cursor.execute(f"""
                 UPDATE entreprise SET {set_clause} WHERE id = %s
@@ -16734,8 +15874,8 @@ class Entreprise:
             with self.db.get_cursor() as cursor:
                 cursor.execute("SELECT 1 FROM entreprise WHERE user_id = %s", (user_id,))
                 return cursor.fetchone() is not None
-        except Exception as e:
-            logger.error(f"Pas d'entreprise pour l'utilisateur {user_id} : {e}")
+        except MySQLError as e:
+            logger.exception(f"Pas d'entreprise pour l'utilisateur {user_id} : {e}")
             return False
     
     @staticmethod
@@ -16745,14 +15885,12 @@ class Entreprise:
         Retourne (is_valid, errors) où errors est {champ: message}.
         """
         errors = {}
-
         # Nom : obligatoire, longueur raisonnable
         nom = data.get('nom', '').strip()
         if not nom:
             errors['nom'] = "Le nom de l'entreprise est obligatoire."
         elif len(nom) > 150:
             errors['nom'] = "Le nom ne peut pas dépasser 150 caractères."
-
         # Email : optionnel mais doit être valide si rempli
         email = data.get('email', '').strip()
         if email:
@@ -16764,7 +15902,6 @@ class Entreprise:
                 errors['email'] = "L'adresse email n'est pas valide."
             elif len(email) > 150:
                 errors['email'] = "L'email ne peut pas dépasser 150 caractères."
-
         # Téléphone : optionnel, format souple (BE/FR/CH/...)
         telephone = data.get('telephone', '').strip()
         if telephone:
@@ -16776,26 +15913,22 @@ class Entreprise:
                 errors['telephone'] = "Le numéro de téléphone n'est pas valide."
             elif len(telephone) > 30:
                 errors['telephone'] = "Le téléphone ne peut pas dépasser 30 caractères."
-
         # Code postal : optionnel, numérique si rempli
         cp = data.get('code_postal', '').strip()
         if cp:
             if not cp.isdigit() or not (3 <= len(cp) <= 10):
                 errors['code_postal'] = "Le code postal doit contenir entre 3 et 10 chiffres."
-
         # Cohérence : si code postal, commune obligatoire (et inversement)
         commune = data.get('commune', '').strip()
         if cp and not commune:
             errors['commune'] = "Veuillez indiquer la commune."
         if commune and not cp:
             errors['code_postal'] = "Veuillez indiquer le code postal."
-
         # Longueur champs adresse
         if len(data.get('rue', '')) > 200:
             errors['rue'] = "La rue ne peut pas dépasser 200 caractères."
         if len(commune) > 100:
             errors['commune'] = "La commune ne peut pas dépasser 100 caractères."
-
         return (len(errors) == 0, errors)
     
     def get_all_entreprises_for_user(self, user_id, actif_only: bool = True) -> List[Dict]:
@@ -16807,8 +15940,8 @@ class Entreprise:
                 query += " ORDER BY nom"
                 cursor.execute(query, (user_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération types de entreprise: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération types de entreprise: {e}")
             return []
 
     def get_by_id(self, user_id: int, entreprise_id: int) ->Optional[Dict]: 
@@ -16840,21 +15973,16 @@ class Entreprise:
             """, (magasin_id,))
             return cursor.fetchone()
 
-
-
 # ============================================================
 # MODULE POS (Point de Vente / Caisse)
 # ============================================================
 
-class MagasinPOS:
+class MagasinPOS(BaseRepository):
     """
     Gestion des magasins.
     Lien : Un utilisateur a une Entreprise (via entreprise_model), 
            et cette entreprise peut avoir plusieurs Magasins.
     """
-    def __init__(self, db):
-        self.db = db
-
     def create(self, user_id: int, entreprise_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
@@ -16877,8 +16005,8 @@ class MagasinPOS:
                     data.get('description')
                 ))
                 return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur création magasin: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur création magasin: {e}")
             return None
 
     def get_by_user(self, user_id: int) -> List[Dict]:
@@ -16896,8 +16024,8 @@ class MagasinPOS:
                     ORDER BY m.nom_magasin;
                 """, (user_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération magasins: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération magasins: {e}")
             return []
 
     def get_by_id(self, magasin_id: int, user_id: int) -> Optional[Dict]:
@@ -16908,8 +16036,8 @@ class MagasinPOS:
                     WHERE id = %s AND utilisateur_id = %s
                 """, (magasin_id, user_id))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur récupération magasin {magasin_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération magasin {magasin_id}: {e}")
             return None
 
     def verify_magasin_belongs_to_user(self, magasin_id: int, user_id: int) -> bool:
@@ -16928,7 +16056,6 @@ class MagasinPOS:
         if not self.verify_magasin_belongs_to_user(magasin_id, user_id):
             logger.warning(f"Tentative de mise à jour d'un magasin non autorisé: {magasin_id}")
             return False
-        
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
@@ -16944,8 +16071,8 @@ class MagasinPOS:
                     magasin_id, user_id
                 ))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur mise à jour magasin: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur mise à jour magasin: {e}")
             return False
     
     def delete(self, magasin_id: int, user_id: int) -> bool:
@@ -16953,7 +16080,6 @@ class MagasinPOS:
         if not self.verify_magasin_belongs_to_user(magasin_id, user_id):
             logger.warning(f"Tentative de suppression d'un magasin non autorisé: {magasin_id}")
             return False
-        
         try:
             with self.db.get_cursor() as cursor:
                 cursor.execute(
@@ -16961,8 +16087,8 @@ class MagasinPOS:
                     (magasin_id, user_id)
                 )
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur suppression magasin: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur suppression magasin: {e}")
             return False
 
     def get_by_entreprise(self, user_id: int, entreprise_id: int) -> List[Dict]:
@@ -16979,18 +16105,15 @@ class MagasinPOS:
                     ORDER BY m.nom_magasin
                 """, (user_id, entreprise_id))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération magasins par entreprise: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération magasins par entreprise: {e}")
             return []
 
-class PointDeVentePOS:
+class PointDeVentePOS(BaseRepository):
     """
     Gestion des points de vente (caisses physiques).
     Lien : Un PointDeVente appartient à un Magasin.
     """
-    def __init__(self, db):
-        self.db = db
-
     def create(self, user_id: int, magasin_id: int, data: Dict) -> Optional[int]:
         """Crée un point de vente rattaché à un magasin."""
         try:
@@ -17013,7 +16136,7 @@ class PointDeVentePOS:
                     data.get('compte_bancaire_id')
                 ))
                 return cursor.lastrowid
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur création PDV: {e}")
             return None
 
@@ -17027,17 +16150,15 @@ class PointDeVentePOS:
                     JOIN pos_magasins m ON pdv.magasin_id = m.id
                     WHERE pdv.id = %s AND m.utilisateur_id = %s
                 """, (pdv_id, user_id))
-                
                 if not cursor.fetchone():
                     return False
-                
                 cursor.execute("""
                     UPDATE pos_points_de_vente 
                     SET nom_pdv = %s, magasin_id = %s, compte_bancaire_id = %s
                     WHERE id = %s
                 """, (data['nom_pdv'], data['magasin_id'], data.get('compte_bancaire_id'), pdv_id))
                 return cursor.rowcount > 0
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur mise à jour PDV: {e}")
             return False
 
@@ -17054,8 +16175,8 @@ class PointDeVentePOS:
                 """
                 cursor.execute(query, (pdv_id, user_id))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur récupération PDV: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération PDV: {e}")
             return None
 
     def get_by_magasin(self, magasin_id: int, user_id: int) -> List[Dict]:
@@ -17069,8 +16190,8 @@ class PointDeVentePOS:
                     ORDER BY pdv.nom_pdv
                 """, (magasin_id, user_id))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération PDV: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération PDV: {e}")
             return []
     
     def get_by_id(self, pdv_id: int) -> Optional[Dict]:
@@ -17083,8 +16204,8 @@ class PointDeVentePOS:
                     WHERE pdv.id = %s
                 """, (pdv_id,))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur récupération PDV {pdv_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération PDV {pdv_id}: {e}")
             return None
 
     def delete(self, pdv_id: int, user_id: int) -> bool:
@@ -17097,15 +16218,12 @@ class PointDeVentePOS:
                     )
                 """, (pdv_id, user_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur suppression PDV: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur suppression PDV: {e}")
             return False
 
-class CategoriePOS:
+class CategoriePOS(BaseRepository):
     """Catégories d'articles POS"""
-    def __init__(self, db):
-        self.db = db
-
     def create(self, user_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
@@ -17114,8 +16232,11 @@ class CategoriePOS:
                     VALUES (%s, %s, %s, %s)
                 """, (user_id, data['magasin_id'], data['nom_categorie'], data.get('description', '')))
                 return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur création catégorie POS: {e}")
+        except IntegrityError:
+            logger.warning(f"Nom déjà utilisé : {data['nom_categorie']}")
+            return False
+        except MySQLError as e:
+            logger.exception(f"Erreur création catégorie POS: {e}")
             return None
 
     def get_all(self, user_id: int, magasin_id: int = None) -> List[Dict]:
@@ -17134,8 +16255,8 @@ class CategoriePOS:
                 query += " ORDER BY c.nom_categorie"
                 cursor.execute(query, params)
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération catégories POS: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération catégories POS: {e}")
             return []
 
     def get_by_id(self, categorie_id: int, user_id: int) -> Optional[Dict]:
@@ -17146,8 +16267,8 @@ class CategoriePOS:
                     WHERE id = %s AND utilisateur_id = %s
                 """, (categorie_id, user_id))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur récupération catégorie POS: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération catégorie POS: {e}")
             return None
 
     def update(self, categorie_id: int, user_id: int, data: Dict) -> bool:
@@ -17159,8 +16280,8 @@ class CategoriePOS:
                     WHERE id = %s AND utilisateur_id = %s
                 """, (data['nom_categorie'], data.get('description', ''), categorie_id, user_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur mise à jour catégorie POS: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur mise à jour catégorie POS: {e}")
             return False
 
     def delete(self, categorie_id: int, user_id: int) -> bool:
@@ -17177,15 +16298,12 @@ class CategoriePOS:
                     WHERE id = %s AND utilisateur_id = %s
                 """, (categorie_id, user_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur suppression catégorie POS: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur suppression catégorie POS: {e}")
             return False
 
-class SousCategoriePOS:
+class SousCategoriePOS(BaseRepository):
     """Sous-catégories d'articles POS"""
-    def __init__(self, db):
-        self.db = db
-
     def create(self, user_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
@@ -17201,7 +16319,8 @@ class SousCategoriePOS:
                     VALUES (%s, %s, %s)
                 """, (data['id_categorie'], data['nom_sous_categorie'], data.get('description', '')))
                 return cursor.lastrowid
-        except Exception as e:
+        except MySQLError as e:
+            logger.exception(f"Erreir de création de sous-catégorie: {e}")
             return None
         
     def get_all(self, user_id: int, magasin_id: int = None) -> List[Dict]:
@@ -17220,8 +16339,8 @@ class SousCategoriePOS:
                 query += " ORDER BY c.nom_categorie, sc.nom_sous_categorie"
                 cursor.execute(query, params)
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur get_all sous-cat: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_all sous-cat: {e}")
             return []
 
     def get_by_id(self, sc_id: int, user_id: int) -> Optional[Dict]:
@@ -17234,7 +16353,8 @@ class SousCategoriePOS:
                     WHERE sc.id = %s AND c.utilisateur_id = %s
                 """, (sc_id, user_id))
                 return cursor.fetchone()
-        except Exception as e:
+        except MySQLError as e:
+            logger.exception(f"Erreur de récupération de l'id {sc_id}: {e}")
             return None
 
     def update(self, sc_id: int, user_id: int, data: Dict) -> bool:
@@ -17248,7 +16368,8 @@ class SousCategoriePOS:
                 """, (data['nom_sous_categorie'], data['id_categorie'],
                     data.get('description', ''), sc_id, user_id))
                 return cursor.rowcount > 0
-        except Exception as e:
+        except MySQLError as e:
+            logger.exception(f"Erreur de mise à jour : {e}")
             return False
 
     def get_by_categorie(self, categorie_id: int) -> List[Dict]:
@@ -17260,8 +16381,8 @@ class SousCategoriePOS:
                     ORDER BY nom_sous_categorie
                 """, (categorie_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération sous-catégories: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération sous-catégories: {e}")
             return []
 
     def delete(self, sc_id: int, user_id: int) -> bool:
@@ -17273,19 +16394,16 @@ class SousCategoriePOS:
                     WHERE sc.id = %s AND c.utilisateur_id = %s
                 """, (sc_id, user_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur suppression sous-catégorie: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur suppression sous-catégorie: {e}")
             return False
 
-class TaxePOS:
+class TaxePOS(BaseRepository):
     """
     Gestion des taxes (TVA, etc.) basée sur des TYPES de taxes et des taux historiques.
     Un article est lié à un TYPE de taxe (ex: "TVA Alimentaire").
     Le taux appliqué dépend dynamiquement de la date de la transaction (ticket).
     """
-    def __init__(self, db):
-        self.db = db
-
     def create_type(self, user_id: int, magasin_id: int, nom: str, est_actif: bool = True) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
@@ -17294,8 +16412,8 @@ class TaxePOS:
                     VALUES (%s, %s, %s, %s)
                 """, (user_id, magasin_id, nom, est_actif))
                 return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur création type de taxe: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur création type de taxe: {e}")
             return None
 
     def add_taux_historique(self, type_taxe_id: int, taux: float, date_debut: date, date_fin: date = None) -> bool:
@@ -17310,14 +16428,13 @@ class TaxePOS:
                     UPDATE pos_taux_taxes 
                     SET date_fin = %s 
                     WHERE type_taxe_id = %s AND date_fin IS NULL AND date_debut < %s
-                """, (date_debut, type_taxe_id, date_debut))
-                
+                """, (date_debut, type_taxe_id, date_debut)) 
                 cursor.execute("""
                     INSERT INTO pos_taux_taxes (type_taxe_id, taux, date_debut, date_fin)
                     VALUES (%s, %s, %s, %s)
                 """, (type_taxe_id, taux, date_debut, date_fin))
                 return True
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur ajout taux historique: {e}")
             return False
 
@@ -17335,8 +16452,8 @@ class TaxePOS:
                     LIMIT 1
                 """, (type_taxe_id, target_date, target_date))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur récupération taux pour date: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération taux pour date: {e}")
             return None
 
     def assigner_type_to_article(self, article_id: int, type_taxe_id: int) -> bool:
@@ -17359,14 +16476,11 @@ class TaxePOS:
                     LIMIT 1
                 """, (article_id,))
                 actuelle = cursor.fetchone()
-
                 # Récupération de la valeur selon le type de curseur (Tuple ou Dict)
                 current_tax_id = actuelle['type_taxe_id'] if isinstance(actuelle, dict) else (actuelle[0] if actuelle else None)
-
                 # Si le type de taxe n'a pas changé, on ne crée pas d'entrée inutile
                 if current_tax_id == type_taxe_id:
                     return True
-
                 # 2. Clôturer l'affectation précédente
                 cursor.execute("""
                     UPDATE pos_article_taxes 
@@ -17374,17 +16488,14 @@ class TaxePOS:
                         date_fin = CURRENT_TIMESTAMP 
                     WHERE article_id = %s AND est_actuelle = TRUE
                 """, (article_id,))
-
                 # 3. Ouvrir la nouvelle période de validité
                 cursor.execute("""
                     INSERT INTO pos_article_taxes (article_id, type_taxe_id, est_actuelle, date_debut)
                     VALUES (%s, %s, TRUE, CURRENT_TIMESTAMP)
                 """, (article_id, type_taxe_id))
-
                 return True
-
-        except Exception as e:
-            logger.error(f"Erreur assignation type taxe à article {article_id}: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur assignation type taxe à article {article_id}: {e}", exc_info=True)
             return False
 
     def get_type_for_article(self, article_id: int) -> Optional[Dict]:
@@ -17399,8 +16510,8 @@ class TaxePOS:
                     LIMIT 1
                 """, (article_id,))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur récupération type taxe pour article {article_id}: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération type taxe pour article {article_id}: {e}", exc_info=True)
             return None
 
     def get_taux_pour_date_ticket(self, article_id: int, date_ticket: date) -> Optional[Dict]:
@@ -17440,8 +16551,8 @@ class TaxePOS:
                 query += " ORDER BY nom"
                 cursor.execute(query, params)
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération types de taxes: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération types de taxes: {e}", exc_info=True)
             return []
 
     def get_historique_taux(self, type_taxe_id: int) -> List[Dict]:
@@ -17455,8 +16566,8 @@ class TaxePOS:
                     ORDER BY date_debut DESC
                 """, (type_taxe_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération historique taux: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération historique taux: {e}")
             return []
 
     def get_by_id(self, type_taxe_id: int, user_id: int) -> Optional[Dict]:
@@ -17468,8 +16579,8 @@ class TaxePOS:
                     WHERE id = %s AND utilisateur_id = %s
                 """, (type_taxe_id, user_id))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur get_by_id type taxe: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_by_id type taxe: {e}")
             return None
 
     def update_type(self, type_taxe_id: int, user_id: int, data: Dict) -> bool:
@@ -17487,8 +16598,8 @@ class TaxePOS:
                     user_id
                 ))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur update_type: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur update_type: {e}")
             return False
 
     def delete_type(self, type_taxe_id: int, user_id: int) -> bool:
@@ -17502,8 +16613,8 @@ class TaxePOS:
                     WHERE id = %s AND utilisateur_id = %s
                 """, (type_taxe_id, user_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur delete_type: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur delete_type: {e}")
             return False
 
     def desactiver_taxes_article(self, article_id: int) -> bool:
@@ -17517,16 +16628,12 @@ class TaxePOS:
                     WHERE article_id = %s AND est_actuelle = TRUE
                 """, (article_id,))
                 return True
-        except Exception as e:
-            logger.error(f"Erreur désactivation taxes article {article_id}: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur désactivation taxes article {article_id}: {e}", exc_info=True)
             return False
                       
-class ModePaiementPOS:
+class ModePaiementPOS(BaseRepository):
     """Modes de paiement (Espèces, Carte, Twint, etc.)"""
-    def __init__(self, db):
-        self.db = db
-
-
     def create(self, user_id: int, magasin_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
@@ -17541,7 +16648,7 @@ class ModePaiementPOS:
                     data.get('compte_tresorerie_id')
                 ))
                 return cursor.lastrowid
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur création mode paiement: {e}")
             return None
 
@@ -17551,16 +16658,12 @@ class ModePaiementPOS:
                 # Construction du WHERE
                 where_conditions = ["pmp.utilisateur_id = %s"]
                 params = [user_id]
-
                 if magasin_id is not None:
                     where_conditions.append("pmp.magasin_id = %s")
                     params.append(magasin_id)
-                
                 if actif_only:
                     where_conditions.append("pmp.est_actif = TRUE")
-                
                 where_clause = " WHERE " + " AND ".join(where_conditions)
-                
                 # Assemblage dans l'ordre SQL valide: FROM -> WHERE -> ORDER BY -> LIMIT
                 query = f"""SELECT 
                     pmp.*,
@@ -17573,10 +16676,9 @@ class ModePaiementPOS:
                 {where_clause}
                 ORDER BY pmp.nom ASC
                 LIMIT 25 OFFSET 0"""
-                
                 cursor.execute(query, params)
                 return cursor.fetchall()
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur récupération modes paiement: {e}")
             return []
 
@@ -17608,19 +16710,15 @@ class ModePaiementPOS:
                 WHERE m.utilisateur_id = %s
                 """
                 params = [user_id]
-                
                 if magasin_id is not None:
                     query += " AND m.magasin_id = %s"
                     params.append(magasin_id)
-                
                 if actif_only:
                     query += " AND m.est_actif = TRUE"
-                
                 query += " ORDER BY m.nom"
-                
                 cursor.execute(query, params)
                 return cursor.fetchall()
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur récupération modes paiement avec comptes: {e}")
             return []
         
@@ -17637,7 +16735,7 @@ class ModePaiementPOS:
                     data.get('est_actif', True), data.get('compte_bancaire_id'), data.get('compte_tresorerie_id'), mode_id, user_id))
                 # ✅ Succès même si rowcount = 0 (données déjà à jour)
                 return True
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur mise à jour mode paiement: {e}")
             return False
 
@@ -17649,7 +16747,7 @@ class ModePaiementPOS:
                     WHERE id = %s AND utilisateur_id = %s
                 """, (mode_id, user_id))
                 return cursor.rowcount > 0
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur suppression mode paiement: {e}")
             return False
 
@@ -17660,7 +16758,8 @@ class ModePaiementPOS:
                     SELECT * FROM pos_modes_paiement WHERE id = %s AND utilisateur_id = %s
                 """, (mode_id, user_id))
                 return cursor.fetchone()
-        except:
+        except MySQLError as e:
+            logger.exception(f"Erreur de récupération {id} : {e}")
             return None
 
     def update_compta_settings(self, mode_id: int, user_id: int,
@@ -17679,7 +16778,6 @@ class ModePaiementPOS:
                     )
                     if not cursor.fetchone():
                         return False, "Le compte de trésorerie sélectionné n'existe plus ou a été désactivé. Merci de recharger la page."
-
                 if compte_frais_service_id:
                     cursor.execute(
                         "SELECT 1 FROM categories_comptables WHERE id = %s AND actif = TRUE",
@@ -17687,7 +16785,6 @@ class ModePaiementPOS:
                     )
                     if not cursor.fetchone():
                         return False, "Le compte de frais sélectionné n'existe plus ou a été désactivé. Merci de recharger la page."
-
                 cursor.execute("""
                     UPDATE pos_modes_paiement 
                     SET compte_bancaire_id = %s,
@@ -17701,7 +16798,7 @@ class ModePaiementPOS:
                     float(frais_pourcentage), float(frais_fixe), mode_id, user_id
                 ))
                 return True, "Mise à jour effectuée avec succès"
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur mise à jour champs comptables mode paiement {mode_id}: {e}")
             return False, "Erreur lors de la mise à jour des paramètres comptables"
 
@@ -17721,7 +16818,7 @@ class ModePaiementPOS:
                     WHERE id = %s AND utilisateur_id = %s
                 """, (mode_id, user_id))
                 return cursor.fetchone()
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur récupération params comptables mode paiement {mode_id}: {e}")
             return None
 
@@ -17731,7 +16828,6 @@ class ModePaiementPOS:
         - Si le mode a un compte_tresorerie_id configuré → l'utiliser
         - Sinon, si mode = espèces ET pdv_id fourni → utiliser le compte du PDV
         - Sinon → None
-        
         Cela permet aux espèces d'utiliser le compte du PDV sans configuration globale.
         """
         try:
@@ -17743,14 +16839,11 @@ class ModePaiementPOS:
                     WHERE id = %s
                 """, (mode_paiement_id,))
                 mode = cursor.fetchone()
-                
                 if not mode:
                     return None
-                
                 # 2. Si le mode a un compte configuré, l'utiliser (Twint, Carte, etc.)
                 if mode['compte_tresorerie_id']:
                     return mode['compte_tresorerie_id']
-                
                 # 3. Sinon, si c'est des espèces et qu'on a un PDV, utiliser son compte
                 if pdv_id and ('espèce' in mode['nom'].lower() or 'cash' in mode['nom'].lower()):
                     cursor.execute("""
@@ -17761,18 +16854,14 @@ class ModePaiementPOS:
                     pdv = cursor.fetchone()
                     if pdv and pdv['compte_bancaire_id']:
                         return pdv['compte_bancaire_id']
-                
                 return None
                 
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur résolution compte trésorerie effectif: {e}")
             return None
 
-class RestaurantOptionPOS:
+class RestaurantOptionPOS(BaseRepository):
     """Options de restauration (Sur place, À emporter, Livré)"""
-    def __init__(self, db):
-        self.db = db
-
     def create(self, user_id: int, magasin_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
@@ -17785,9 +16874,10 @@ class RestaurantOptionPOS:
                     data.get('description', ''), data.get('est_actif', True)
                 ))
                 return cursor.lastrowid
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur création option restaurant: {e}")
             return None
+        
     def get_all(self, user_id: int, magasin_id: int = None) -> List[Dict]:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
@@ -17799,7 +16889,7 @@ class RestaurantOptionPOS:
                 query += " ORDER BY nom"
                 cursor.execute(query, params)
                 return cursor.fetchall()
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur récupération options restaurant: {e}")
             return []
 
@@ -17810,7 +16900,8 @@ class RestaurantOptionPOS:
                     SELECT * FROM pos_restaurant_options WHERE id = %s AND utilisateur_id = %s
                 """, (opt_id, user_id))
                 return cursor.fetchone()
-        except:
+        except MySQLError as e:
+            logger.exception(f"Erreur de récupératio de l'pption: {e}")
             return None
 
     def update(self, opt_id: int, user_id: int, data: Dict) -> bool:
@@ -17823,7 +16914,8 @@ class RestaurantOptionPOS:
                 """, (data['nom'], data.get('description', ''), 
                     data.get('est_actif', True), opt_id, user_id))
                 return cursor.rowcount > 0
-        except:
+        except MySQLError as e:
+            logger.exception(f"Erreur de mise à jour de l'otion : {e}")
             return False
 
     def delete(self, opt_id: int, user_id: int) -> bool:
@@ -17833,14 +16925,12 @@ class RestaurantOptionPOS:
                     DELETE FROM pos_restaurant_options WHERE id = %s AND utilisateur_id = %s
                 """, (opt_id, user_id))
                 return cursor.rowcount > 0
-        except:
+        except MySQLError as e:
+            logger.exception(f"Erreur de suppression de l'option : {e}")
             return False
 
-class DiscountPOS:
+class DiscountPOS(BaseRepository):
     """Gestion des réductions (pourcentages ou montants fixes)"""
-    def __init__(self, db):
-        self.db = db
-
     def create(self, user_id: int, magasin_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
@@ -17855,7 +16945,7 @@ class DiscountPOS:
                     data.get('acces_restreint', False)
                 ))
                 return cursor.lastrowid
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur création discount POS: {e}")
             return None
 
@@ -17872,7 +16962,7 @@ class DiscountPOS:
                 query += " ORDER BY nom"
                 cursor.execute(query, params)
                 return cursor.fetchall()
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur récupération discounts: {e}")
             return []
 
@@ -17889,7 +16979,7 @@ class DiscountPOS:
                     return (montant_brut * Decimal(str(discount['valeur'])) / Decimal('100')).quantize(Decimal('0.01'))
                 else:
                     return Decimal(str(discount['valeur']))
-        except Exception as e:
+        except MySQLError as e:
             logger.error(f"Erreur calcul réduction: {e}")
             return Decimal('0')
 
@@ -17900,7 +16990,8 @@ class DiscountPOS:
                     SELECT * FROM pos_discounts WHERE id = %s AND utilisateur_id = %s
                 """, (disc_id, user_id))
                 return cursor.fetchone()
-        except:
+        except MySQLError as e:
+            logger.exception(f"Errue de récupération du discount {id} : {e}")
             return None
 
     def update(self, disc_id: int, user_id: int, data: Dict) -> bool:
@@ -17915,7 +17006,8 @@ class DiscountPOS:
                     data.get('valeur'), data.get('est_actif', True),
                     data.get('acces_restreint', False), disc_id, user_id))
                 return cursor.rowcount > 0
-        except:
+        except MySQLError as e: 
+            logger.exception(f"Erreur de mise à jour du discount {disc_id} : {e}")
             return False
 
     def delete(self, disc_id: int, user_id: int) -> bool:
@@ -17925,16 +17017,18 @@ class DiscountPOS:
                     DELETE FROM pos_discounts WHERE id = %s AND utilisateur_id = %s
                 """, (disc_id, user_id))
                 return cursor.rowcount > 0
-        except:
+        except MySQLError as e:
+            logger.exception(f"Erreur de suppression du discount {disc_id} : {e}")
             return False
 
-class ArticlePOS:
+class ArticlePOS(BaseRepository):
     """
     Gestion des articles vendus.
     Lien : Peut avoir des variantes, taxes, modificateurs.
     """
+    __slots__ = ["variante_model", "taxe_model"]
     def __init__(self, db):
-        self.db = db
+        super().__init__(db)
         self.variante_model = VariantePOS(db)
         self.taxe_model = TaxePOS(db)
 
@@ -17957,8 +17051,8 @@ class ArticlePOS:
                     data.get('variante', False), data.get('code_barre', '')
                 ))
                 return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur création article POS: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur création article POS: {e}")
             return None
 
     def update(self, article_id: int, user_id: int, data: Dict) -> bool:
@@ -17988,8 +17082,8 @@ class ArticlePOS:
                     user_id
                 ))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur mise à jour article: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur mise à jour article: {e}")
             return False
 
     def get_all(self, user_id: int, magasin_id: int = None, categorie_id: int = None) -> List[Dict]:
@@ -18013,8 +17107,8 @@ class ArticlePOS:
                 query += " ORDER BY a.nom_article"
                 cursor.execute(query, params)
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération articles POS: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération articles POS: {e}")
             return []
 
     def get_by_id(self, article_id: int) -> Optional[Dict]:
@@ -18028,8 +17122,8 @@ class ArticlePOS:
                     WHERE a.id = %s
                 """, (article_id,))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur récupération article {article_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération article {article_id}: {e}")
             return None
 
     def get_with_details(self, article_id: int) -> Optional[Dict]:
@@ -18037,18 +17131,13 @@ class ArticlePOS:
         article = self.get_by_id(article_id)
         if not article:
             return None
-        
         article['variantes'] = self.variante_model.get_by_article(article_id)
-        
         # ✅ NOUVEAU : On récupère le TYPE de taxe (ex: "TVA Alimentaire")
         article['type_taxe'] = self.taxe_model.get_type_for_article(article_id)
-        
         # 💡 OPTIONNEL (pour l'affichage UI) : Si vous voulez montrer le taux actuel à l'utilisateur
         if article['type_taxe']:
-            from datetime import date
             taux_info = self.taxe_model.get_taux_for_date(article['type_taxe']['id'], date.today())
             article['type_taxe']['taux_actuel_affichage'] = taux_info['taux'] if taux_info else 0.00
-            
         article['modificateurs'] = self._get_modificateurs(article_id)
         return article
 
@@ -18062,11 +17151,9 @@ class ArticlePOS:
                     WHERE am.article_id = %s
                 """, (article_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération modificateurs: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération modificateurs: {e}")
             return []
-
-  
 
     def update_stock(self, article_id: int, quantite: int) -> bool:
         """Met à jour le stock (peut être positif ou négatif)"""
@@ -18078,8 +17165,8 @@ class ArticlePOS:
                     WHERE id = %s
                 """, (quantite, article_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur mise à jour stock: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur mise à jour stock: {e}")
             return False
 
     def delete(self, article_id: int, user_id: int) -> bool:
@@ -18096,8 +17183,8 @@ class ArticlePOS:
                     WHERE id = %s AND utilisateur_id = %s
                 """, (article_id, user_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur suppression article: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur suppression article: {e}")
             return False
 
     def get_linked_modifiers(self, article_id: int) -> List[Dict]:
@@ -18113,14 +17200,12 @@ class ArticlePOS:
                         VALUES (%s, %s)
                     """, (article_id, mod_id))
                 return True
-        except:
+        except MySQLError as e:
+            logger.exception(f"Errer de liaison entre l'article et le modifier : {e}")
             return False
 
-class VariantePOS:
+class VariantePOS(BaseRepository):
     """Variantes d'un article (tailles, couleurs, etc.)"""
-    def __init__(self, db):
-        self.db = db
-
     def create(self, user_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
@@ -18137,8 +17222,8 @@ class VariantePOS:
                 """, (data['article_id'], data['nom'], data.get('option_name', ''),
                       data.get('prix', 0), data.get('is_active', True)))
                 return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur création variante: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur création variante: {e}")
             return None
     def get_by_article(self, article_id: int) -> List[Dict]:
         try:
@@ -18149,8 +17234,8 @@ class VariantePOS:
                     ORDER BY nom
                 """, (article_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération variantes: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération variantes: {e}")
             return []
 
     def get_by_code_barre(self, code_barre: str) -> Optional[Dict]:
@@ -18163,8 +17248,8 @@ class VariantePOS:
                     WHERE v.code_barre = %s AND v.is_active = TRUE
                 """, (code_barre,))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur récupération variante par code barre: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération variante par code barre: {e}")
             return None
 
     def delete(self, variante_id: int, user_id: int) -> bool:
@@ -18176,14 +17261,12 @@ class VariantePOS:
                     WHERE v.id = %s AND a.utilisateur_id = %s
                 """, (variante_id, user_id))
                 return cursor.rowcount > 0
-        except:
+        except MySQLError as e:
+            logger.exception(f"Erreur de suppresion de la variante : {e}")
             return False
 
-class ModificateurPOS:
+class ModificateurPOS(BaseRepository):
     """Modificateurs (suppléments : sans oignons, extra fromage, etc.)"""
-    def __init__(self, db):
-        self.db = db
-
     def create(self, user_id: int, magasin_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
@@ -18200,8 +17283,8 @@ class ModificateurPOS:
                     data.get('taux_tva', 0.00)
                 ))
                 return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur création modificateur: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur création modificateur: {e}")
             return None
 
     def get_all(self, user_id: int, magasin_id: int = None) -> List[Dict]:
@@ -18215,8 +17298,8 @@ class ModificateurPOS:
                 query += " ORDER BY nom_modificateur"
                 cursor.execute(query, params)
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération modificateurs: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération modificateurs: {e}")
             return []
 
     def get_by_id(self, mod_id: int, user_id: int) -> Optional[Dict]:
@@ -18226,7 +17309,8 @@ class ModificateurPOS:
                     SELECT * FROM pos_modificateurs WHERE id = %s AND utilisateur_id = %s
                 """, (mod_id, user_id))
                 return cursor.fetchone()
-        except:
+        except MySQLError as e:
+            logger.exception(f"Erreur de la récupération du modificateur : {e}")
             return None
 
     def update(self, mod_id: int, user_id: int, data: Dict) -> bool:
@@ -18245,7 +17329,8 @@ class ModificateurPOS:
                     user_id
                 ))
                 return cursor.rowcount > 0
-        except:
+        except MySQLError as e:
+            logger.exception(f"Erreur de la mise à jour du modificateur : {e}")
             return False
 
     def delete(self, mod_id: int, user_id: int) -> bool:
@@ -18256,14 +17341,12 @@ class ModificateurPOS:
                     DELETE FROM pos_modificateurs WHERE id = %s AND utilisateur_id = %s
                 """, (mod_id, user_id))
                 return cursor.rowcount > 0
-        except:
+        except MySQLError as e:
+            logger.exception(f"Erreur de la suppression du modificateur : {e}")
             return False
               
-class OptionModificateurPOS:
+class OptionModificateurPOS(BaseRepository):
     """Options de modificateurs"""
-    def __init__(self, db):
-        self.db = db
-
     def create(self, user_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
@@ -18283,8 +17366,8 @@ class OptionModificateurPOS:
                     data.get('type_option', 'redistribution'),
                 ))
                 return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur création option modificateur: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur création option modificateur: {e}")
             return None
 
     def update(self, option_id: int, user_id: int, data: Dict) -> bool:
@@ -18308,8 +17391,8 @@ class OptionModificateurPOS:
                     user_id
                 ))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur update option: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur update option: {e}")
             return False
 
     def get_by_modifier(self, modificateur_id: int) -> List[Dict]:
@@ -18321,8 +17404,8 @@ class OptionModificateurPOS:
                     ORDER BY nom_option
                 """, (modificateur_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération options: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération options: {e}")
             return []
 
     def get_by_id(self, option_id: int, user_id: int) -> Optional[Dict]:
@@ -18333,11 +17416,9 @@ class OptionModificateurPOS:
                     WHERE id = %s AND utilisateur_id = %s
                 """, (option_id, user_id))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur get option: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get option: {e}")
             return None
-
-
 
     def delete(self, option_id: int, user_id: int) -> bool:
         try:
@@ -18347,8 +17428,8 @@ class OptionModificateurPOS:
                     WHERE id = %s AND utilisateur_id = %s
                 """, (option_id, user_id))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur delete option: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur delete option: {e}")
             return False
 
     def delete_by_modifier(self, modificateur_id: int, user_id: int) -> bool:
@@ -18359,18 +17440,15 @@ class OptionModificateurPOS:
                     WHERE id_modificateur = %s AND utilisateur_id = %s
                 """, (modificateur_id, user_id))
                 return True
-        except Exception as e:
-            logger.error(f"Erreur delete by modifier: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur delete by modifier: {e}")
             return False
         
-class ClientPOS:
+class ClientPOS(BaseRepository):
     """
     Gestion des clients de la caisse.
     Lien : Statistiques calculées à partir des receipts.
     """
-    def __init__(self, db):
-        self.db = db
-
     def create(self, user_id: int, magasin_id: int, data: Dict) -> Optional[int]:
         try:
             with self.db.get_cursor() as cursor:
@@ -18388,8 +17466,8 @@ class ClientPOS:
                     data.get('code_client'), data.get('email')
                 ))
                 return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur création client POS: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur création client POS: {e}")
             return None
 
     def update(self, user_id:int, data: Dict) -> Optional[int]:
@@ -18415,8 +17493,8 @@ class ClientPOS:
                     user_id
                 ))
                 return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur mise à jour client POS: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur mise à jour client POS: {e}")
             return None
 
     def get_by_id_with_stats(self, client_id: int, user_id: int) -> Optional[Dict]:
@@ -18432,17 +17510,12 @@ class ClientPOS:
             - frequence_visite
             """
             client = self.get_by_id(client_id, user_id)
-
             if not client:
                 return None
-
             stats = self.get_client_stats(client_id, user_id)
-
             if stats:
                 client.update(stats)
-
             self._prepare_client_for_template(client)
-
             return client
     
     def get_client_stats(self, client_id: int, user_id: int) -> Optional[Dict]:
@@ -18460,52 +17533,40 @@ class ClientPOS:
                                 ELSE 0 
                             END
                         ), 0) AS total_depense,
-
                         COALESCE(SUM(
                             CASE 
                                 WHEN r.receipt_type = 'Vente' THEN 1 
                                 ELSE 0 
                             END
                         ), 0) AS nombre_visites,
-
                         MIN(
                             CASE 
                                 WHEN r.receipt_type = 'Vente' THEN r.date 
                             END
                         ) AS premeire_visite,
-
                         MAX(
                             CASE 
                                 WHEN r.receipt_type = 'Vente' THEN r.date 
                             END
                         ) AS derniere_visite
-
                     FROM pos_clients c
                     LEFT JOIN pos_receipts r ON r.id_client = c.id
                     WHERE c.id = %s
                       AND c.utilisateur_id = %s
                     GROUP BY c.id
                 """, (client_id, user_id))
-
                 row = cursor.fetchone()
-
             if not row:
                 return {}
-
             total_depense = float(row.get('total_depense') or 0)
             nombre_visites = int(row.get('nombre_visites') or 0)
-
             premeire_visite = row.get('premiere_visite')
             derniere_visite = row.get('derniere_visite')
-
             duree_jours = self._duree_en_jours(premiere_visite, derniere_visite)
-
             # Nombre de mois approximatif, minimum 1 mois pour éviter division par zéro
             months = max(duree_jours / 30.44, 1.0) if premeire_visite else 1.0
-
             frequence_visite = round(nombre_visites / months, 1) if nombre_visites > 0 else 0.0
             panier_moyen = round(total_depense / nombre_visites, 2) if nombre_visites > 0 else 0.0
-
             row.update({
                 'total_depense': total_depense,
                 'nombre_visites': nombre_visites,
@@ -18513,14 +17574,74 @@ class ClientPOS:
                 'duree_fidelite': duree_jours,
                 'frequence_visite': frequence_visite,
             })
-
             row['segment_client'] = self._calculer_segment(row)
-
             return row
-
-        except Exception as e:
-            logger.error(f"Erreur calcul statistiques client POS: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur calcul statistiques client POS: {e}")
             return {}
+
+    def _prepare_client_for_template(self, client: Dict) -> None:
+        """
+        Enrichit le dict client avec les champs d'affichage dérivés pour le template.
+        Ne retourne rien : modifie le dict en place.
+
+        Champs attendus en entrée (déjà présents) :
+        - nom_client, nom, prenom
+        - nombre_visites, total_depense, panier_moyen
+        - duree_fidelite, frequence_visite
+        - segment_client
+        - premiere_visite, derniere_visite (date, datetime ou str)
+        """
+        if not client:
+            return
+
+        # --- 1. Nom affiché avec fallback ---
+        nom = (client.get('nom_client') or '').strip()
+        client['nom_affiche'] = nom or 'Client anonyme'
+
+        # --- 2. Formatage des dates en chaînes lisibles ---
+        for champ in ('premiere_visite', 'derniere_visite'):
+            valeur = client.get(champ)
+            if isinstance(valeur, datetime):
+                client[f'{champ}_str'] = valeur.strftime('%d.%m.%Y')
+            elif isinstance(valeur, date):
+                client[f'{champ}_str'] = valeur.strftime('%d.%m.%Y')
+            elif isinstance(valeur, str) and valeur.strip():
+                client[f'{champ}_str'] = valeur
+            else:
+                client[f'{champ}_str'] = '—'
+
+        # --- 3. Ancienneté de la dernière visite (jours) ---
+        derniere = client.get('derniere_visite')
+        if isinstance(derniere, datetime):
+            derniere = derniere.date()
+        if isinstance(derniere, date):
+            client['jours_depuis_derniere_visite'] = (date.today() - derniere).days
+        else:
+            client['jours_depuis_derniere_visite'] = None
+
+        # --- 4. Style visuel par segment ---
+        SEGMENT_STYLE = {
+            'Inactif':     {'couleur': '#6c757d', 'icone': 'user-slash'},
+            'Nouveau':     {'couleur': '#17a2b8', 'icone': 'user-plus'},
+            'Occasionnel': {'couleur': '#ffc107', 'icone': 'user-clock'},
+            'Régulier':    {'couleur': '#28a745', 'icone': 'user-check'},
+            'Fidèle':      {'couleur': '#007bff', 'icone': 'user-friends'},
+            'VIP':         {'couleur': '#6f42c1', 'icone': 'crown'},
+        }
+        segment = client.get('segment_client') or 'Inactif'
+        style = SEGMENT_STYLE.get(segment, SEGMENT_STYLE['Inactif'])
+        client['segment_couleur'] = style['couleur']
+        client['segment_icone'] = style['icone']
+
+        # --- 5. Barre de progression du panier moyen (échelle 0-100 CHF) ---
+        panier = float(client.get('panier_moyen') or 0)
+        client['panier_bar_pct'] = min(100, int(round(panier)))
+
+        # --- 6. CA formaté avec séparateur de milliers ---
+        total = float(client.get('total_depense') or 0)
+        client['total_depense_str'] = f"{total:,.2f}".replace(',', "'")
+
 
     def get_all(self, user_id: int, magasin_id: int = None, limit: int = 100) -> List[Dict]:
         try:
@@ -18547,8 +17668,8 @@ class ClientPOS:
                     )
                     client['segment'] = self._calculer_segment(client)
                 return clients
-        except Exception as e:
-            logger.error(f"Erreur récupération clients POS: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération clients POS: {e}")
             return []
 
     def _calculer_segment(self, client: Dict) -> str:
@@ -18572,8 +17693,8 @@ class ClientPOS:
                     WHERE id = %s AND utilisateur_id = %s
                 """, (client_id, user_id))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur récupération client: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération client: {e}")
             return None
 
     def search(self, user_id: int, query: str, magasin_id: int = None, limit: int = 20) -> List[Dict]:
@@ -18584,22 +17705,19 @@ class ClientPOS:
                     WHERE utilisateur_id = %s
                 """
                 params = [user_id]
-                
                 if magasin_id:
                     sql += " AND magasin_id = %s"
                     params.append(magasin_id)
-                
                 sql += """
                     AND (nom_client LIKE %s OR telephone LIKE %s OR email LIKE %s)
                     ORDER BY nom_client
                     LIMIT %s
                 """
                 params.extend([f"%{query}%", f"%{query}%", f"%{query}%", limit])
-                
                 cursor.execute(sql, params)
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur recherche client: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur recherche client: {e}")
             return []
 
     def get_or_create(self, user_id: int, magasin_id: int, nom_client: str, numero_client: str = '') -> Optional[int]:
@@ -18614,17 +17732,16 @@ class ClientPOS:
                 existing = cursor.fetchone()
                 if existing:
                     return existing['id']
-                
                 cursor.execute("""
                     INSERT INTO pos_clients (utilisateur_id, magasin_id, nom_client, numero_client)
                     VALUES (%s, %s, %s, %s)
                 """, (user_id, magasin_id, nom_client.strip(), numero_client or ''))
                 return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur get_or_create client: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_or_create client: {e}")
             return None
 
-class ReceiptPOS:
+class ReceiptPOS(BaseRepository):
     """
     ⭐ CLASSE CLÉ : Gestion des tickets de caisse.
 
@@ -18642,8 +17759,9 @@ class ReceiptPOS:
     5. 🔗 Mise à jour du solde du compte bancaire
     6. Décrémentation du stock des articles
     """
+    __slots__ = ["transaction_model", "article_model", "pdv_model"]
     def __init__(self, db):
-        self.db = db
+        super().__init__(db)
         self.transaction_model = TransactionFinanciere(db)
         self.article_model = ArticlePOS(db)
         self.pdv_model = PointDeVentePOS(db)
@@ -18672,8 +17790,8 @@ class ReceiptPOS:
                     receipt['items'] = self._get_items(cursor, receipt_id)
                     receipt['payments'] = self._get_payments(cursor, receipt_id)
                 return receipt
-        except Exception as e:
-            logger.error(f"Erreur récupération receipt {receipt_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération receipt {receipt_id}: {e}")
             return None
 
     def _get_items(self, cursor, receipt_id: int) -> List[Dict]:
@@ -18701,7 +17819,6 @@ class ReceiptPOS:
                 employee: str = None, pdv: str = None, limit: int = 100, offset: int = 0) -> List[Dict]:
         """
         Récupère tous les reçus avec filtres avancés côté SQL.
-
         Paramètres:
         - magasin_id: filtre par magasin
         - search: recherche sur numéro, client, description, caissier
@@ -18720,23 +17837,19 @@ class ReceiptPOS:
                     LEFT JOIN pos_discounts d ON r.discount_id = d.id
                 """
                 params = []
-
                 if payment:
                     query += """
                         JOIN pos_payments pp ON r.id = pp.receipt_id
                         JOIN pos_modes_paiement mp ON pp.mode_paiement_id = mp.id
                     """
-
                 query += " WHERE r.utilisateur_id = %s"
                 params.append(user_id)
-
                 if magasin_id:
                     query += " AND r.magasin_id = %s"
                     params.append(magasin_id)
                 if pdv:
                     query += " AND r.pdv = %s"
                     params.append(pdv)
-
                 if search:
                     query += """
                         AND (
@@ -18748,29 +17861,24 @@ class ReceiptPOS:
                     """
                     search_param = f"%{search.lower()}%"
                     params.extend([search_param] * 4)
-
                 if employee:
                     query += " AND r.nom_du_caissier = %s"
                     params.append(employee)
-
                 if date_from:
                     query += " AND DATE(r.date) >= %s"
                     params.append(date_from)
                 if date_to:
                     query += " AND DATE(r.date) <= %s"
                     params.append(date_to)
-
                 if payment:
                     query += " AND LOWER(mp.nom) LIKE %s"
                     params.append(f"%{payment.lower()}%")
-
                 query += " ORDER BY r.date DESC LIMIT %s OFFSET %s"
                 params.extend([limit, offset])
-
                 cursor.execute(query, params)
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur récupération receipts: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération receipts: {e}")
             return []
 
     def count_all(self, user_id: int, magasin_id: int = None, search: str = None, 
@@ -18784,20 +17892,16 @@ class ReceiptPOS:
                     FROM pos_receipts r
                 """
                 params = []
-
                 if payment:
                     query += """
                         JOIN pos_payments pp ON r.id = pp.receipt_id
                         JOIN pos_modes_paiement mp ON pp.mode_paiement_id = mp.id
                     """
-
                 query += " WHERE r.utilisateur_id = %s"
                 params.append(user_id)
-
                 if magasin_id:
                     query += " AND r.magasin_id = %s"
                     params.append(magasin_id)
-
                 if search:
                     query += """
                         AND (
@@ -18809,27 +17913,23 @@ class ReceiptPOS:
                     """
                     search_param = f"%{search.lower()}%"
                     params.extend([search_param] * 4)
-
                 if employee:
                     query += " AND r.nom_du_caissier = %s"
                     params.append(employee)
-
                 if date_from:
                     query += " AND DATE(r.date) >= %s"
                     params.append(date_from)
                 if date_to:
                     query += " AND DATE(r.date) <= %s"
                     params.append(date_to)
-
                 if payment:
                     query += " AND LOWER(mp.nom) LIKE %s"
                     params.append(f"%{payment.lower()}%")
-
                 cursor.execute(query, params)
                 result = cursor.fetchone()
                 return result['total'] if result else 0
-        except Exception as e:
-            logger.error(f"Erreur comptage receipts: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur comptage receipts: {e}")
             return 0
 
     def get_payment_methods(self, receipt_id: int) -> List[str]:
@@ -18845,8 +17945,8 @@ class ReceiptPOS:
                 """, (receipt_id,))
                 results = cursor.fetchall()
                 return [r['nom'] for r in results]
-        except Exception as e:
-            logger.error(f"Erreur récupération modes paiement receipt {receipt_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération modes paiement receipt {receipt_id}: {e}")
             return []
 
     def get_filtered_stats(self, user_id: int, magasin_id: int = None, search: str = None, 
@@ -18864,20 +17964,16 @@ class ReceiptPOS:
                     FROM pos_receipts r
                 """
                 params = []
-
                 if payment:
                     query += """
                         JOIN pos_payments pp ON r.id = pp.receipt_id
                         JOIN pos_modes_paiement mp ON pp.mode_paiement_id = mp.id
                     """
-
                 query += " WHERE r.utilisateur_id = %s"
                 params.append(user_id)
-
                 if magasin_id:
                     query += " AND r.magasin_id = %s"
                     params.append(magasin_id)
-
                 if search:
                     query += """
                         AND (
@@ -18889,33 +17985,28 @@ class ReceiptPOS:
                     """
                     search_param = f"%{search.lower()}%"
                     params.extend([search_param] * 4)
-
                 if employee:
                     query += " AND r.nom_du_caissier = %s"
                     params.append(employee)
-
                 if date_from:
                     query += " AND DATE(r.date) >= %s"
                     params.append(date_from)
                 if date_to:
                     query += " AND DATE(r.date) <= %s"
                     params.append(date_to)
-
                 if payment:
                     query += " AND LOWER(mp.nom) LIKE %s"
                     params.append(f"%{payment.lower()}%")
-
                 cursor.execute(query, params)
                 result = cursor.fetchone()
-
                 return {
                     'total_receipts': result['total_receipts'] or 0,
                     'sales_count': result['sales_count'] or 0,
                     'refunds_count': result['refunds_count'] or 0,
                     'total_revenue': float(result['total_revenue'] or 0)
                 }
-        except Exception as e:
-            logger.error(f"Erreur stats filtrées: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur stats filtrées: {e}")
             return {
                 'total_receipts': 0,
                 'sales_count': 0,
@@ -18940,8 +18031,8 @@ class ReceiptPOS:
                 cursor.execute(query, params)
                 results = cursor.fetchall()
                 return [r['nom_du_caissier'] for r in results]
-        except Exception as e:
-            logger.error(f"Erreur récupération employés: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération employés: {e}")
             return []
 
     def get_by_numero(self, numero: str, user_id: int) -> Optional[Dict]:
@@ -18951,7 +18042,8 @@ class ReceiptPOS:
                     SELECT * FROM pos_receipts WHERE recu_numero = %s AND utilisateur_id = %s
                 """, (numero, user_id))
                 return cursor.fetchone()
-        except Exception:
+        except MySQLError as e:
+            logger.exception(f"Erreur de récupération par numero {numero}: {e}")
             return None
 
     def get_by_client(self, client_id: int, magasin_id: int = None, limit: int = 20) -> List[Dict]:
@@ -18966,7 +18058,8 @@ class ReceiptPOS:
                 params.append(limit)
                 cursor.execute(query, params)
                 return cursor.fetchall()
-        except Exception:
+        except MySQLError as e:
+            logger.exception(f"Erreur de récupération par client {client_id}: {e}")
             return []
 
     def get_top_articles_client(self, client_id: int, limit: int = 10) -> List[Dict]:
@@ -18982,7 +18075,8 @@ class ReceiptPOS:
                     ORDER BY total_qte DESC LIMIT %s
                 """, (client_id, limit))
                 return cursor.fetchall()
-        except Exception:
+        except MySQLError as e:
+            logger.exception(f"Erreur de récupération des top articles par client {client_id}: {e}")
             return []
 
     def get_receipt_open(self, user_id: int, magasin_id: int = None) -> Optional[Dict]:
@@ -19001,8 +18095,8 @@ class ReceiptPOS:
                     params.append(magasin_id)
                 cursor.execute(query, params)
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur récupération receipt ouvert {user_id}: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération receipt ouvert {user_id}: {e}")
             return None
 
     def receipt_exists(self, receipt_id: int, user_id: int) -> bool:
@@ -19013,8 +18107,8 @@ class ReceiptPOS:
                     (receipt_id, user_id)
                 )
                 return cursor.fetchone() is not None
-        except Exception as e:
-            logger.error(f"Erreur receipt_exists: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur receipt_exists: {e}")
             return False
 
     def get_client_receipts(self, client_id: int, user_id: int, magasin_id: int = None,
@@ -19037,8 +18131,8 @@ class ReceiptPOS:
                 params.append(limit)
                 cursor.execute(q, params)
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur get_client_receipts: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_client_receipts: {e}")
             return []
 
     def get_client_stats(self, client_id: int, magasin_id: int = None) -> Dict:
@@ -19059,8 +18153,8 @@ class ReceiptPOS:
                     params.append(magasin_id)
                 cursor.execute(query, params)
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur get_client_stats: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_client_stats: {e}")
             return {}
 
     # ============================================================
@@ -19071,7 +18165,6 @@ class ReceiptPOS:
         """
         ⭐ MÉTHODE PRINCIPALE : Crée une vente POS avec gestion avancée de la TVA 
         (paniers mixtes) et extraction de TVA depuis un prix TTC.
-
         Le magasin_id est résolu automatiquement depuis le PDV.
         """
         try:
@@ -19079,7 +18172,6 @@ class ReceiptPOS:
                 ventes_brutes_ht = Decimal('0')
                 cout_marchandises = Decimal('0')
                 items_data = []
-
                 # 0. RÉCUPÉRATION DU COMPTE BANCAIRE ET DU MAGASIN DEPUIS LE PDV
                 compte_bancaire_pdv = None
                 magasin_id = None
@@ -19093,30 +18185,25 @@ class ReceiptPOS:
                     if res_pdv:
                         magasin_id = res_pdv.get('magasin_id')
                         compte_bancaire_pdv = res_pdv.get('compte_bancaire_id')
-
                 # 1. TRAITEMENT DES ARTICLES ET CALCUL TVA DÉTAILLÉ
                 for item in data.get('items', []):
                     cursor.execute("SELECT * FROM pos_articles WHERE id = %s", (item['article_id'],))
                     article = cursor.fetchone()
                     if not article:
                         return False, f"Article {item['article_id']} introuvable", None
-
                     nom_article_final = str(article['nom_article'])
                     modificateurs = str(item.get('modificateurs', '')).strip()
                     qte = int(item.get('quantite', 1))
                     commentaire = item.get('commentaire', '') or ''
-
                     # Mise à jour du stock
                     cursor.execute("UPDATE pos_articles SET stock = stock - %s WHERE id = %s",
                                    (qte, item['article_id']))
                     cout_marchandises += Decimal(str(article['cout_unitaire'] or 0)) * qte
-
                     # ✅ GESTION DU TVA_BREAKDOWN (paniers mixtes)
                     if 'tva_breakdown' in item and item['tva_breakdown']:
                         for breakdown in item['tva_breakdown']:
                             montant_ttc_comp = Decimal(str(breakdown['montant_ttc'])) * qte
                             taux_taxe_comp = Decimal(str(breakdown['taux']))
-
                             if taux_taxe_comp > Decimal('0'):
                                 diviseur = Decimal('1') + (taux_taxe_comp / Decimal('100'))
                                 ligne_ht = (montant_ttc_comp / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
@@ -19124,9 +18211,7 @@ class ReceiptPOS:
                             else:
                                 ligne_ht = montant_ttc_comp.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                                 ligne_taxe = Decimal('0')
-
                             ventes_brutes_ht += ligne_ht
-
                             items_data.append({
                                 'article_id': item['article_id'],
                                 'nom_article': f"{nom_article_final} - {breakdown['description']}",
@@ -19143,20 +18228,16 @@ class ReceiptPOS:
                         # FALLBACK : un seul taux de TVA
                         prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
                         total_ligne_ttc = prix_ttc * qte
-
                         taxe = self._get_taxe_active(cursor, item['article_id'])
                         taux_taxe = Decimal('0')
                         if taxe:
                             taux_taxe = Decimal(str(taxe['taux']))
-
                         if taux_taxe > Decimal('0'):
                             diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
                             ligne_ht_brut = (total_ligne_ttc / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                         else:
                             ligne_ht_brut = total_ligne_ttc.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-
                         ventes_brutes_ht += ligne_ht_brut
-
                         items_data.append({
                             'article_id': item['article_id'],
                             'nom_article': nom_article_final,
@@ -19169,7 +18250,6 @@ class ReceiptPOS:
                             'taux_taxe': taux_taxe,
                             'commentaire': commentaire,
                         })
-
                 # 2. RÉDUCTIONS GLOBALES
                 reduction_ttc = Decimal('0')
                 if data.get('discount_id'):
@@ -19181,41 +18261,33 @@ class ReceiptPOS:
                             reduction_ttc = total_ttc_global * (Decimal(str(discount['valeur'])) / Decimal('100'))
                         else:
                             reduction_ttc = Decimal(str(discount['valeur']))
-
                 total_ttc_global = sum(i['total_ligne_ttc'] for i in items_data)
                 reduction_ratio = Decimal('0')
                 if total_ttc_global > Decimal('0'):
                     reduction_ratio = reduction_ttc / total_ttc_global
-
                 # 3. MONTANTS NETS
                 ventes_nettes_ht = Decimal('0')
                 total_taxes = Decimal('0')
                 reduction_ht_total = Decimal('0')
-
                 for item_data in items_data:
                     total_ligne_ttc = item_data['total_ligne_ttc']
                     taux_taxe = item_data['taux_taxe']
                     ligne_ttc_net = total_ligne_ttc - (total_ligne_ttc * reduction_ratio)
-
                     if taux_taxe > Decimal('0'):
                         diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
                         ligne_ht_net = (ligne_ttc_net / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                     else:
                         ligne_ht_net = ligne_ttc_net.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-
                     ligne_taxe = (ligne_ttc_net - ligne_ht_net).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                     ligne_reduction_ht = item_data['ligne_ht_brut'] - ligne_ht_net
-
                     ventes_nettes_ht += ligne_ht_net
                     total_taxes += ligne_taxe
                     reduction_ht_total += ligne_reduction_ht
-
                 # 4. TOTAUX GLOBAUX
                 tips = Decimal(str(data.get('tips', 0)))
                 total_collecte = ventes_nettes_ht + total_taxes + tips
                 marge_brute = ventes_nettes_ht - cout_marchandises
                 recu_numero = f"V-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
-
                 # 5. INSERTION DU REÇU (avec magasin_id)
                 cursor.execute("""
                     INSERT INTO pos_receipts 
@@ -19239,7 +18311,6 @@ class ReceiptPOS:
                     compte_bancaire_pdv
                 ))
                 receipt_id = cursor.lastrowid
-
                 # 6. LIGNES DU REÇU
                 for item in items_data:
                     cursor.execute("""
@@ -19255,39 +18326,31 @@ class ReceiptPOS:
                         item['commentaire'],
                         item['modificateurs']
                     ))
-
                 # 7. PAIEMENTS ET TRANSACTIONS FINANCIÈRES
                 nb_paiements = 0
                 primary_transaction_id = None
-
                 for payment in data.get('payments', []):
                     montant_pay = Decimal(str(payment.get('montant', 0)))
                     if montant_pay <= 0:
                         continue
-
                     mode_paiement_id = payment['mode_paiement_id']
-
                     cursor.execute("""
                         INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant) 
                         VALUES (%s, %s, %s)
                     """, (receipt_id, mode_paiement_id, float(montant_pay)))
                     nb_paiements += 1
-
                     compte_effectif = compte_bancaire_pdv
                     nom_mode = 'Paiement'
-
                     cursor.execute("""
                         SELECT nom, compte_bancaire_id 
                         FROM pos_modes_paiement 
                         WHERE id = %s
                     """, (mode_paiement_id,))
                     mode_info = cursor.fetchone()
-
                     if mode_info:
                         nom_mode = mode_info['nom']
                         if mode_info['compte_bancaire_id']:
                             compte_effectif = mode_info['compte_bancaire_id']
-
                     if compte_effectif:
                         success, msg, trans_id = self.transaction_model._inserer_transaction_with_cursor(
                             cursor=cursor,
@@ -19301,10 +18364,8 @@ class ReceiptPOS:
                             validate_balance=False,
                             receipt_id=receipt_id
                         )
-
                         if nb_paiements == 1 and success and trans_id:
                             primary_transaction_id = trans_id
-
                 # Fallback paiement par défaut
                 if nb_paiements == 0 and float(total_collecte) > 0:
                     cursor.execute("""
@@ -19315,12 +18376,10 @@ class ReceiptPOS:
                     mode_defaut = cursor.fetchone()
                     if mode_defaut:
                         compte_effectif = mode_defaut['compte_tresorerie_id'] or compte_bancaire_pdv
-
                         cursor.execute("""
                             INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant) 
                             VALUES (%s, %s, %s)
                         """, (receipt_id, mode_defaut['id'], float(total_collecte)))
-
                         if compte_effectif:
                             success, msg, primary_transaction_id = self.transaction_model._inserer_transaction_with_cursor(
                                 cursor=cursor,
@@ -19334,7 +18393,6 @@ class ReceiptPOS:
                                 validate_balance=False,
                                 receipt_id=receipt_id
                             )
-
                 if primary_transaction_id:
                     cursor.execute("""
                         UPDATE pos_receipts 
@@ -19342,12 +18400,10 @@ class ReceiptPOS:
                         WHERE id = %s
                     """, (primary_transaction_id, receipt_id))
                     logger.info(f"✅ Vente {receipt_id} liée à transaction(s) financière(s)")
-
                 # 9. COMPTABILISATION (avec magasin_id)
                 settings = self.get_compta_settings(user_id, magasin_id)
                 mode_compta = settings.get('mode_comptabilisation', 'par_jour')
                 generation = settings.get('generation_ecritures', 'manuel')
-
                 if generation == 'automatique':
                     if mode_compta == 'par_ticket':
                         from app.models import POSComptabilisation
@@ -19361,12 +18417,13 @@ class ReceiptPOS:
                         logger.info(f"ℹ️ Ticket {receipt_id} prêt pour agrégation journalière")
                 else:
                     logger.info(f"ℹ️ Ticket {receipt_id} en attente de comptabilisation manuelle")
-
                 return True, "Vente créée avec succès", receipt_id
-
-        except Exception as e:
-            logger.error(f"Erreur création vente POS: {e}", exc_info=True)
-            return False, f"Erreur: {str(e)}", None
+        except MySQLError as e:                             # ✅ ciblé : erreur DB
+            logger.exception("Erreur DB création vente POS")
+            return False, "Erreur technique, veuillez réessayer", None
+        except (ValueError, KeyError) as e:                 # ✅ ciblé : données panier invalides
+            logger.warning(f"Données de vente invalides : {e}")
+            return False, "Panier invalide, veuillez vérifier les articles", None
 
     def creer_ticket_ouvert(self, user_id: int, data: Dict, pdv_id: int = None) -> Tuple[bool, str, Optional[int]]:
         """Enregistre un ticket sans paiement (status 'Ouvert'), sans transaction bancaire."""
@@ -19389,29 +18446,23 @@ class ReceiptPOS:
                     article = cursor.fetchone()
                     if not article:
                         return False, f"Article {item['article_id']} introuvable", None
-
                     nom_article_final = str(article['nom_article'])
                     modificateurs = str(item.get('modificateurs', '')).strip()
-
                     prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
                     qte = int(item.get('quantite', 1))
                     total_ligne_ttc = prix_ttc * qte
-
                     taxe = self._get_taxe_active(cursor, item['article_id'])
                     taux_taxe = Decimal('0')
                     if taxe:
                         taux_taxe = Decimal(str(taxe['taux']))
-
                     if taux_taxe > Decimal('0'):
                         diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
                         ligne_ht = (total_ligne_ttc / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                     else:
                         ligne_ht = total_ligne_ttc.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-
                     ligne_taxe = (total_ligne_ttc - ligne_ht).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                     ventes_brutes_ht += ligne_ht
                     total_taxes += ligne_taxe
-
                     items_data.append({
                         'article_id': item['article_id'],
                         'nom_article': nom_article_final,
@@ -19423,12 +18474,10 @@ class ReceiptPOS:
                         'taux_taxe': taux_taxe,
                         'commentaire': item.get('commentaire', '') or '',
                     })
-
                 total_collecte = ventes_brutes_ht + total_taxes
                 recu_numero = f"O-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
                 reduction_ttc = Decimal('0')
                 reduction_ht = Decimal('0')
-
                 if data.get('discount_id'):
                     cursor.execute("SELECT * FROM pos_discounts WHERE id = %s", (data['discount_id'],))
                     discount = cursor.fetchone()
@@ -19443,7 +18492,6 @@ class ReceiptPOS:
                             reduction_ht = reduction_ttc / (Decimal('1') + taux_moyen / Decimal('100'))
                         else:
                             reduction_ht = reduction_ttc
-
                 cursor.execute("""
                     INSERT INTO pos_receipts 
                     (utilisateur_id, magasin_id, date, recu_numero, nom_ticket, description, receipt_type,
@@ -19462,7 +18510,6 @@ class ReceiptPOS:
                     data.get('discount_id'), float(reduction_ttc)
                 ))
                 receipt_id = cursor.lastrowid
-
                 for item in items_data:
                     cursor.execute("""
                         INSERT INTO pos_receipt_items 
@@ -19475,16 +18522,16 @@ class ReceiptPOS:
                         float(item['total_ligne_ttc']), float(item['taux_taxe']),
                         item['commentaire'], item['modificateurs']
                     ))
-
                 return True, "Ticket enregistré", receipt_id
-
-        except Exception as e:
-            logger.error(f"Erreur ticket ouvert: {e}")
-            return False, f"Erreur: {str(e)}", None
+        except MySQLError as e:                             # ✅ ciblé : erreur DB
+            logger.exception("Erreur DB création ticket ouvert")
+            return False, "Erreur technique, veuillez réessayer", None
+        except (ValueError, KeyError) as e:                 # ✅ ciblé : données panier invalides
+            logger.warning(f"Données de ticket invalides : {e}")
+            return False, "Panier invalide, veuillez vérifier les articles", None
 
     def save_open_ticket(self, user_id: int, pdv_id: int, data: Dict) -> Tuple[bool, str, Optional[int]]:
         """Sauvegarde un ticket ouvert avec ses items (incluant tva_breakdown)."""
-        import json
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 # Résoudre magasin_id via PDV
@@ -19494,9 +18541,7 @@ class ReceiptPOS:
                     res_pdv = cursor.fetchone()
                     if res_pdv:
                         magasin_id = res_pdv.get('magasin_id')
-
                 recu_numero = f"OPEN-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
-
                 cursor.execute("""
                     INSERT INTO pos_receipts 
                     (utilisateur_id, magasin_id, date, recu_numero, nom_ticket, description, receipt_type, 
@@ -19513,7 +18558,6 @@ class ReceiptPOS:
                     data.get('discount_id')
                 ))
                 receipt_id = cursor.lastrowid
-
                 for item in data.get('items', []):
                     cursor.execute("""
                         INSERT INTO pos_receipt_items 
@@ -19533,16 +18577,16 @@ class ReceiptPOS:
                         item.get('modificateurs', ''),
                         json.dumps(item.get('tva_breakdown', []))
                     ))
-
                 return True, "Ticket enregistré", receipt_id
-
-        except Exception as e:
-            logger.error(f"Erreur save_open_ticket: {e}")
-            return False, str(e), None
+        except MySQLError as e:                             # ✅ ciblé : erreur DB
+            logger.exception("Erreur DB save_open_ticket")
+            return False, "Erreur technique, veuillez réessayer", None
+        except (ValueError, json.JSONDecodeError) as e:     # ✅ ciblé : JSON panier invalide
+            logger.warning(f"JSON ticket invalide : {e}")
+            return False, "Format de ticket invalide", None
 
     def get_open_tickets(self, user_id: int, magasin_id: int = None) -> List[Dict]:
         """Récupère tous les tickets ouverts avec leurs items."""
-        import json
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 query = """
@@ -19558,23 +18602,20 @@ class ReceiptPOS:
                 query += " ORDER BY r.date DESC"
                 cursor.execute(query, params)
                 receipts = cursor.fetchall()
-
                 tickets = []
                 for r in receipts:
                     cursor.execute("""
                         SELECT * FROM pos_receipt_items WHERE receipt_id = %s
                     """, (r['id'],))
                     items = cursor.fetchall()
-
                     lines = []
                     for item in items:
                         tva_breakdown = []
                         if item.get('tva_breakdown_json'):
                             try:
                                 tva_breakdown = json.loads(item['tva_breakdown_json'])
-                            except Exception:
+                            except (ValueError, json.JSONDecodeError):
                                 tva_breakdown = []
-
                         lines.append({
                             'article_id': item['article_id'],
                             'variante_id': item.get('variante_id'),
@@ -19587,7 +18628,6 @@ class ReceiptPOS:
                             'tva_breakdown': tva_breakdown,
                             'key': f"{item['article_id']}_{item.get('variante_id') or 0}_{item.get('modificateurs', '')}"
                         })
-
                     tickets.append({
                         'id': r['id'],
                         'nom': r.get('nom_ticket', ''),
@@ -19597,11 +18637,9 @@ class ReceiptPOS:
                         'restaurant_option_id': r.get('restaurant_option_id'),
                         'total': sum(l['prix'] * l['qty'] for l in lines)
                     })
-
                 return tickets
-
-        except Exception as e:
-            logger.error(f"Erreur get_open_tickets: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_open_tickets: {e}")
             return []
 
     def supprimer_ticket_ouvert(self, receipt_id: int, user_id: int) -> bool:
@@ -19615,13 +18653,12 @@ class ReceiptPOS:
                 r = cursor.fetchone()
                 if not r or r['status'] != 'Ouvert' or r['transaction_id']:
                     return False
-
                 cursor.execute("DELETE FROM pos_receipt_items WHERE receipt_id = %s", (receipt_id,))
                 cursor.execute("DELETE FROM pos_payments WHERE receipt_id = %s", (receipt_id,))
                 cursor.execute("DELETE FROM pos_receipts WHERE id = %s", (receipt_id,))
                 return True
-        except Exception as e:
-            logger.error(f"Erreur supprimer_ticket_ouvert: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur supprimer_ticket_ouvert: {e}")
             return False
 
     def annuler_vente(self, receipt_id: int, user_id: int, raison: str = "") -> Tuple[bool, str]:
@@ -19635,17 +18672,13 @@ class ReceiptPOS:
                 receipt = cursor.fetchone()
                 if not receipt:
                     return False, "Receipt non trouvé"
-
                 if receipt['status'] == 'Annulé':
                     return False, "Receipt déjà annulé"
-
                 est_comptabilise = receipt.get('comptabilise') or receipt.get('etat_comptable') == 'comptabilise'
-
                 if est_comptabilise:
                     from app.models import EcritureComptable, CategorieComptable
                     modele_ecriture = EcritureComptable(self.db)
                     modele_categorie = CategorieComptable(self.db)
-
                     cursor.execute("""
                         SELECT categorie_id, compte_bancaire_id 
                         FROM ecritures_comptables 
@@ -19653,17 +18686,14 @@ class ReceiptPOS:
                         ORDER BY id ASC LIMIT 1
                     """, (f"%{receipt['recu_numero']}%", user_id))
                     ecriture_origine = cursor.fetchone()
-
                     if ecriture_origine:
                         categorie_id = ecriture_origine['categorie_id']
                         compte_bancaire_id = ecriture_origine['compte_bancaire_id']
                     else:
                         categorie_id = self._get_categorie_vente_defaut(cursor, user_id)
                         compte_bancaire_id = receipt.get('compte_bancaire_id')
-
                     if not categorie_id:
                         return False, "Impossible de déterminer la catégorie comptable pour l'extourne."
-
                     data_extourne = {
                         'date_ecriture': datetime.now().date(),
                         'compte_bancaire_id': compte_bancaire_id,
@@ -19680,15 +18710,12 @@ class ReceiptPOS:
                         'statut': 'validée',
                         'type_ecriture_comptable': 'extourne'
                     }
-
                     succes, msg = modele_ecriture.create(modele_categorie, data_extourne)
                     if not succes:
                         return False, f"Échec de l'extourne comptable : {msg}"
-
                     cursor.execute("""
                         UPDATE pos_receipts SET etat_comptable = 'extourne' WHERE id = %s
                     """, (receipt_id,))
-
                 if receipt.get('transaction_id') and receipt.get('compte_bancaire_id'):
                     success, msg, _ = self.transaction_model._inserer_transaction_with_cursor(
                         cursor=cursor,
@@ -19704,7 +18731,6 @@ class ReceiptPOS:
                     )
                     if not success:
                         return False, f"Erreur remboursement bancaire : {msg}"
-
                 cursor.execute("""
                     SELECT article_id, quantite FROM pos_receipt_items WHERE receipt_id = %s
                 """, (receipt_id,))
@@ -19713,28 +18739,23 @@ class ReceiptPOS:
                     cursor.execute("""
                         UPDATE pos_articles SET stock = stock + %s WHERE id = %s
                     """, (item['quantite'], item['article_id']))
-
                 cursor.execute("""
                     UPDATE pos_receipts 
                     SET status = 'Annulé', cloture_at = NOW() 
                     WHERE id = %s
                 """, (receipt_id,))
-
                 cursor.execute("""
                     INSERT INTO pos_historique_suppressions 
                     (receipt_id, utilisateur_id, recu_numero, montant_original, raison, etait_comptabilise)
                     VALUES (%s, %s, %s, %s, %s, %s)
                 """, (receipt_id, user_id, receipt['recu_numero'],
                       receipt['total_collecte'], raison, est_comptabilise))
-
                 msg_succes = "Vente annulée avec succès"
                 if est_comptabilise:
                     msg_succes += " (Extourne comptable générée automatiquement)"
-
                 return True, msg_succes
-
-        except Exception as e:
-            logger.error(f"Erreur annulation vente: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur annulation vente")
             return False, f"Erreur: {str(e)}"
 
     def _get_categorie_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
@@ -19752,15 +18773,14 @@ class ReceiptPOS:
             """, (user_id,))
             res = cursor.fetchone()
             return res['id'] if res else None
-        except Exception as e:
-            logger.error(f"Erreur récupération compte vente par défaut: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération compte vente par défaut: {e}")
             return None
 
     def _get_taxe_active(self, cursor, article_id: int, date_ref: date = None) -> Optional[Dict]:
         """Récupère le taux de taxe en vigueur pour un article à une date donnée"""
         if date_ref is None:
             date_ref = date.today()
-
         cursor.execute("""
             SELECT tt.taux, tt.date_debut, tt.date_fin, typ.nom as type_nom
             FROM pos_article_taxes at
@@ -19788,15 +18808,14 @@ class ReceiptPOS:
                 mode = cursor.fetchone()
                 if not mode:
                     return None
-
                 cursor.execute("""
                     INSERT INTO pos_payments (receipt_id, mode_paiement_id, montant, est_remboursement)
                     VALUES (%s, %s, %s, %s)
                 """, (receipt_id, mode['id'], float(data.get('montant', 0)),
                       data.get('est_remboursement', False)))
                 return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur add_payment: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur add_payment: {e}")
             return None
 
     # ============================================================
@@ -19830,8 +18849,8 @@ class ReceiptPOS:
                     params.append(magasin_id)
                 cursor.execute(query, params)
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur stats POS: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur stats POS: {e}")
             return {}
 
     def get_stats_summary(self, user_id: int, date_from: str, date_to: str,
@@ -19869,8 +18888,8 @@ class ReceiptPOS:
                     'ventes_brutes', 'remboursements', 'reductions',
                     'ventes_nettes', 'marge_brute', 'taxes', 'total_collecte'
                 )}
-        except Exception as e:
-            logger.error(f"Erreur get_stats_summary: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_stats_summary: {e}")
             return {}
 
     def get_daily_stats(self, user_id: int, date_from: str, date_to: str,
@@ -19880,17 +18899,17 @@ class ReceiptPOS:
             with self.db.get_cursor(dictionary=True) as cursor:
                 q = """
                     SELECT DATE(date) AS jour,
-                      SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END) AS ventes_brutes,
-                      SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_brutes) ELSE 0 END) AS remboursements,
-                      SUM(reduction) AS reductions,
-                      SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END) +
-                      SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_nettes) ELSE 0 END) -
-                      SUM(reduction) AS ventes_nettes,
-                      SUM(marge_brute) AS marge_brute,
-                      SUM(taxes) AS taxes
+                    SUM(CASE WHEN receipt_type='Vente' THEN ventes_brutes ELSE 0 END) AS ventes_brutes,
+                    SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_brutes) ELSE 0 END) AS remboursements,
+                    SUM(reduction) AS reductions,
+                    SUM(CASE WHEN receipt_type='Vente' THEN ventes_nettes ELSE 0 END) +
+                    SUM(CASE WHEN receipt_type='Remboursement' THEN -ABS(ventes_nettes) ELSE 0 END) -
+                    SUM(reduction) AS ventes_nettes,
+                    SUM(marge_brute) AS marge_brute,
+                    SUM(taxes) AS taxes
                     FROM pos_receipts
                     WHERE utilisateur_id = %s AND status != 'Annulé'
-                      AND DATE(date) >= %s AND DATE(date) <= %s
+                    AND DATE(date) >= %s AND DATE(date) <= %s
                 """
                 params = [user_id, date_from, date_to]
                 if employee:
@@ -19902,8 +18921,8 @@ class ReceiptPOS:
                 q += " GROUP BY DATE(date)"
                 cursor.execute(q, params)
                 return {str(r['jour']): r for r in cursor.fetchall()}
-        except Exception as e:
-            logger.error(f"Erreur get_daily_stats: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_daily_stats: {e}")
             return {}
 
     def get_stats_by_payment_mode(self, user_id: int, date_from: str, date_to: str,
@@ -19930,8 +18949,8 @@ class ReceiptPOS:
                 cursor.execute(q, params)
                 return [{'nom': r['nom'], 'nb': int(r['nb']), 'total': float(r['total'])}
                         for r in cursor.fetchall()]
-        except Exception as e:
-            logger.error(f"Erreur get_stats_by_payment_mode: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_stats_by_payment_mode: {e}")
             return []
 
     def get_stats_by_article(self, user_id: int, date_from: str, date_to: str,
@@ -19955,7 +18974,6 @@ class ReceiptPOS:
                 if search:
                     where += " AND ri.nom_article LIKE %s"
                     params.append(f"%{search}%")
-
                 cursor.execute(f"""
                     SELECT ri.nom_article AS nom,
                            MAX(c.nom_categorie) AS category,
@@ -19970,15 +18988,14 @@ class ReceiptPOS:
                     GROUP BY ri.nom_article
                     ORDER BY total_revenue DESC
                 """, params)
-
                 articles = cursor.fetchall()
                 for a in articles:
                     a['total_revenue'] = float(a['total_revenue'] or 0)
                     a['total_qty'] = int(a['total_qty'] or 0)
                     a['times_sold'] = int(a['times_sold'] or 0)
                 return articles
-        except Exception as e:
-            logger.error(f"Erreur get_stats_by_article: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_stats_by_article: {e}")
             return []
 
     def get_article_series(self, user_id: int, date_from: str, date_to: str,
@@ -19989,7 +19006,6 @@ class ReceiptPOS:
             with self.db.get_cursor(dictionary=True) as cursor:
                 if not article_names:
                     return []
-
                 ph = ','.join(['%s'] * len(article_names))
                 swhere = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente' AND DATE(r.date) >= %s AND DATE(r.date) <= %s"
                 sparams = [user_id, date_from, date_to]
@@ -19999,7 +19015,6 @@ class ReceiptPOS:
                 if magasin_id:
                     swhere += " AND r.magasin_id=%s"
                     sparams.append(magasin_id)
-
                 cursor.execute(f"""
                     SELECT DATE(r.date) AS jour, ri.nom_article AS nom, SUM(ri.total_ligne) AS val
                     FROM pos_receipt_items ri
@@ -20007,11 +19022,10 @@ class ReceiptPOS:
                     WHERE {swhere} AND ri.nom_article IN ({ph})
                     GROUP BY DATE(r.date), ri.nom_article
                 """, sparams + article_names)
-
                 return [{'date': str(r['jour']), 'name': r['nom'], 'value': float(r['val'] or 0)}
                         for r in cursor.fetchall()]
-        except Exception as e:
-            logger.error(f"Erreur get_article_series: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_article_series: {e}")
             return []
 
     def get_stats_by_category(self, user_id: int, date_from: str, date_to: str,
@@ -20031,7 +19045,6 @@ class ReceiptPOS:
                 if magasin_id:
                     where += " AND r.magasin_id=%s"
                     params.append(magasin_id)
-
                 cursor.execute(f"""
                     SELECT COALESCE(c.nom_categorie, 'Sans catégorie') AS nom,
                            COUNT(DISTINCT r.id) AS times_sold,
@@ -20046,15 +19059,14 @@ class ReceiptPOS:
                     GROUP BY nom
                     ORDER BY total_revenue DESC
                 """, params)
-
                 categories = cursor.fetchall()
                 for c in categories:
                     c['total_revenue'] = float(c['total_revenue'] or 0)
                     c['total_qty'] = int(c['total_qty'] or 0)
                     c['times_sold'] = int(c['times_sold'] or 0)
                 return categories
-        except Exception as e:
-            logger.error(f"Erreur get_stats_by_category: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_stats_by_category: {e}")
             return []
 
     def get_stats_by_modifier(self, user_id: int, date_from: str, date_to: str,
@@ -20064,7 +19076,6 @@ class ReceiptPOS:
         Agrège les ventes par libellé de modificateur (colonne TEXT de pos_receipt_items).
         Un même ticket peut contenir plusieurs modificateurs ; chaque libellé est compté
         séparément via une sous-requête qui éclate les chaînes séparées par virgule.
-        
         Retourne pour chaque modificateur :
         - nom               : le libellé (ex: "Sans oignons")
         - nb_utilisations   : nombre de lignes de reçu contenant ce modificateur
@@ -20082,12 +19093,10 @@ class ReceiptPOS:
                     "AND TRIM(ri.modificateurs) != ''"
                 )
                 params = [user_id]
-
                 where += " AND DATE(r.date) >= %s"
                 params.append(date_from)
                 where += " AND DATE(r.date) <= %s"
                 params.append(date_to)
-
                 if employee:
                     where += " AND r.nom_du_caissier = %s"
                     params.append(employee)
@@ -20097,7 +19106,6 @@ class ReceiptPOS:
                 if search:
                     where += " AND ri.modificateurs LIKE %s"
                     params.append(f"%{search}%")
-
                 # On éclate les libellés séparés par virgule via une table de nombres
                 # (de 1 à 20, suffisant pour la quasi-totalité des cas).
                 # Chaque ligne de reçu produit N lignes, une par modificateur détecté.
@@ -20127,7 +19135,6 @@ class ReceiptPOS:
                     HAVING nom != ''
                     ORDER BY total_revenue DESC
                 """, params)
-
                 rows = cursor.fetchall()
                 for r in rows:
                     r['total_revenue'] = float(r['total_revenue'] or 0)
@@ -20138,8 +19145,8 @@ class ReceiptPOS:
                         if r['nb_utilisations'] > 0 else 0.0
                     )
                 return rows
-        except Exception as e:
-            logger.error(f"Erreur get_stats_by_modifier: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur get_stats_by_modifier: {e}", exc_info=True)
             return []
 
     def get_modifier_series(self, user_id: int, date_from: str, date_to: str,
@@ -20153,10 +19160,8 @@ class ReceiptPOS:
             with self.db.get_cursor(dictionary=True) as cursor:
                 if not modifier_names:
                     return []
-
                 # Placeholders pour la clause IN
                 ph = ','.join(['%s'] * len(modifier_names))
-
                 where = (
                     "r.utilisateur_id = %s "
                     "AND r.status != 'Annulé' "
@@ -20167,14 +19172,12 @@ class ReceiptPOS:
                     "AND DATE(r.date) <= %s"
                 )
                 params = [user_id, date_from, date_to]
-
                 if employee:
                     where += " AND r.nom_du_caissier = %s"
                     params.append(employee)
                 if magasin_id:
                     where += " AND r.magasin_id = %s"
                     params.append(magasin_id)
-
                 cursor.execute(f"""
                     SELECT
                         DATE(r.date) AS jour,
@@ -20205,7 +19208,6 @@ class ReceiptPOS:
                     GROUP BY jour, nom
                     ORDER BY jour, nom
                 """, params + modifier_names)
-
                 return [
                     {
                         'date': str(r['jour']),
@@ -20214,8 +19216,8 @@ class ReceiptPOS:
                     }
                     for r in cursor.fetchall()
                 ]
-        except Exception as e:
-            logger.error(f"Erreur get_modifier_series: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur get_modifier_series: {e}", exc_info=True)
             return []
 
     def get_stats_by_modifier_option(self, user_id: int, date_from: str, date_to: str,
@@ -20225,10 +19227,8 @@ class ReceiptPOS:
         Agrège les ventes par libellé présent dans ri.modificateurs,
         mais en ne gardant QUE ceux qui correspondent à une option enregistrée
         dans pos_options_modificateurs (par nom_option).
-        
         Cela permet de séparer ce qui est vraiment une 'option' (ex: "Extra fromage"
         configurée dans le catalogue) du texte libre éventuel.
-        
         Retourne pour chaque option :
         - nom               : nom_option
         - option_id         : id de l'option (dans pos_options_modificateurs)
@@ -20248,12 +19248,10 @@ class ReceiptPOS:
                     "AND TRIM(ri.modificateurs) != ''"
                 )
                 params = [user_id]
-
                 where += " AND DATE(r.date) >= %s"
                 params.append(date_from)
                 where += " AND DATE(r.date) <= %s"
                 params.append(date_to)
-
                 if employee:
                     where += " AND r.nom_du_caissier = %s"
                     params.append(employee)
@@ -20263,7 +19261,6 @@ class ReceiptPOS:
                 if search:
                     where += " AND ri.modificateurs LIKE %s"
                     params.append(f"%{search}%")
-
                 # Jointure sur pos_options_modificateurs : on ne garde que les libellés
                 # qui correspondent à une option existante pour cet utilisateur.
                 cursor.execute(f"""
@@ -20299,7 +19296,6 @@ class ReceiptPOS:
                     GROUP BY o.id, o.nom_option, o.id_modificateur, m.nom_modificateur
                     ORDER BY total_revenue DESC
                 """, params)
-
                 rows = cursor.fetchall()
                 for r in rows:
                     r['total_revenue'] = float(r['total_revenue'] or 0)
@@ -20310,8 +19306,8 @@ class ReceiptPOS:
                         if r['nb_utilisations'] > 0 else 0.0
                     )
                 return rows
-        except Exception as e:
-            logger.error(f"Erreur get_stats_by_modifier_option: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur get_stats_by_modifier_option: {e}", exc_info=True)
             return []
 
     def get_modifier_option_series(self, user_id: int, date_from: str, date_to: str,
@@ -20324,9 +19320,7 @@ class ReceiptPOS:
             with self.db.get_cursor(dictionary=True) as cursor:
                 if not option_names:
                     return []
-
                 ph = ','.join(['%s'] * len(option_names))
-
                 where = (
                     "r.utilisateur_id = %s "
                     "AND r.status != 'Annulé' "
@@ -20337,14 +19331,12 @@ class ReceiptPOS:
                     "AND DATE(r.date) <= %s"
                 )
                 params = [user_id, date_from, date_to]
-
                 if employee:
                     where += " AND r.nom_du_caissier = %s"
                     params.append(employee)
                 if magasin_id:
                     where += " AND r.magasin_id = %s"
                     params.append(magasin_id)
-
                 cursor.execute(f"""
                     SELECT
                         DATE(r.date) AS jour,
@@ -20378,7 +19370,6 @@ class ReceiptPOS:
                     GROUP BY jour, nom
                     ORDER BY jour, nom
                 """, params + option_names)
-
                 return [
                     {
                         'date': str(r['jour']),
@@ -20387,8 +19378,8 @@ class ReceiptPOS:
                     }
                     for r in cursor.fetchall()
                 ]
-        except Exception as e:
-            logger.error(f"Erreur get_modifier_option_series: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur get_modifier_option_series: {e}", exc_info=True)
             return []
 
     def get_category_series(self, user_id: int, date_from: str, date_to: str,
@@ -20399,7 +19390,6 @@ class ReceiptPOS:
             with self.db.get_cursor(dictionary=True) as cursor:
                 if not category_names:
                     return []
-
                 ph = ','.join(['%s'] * len(category_names))
                 swhere = "r.utilisateur_id=%s AND r.status!='Annulé' AND r.receipt_type='Vente' AND DATE(r.date) >= %s AND DATE(r.date) <= %s"
                 sparams = [user_id, date_from, date_to]
@@ -20409,7 +19399,6 @@ class ReceiptPOS:
                 if magasin_id:
                     swhere += " AND r.magasin_id=%s"
                     sparams.append(magasin_id)
-
                 cursor.execute(f"""
                     SELECT DATE(r.date) AS jour,
                            COALESCE(c.nom_categorie, 'Sans catégorie') AS nom,
@@ -20421,11 +19410,10 @@ class ReceiptPOS:
                     WHERE {swhere} AND COALESCE(c.nom_categorie, 'Sans catégorie') IN ({ph})
                     GROUP BY DATE(r.date), nom
                 """, sparams + category_names)
-
                 return [{'date': str(r['jour']), 'name': r['nom'], 'value': float(r['val'] or 0)}
                         for r in cursor.fetchall()]
-        except Exception as e:
-            logger.error(f"Erreur get_category_series: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_category_series: {e}")
             return []
 
     def get_payment_methods_stats(self, user_id: int, date_from: str = None, 
@@ -20446,7 +19434,6 @@ class ReceiptPOS:
                     WHERE r.utilisateur_id = %s AND r.status != 'Annulé'
                 """
                 params = [user_id]
-
                 if magasin_id:
                     query += " AND r.magasin_id = %s"
                     params.append(magasin_id)
@@ -20456,13 +19443,11 @@ class ReceiptPOS:
                 if date_to:
                     query += " AND DATE(r.date) <= %s"
                     params.append(date_to)
-
                 query += " GROUP BY mp.nom ORDER BY amount DESC"
-
                 cursor.execute(query, params)
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur get_payment_methods_stats: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_payment_methods_stats: {e}")
             return []
 
     # ============================================================
@@ -20490,8 +19475,8 @@ class ReceiptPOS:
                         'generation_ecritures': 'manuel'
                     }
                 return settings
-        except Exception as e:
-            logger.error(f"Erreur récupération settings compta: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération settings compta: {e}")
             return {'mode_comptabilisation': 'par_jour', 'generation_ecritures': 'manuel'}
 
     def save_compta_settings(self, user_id: int, mode: str, generation: str, 
@@ -20508,8 +19493,8 @@ class ReceiptPOS:
                         generation_ecritures = VALUES(generation_ecritures)
                 """, (user_id, magasin_id, mode, generation))
                 return True
-        except Exception as e:
-            logger.error(f"Erreur sauvegarde settings compta: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur sauvegarde settings compta: {e}")
             return False
 
     def comptabiliser_ticket(self, receipt_id: int, user_id: int) -> Tuple[bool, str]:
@@ -20526,12 +19511,10 @@ class ReceiptPOS:
                     WHERE r.id = %s AND r.utilisateur_id = %s
                 """, (receipt_id, user_id))
                 receipt = cursor.fetchone()
-
                 if not receipt:
                     return False, "Ticket non trouvé"
                 if receipt.get('comptabilise'):
                     return True, "Déjà comptabilisé"
-
                 # 2. Récupérer le compte de vente via le mapping TVA du premier article
                 cursor.execute("""
                     SELECT 
@@ -20549,7 +19532,6 @@ class ReceiptPOS:
                     LIMIT 1
                 """, (receipt_id,))
                 cat_mapping = cursor.fetchone()
-
                 # Priorité : mapping TVA > catégorie directe de l'article
                 categorie_vente_id = None
                 if cat_mapping:
@@ -20557,23 +19539,18 @@ class ReceiptPOS:
                         cat_mapping.get('compte_mapping_vente_id') 
                         or cat_mapping.get('categorie_comptable_vente_id')
                     )
-
                 # Fallback : compte de vente par défaut (classe 3)
                 if not categorie_vente_id:
                     categorie_vente_id = self._get_categorie_vente_defaut(cursor, user_id)
-
                 if not categorie_vente_id:
                     return False, "Aucune catégorie comptable de vente configurée pour ce ticket."
-
                 compte_bancaire_id = receipt.get('compte_bancaire_id')
                 if not compte_bancaire_id:
                     return False, "Aucun compte bancaire associé au ticket."
-
                 # 3. Calcul du taux moyen de TVA (pour l'affichage dans l'écriture)
                 ventes_nettes = float(receipt['ventes_nettes'] or 0)
                 taxes = float(receipt['taxes'] or 0)
                 taux_moyen = (taxes / ventes_nettes * 100) if ventes_nettes > 0 else 0.0
-
                 # 4. Préparer les données pour le modèle EcritureComptable
                 data_ecriture = {
                     'date_ecriture': receipt['date'].date() if hasattr(receipt['date'], 'date') else receipt['date'],
@@ -20591,14 +19568,11 @@ class ReceiptPOS:
                     'statut': 'validée',
                     'type_ecriture_comptable': 'pos_vente'
                 }
-
                 # 5. Utiliser le modèle EcritureComptable existant
                 from app.models import EcritureComptable, CategorieComptable
                 modele_ecriture = EcritureComptable(self.db)
                 modele_categorie = CategorieComptable(self.db)
-
                 succes, msg = modele_ecriture.create(modele_categorie, data_ecriture)
-
                 if succes:
                     cursor.execute("""
                         UPDATE pos_receipts 
@@ -20611,16 +19585,15 @@ class ReceiptPOS:
                     return True, "Écritures comptables générées avec succès"
                 else:
                     return False, f"Échec de la génération des écritures : {msg}"
-
-        except Exception as e:
-            logger.error(f"Erreur comptabilisation ticket {receipt_id}: {e}", exc_info=True)
-            return False, f"Erreur système: {str(e)}"
+        except MySQLError as e:
+            logger.exception(f"Erreur DB comptabilisation ticket {receipt_id}")
+            return False, "Erreur technique, veuillez réessayer"
+        except (ValueError, KeyError) as e:
+            logger.warning(f"Données de ticket incomplètes pour comptabilisation {receipt_id} : {e}")
+            return False, "Ticket incomplet, comptabilisation impossible"
         
-class POSComptaMapping:
+class POSComptaMapping(BaseRepository):
     """Gère le lien entre les taxes POS et les comptes comptables de vente (Classe 3)"""
-    def __init__(self, db):
-        self.db = db
-
     def set_mapping(self, user_id: int, magasin_id: int, type_taxe_id: int, compte_vente_id: int) -> bool:
         """Mappe un type de taxe POS vers un compte comptable (3001 ou 2030)"""
         try:
@@ -20633,11 +19606,12 @@ class POSComptaMapping:
                     compte_vente_id = VALUES(compte_vente_id)
                 """, (user_id, magasin_id, type_taxe_id, compte_vente_id))
                 return True
-        except Exception as e:
-            logger.error(f"Erreur set_mapping: {e}")
+        except IntegrityError as e:
+            logger.warning(f"Mapping invalide : taxe={type_taxe_id}, compte={compte_vente_id} (FK inexistante)")
             return False
-
-
+        except MySQLError as e:
+            logger.exception("Erreur DB set_mapping")
+            return False
 
     def get_compte_vente_by_taxe(self, user_id: int, type_taxe_id: int) -> Optional[int]:
         try:
@@ -20649,8 +19623,8 @@ class POSComptaMapping:
                 """, (user_id, type_taxe_id))
                 result = cursor.fetchone()
                 return result['compte_vente_id'] if result else None
-        except Exception as e:
-            logger.error(f"Erreur get_compte_vente_by_taxe: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_compte_vente_by_taxe: {e}")
             return None
 
     def get_all_mappings(self, user_id: int) -> List[Dict]:
@@ -20668,8 +19642,8 @@ class POSComptaMapping:
                     ORDER BY t.nom
                 """, (user_id,))
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur get_all_mappings: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_all_mappings: {e}")
             return []
 
     def update_mapping(self, mapping_id: int, compte_vente_id: int) -> bool:
@@ -20682,14 +19656,14 @@ class POSComptaMapping:
                         WHERE id = %s
                     """, (compte_vente_id, mapping_id))
                     return cursor.rowcount > 0
-            except Exception as e:
-                logger.error(f"Erreur update_mapping: {e}")
+            except MySQLError as e:
+                logger.exception(f"Erreur update_mapping: {e}")
                 return False
 
-class POSComptabilisation:
+class POSComptabilisation(BaseRepository):
+    __slots__ = ["modele_ecriture", "modele_categorie", "pos_compta_mapping"]
     def __init__(self, db):
-        self.db = db
-        from app.models import EcritureComptable, CategorieComptable, POSComptaMapping
+        super().__init__(db)
         self.modele_ecriture = EcritureComptable(db)
         self.modele_categorie = CategorieComptable(db)
         self.pos_compta_mapping = POSComptaMapping(db)
@@ -20701,7 +19675,6 @@ class POSComptabilisation:
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 compte_defaut = self._get_compte_vente_defaut(cursor, user_id)
-                
                 where_base = """
                     WHERE r.utilisateur_id = %s  
                     AND (COALESCE(r.comptabilise, 0) = 0 
@@ -20710,7 +19683,6 @@ class POSComptabilisation:
                     AND r.receipt_type IN ('Vente', 'Remboursement')
                 """
                 params_base = [user_id]
-                
                 if only_without_transaction:
                     where_base += """
                     AND NOT EXISTS (
@@ -20719,7 +19691,6 @@ class POSComptabilisation:
                         AND t_banc.utilisateur_id = r.utilisateur_id
                     )
                     """
-                
                 if date_from:
                     where_base += " AND DATE(r.date) >= %s"
                     params_base.append(date_from)
@@ -20732,22 +19703,18 @@ class POSComptabilisation:
                 if magasin_id:
                     where_base += " AND r.magasin_id = %s"
                     params_base.append(magasin_id)
-
                 if mode == 'jour':
                     query = """
                         SELECT 
                             DATE_FORMAT(sub.date, '%%Y-%%m-%%d') as date_jour,
                             pm.id as mode_paiement_id,
                             pm.nom as mode_paiement_nom,
-                            
                             -- 🎯 RÉSOLUTION DU COMPTE BANCAIRE (Mode de paiement OU Fallback PDV)
                             COALESCE(pm.compte_bancaire_id, sub.compte_bancaire_pdv) as compte_bancaire_id,
                             cb.nom_compte as compte_bancaire_nom,
-                            
                             pm.compte_tresorerie_id,
                             ctres.numero as compte_tresorerie_numero,
-                            ctres.nom as compte_tresorerie_nom,
-                            
+                            ctres.nom as compte_tresorerie_nom,  
                             pm.compte_frais_service_id,
                             pm.frais_pourcentage,
                             pm.frais_fixe,
@@ -20805,7 +19772,6 @@ class POSComptabilisation:
                     params = [compte_defaut] + params_base + [compte_defaut]
                     cursor.execute(query, params)
                     return cursor.fetchall()
-                
                 else:  # mode 'ticket'
                     query = """
                         SELECT 
@@ -20814,14 +19780,11 @@ class POSComptabilisation:
                             DATE_FORMAT(sub.date, '%%Y-%%m-%%d %%H:%%i:%%s') as date,
                             pm.id as mode_paiement_id,
                             pm.nom as mode_paiement_nom, 
-                            
                             COALESCE(pm.compte_bancaire_id, sub.compte_bancaire_pdv) as compte_bancaire_id,
                             cb.nom_compte as compte_bancaire_nom,
-                            
                             pm.compte_tresorerie_id,
                             ctres.numero as compte_tresorerie_numero,
                             ctres.nom as compte_tresorerie_nom,
-                            
                             pm.compte_frais_service_id, 
                             pm.frais_pourcentage, 
                             pm.frais_fixe,
@@ -20873,8 +19836,8 @@ class POSComptabilisation:
                     cursor.execute(query, params)
                     return cursor.fetchall()
                             
-        except Exception as e:
-            logger.error(f"Erreur récupération données à comptabiliser: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération données à comptabiliser: {e}", exc_info=True)
             return []
         
     @staticmethod
@@ -20896,11 +19859,8 @@ class POSComptabilisation:
     def comptabiliser_selection(self, user_id: int, items_a_comptabiliser: List[Dict]) -> Tuple[bool, str]:
         try:
             from app.models import TransactionFinanciere
-            from collections import defaultdict
             transaction_model = TransactionFinanciere(self.db)
-
             logger.info(f"📊 Début comptabilisation de {len(items_a_comptabiliser)} éléments")
-
             # ============================================================
             # PRÉCALCUL : total TTC par (date, mode_paiement)
             # ============================================================
@@ -20913,12 +19873,10 @@ class POSComptabilisation:
                     _mode_id = _item.get('mode_paiement_id')
                     _key = f"{_date}_{_mode_id}"
                     mode_totaux[_key] += float(_item.get('total_ttc_global', 0))
-                except Exception as _e:
+                except (ValueError, TypeError, KeyError) as _e:
                     logger.warning(f"Précalcul ignoré pour un item: {_e}")
                     continue
-
             logger.info(f"🔧 Précalcul totaux par (date, mode): {dict(mode_totaux)}")
-
             # 🔧 UN SEUL try/except, EXTERNE au with.
             # Si une exception remonte (RuntimeError), elle traverse le with,
             # get_cursor fait son rollback(), puis elle est catchée ici.
@@ -20927,77 +19885,60 @@ class POSComptabilisation:
                 nb_transactions = 0
                 nb_sautés = 0
                 processed_modes = set()
-
                 for idx, item in enumerate(items_a_comptabiliser):
                     date_ecriture = POSComptabilisation._parse_date_ecriture(
                         item.get('date_jour') or item.get('date')
                     )
-
                     mode_nom = item.get('mode_paiement_nom', 'Inconnu')
                     mode_id = item.get('mode_paiement_id')
                     receipt_ids_str = item.get('receipt_ids')
-
                     # 🔧 Clé par (date, mode) : regroupe tous les receipts d'un même mode
                     unique_mode_key = f"{date_ecriture}_{mode_id}"
                     groupe_id = f"POS-{date_ecriture}-{mode_id}-{receipt_ids_str}"
-
                     # ============================================================
                     # ÉTAPE 1 : Récupération des comptes et montants
                     # ============================================================
                     id_compte_bancaire_reel = item.get('compte_bancaire_id')
                     id_compte_tresorerie = item.get('compte_tresorerie_id')
                     id_compte_vente = item.get('compte_vente_id')
-
                     total_ht = float(item.get('total_ht', 0))
                     total_tva = float(item.get('total_tva', 0))
                     total_ttc_global = float(item.get('total_ttc_global', 0))
-
                     logger.info(f"🔍 Item {idx}: mode={mode_nom}, cb={id_compte_bancaire_reel}, "
                                 f"ct={id_compte_tresorerie}, cv={id_compte_vente}, "
                                 f"ht={total_ht}, tva={total_tva}, ttc={total_ttc_global}, groupe={groupe_id}")
-
                     if not id_compte_bancaire_reel:
                         logger.warning(f"⚠️ SAUTÉ : Mode '{mode_nom}' sans compte bancaire.")
                         nb_sautés += 1
                         continue
-
                     if not id_compte_tresorerie:
                         logger.warning(f"⚠️ SAUTÉ : Mode '{mode_nom}' sans compte trésorerie.")
                         nb_sautés += 1
                         continue
-
                     if not id_compte_vente:
                         logger.warning(f"⚠️ SAUTÉ : Pas de compte de vente mappé.")
                         nb_sautés += 1
                         continue
-
                     is_credit = self.modele_categorie.is_compte_passif(id_compte_vente, cursor=cursor)
-
-                                        # ============================================================
+                    # ============================================================
                     # ÉTAPE 2 : ÉCRITURES COMPTABLES (AVEC VÉRIFICATION D'IDEMPOTENCE)
                     # ============================================================
-
                     # A. TRÉSORERIE + FRAIS (une seule fois par (date, mode))
                     if unique_mode_key not in processed_modes:
                         total_mode_ttc = round(mode_totaux[unique_mode_key], 2)
-
                         montant_frais = 0.0
                         if not is_credit and item.get('compte_frais_service_id'):
                             montant_frais = (
                                 total_mode_ttc * (float(item.get('frais_pourcentage', 0) or 0) / 100)
                             ) + float(item.get('frais_fixe', 0) or 0)
                             montant_frais = round(montant_frais, 2)
-
                         montant_tresorerie_net = round(total_mode_ttc - montant_frais, 2)
-                        
                         ref_tresorerie = f"JOURNAL-{date_ecriture}-TRESO-{mode_id}"
-
                         # 🛡️ VÉRIFICATION D'IDEMPOTENCE : Cette écriture de trésorerie existe-t-elle déjà ?
                         cursor.execute("""
                             SELECT id FROM ecritures_comptables 
                             WHERE reference = %s AND utilisateur_id = %s AND statut = 'validée'
                         """, (ref_tresorerie, user_id))
-                        
                         if cursor.fetchone():
                             logger.warning(f"⚠️ Écriture Trésorerie {ref_tresorerie} DÉJÀ EXISTANTE. Ignorée (Idempotence).")
                         else:
@@ -21018,22 +19959,17 @@ class POSComptabilisation:
                                 'statut': 'validée',
                                 'type_ecriture_comptable': 'principale'
                             }
-
                             if not self.modele_ecriture.create(self.modele_categorie, data_tresorerie, cursor=cursor):
                                 raise RuntimeError(f"Échec création écriture Trésorerie (item {idx})")
-
                             nb_ecritures += 1
                             logger.info(f"✅ Trésorerie : {montant_tresorerie_net} CHF net")
-
                         # B. Frais de service (avec idempotence)
                         if montant_frais > 0.01:
                             ref_frais = f"JOURNAL-{date_ecriture}-FRAIS-{mode_id}"
-                            
                             cursor.execute("""
                                 SELECT id FROM ecritures_comptables 
                                 WHERE reference = %s AND utilisateur_id = %s AND statut = 'validée'
-                            """, (ref_frais, user_id))
-                            
+                            """, (ref_frais, user_id))           
                             if cursor.fetchone():
                                 logger.warning(f"⚠️ Écriture Frais {ref_frais} DÉJÀ EXISTANTE. Ignorée.")
                             else:
@@ -21054,23 +19990,17 @@ class POSComptabilisation:
                                     'statut': 'validée',
                                     'type_ecriture_comptable': 'principale'
                                 }
-
                                 if not self.modele_ecriture.create(self.modele_categorie, data_frais, cursor=cursor):
                                     raise RuntimeError(f"Échec création écriture Frais (item {idx})")
-
                                 nb_ecritures += 1
                                 logger.info(f"✅ Frais : {montant_frais} CHF")
-
                         processed_modes.add(unique_mode_key)
-
                     # C. VENTE / PASSIF (avec idempotence)
                     ref_vente = f"JOURNAL-{date_ecriture}-VENTE-{mode_id}-{item.get('type_taxe_id')}"
-                    
                     cursor.execute("""
                         SELECT id FROM ecritures_comptables 
                         WHERE reference = %s AND utilisateur_id = %s AND statut = 'validée'
                     """, (ref_vente, user_id))
-                    
                     if cursor.fetchone():
                         logger.warning(f"⚠️ Écriture Vente {ref_vente} DÉJÀ EXISTANTE. Ignorée.")
                     else:
@@ -21091,10 +20021,8 @@ class POSComptabilisation:
                             'statut': 'validée',
                             'type_ecriture_comptable': 'principale'
                         }
-
                         if not self.modele_ecriture.create(self.modele_categorie, data_vente, cursor=cursor):
                             raise RuntimeError(f"Échec création écriture Vente (item {idx})")
-
                         nb_ecritures += 1
                         logger.info(f"✅ Vente : Catégorie {id_compte_vente}")
                     # ============================================================
@@ -21103,25 +20031,19 @@ class POSComptabilisation:
                     if receipt_ids_str and total_ttc_global > 0:
                         try:
                             receipt_ids = [
-                                int(rid.strip())
-                                for rid in str(receipt_ids_str).split(',')
-                                if rid.strip().isdigit()
+                                int(rid.strip()) for rid in str(receipt_ids_str).split(',') if rid.strip().isdigit()
                             ]
-                        except Exception as e:
+                        except (ValueError, TypeError, AttributeError) as e:
                             logger.error(f"❌ Erreur parsing receipt_ids: {receipt_ids_str} - {e}")
                             receipt_ids = []
-
                         if receipt_ids:
                             montant_par_recu = Decimal(str(total_ttc_global)) / len(receipt_ids)
-
                             for receipt_id in receipt_ids:
                                 cursor.execute("""
                                     SELECT id FROM transactions 
                                     WHERE receipt_id = %s AND compte_principal_id = %s AND utilisateur_id = %s
                                 """, (receipt_id, id_compte_bancaire_reel, user_id))
-
                                 existing_tx = cursor.fetchone()
-
                                 if existing_tx:
                                     logger.info(f"ℹ️ Transaction existante pour reçu {receipt_id}: ID={existing_tx['id']}")
                                 else:
@@ -21137,7 +20059,6 @@ class POSComptabilisation:
                                         validate_balance=False,
                                         receipt_id=receipt_id
                                     )
-
                                     if success:
                                         nb_transactions += 1
                                         cursor.execute("""
@@ -21148,7 +20069,6 @@ class POSComptabilisation:
                                         logger.info(f"🔗 Reçu {receipt_id} → transaction {tx_id}")
                                     else:
                                         logger.error(f"❌ Échec transaction reçu {receipt_id}: {msg}")
-
                 # ============================================================
                 # ÉTAPE 4 : Marquer les reçus comme comptabilisés
                 # ============================================================
@@ -21160,7 +20080,6 @@ class POSComptabilisation:
                             for rid in str(r_ids).split(','):
                                 if rid.strip().isdigit():
                                     tous_receipt_ids.add(int(rid.strip()))
-
                     if tous_receipt_ids:
                         placeholders = ','.join(['%s'] * len(tous_receipt_ids))
                         cursor.execute(f"""
@@ -21169,14 +20088,12 @@ class POSComptabilisation:
                             WHERE id IN ({placeholders})
                         """, list(tous_receipt_ids))
                         logger.info(f"✅ {len(tous_receipt_ids)} reçus marqués comptabilisés")
-
                 logger.info(f"✅ Résumé : Écritures={nb_ecritures}, Transactions={nb_transactions}, Sautées={nb_sautés}")
                 return True, f"{nb_ecritures} écriture(s) et {nb_transactions} transaction(s) générée(s)"
-
         # 🔧 UN SEUL except, EN DEHORS du with
         # L'exception a traversé le with → get_cursor() a fait rollback() → on la catch ici
-        except Exception as e:
-            logger.error(f"❌ Comptabilisation annulée, rollback: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"❌ Comptabilisation annulée, rollback")
             return False, f"Erreur: {str(e)}"
         
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
@@ -21195,17 +20112,18 @@ class POSComptabilisation:
                 """, (user_id,))
                 res = cursor.fetchone()
                 return res['id'] if res else None
-            except Exception as e:
-                logger.error(f"Erreur récupération compte vente par défaut: {e}")
+            except MySQLError as e:
+                logger.exception(f"Erreur récupération compte vente par défaut: {e}")
                 return None
 
-class PeriodeTravailPOS:
+class PeriodeTravailPOS(BaseRepository):
     """
     Gestion des ouvertures/fermetures de caisse.
     Lien : utilisateur qui a ouvert la caisse.
     """
+    __slots__ = ["transaction_model"]
     def __init__(self, db):
-        self.db = db
+        super().__init__(db)
         self.transaction_model = TransactionFinanciere(db)
 
     def ouvrir_caisse(self, user_id: int, data: Dict) -> Optional[int]:
@@ -21222,7 +20140,6 @@ class PeriodeTravailPOS:
                 """, (user_id,))
                 if cursor.fetchone():
                     return None  # Déjà une période ouverte
-                
                 cursor.execute("""
                     INSERT INTO pos_periodes_travail 
                     (utilisateur_id, magasin, pdv_id, date_debut, 
@@ -21236,8 +20153,8 @@ class PeriodeTravailPOS:
                     data.get('montant_debut_reel', 0)
                 ))
                 return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"Erreur ouverture caisse: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur ouverture caisse: {e}")
             return None
 
     def fermer_caisse(self, periode_id: int, user_id: int, data: Dict) -> Tuple[bool, str]:
@@ -21252,22 +20169,18 @@ class PeriodeTravailPOS:
                 periode = cursor.fetchone()
                 if not periode:
                     return False, "Période non trouvée ou déjà fermée"
-
                 montant_fin_reel = Decimal(str(data.get('montant_fin_reel', 0)))
                 montant_debut_reel = Decimal(str(periode['montant_debut_reel']))
-
                 cursor.execute("""
                     SELECT COALESCE(SUM(montant_retrait), 0) as total_retraits
                     FROM pos_retraits WHERE periode_travail_id = %s
                 """, (periode_id,))
                 total_retraits = Decimal(str(cursor.fetchone()['total_retraits']))
-
                 cursor.execute("""
                     SELECT COALESCE(SUM(montant_depot), 0) as total_depots
                     FROM pos_depots WHERE periode_travail_id = %s
                 """, (periode_id,))
                 total_depots = Decimal(str(cursor.fetchone()['total_depots']))
-
                 # ✅ FIX : filtre désormais par magasin ET pdv (colonnes texte de pos_receipts),
                 # plus seulement par date — sinon on additionne les espèces de TOUS les
                 # PDV actifs pendant la même plage horaire.
@@ -21284,10 +20197,8 @@ class PeriodeTravailPOS:
                     AND (mp.nom LIKE '%%spè%%' OR mp.nom LIKE '%%spe%%' OR mp.nom LIKE '%%cash%%' OR mp.nom LIKE '%%liquide%%')
                 """, (user_id, periode['date_debut'], periode['magasin'], periode['nom_pdv']))
                 net_especes = Decimal(str(cursor.fetchone()['net_especes']))
-
                 attendu = montant_debut_reel + net_especes + total_depots - total_retraits
                 difference = montant_fin_reel - attendu
-
                 cursor.execute("""
                     UPDATE pos_periodes_travail 
                     SET date_fin = NOW(), 
@@ -21306,11 +20217,9 @@ class PeriodeTravailPOS:
                     float(difference),
                     periode_id
                 ))
-
                 return True, f"Caisse fermée. Différence: {difference:.2f} CHF"
-
-        except Exception as e:
-            logger.error(f"Erreur fermeture caisse: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur fermeture caisse: {e}")
             return False, f"Erreur: {str(e)}"
 
     
@@ -21325,8 +20234,8 @@ class PeriodeTravailPOS:
                     LIMIT 1
                 """, (user_id,))
                 return cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Erreur récupération période ouverte: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur récupération période ouverte: {e}")
             return None
 
     def get_by_id(self, periode_id: int, user_id: int) -> Optional[Dict]:
@@ -21336,7 +20245,8 @@ class PeriodeTravailPOS:
                     SELECT * FROM pos_periodes_travail WHERE id = %s AND utilisateur_id = %s
                 """, (periode_id, user_id))
                 return cursor.fetchone()
-        except:
+        except MySQLError as e:
+            logger.exception(f"Erreur de récupération pos_periode {periode_id} : {e}")
             return None
 
     def get_by_date(self, user_id: int, date_str: str) -> List[Dict]:
@@ -21353,7 +20263,8 @@ class PeriodeTravailPOS:
                     
                 """, (user_id, date_str))
                 return cursor.fetchall()
-        except:
+        except MySQLError as e:
+            logger.exception(f"Errur de récupération par date {date_str} : {e}")
             return []
 
     def get_by_date_range(self, user_id: int, date_from: str, date_to: str, 
@@ -21376,13 +20287,12 @@ class PeriodeTravailPOS:
                 query += " ORDER BY ppt.date_debut DESC LIMIT 100"
                 cursor.execute(query, params)
                 return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Erreur get_by_date_range: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur get_by_date_range: {e}")
             return []
 
     def get_detail_json(self, periode_id: int, user_id: int) -> Optional[Dict]:
         """Retourne toutes les données d'une période pour la modale de fermeture
-
         ✅ FIX : toutes les requêtes d'agrégation sur pos_receipts / pos_payments
         filtrent désormais aussi sur (r.magasin = period.magasin AND r.pdv =
         period.nom_pdv), en plus de la plage de dates. Sans ce filtre, un
@@ -21392,7 +20302,6 @@ class PeriodeTravailPOS:
         """
         try:
             logger = logging.getLogger(__name__)
-
             with self.db.get_cursor(dictionary=True) as cursor:
                 # --- Période + nom du PDV ---
                 cursor.execute("""
@@ -21402,16 +20311,13 @@ class PeriodeTravailPOS:
                     WHERE ppt.id = %s AND ppt.utilisateur_id = %s
                 """, (periode_id, user_id))
                 period = cursor.fetchone()
-
                 if not period:
                     logger.warning(f"DEBUG: Période {periode_id} non trouvée pour user {user_id}")
                     return None
-
                 date_fin = period.get('date_fin')
                 date_debut = period['date_debut']
                 magasin = period['magasin']
                 nom_pdv = period.get('nom_pdv')
-
                 # --- Stats ventes (filtrées par magasin + pdv) ---
                 cursor.execute("""
                     SELECT
@@ -21425,9 +20331,7 @@ class PeriodeTravailPOS:
                     AND (date <= %s OR %s IS NULL) AND status != 'Annulé'
                     AND magasin = %s AND pdv = %s
                 """, (user_id, date_debut, date_fin, date_fin, magasin, nom_pdv))
-
                 s = cursor.fetchone()
-
                 # --- Espèces uniquement (filtrées par magasin + pdv) ---
                 cursor.execute("""
                     SELECT
@@ -21443,9 +20347,7 @@ class PeriodeTravailPOS:
                         OR mp.nom LIKE '%%cash%%' OR mp.nom LIKE '%%liquide%%'
                         OR mp.nom LIKE '%%Espè%%' OR mp.nom LIKE '%%Cash%%')
                 """, (user_id, date_debut, date_fin, date_fin, magasin, nom_pdv))
-
                 c = cursor.fetchone()
-
                 # --- Ventes par mode de paiement (filtrées par magasin + pdv) ---
                 cursor.execute("""
                     SELECT mp.nom AS nom, COALESCE(SUM(p.montant), 0) AS total
@@ -21458,25 +20360,21 @@ class PeriodeTravailPOS:
                     GROUP BY mp.nom
                     ORDER BY total DESC
                 """, (user_id, date_debut, date_fin, date_fin, magasin, nom_pdv))
-
                 ventes_par_mode = [
                     {'nom': row['nom'], 'total': float(row['total'])}
                     for row in cursor.fetchall()
                 ]
-
                 # --- Totaux retraits / dépôts (déjà scopés par periode_travail_id, inchangé) ---
                 cursor.execute("""
                     SELECT COALESCE(SUM(montant_retrait), 0) AS t 
                     FROM pos_retraits WHERE periode_travail_id = %s
                 """, (periode_id,))
                 total_retraits = float(cursor.fetchone()['t'])
-
                 cursor.execute("""
                     SELECT COALESCE(SUM(montant_depot), 0) AS t 
                     FROM pos_depots WHERE periode_travail_id = %s
                 """, (periode_id,))
                 total_depots = float(cursor.fetchone()['t'])
-
                 # --- Liste des mouvements (déjà scopés par periode_travail_id, inchangé) ---
                 cursor.execute("""
                     SELECT 'retrait' AS type_mvt, montant_retrait AS montant, 
@@ -21487,9 +20385,7 @@ class PeriodeTravailPOS:
                     FROM pos_depots WHERE periode_travail_id = %s
                     ORDER BY date_mvt
                 """, (periode_id, periode_id))
-
                 mouvements_raw = cursor.fetchall()
-
                 mouvements = [
                     {
                         'heure': row['date_mvt'].strftime('%H:%M') if row['date_mvt'] else '',
@@ -21498,21 +20394,16 @@ class PeriodeTravailPOS:
                     }
                     for row in mouvements_raw
                 ]
-
                 # --- Calculs finaux ---
                 montant_debut = float(period['montant_debut_reel'] or 0)
                 especes_ventes = float(c['especes_ventes'] or 0)
                 especes_remb = float(c['especes_remboursements'] or 0)
-
                 montant_prevu = (montant_debut + especes_ventes - especes_remb 
                                 + total_depots - total_retraits)
                 montant_fin_reel = float(period['montant_fin_reel'] or 0)
-
                 if not date_fin:
                     montant_fin_reel = montant_prevu
-
                 difference = (montant_fin_reel - montant_prevu) if date_fin else 0
-
                 result = {
                     'id': period['id'],
                     'magasin': period.get('magasin', ''),
@@ -21520,7 +20411,6 @@ class PeriodeTravailPOS:
                     'date_debut': period['date_debut'].strftime('%d/%m/%Y %H:%M') if period.get('date_debut') else '',
                     'date_fin': period['date_fin'].strftime('%d/%m/%Y %H:%M') if date_fin else None,
                     'status': 'Fermé' if date_fin else 'Ouvert',
-
                     'especes_de_depart': montant_debut,
                     'especes_ventes': especes_ventes,
                     'especes_remboursements': especes_remb,
@@ -21529,28 +20419,25 @@ class PeriodeTravailPOS:
                     'montant_prevu': montant_prevu,
                     'montant_fin_reel': montant_fin_reel,
                     'difference': difference,
-
                     'ventes_brutes': float(s['ventes_brutes'] or 0),
                     'remboursements': float(s['remboursements'] or 0),
                     'reductions': float(s['reductions'] or 0),
                     'ventes_nettes': float(s['ventes_nettes'] or 0),
                     'taxes_total': float(s['taxes_total'] or 0),
-
                     'ventes_par_mode': ventes_par_mode,
                     'mouvements': mouvements
                 }
-
                 return result
-
-        except Exception as e:
-            logger.error(f"Erreur get_detail_json: {e}", exc_info=True)
+        except MySQLError as e:
+            logger.exception(f"Erreur get_detail_json: {e}", exc_info=True)
             traceback.print_exc()
             return None
 
-class MouvementCaissePOS:
+class MouvementCaissePOS(BaseRepository):
     """Gestion des retraits et dépôts en caisse"""
+    __slots__ = ["transaction_model"]
     def __init__(self, db):
-        self.db = db
+        super().__init__(db)
         self.transaction_model = TransactionFinanciere(db)
 
     def enregistrer_retrait(self, periode_id: int, user_id: int, montant: Decimal,
@@ -21559,14 +20446,12 @@ class MouvementCaissePOS:
         """
         Enregistre un retrait de caisse.
         Si compte_bancaire_id fourni, crée une transaction de dépôt dans le compte.
-        
         ✅ NOUVEAU : date_operation permet d'importer des données historiques.
-                     Si None, utilise datetime.now() (comportement par défaut).
+        Si None, utilise datetime.now() (comportement par défaut).
         """
         try:
             # ✅ Si aucune date fournie, on prend la date actuelle
             date_op = date_operation or datetime.now()
-            
             with self.db.get_cursor() as cursor:
                 # Vérifier la période
                 cursor.execute("""
@@ -21575,13 +20460,11 @@ class MouvementCaissePOS:
                 """, (periode_id, user_id))
                 if not cursor.fetchone():
                     return False, "Période non trouvée ou fermée"
-                
                 # ✅ Enregistrer le retrait avec la date réelle (plus NOW())
                 cursor.execute("""
                     INSERT INTO pos_retraits (periode_travail_id, montant_retrait, date_retrait, description)
                     VALUES (%s, %s, %s, %s)
                 """, (periode_id, float(montant), date_op, description))
-                
                 # 🔗 Si compte bancaire fourni, créer une transaction de dépôt
                 if compte_bancaire_id:
                     success, msg, _ = self.transaction_model._inserer_transaction_with_cursor(
@@ -21598,11 +20481,9 @@ class MouvementCaissePOS:
                     )
                     if not success:
                         return False, f"Retrait enregistré mais erreur transaction: {msg}"
-                
                 return True, "Retrait enregistré"
-                
-        except Exception as e:
-            logger.error(f"Erreur enregistrement retrait: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur enregistrement retrait")
             return False, f"Erreur: {str(e)}"
 
     def enregistrer_depot(self, periode_id: int, user_id: int, montant: Decimal,
@@ -21611,13 +20492,11 @@ class MouvementCaissePOS:
         """
         Enregistre un dépôt en caisse (ex: fond de caisse).
         Si compte_bancaire_id fourni, crée une transaction de retrait du compte.
-        
         ✅ NOUVEAU : date_operation permet d'importer des données historiques.
         """
         try:
             # ✅ Si aucune date fournie, on prend la date actuelle
-            date_op = date_operation or datetime.now()
-            
+            date_op = date_operation or datetime.now()   
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
                     SELECT * FROM pos_periodes_travail 
@@ -21630,8 +20509,7 @@ class MouvementCaissePOS:
                 cursor.execute("""
                     INSERT INTO pos_depots (periode_travail_id, montant_depot, date_depot, description)
                     VALUES (%s, %s, %s, %s)
-                """, (periode_id, float(montant), date_op, description))
-                
+                """, (periode_id, float(montant), date_op, description))   
                 if compte_bancaire_id:
                     success, msg, _ = self.transaction_model._inserer_transaction_with_cursor(
                         cursor=cursor,
@@ -21647,11 +20525,9 @@ class MouvementCaissePOS:
                     )
                     if not success:
                         return False, f"Dépôt enregistré mais erreur transaction: {msg}"
-                
                 return True, "Dépôt enregistré"
-                
-        except Exception as e:
-            logger.error(f"Erreur enregistrement dépôt: {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur enregistrement dépôt")
             return False, f"Erreur: {str(e)}"
 
     def get_by_periode(self, periode_id: int) -> Dict:
@@ -21666,7 +20542,8 @@ class MouvementCaissePOS:
                     ORDER BY date
                 """, (periode_id, periode_id))
                 return cursor.fetchall()
-        except:
+        except MySQLError as e:
+            logger.exception(f"Eerrur de récupération par période {periode_id} : {e}")
             return []
 
 class ModelManager:
@@ -21731,7 +20608,6 @@ class ModelManager:
     @property
     def contact_compte_model(self):
         return self._get_model('contact_compte', ContactCompte)
-
     @property
     def rapport_model(self):
         return self._get_model('rapport', Rapport)
@@ -21795,39 +20671,30 @@ class ModelManager:
     @property
     def pdv_pos_model(self):
         return self._get_model('pdv_pos', PointDeVentePOS)
-    
     @property
     def categorie_pos_model(self):
         return self._get_model('categorie_pos', CategoriePOS)
-    
     @property
     def sous_categorie_pos_model(self):
         return self._get_model('sous_categorie_pos', SousCategoriePOS)
-    
     @property
     def taxe_pos_model(self):
         return self._get_model('taxe_pos', TaxePOS)
-    
     @property
     def mode_paiement_pos_model(self):
         return self._get_model('mode_paiement_pos', ModePaiementPOS)
-    
     @property
     def restaurant_option_pos_model(self):
         return self._get_model('restaurant_option_pos', RestaurantOptionPOS)
-    
     @property
     def discount_pos_model(self):
         return self._get_model('discount_pos', DiscountPOS)
-    
     @property
     def article_pos_model(self):
         return self._get_model('article_pos', ArticlePOS)
-    
     @property
     def variante_pos_model(self):
         return self._get_model('variante_pos', VariantePOS)
-    
     @property
     def modificateur_pos_model(self):
         return self._get_model('modificateur_pos', ModificateurPOS)
@@ -21837,7 +20704,6 @@ class ModelManager:
     @property
     def client_pos_model(self):
         return self._get_model('client_pos', ClientPOS)
-    
     @property
     def receipt_pos_model(self):
         return self._get_model('receipt_pos', ReceiptPOS)
@@ -21846,12 +20712,10 @@ class ModelManager:
         return self._get_model('pos_comptabilisation', POSComptabilisation)
     @property
     def pos_compta_mapping_model(self):
-        return self._get_model('pos_comptabilisation', POSComptaMapping)
-
+        return self._get_model('POSComptaMapping', POSComptaMapping)
     @property
     def periode_travail_pos_model(self):
         return self._get_model('periode_travail_pos', PeriodeTravailPOS)
-    
     @property
     def mouvement_caisse_pos_model(self):
         return self._get_model('mouvement_caisse_pos', MouvementCaissePOS)
@@ -21866,6 +20730,6 @@ class ModelManager:
                 cursor.execute(query, (username,))
                 user_data = cursor.fetchone()
                 return user_data
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération de l'utilisateur : {e}")
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la récupération de l'utilisateur : {e}")
             return None

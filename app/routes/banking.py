@@ -3675,7 +3675,8 @@ def nouvelle_categorie():
                 'numero': request.form['numero'],
                 'nom': request.form['nom'],
                 'type_compte': request.form['type'],
-                'parent_id': request.form.get('parent_id') or None
+                'parent_id': request.form.get('parent_id') or None,
+                'utilisateur_id': current_user.id
             }         
             plan_id = request.form.get('plan_id', type=int)
             categorie_id = g.models.categorie_comptable_model.create(data)
