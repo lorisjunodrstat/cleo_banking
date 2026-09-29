@@ -27,7 +27,6 @@ import os
 from xhtml2pdf import pisa
 import csv as csv_mod
 from werkzeug.utils import secure_filename
-import csv as csv_mod
 import pandas as pd
 import secrets
 import re
@@ -4117,7 +4116,6 @@ def export_ecritures():
     statut = request.args.get('statut', 'tous')
     type_ecriture = request.args.get('type_ecriture', 'tous')
     type_ecriture_comptable = request.args.get('type_ecriture_comptable', 'tous')
-    
     filtres = {
         'user_id': current_user.id,
         'date_from': date_from,
@@ -4130,20 +4128,14 @@ def export_ecritures():
         'type_ecriture_comptable': type_ecriture_comptable if type_ecriture_comptable != 'tous' else None,
         'limit': None  # Pas de limite pour l'export
     }
-    
-    ecritures = g.models.ecriture_comptable_model.get_with_filters(**filtres)
-    
+    ecritures = g.models.ecriture_comptable_model.get_with_filters(**filtres) 
     import csv
-    from io import StringIO
-    
     output = StringIO()
     writer = csv.writer(output)
-    
     if ecritures:
         # En-têtes
         headers = list(ecritures[0].keys()) if isinstance(ecritures[0], dict) else [f"col_{i}" for i in range(len(ecritures[0]))]
         writer.writerow(headers)
-        
         # Données
         for ecriture in ecritures:
             if isinstance(ecriture, dict):
@@ -4151,10 +4143,8 @@ def export_ecritures():
             else:
                 row = list(ecriture)
             writer.writerow(row)
-    
     output.seek(0)
     filename = f"ecritures_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-    
     return send_file(
         StringIO(output.getvalue()),
         mimetype='text/csv',
@@ -5156,7 +5146,7 @@ def creer_ecriture_automatique(transaction_id):
             'id_contact': id_contact  # 🔥 Contact du formulaire OU lié au compte
         }
 
-        if g.models.ecriture_comptable_model.create(g.models.categorie_comptable_model, ecriture_data):
+        if g.models.ecriture_comptable_model.create(ecriture_data):
             # Marquer la transaction comme comptabilisée
             g.models.transaction_financiere_model.update_statut_comptable(
                 transaction_id, current_user.id, 'comptabilise'
@@ -5200,7 +5190,6 @@ def datetimeformat(value, format='%d.%m.%Y'):
         return ""
     if isinstance(value, str):
         # Si c'est une chaîne, la convertir en datetime
-        from datetime import datetime
         value = datetime.strptime(value, '%Y-%m-%d')
     return value.strftime(format)
 
@@ -5300,7 +5289,7 @@ def nouvelle_ecriture():
                 data['tva_montant'] = 0
                 
             # Création de l'écriture
-            if g.models.ecriture_comptable_model.create(g.models.categorie_comptable_model, data):
+            if g.models.ecriture_comptable_model.create(data):
                 flash('Écriture enregistrée avec succès', 'success')
                 ecriture_id = g.models.ecriture_comptable_model.get_last_insert_id()
                 secondaires = g.models.ecriture_comptable_model.get_ecritures_complementaires(ecriture_id, current_user.id)
@@ -5593,7 +5582,6 @@ def creer_ecritures_multiple_auto(transaction_id):
                 #     → les secondaires (TVA, règles en cascade) sont créées par create()
                 #     → on récupère l'ID de la principale pour la lier à la transaction
                 ecriture_id = g.models.ecriture_comptable_model.create(
-                    g.models.categorie_comptable_model,
                     data,
                     return_id=True
                 )
@@ -7175,17 +7163,12 @@ def api_taux_by_date():
     date_str = request.args.get('date')
     if not date_str:
         return jsonify({'error': 'Paramètre date requis (YYYY-MM-DD)'}), 400
-    
     taux_valides = g.models.taux_tva_model.get_taux_by_date(date_str)
-    
     # Si aucun taux n'est trouvé pour cette année, on peut fallback sur l'année en cours
     if not taux_valides:
-        from datetime import datetime
         annee_courante = datetime.now().year
         taux_valides = g.models.taux_tva_model.get_taux_by_date(f"{annee_courante}-01-01")
-
     return jsonify(taux_valides)
-
 
 
 def _params_compte_resultat():
@@ -8834,15 +8817,12 @@ def salaires():
     annee = request.args.get('annee', now.year, type=int)
     mois = request.args.get('mois', now.month, type=int)
     selected_employeur = request.args.get('employeur', '').strip()
-
     tous_contrats = g.models.contrat_model.get_all_contrats(current_user_id)
     employeurs_unique = sorted({c['employeur'] for c in tous_contrats if c.get('employeur')})
-
     # Sélection automatique de l'employeur
     if not selected_employeur and employeurs_unique:
         contrat_actuel = g.models.contrat_model.get_contrat_actuel(current_user_id)
         selected_employeur = contrat_actuel['employeur'] if contrat_actuel else employeurs_unique[0]
-
     # Initialiser structure
     salaires_par_mois = {}
     for m in range(1, 13):
@@ -8853,12 +8833,10 @@ def salaires():
                 'acompte_25', 'acompte_10', 'acompte_25_estime', 'acompte_10_estime', 'difference'
             ]}
         }
-
     # Traiter chaque mois
     for m in range(1, 13):
         date_mois = date(annee, m, 1)
         employeurs_a_traiter = [selected_employeur] if selected_employeur else employeurs_unique
-
         for employeur in employeurs_a_traiter:
             # Trouver contrat actif ce mois-ci
             contrat = next((
@@ -8867,31 +8845,25 @@ def salaires():
                 and c['date_debut'] <= date_mois
                 and (c['date_fin'] is None or c['date_fin'] >= date_mois)
             ), None)
-
             if not contrat:
                 continue
-
             id_contrat = contrat['id']
             salaire_horaire = float(contrat.get('salaire_horaire', 24.05))
             jour_estimation = int(contrat.get('jour_estimation_salaire', 15))
-
             # Heures réelles
             heures_reelles = g.models.heure_model.get_total_heures_mois(
                 current_user_id, employeur, id_contrat, annee, m
             ) or 0.0
             heures_reelles = round(heures_reelles, 2)
-
             # Salaire existant ?
             salaires_existants = g.models.salaire_model.get_by_mois_annee(
                 current_user_id, annee, m, employeur, id_contrat
             )
             salaire_existant = salaires_existants[0] if salaires_existants else None
-
             # Valeurs saisies manuellement
             salaire_verse = salaire_existant.get('salaire_verse', 0.0) if salaire_existant else 0.0
             acompte_25 = salaire_existant.get('acompte_25', 0.0) if salaire_existant else 0.0
             acompte_10 = salaire_existant.get('acompte_10', 0.0) if salaire_existant else 0.0
-
             # Calculs dynamiques SI heures > 0
             if heures_reelles > 0:
                 # 1. Salaire net + détails (via nouvelles tables)
@@ -8917,14 +8889,12 @@ def salaires():
                 # Vérifiez les indemnités configurées
                 indemnites_contrat = g.models.indemnites_contrat_model.get_for_contrat(id_contrat)
                 print(f"Indemnités contrat: {indemnites_contrat}")
-
                 # Vérifiez les cotisations configurées  
                 cotisations_contrat = g.models.cotisations_contrat_model.get_for_contrat(id_contrat)
                 print(f"Cotisations contrat: {cotisations_contrat}")
                 salaire_net = result.get('salaire_net', 0.0)
                 salaire_calcule = result.get('details', {}).get('salaire_brut', 0.0)
                 details = result
-
                 # 2. Acompte 25 = heures(1–15) × salaire_horaire
                 acompte_25_estime = 0.0
                 if contrat.get('versement_25'):
@@ -8933,14 +8903,11 @@ def salaires():
                         current_user_id, annee, m, salaire_horaire, employeur, id_contrat, jour_estimation
                     )
                     acompte_25_estime = round(acompte_25_estime, 2)
-
                 # 3. Acompte 10 = salaire_net − acompte_25_estime
                 acompte_10_estime = round(salaire_net - acompte_25_estime, 2)
-
             else:
                 salaire_net = salaire_calcule = acompte_25_estime = acompte_10_estime = 0.0
                 details = {'erreur': 'Aucune heure saisie'}
-
             # Préparer données
             salaire_data = {
                 'mois': m,
@@ -8961,47 +8928,38 @@ def salaires():
                 'difference_pourcent': 0.0,
                 'details': details
             }
-
             # Différence
             if salaire_calcule and salaire_verse is not None:
                 diff, diff_pct = g.models.salaire_model.calculer_differences(salaire_calcule, salaire_verse)
                 salaire_data['difference'] = diff
                 salaire_data['difference_pourcent'] = diff_pct
-
             # Création auto si nouveau
             if not salaire_existant and heures_reelles > 0:
                 g.models.salaire_model.create(salaire_data)
-
             # Stocker
             salaires_par_mois[m]['employeurs'][employeur] = salaire_data
-
             # Ajouter aux totaux (si employeur sélectionné ou mode global)
             if not selected_employeur or employeur == selected_employeur:
                 totaux = salaires_par_mois[m]['totaux_mois']
                 for key in ['heures_reelles', 'salaire_calcule', 'salaire_net', 'salaire_verse',
                             'acompte_25', 'acompte_10', 'acompte_25_estime', 'acompte_10_estime', 'difference']:
                     totaux[key] += salaire_data[key]
-
     # Totaux annuels
     totaux_annuels = {f"total_{k}": round(sum(salaires_par_mois[m]['totaux_mois'][k] for m in range(1,13)), 2)
                       for k in salaires_par_mois[1]['totaux_mois'].keys()}
-
     # =============== PRÉPARATION DES DONNÉES POUR LES GRAPHIQUES SVG ===============
-
     largeur_svg = 800
     hauteur_svg = 400
     margin_x = largeur_svg * 0.1
     margin_y = hauteur_svg * 0.1
     plot_width = largeur_svg * 0.8
     plot_height = hauteur_svg * 0.8
-
     # === GRAPHIQUE 1 ===
     salaire_estime_vals = []
     salaire_verse_vals = []
     acompte_10_vals = []
     acompte_25_vals = []
     mois_labels = []
-
     for m in range(1, 13):
         mois_data = salaires_par_mois[m]['employeurs'].get(selected_employeur, {})
         if mois_data:
@@ -9015,35 +8973,28 @@ def salaires():
             acompte_10_vals.append(0.0)
             acompte_25_vals.append(0.0)
         mois_labels.append(f"{m:02d}/{annee}")
-
     all_vals = salaire_estime_vals + salaire_verse_vals + acompte_10_vals + acompte_25_vals
     min_val = min(all_vals) if all_vals else 0.0
     max_val = max(all_vals) if all_vals else 100.0
     if min_val == max_val:
         max_val = min_val + 100.0 if min_val == 0 else min_val * 1.1
-
     # === CALCUL DES TICKS POUR L'AXE Y (GRAPHIQUE 1) ===
     # On arrondit min_val vers le bas au multiple de 200 le plus proche
     # et max_val vers le haut au multiple de 1000 le plus proche (ou 200 si petit)
         # === CALCUL DES TICKS POUR L'AXE Y (GRAPHIQUE 1) ===
     import math
-
     tick_step_minor = 200
     tick_step_major = 1000
-
     # Étendre légèrement les bornes pour inclure des multiples de 200
     y_axis_min = math.floor(min_val / tick_step_minor) * tick_step_minor
     y_axis_max = math.ceil(max_val / tick_step_minor) * tick_step_minor
-
     # S'assurer qu'on a au moins 2 ticks
     if y_axis_max <= y_axis_min:
         y_axis_max = y_axis_min + tick_step_major
-
     # Option : plafonner y_axis_max à un multiple de 1000 si max_val est petit
     # (évite d'aller à 1000 si max_val = 300)
     if max_val < tick_step_major:
         y_axis_max = tick_step_major
-
     ticks = []
     y_val = y_axis_min
     while y_val <= y_axis_max:
@@ -10804,10 +10755,6 @@ def retirer_employe_de_equipe(id_equipe, employe_id):
         flash("Erreur lors du retrait", "error")
     return redirect(url_for('banking.detail_equipe', id_equipe=id_equipe))
 ### Planning 
-from datetime import datetime
-from flask import render_template, request, redirect, url_for, flash, g
-from flask_login import login_required, current_user
-
 @bp.route('/employes/<int:employe_id>/planning')
 @login_required
 def planning_employe(employe_id):
@@ -11363,9 +11310,6 @@ def synthese_mensuelle_employes():
 # À ajouter à la suite de vos routes existantes dans banking.py
 # ============================================================
 
-from decimal import Decimal
-from datetime import datetime, date
-
 # --- UTILITAIRES POS ---
 def safe_float(val, default=0.0):
     try:
@@ -11616,9 +11560,10 @@ def pos_categories_list():
 @bp.route('/pos/categories/create', methods=['GET', 'POST'])
 @login_required
 def pos_create_category():
-    magasin_id = get_magasin_id_courant()   # ⬅️ AJOUT
+    magasin_id = get_magasin_id_courant()
     if request.method == 'POST':
-        cat_id = g.models.categorie_pos_model.create(current_user.id, magasin_id, {  # ⬅️ AJOUT
+        cat_id = g.models.categorie_pos_model.create(current_user.id, {
+            'magasin_id' = magasin_id,
             'nom_categorie': request.form.get('nom_categorie', '').strip(),
             'description': request.form.get('description', '')
         })
@@ -11689,7 +11634,7 @@ def pos_create_subcategory():
 @bp.route('/pos/subcategories/<int:sc_id>/edit', methods=['GET', 'POST'])
 @login_required
 def pos_edit_subcategory(sc_id):
-    sc = g.models.sous_categorie_pos_model.get_by_id(sc_id, current_user.id, magasin_id=get_magasin_id_courant())
+    sc = g.models.sous_categorie_pos_model.get_by_id(sc_id, current_user.id)
     if not sc:
         flash('Sous-catégorie introuvable.', 'error')
         return redirect(url_for('banking.pos_categories_list'))
@@ -11793,17 +11738,13 @@ def pos_modifier_detail(mod_id):
     if not mod:
         flash('Modificateur introuvable.', 'error')
         return redirect(url_for('banking.pos_modifiers_list'))
-
     # ✅ Récupérer les types de taxes disponibles avec leur taux actuel
-    from datetime import date
     types_taxes_disponibles = g.models.taxe_pos_model.get_all_types(current_user.id, magasin_id=get_magasin_id_courant(), actif_only=True)
     for tt in types_taxes_disponibles:
         taux_info = g.models.taxe_pos_model.get_taux_for_date(tt['id'], date.today())
         tt['taux_actuel'] = taux_info['taux'] if taux_info else 0.00
-
     if request.method == 'POST':
         action = request.form.get('action')
-
         if action == 'update_modifier':
             g.models.modificateur_pos_model.update(mod_id, current_user.id, {
                 'nom_modificateur': request.form.get('nom_modificateur', '').strip(),
@@ -11812,7 +11753,6 @@ def pos_modifier_detail(mod_id):
                 'taux_tva': safe_float(request.form.get('taux_tva', 0.00)),
             })
             flash('Modificateur mis à jour !', 'success')
-
         elif action == 'add_option':
             nom = request.form.get('nom_option', '').strip()
             if nom:
@@ -11836,20 +11776,16 @@ def pos_modifier_detail(mod_id):
                 flash(f'Option "{nom}" ajoutée !', 'success')
             else:
                 flash('Le nom de l\'option est requis.', 'error')
-
         elif action == 'delete_option':
             oid = request.form.get('option_id')
             if oid:
                 g.models.option_modificateur_pos_model.delete(int(oid), current_user.id)
                 flash('Option supprimée.', 'success')
-
         return redirect(url_for('banking.pos_modifier_detail', mod_id=mod_id))
-
     options = g.models.option_modificateur_pos_model.get_by_modifier(mod_id)
     articles = g.models.article_pos_model.get_all(current_user.id)
     articles_by_id = {a['id']: a for a in articles}
     articles_lies = sum(1 for o in options if o.get('id_article'))
-
     return render_template(
         'pos/modifier_detail.html',
         modifier=mod, 
@@ -11931,35 +11867,28 @@ def pos_articles_list():
         magasin_id=magasin_id,
         categorie_id=category_id
     )
-    
     if search:
         search_lower = search.lower()
         articles = [
             a for a in articles 
             if search_lower in (a.get('nom_article', '') if isinstance(a, dict) else getattr(a, 'nom_article', '')).lower()
         ]
-    
     categories = g.models.categorie_pos_model.get_all(current_user.id, magasin_id=magasin_id)
     
     # Pagination manuelle (comme dans banking_compte_detail)
     per_page = current_app.config.get('PER_PAGE', 20)
     total = len(articles)
     total_pages = (total + per_page - 1) // per_page if total > 0 else 1
-    
     # S'assurer que la page est dans les limites
     if page < 1:
         page = 1
     elif page > total_pages:
         page = total_pages
-    
     # Pagination des résultats
     start_idx = (page - 1) * per_page
     end_idx = start_idx + per_page
     items_page = articles[start_idx:end_idx]
-    
     # Créer un objet pagination compatible avec le template
-    
-    
     pagination = SimpleNamespace(
         page=page,
         pages=total_pages,
@@ -11971,7 +11900,6 @@ def pos_articles_list():
         has_next=page < total_pages,
         next_num=page + 1 if page < total_pages else None
     )
-    
     return render_template(
         'pos/items.html',
         items=pagination.items,
@@ -11983,12 +11911,10 @@ def pos_articles_list():
 @bp.route('/pos/articles/create', methods=['GET', 'POST'])
 @login_required
 def pos_create_article():
-    magasin_id = get_magasin_id_courant()   # ⬅️ AJOUT
-
+    magasin_id = get_magasin_id_courant()
     categories = g.models.categorie_pos_model.get_all(current_user.id, magasin_id=magasin_id)
     sous_categories = g.models.sous_categorie_pos_model.get_all(current_user.id, magasin_id=magasin_id)
     types_taxes = g.models.taxe_pos_model.get_all_types(current_user.id, magasin_id=magasin_id, actif_only=True)
-
     if request.method == 'POST':
         article_data = {
             'nom_article': request.form.get('nom_article', '').strip(),
@@ -12004,19 +11930,14 @@ def pos_create_article():
             'is_variable_price': 'is_variable_price' in request.form,
             'variante': 'variante' in request.form
         }
-
-        article_id = g.models.article_pos_model.create(current_user.id, magasin_id, article_data)  # ⬅️ AJOUT
-
+        article_id = g.models.article_pos_model.create(current_user.id, magasin_id, article_data)
         if article_id:
             type_taxe_id = request.form.get('type_taxe_id')
             if type_taxe_id and type_taxe_id.isdigit():
                 g.models.taxe_pos_model.assigner_type_to_article(article_id, int(type_taxe_id))
-
             flash('Article créé avec succès !', 'success')
             return redirect(url_for('banking.pos_articles_list'))
-
         flash('Erreur lors de la création.', 'error')
-
     return render_template('pos/create_article.html',
                          categories=categories,
                          sous_categories=sous_categories,
@@ -12029,18 +11950,15 @@ def pos_edit_article(article_id):
     if not article or article.get('utilisateur_id') != current_user.id:
         flash('Article non trouvé.', 'error')
         return redirect(url_for('banking.pos_articles_list'))
-
     categories = g.models.categorie_pos_model.get_all(current_user.id, magasin_id=get_magasin_id_courant())
     sous_categories = g.models.sous_categorie_pos_model.get_all(current_user.id)
     types_taxes = g.models.taxe_pos_model.get_all_types(current_user.id, magasin_id=get_magasin_id_courant(), actif_only=True)
     all_modifiers = g.models.modificateur_pos_model.get_all(current_user.id, magasin_id=get_magasin_id_courant())
     linked_mod_ids = [m['id'] for m in g.models.article_pos_model.get_linked_modifiers(article_id)]
     variantes = g.models.variante_pos_model.get_by_article(article_id)
-    
     # ✅ Récupérer la taxe actuellement attribuée
     type_taxe_actuel = g.models.taxe_pos_model.get_type_for_article(article_id)
     article['type_taxe_actuel'] = type_taxe_actuel
-
     if request.method == 'POST':
         # ✅ Données complètes et cohérentes
         data = {
@@ -12057,25 +11975,20 @@ def pos_edit_article(article_id):
             'code_barre': request.form.get('code_barre', ''),
             'variante': 'variante' in request.form  # ✅ Ajout du champ manquant
         }
-        
         g.models.article_pos_model.update(article_id, current_user.id, data)
-
         # Modificateurs
         selected_ids = [int(x) for x in request.form.getlist('modifier_ids') if x.isdigit()]
         g.models.article_pos_model.set_modifiers(article_id, selected_ids)
-
         # ✅ Gestion de la taxe
         type_taxe_id = request.form.get('type_taxe_id')
         if type_taxe_id and type_taxe_id.isdigit():
             g.models.taxe_pos_model.assigner_type_to_article(article_id, int(type_taxe_id))
         else:
             g.models.taxe_pos_model.desactiver_taxes_article(article_id)
-
         # Supprimer variantes cochées
         for vid in request.form.getlist('delete_variante'):
             if vid.isdigit():
                 g.models.variante_pos_model.delete(int(vid), current_user.id)
-
         # Ajouter nouvelles variantes
         noms = request.form.getlist('variante_nom')
         prix = request.form.getlist('variante_prix')
@@ -12089,10 +12002,8 @@ def pos_edit_article(article_id):
                     'prix': safe_float(prix[i]) if i < len(prix) else 0,
                     'is_active': True,
                 })
-
         flash('Article modifié avec succès !', 'success')
         return redirect(url_for('banking.pos_articles_list'))
-
     return render_template(
         'pos/edit_article.html',
         article=article, 
@@ -12120,7 +12031,6 @@ def pos_delete_article(article_id):
 def pos_caisse():
     user_id = current_user.id
     periode_ouverte = g.models.periode_travail_pos_model.get_ouverte(user_id)
-    
     if not periode_ouverte:
         flash('Veuillez d\'abord ouvrir une période de travail.', 'warning')
         return redirect(url_for('banking.pos_work_periods'))
@@ -12128,7 +12038,6 @@ def pos_caisse():
     categories = g.models.categorie_pos_model.get_all(user_id, magasin_id=magasin_id)
     articles = g.models.article_pos_model.get_all(user_id, magasin_id=magasin_id)
     modes_paiement = g.models.mode_paiement_pos_model.get_all(user_id, magasin_id=magasin_id)
-    
     return render_template('pos/pos.html',
                          periode=periode_ouverte,
                          categories=categories,
@@ -12141,25 +12050,20 @@ def pos_create_sale():
     data = request.get_json()
     if not data:
         return jsonify({'success': False, 'message': 'Données invalides'}), 400
-    
     # ✅ NOUVEAU : On récupère le pdv_id (depuis les données ou la session)
     pdv_id = data.get('pdv_id') or session.get('pos_pdv_id')
     pdv = g.models.pdv_pos_model.get_by_id(pdv_id) if pdv_id else None
-    
     if not pdv or pdv.get('utilisateur_id') != current_user.id:
         return jsonify({'success': False, 'message': 'PDV invalide ou non sélectionné.'}), 400
-    
     data['pdv'] = pdv['nom_pdv']
     data['magasin'] = pdv.get('nom_magasin', '')
     data['nom_du_caissier'] = getattr(current_user, 'nom_utilisateur', '') or ''
-
     # ✅ APPEL MIS À JOUR : on passe pdv_id
     success, msg, receipt_id = g.models.receipt_pos_model.creer_vente(
         user_id=current_user.id,
         data=data,
         pdv_id=pdv['id']
     )
-    
     if success:
         receipt = g.models.receipt_pos_model.get_by_id(receipt_id, current_user.id)
         return jsonify({
@@ -12168,14 +12072,12 @@ def pos_create_sale():
             'transaction_id': receipt.get('transaction_liee_id') if receipt else None,
             'message': msg
         })
-    
     return jsonify({'success': False, 'message': msg}), 400
 
 # --- REÇUS ---
 @bp.route('/pos/receipts')
 @login_required
 def pos_receipts_list():
-    from types import SimpleNamespace
     magasin_id = get_magasin_id_courant()
     user_id=current_user.id
     pdvs = g.models.pdv_pos_model.get_by_magasin(magasin_id, user_id)
@@ -12186,7 +12088,6 @@ def pos_receipts_list():
     date_to = request.args.get('date_to', '').strip()
     employee = request.args.get('employee', '').strip()
     pdv = request.args.get('pdv', '').strip()
-    
     # Liste filtrée
     receipts = g.models.receipt_pos_model.get_all(
         user_id=current_user.id,
@@ -12199,7 +12100,6 @@ def pos_receipts_list():
         pdv=pdv or None,
         limit=10000
     )
-    
     # ✅ Construire receipts_data (format attendu par le template : rd.r + rd.payment_str)
     receipts_data = []
     for r in receipts:
@@ -12208,7 +12108,6 @@ def pos_receipts_list():
             'r': r,
             'payment_str': ', '.join(methods) if methods else '-'
         })
-    
     # Stats
     stats = g.models.receipt_pos_model.get_filtered_stats(
         user_id=current_user.id,
@@ -12232,19 +12131,16 @@ def pos_receipts_list():
     elif page > total_pages: page = total_pages
     start = (page - 1) * per_page
     items_page = receipts_data[start:start + per_page]
-    
     pagination = SimpleNamespace(
         page=page, pages=total_pages, per_page=per_page, total=total,
         items=items_page, has_prev=page > 1, prev_num=page - 1,
         has_next=page < total_pages, next_num=page + 1 if page < total_pages else None
     )
-    
     payment_methods = [
         m['nom'] for m in g.models.mode_paiement_pos_model.get_all(current_user.id) 
         if m.get('est_actif')
     ]
     employees = g.models.receipt_pos_model.get_unique_employees(current_user.id)
-  
     return render_template(
         'pos/recus.html',
         receipts_data=pagination.items,          
@@ -12273,7 +12169,6 @@ def pos_receipt_detail(receipt_id):
     if not g.models.receipt_pos_model.receipt_exists(receipt_id, current_user.id):
         flash('Reçu introuvable.', 'error')
         return redirect(url_for('banking.pos_receipts_list'))
-    
     return render_template('pos/receipt_detail.html', receipt_id=receipt_id)
 
 
@@ -12282,34 +12177,29 @@ def pos_receipt_detail(receipt_id):
 def pos_cloturer_vente():
     """API pour clôturer une vente et générer la transaction"""
     data = request.get_json()
-    
     pdv_id = data.get('pdv_id')
     items = data.get('items', []) # Ex: [{'nom_article': 'Café', 'quantite': 2, 'prix_unitaire': 3.50}]
     
     if not pdv_id or not items:
         return jsonify({'success': False, 'message': 'Données incomplètes'}), 400
-
     success, message, receipt_id = g.models.receipt_pos_model.cloturer_vente(
         user_id=current_user.id,
         pdv_id=int(pdv_id),
         items=items,
         mode_paiement=data.get('mode_paiement', 'Espèces')
     )
-    
     if success:
         return jsonify({
             'success': True, 
             'message': message, 
             'receipt_id': receipt_id
         })
-    
     return jsonify({'success': False, 'message': message}), 400
 # --- PÉRIODES DE TRAVAIL ---
 @bp.route('/pos/work-periods')
 @login_required
 def pos_work_periods():
     periode = request.args.get('periode', 'jour')
-    
     # Paramètres pour chaque type de période
     date_filter = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
     semaine_debut = request.args.get('semaine_debut')
@@ -12320,11 +12210,9 @@ def pos_work_periods():
     annee_select = request.args.get('annee_select')
     date_debut_str = request.args.get('date_debut')
     date_fin_str = request.args.get('date_fin')
-    
     debut = None
     fin = None
     libelle_periode = ""
-    
     try:
         if periode == 'jour':
             if date_filter:
@@ -12332,8 +12220,7 @@ def pos_work_periods():
             else:
                 debut = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
             fin = debut.replace(hour=23, minute=59, second=59)
-            libelle_periode = debut.strftime('%d %B %Y')
-            
+            libelle_periode = debut.strftime('%d %B %Y') 
         elif periode == 'semaine':
             if semaine_debut:
                 debut = datetime.strptime(semaine_debut, '%Y-%m-%d')
@@ -12344,7 +12231,6 @@ def pos_work_periods():
             debut = debut.replace(hour=0, minute=0, second=0, microsecond=0)
             fin = debut + timedelta(days=6, hours=23, minutes=59, seconds=59)
             libelle_periode = f"Semaine du {debut.strftime('%d/%m/%Y')} au {fin.strftime('%d/%m/%Y')}"
-            
         elif periode == 'mois':
             mois = int(mois_select) if mois_select else datetime.now().month
             annee = int(mois_annee_select) if mois_annee_select else datetime.now().year
@@ -12352,7 +12238,6 @@ def pos_work_periods():
             fin_mois = (debut.replace(month=debut.month+1, day=1) - timedelta(days=1))
             fin = fin_mois.replace(hour=23, minute=59, second=59)
             libelle_periode = debut.strftime('%B %Y')
-            
         elif periode == 'trimestre':
             trim = int(trimestre_select) if trimestre_select else ((datetime.now().month - 1) // 3 + 1)
             annee = int(trimestre_annee_select) if trimestre_annee_select else datetime.now().year
@@ -12361,13 +12246,11 @@ def pos_work_periods():
             fin_mois = (debut.replace(month=debut.month+3, day=1) - timedelta(days=1))
             fin = fin_mois.replace(hour=23, minute=59, second=59)
             libelle_periode = f"T{trim} {annee}"
-            
         elif periode == 'annee':
             annee = int(annee_select) if annee_select else datetime.now().year
             debut = datetime(annee, 1, 1, 0, 0, 0, 0)
             fin = datetime(annee, 12, 31, 23, 59, 59)
             libelle_periode = str(annee)
-            
         elif periode == 'personnalisee':
             if date_debut_str and date_fin_str:
                 debut = datetime.strptime(date_debut_str, '%Y-%m-%d')
@@ -12375,12 +12258,10 @@ def pos_work_periods():
                 libelle_periode = f"Du {debut.strftime('%d/%m/%Y')} au {fin.strftime('%d/%m/%Y')}"
             else:
                 flash('Veuillez sélectionner les deux dates', 'warning')
-                return redirect(url_for('banking.pos_work_periods'))
-                
+                return redirect(url_for('banking.pos_work_periods'))   
     except (ValueError, TypeError) as e:
         flash(f'Erreur dans les dates: {str(e)}', 'error')
         return redirect(url_for('banking.pos_work_periods'))
-    
     period_ouverte = g.models.periode_travail_pos_model.get_ouverte(current_user.id)
     magasin_id = get_magasin_id_courant()
     periods = g.models.periode_travail_pos_model.get_by_date_range(
@@ -12389,7 +12270,6 @@ def pos_work_periods():
         fin.strftime('%Y-%m-%d'),
         magasin_id=magasin_id
     )
-    
     return render_template(
         'pos/work_periods.html', 
         periods=periods, 
@@ -12413,7 +12293,6 @@ def pos_open_work_period():
         pdv_id = request.form.get('pdv_id')
         magasin = request.form.get('magasin', '')
         montant_debut = safe_float(request.form.get('montant_debut', 0))
-
         period_id = g.models.periode_travail_pos_model.ouvrir_caisse(current_user.id, {
             'magasin': magasin,
             'pdv_id': pdv_id,
@@ -12424,7 +12303,6 @@ def pos_open_work_period():
             flash('Période de travail ouverte avec succès !', 'success')
             return redirect(url_for('banking.pos_work_periods'))
         flash('Une période est peut-être déjà ouverte.', 'error')
-
     # GET : récupérer les PDV du magasin courant uniquement
     magasin_id = get_magasin_id_courant()
     pdvs = []
@@ -12432,7 +12310,6 @@ def pos_open_work_period():
         if magasin_id and mag['id'] != magasin_id:
             continue
         pdvs.extend(g.models.pdv_pos_model.get_by_magasin(mag['id'], current_user.id))
-
     return render_template('pos/open_work_period.html', pdvs=pdvs)
 
 @bp.route('/pos/work-periods/<int:period_id>/close', methods=['GET', 'POST'])
@@ -12462,23 +12339,18 @@ def pos_modifier_options():
     # Créer un dictionnaire {id: article} pour accès rapide
     articles = g.models.article_pos_model.get_all(current_user.id, magasin_id=magasin_id)
     articles_by_id = {a['id']: a for a in articles}
-    
     modifiers_data = []
     total_options = 0
-    
     for mod in modifiers:
         options = g.models.option_modificateur_pos_model.get_by_modifier(mod['id'])
         options_count = len(options)
         total_options += options_count
-        
         modifiers_data.append({
             'modifier': mod,
             'options': options,
             'options_count': options_count,
         })
-    
     total_modifiers = len(modifiers)
-    
     return render_template(
         'pos/modifier_options.html',
         modifiers_data=modifiers_data,
@@ -12493,19 +12365,15 @@ def pos_create_modifier_option():
     magasin_id = get_magasin_id_courant()
     modifiers = g.models.modificateur_pos_model.get_all(current_user.id, magasin_id=magasin_id)
     articles = g.models.article_pos_model.get_all(current_user.id, magasin_id=magasin_id)
-    
     # Récupérer les types de taxes disponibles
-    from datetime import date
     types_taxes_disponibles = g.models.taxe_pos_model.get_all_types(current_user.id, actif_only=True)
     for tt in types_taxes_disponibles:
         taux_info = g.models.taxe_pos_model.get_taux_for_date(tt['id'], date.today())
         tt['taux_actuel'] = taux_info['taux'] if taux_info else 0.00
-    
     if request.method == 'POST':
         # ✅ Récupérer les nouveaux champs
         type_option = request.form.get('type_option', 'redistribution')
         est_obligatoire = request.form.get('est_obligatoire') == 'on'
-        
         option_id = g.models.option_modificateur_pos_model.create(current_user.id, {
             'nom_option': request.form.get('nom_option', '').strip(),
             'id_modificateur': int(request.form.get('id_modificateur')) if request.form.get('id_modificateur') else None,
@@ -12520,7 +12388,6 @@ def pos_create_modifier_option():
             flash('Option de modificateur créée avec succès !', 'success')
             return redirect(url_for('banking.pos_modifier_options'))
         flash('Erreur lors de la création.', 'error')
-    
     return render_template('pos/create_modifier_option.html', 
                          modifiers=modifiers, 
                          articles=articles,
@@ -12532,19 +12399,16 @@ def pos_article_modifiers(article_id):
     article = g.models.article_pos_model.get_by_id(article_id)
     if not article or article.get('utilisateur_id') != current_user.id:
         flash("Article non trouvé ou non autorisé.", "error")
-        return redirect(url_for('banking.pos_articles_list'))
-        
+        return redirect(url_for('banking.pos_articles_list'))  
     all_modifiers = g.models.modificateur_pos_model.get_all(current_user.id)
     # ✅ VRAI APPEL AU MODÈLE
     linked_modifier_ids = [m['id'] for m in g.models.article_pos_model.get_linked_modifiers(article_id)]
-    
     if request.method == 'POST':
         selected_ids = [int(id) for id in request.form.getlist('modifier_ids') if id.isdigit()]
         # ✅ VRAIE SAUVEGARDE
         g.models.article_pos_model.set_modifiers(article_id, selected_ids)
         flash(f'Modificateurs mis à jour pour {article["nom_article"]} !', 'success')
         return redirect(url_for('banking.pos_articles_list'))
-    
     return render_template('pos/article_modifiers.html', 
                          article=article, all_modifiers=all_modifiers,
                          linked_modifier_ids=linked_modifier_ids)
@@ -12561,13 +12425,10 @@ def pos_article_taxes_history(article_id):
     if not article or article.get('utilisateur_id') != current_user.id:
         flash("Article non trouvé.", "error")
         return redirect(url_for('banking.pos_articles_list'))
-        
     # ✅ On récupère tous les types de taxes disponibles
     types_taxes_disponibles = g.models.taxe_pos_model.get_all_types(current_user.id, actif_only=False)
-    
     # ✅ On récupère le type actuellement assigné
     type_actuel = g.models.taxe_pos_model.get_type_for_article(article_id)
-    
     if request.method == 'POST':
         action = request.form.get('action')
         if action == 'update_type':
@@ -12578,9 +12439,7 @@ def pos_article_taxes_history(article_id):
             else:
                 g.models.taxe_pos_model.desactiver_taxes_article(article_id)
                 flash('Taxe retirée de cet article.', 'success')
-                
         return redirect(url_for('banking.pos_article_taxes_history', article_id=article_id))
-    
     return render_template('pos/article_taxes_history.html', 
                          article=article, 
                          types_taxes_disponibles=types_taxes_disponibles,
@@ -12596,22 +12455,17 @@ def pos_import_data():
         if 'file' not in request.files:
             flash('Aucun fichier sélectionné', 'error')
             return redirect(request.url)
-        
         file = request.files['file']
         file_type = request.form.get('file_type', 'items') # Par défaut: articles
-        
         if file.filename == '':
             flash('Aucun fichier sélectionné', 'error')
             return redirect(request.url)
-        
         if file and file.filename.endswith(('.csv', '.xlsx')):
             try:
-                
                 if file.filename.endswith('.csv'):
                     df = pd.read_csv(file, encoding='utf-8')
                 else:
                     df = pd.read_excel(file)
-                
                 count = 0
                 if file_type == 'items':
                     count = pos_import_items(df)
@@ -12623,41 +12477,32 @@ def pos_import_data():
                     count = pos_import_receipts(df)
                 elif file_type == 'payments':
                     count = pos_import_payments(df)
-                
                 flash(f'{count} enregistrements importés avec succès!', 'success')
                 return redirect(url_for('banking.pos_articles_list'))
-                
             except Exception as e:
                 flash(f'Erreur lors de l\'import: {str(e)}', 'error')
-                import traceback
                 traceback.print_exc()
         else:
             flash('Format de fichier non supporté. Utilisez CSV ou Excel.', 'error')
-    
     return render_template('pos/import.html')
 
 def pos_import_items(df):
     """Import des articles avec variantes et modificateurs via g.models"""
     count = 0
     df = df.dropna(how='all')
-    
     for idx, row in df.iterrows():
         if pd.isna(row.get('Name')) or str(row.get('Name')).strip() == '':
-            continue
-            
+            continue   
         categorie_nom = str(row.get('Category', 'Divers')).strip()
-        
         # 1. Créer ou récupérer la catégorie
         categories = g.models.categorie_pos_model.get_all(current_user.id,  magasin_id=get_magasin_id_courant())
         categorie = next((c for c in categories if c['nom_categorie'] == categorie_nom), None)
-        
         if not categorie:
             cat_id = g.models.categorie_pos_model.create(current_user.id, {
                 'nom_categorie': categorie_nom,
                 'description': 'Importée via CSV'
             })
-            categorie = {'id': cat_id, 'nom_categorie': categorie_nom}
-            
+            categorie = {'id': cat_id, 'nom_categorie': categorie_nom}  
         # 2. Préparer les données de l'article
         prix_val = str(row.get('Price', row.get('Prix', '0'))).replace(',', '.')
         is_variable = prix_val.lower() == 'variable'
@@ -12736,18 +12581,15 @@ def pos_affichage_client():
 def pos_clients_list():
     """Liste des clients POS"""
     search = request.args.get('search', '')
-    
     try:
         magasin_id = get_magasin_id_courant()
         clients = g.models.client_pos_model.get_all(current_user.id, magasin_id=magasin_id, limit=200)
-        
         if search:
             search_lower = search.lower()
             clients = [c for c in clients if 
                       search_lower in c.get('nom_client', '').lower() or
                       search_lower in (c.get('email') or '').lower() or
                       search_lower in (c.get('telephone') or '').lower()]
-        
         total_clients = len(clients)
         clients_actifs = sum(1 for c in clients if c.get('segment') != 'Inactif')
         total_ca_clients = sum(float(c.get('total_depense', 0) or 0) for c in clients)
@@ -12757,7 +12599,6 @@ def pos_clients_list():
         total_clients = 0
         clients_actifs = 0
         total_ca_clients = 0
-    
     return render_template('pos/clients_list.html',
                          clients=clients,
                          search=search,
@@ -12772,7 +12613,6 @@ def pos_client_detail(client_id):
     if not client:
         flash('Client introuvable.', 'error')
         return redirect(url_for('banking.pos_clients_list'))
-
     # ✅ Stats recalculées depuis les reçus (toujours à jour)
     db = g.models.receipt_pos_model.db
     with g.db.get_cursor(dictionary=True) as cursor:
@@ -12785,7 +12625,6 @@ def pos_client_detail(client_id):
             WHERE id_client = %s AND status != 'Annulé'
         """, (client_id,))
         s = cursor.fetchone()
-
     nb = int(s['nb_visites'] or 0)
     total_dep = float(s['total_depense'] or 0)
     client['nombre_visites'] = nb
@@ -12800,10 +12639,8 @@ def pos_client_detail(client_id):
     else:
         client['duree_fidelite'] = 0
         client['frequence_visite'] = 0
-
     visites = g.models.receipt_pos_model.get_by_client(client_id, limit=20)
     top_articles = g.models.receipt_pos_model.get_top_articles_client(client_id, limit=10)
-
     return render_template('pos/client_detail.html',
                            client=client, visites=visites, top_articles=top_articles)
 
@@ -12848,14 +12685,11 @@ def pos_commandes_en_cours():
         # (Adaptez la requête si votre modèle a une méthode get_by_status)
         all_receipts = g.models.receipt_pos_model.get_all(user_id=user_id, magasin_id=get_magasin_id_courant(),limit=200)
         commandes_en_cours = [r for r in all_receipts if r.get('status') in ['Ouvert', 'En cours', 'En attente']]
-        
         return render_template('pos/commandes_en_cours.html', commandes=commandes_en_cours)
     except Exception as e:
         logger.error(f"Erreur récupération commandes en cours: {e}")
         flash("Erreur lors du chargement des commandes.", "error")
         return redirect(url_for('banking.pos_dashboard'))
-
-
 
 
 # ============================================================
@@ -12871,20 +12705,15 @@ def pos_stats_by_article():
     employee = request.args.get('employee', '').strip()
     magasin_id = get_magasin_id_courant()
     search = request.args.get('search', '').strip()
-
     articles = g.models.receipt_pos_model.get_stats_by_article(
         current_user.id, date_from, date_to, employee, search, magasin_id=magasin_id
     )
-    
     top5 = articles[:5]
     top_names = [t['nom'] for t in top5]
-    
     series = g.models.receipt_pos_model.get_article_series(
         current_user.id, date_from, date_to, top_names, employee, magasin_id=magasin_id
     )
-    
     employees = g.models.receipt_pos_model.get_unique_employees(current_user.id, magasin_id=magasin_id)
-
     return render_template('pos/by_article.html',
                            articles=articles, top5=top5,
                            series_json=json.dumps(series),
@@ -12892,7 +12721,6 @@ def pos_stats_by_article():
                            employees=employees,
                            date_from=date_from, date_to=date_to,
                            employee=employee, search=search)
-
 
 
 @bp.route('/pos/stats/by-category')
@@ -12903,27 +12731,23 @@ def pos_stats_by_category():
     date_to = request.args.get('date_to') or now.strftime('%Y-%m-%d')
     employee = request.args.get('employee', '').strip()
     magasin_id = get_magasin_id_courant()
-
     categories = g.models.receipt_pos_model.get_stats_by_category(
         current_user.id, date_from, date_to, employee, magasin_id=magasin_id
     )
-    
     top5 = categories[:5]
     top_names = [t['nom'] for t in top5]
-    
     series = g.models.receipt_pos_model.get_category_series(
-        current_user.id, date_from, date_to, top_names, employee
+        current_user.id, date_from, date_to, top_names, employee, magasin_id=magasin_id
     )
-    
     employees = g.models.receipt_pos_model.get_unique_employees(current_user.id)
-
     return render_template('pos/by_category.html',
                            categories=categories, top5=top5,
                            series_json=json.dumps(series),
                            top5_json=json.dumps(top_names),
                            employees=employees,
                            date_from=date_from, date_to=date_to, 
-                           employee=employee)
+                           employee=employee,
+                           magasin_id=magasin_id)
 
 @bp.route('/pos/stats/by-employee')
 @login_required
@@ -12939,7 +12763,6 @@ def pos_stats_by_employee():
             date_from=date_from,
             date_to=date_to
         )
-        
         employee_stats = {}
         for receipt in receipts:
             cashier = receipt.get('nom_du_caissier', 'Inconnu')
@@ -12951,17 +12774,14 @@ def pos_stats_by_employee():
                     'total_taxes': 0.0,
                     'total_tips': 0.0
                 }
-            
             employee_stats[cashier]['receipt_count'] += 1
             employee_stats[cashier]['total_sales'] += float(receipt.get('ventes_nettes', 0) or 0)
             employee_stats[cashier]['total_taxes'] += float(receipt.get('taxes', 0) or 0)
             employee_stats[cashier]['total_tips'] += float(receipt.get('tips', 0) or 0)
-        
         employees = sorted(employee_stats.values(), key=lambda x: x['total_sales'], reverse=True)
     except Exception as e:
         logger.error(f"Erreur stats par employé: {e}")
         employees = []
-    
     return render_template('pos/by_employee.html',
                          employees=employees,
                          date_from=date_from,
@@ -12976,7 +12796,6 @@ def pos_stats_payment_methods():
     date_from = request.args.get('date_from', '').strip() or None
     date_to = request.args.get('date_to', '').strip() or None
     magasin_id = get_magasin_id_courant()
-
     try:
         # ✅ Appel propre au modèle
         rows = g.models.receipt_pos_model.get_payment_methods_stats(
@@ -12984,8 +12803,7 @@ def pos_stats_payment_methods():
             date_from=date_from,
             date_to=date_to,
             magasin_id=magasin_id
-        )
-        
+        )  
         payment_data = []
         totals = {
             'transactions': 0, 
@@ -12994,11 +12812,9 @@ def pos_stats_payment_methods():
             'refund_amount': 0.0, 
             'net': 0.0
         }
-        
         # Formatage des données pour le template et calcul des totaux globaux
         for row in rows:
-            net = float(row['amount']) - float(row['refund_amount'])
-            
+            net = float(row['amount']) - float(row['refund_amount'])  
             payment_data.append({
                 'method': row['mode_nom'],
                 'transactions': int(row['transactions']),
@@ -13067,7 +12883,7 @@ def pos_create_payment_method():
             compte_frais_service_id = int(compte_frais_service_id) if compte_frais_service_id and str(compte_frais_service_id).isdigit() else None
             
             compte_bancaire_od = request.form.get('')
-            g.models.mode_paiement_pos_model.create(current_user.id, {
+            g.models.mode_paiement_pos_model.create(current_user.id, magasin_id, {
                 'nom': nom,
                 'description': request.form.get('description', ''),
                 'est_actif': 'est_actif' in request.form,
@@ -13208,9 +13024,7 @@ def pos_delete_payment_method(mode_id):
 def pos_taxes_list():
     # ✅ On liste les TYPES de taxes
     types_taxes = g.models.taxe_pos_model.get_all_types(current_user.id, magasin_id=get_magasin_id_courant(), actif_only=False)
-    
     # Optionnel : Enrichir la liste avec le taux actuel pour l'affichage UI
-    from datetime import date
     for tt in types_taxes:
         taux_info = g.models.taxe_pos_model.get_taux_for_date(tt['id'], date.today())
         tt['taux_actuel'] = taux_info['taux'] if taux_info else 0.00
@@ -13225,7 +13039,8 @@ def pos_create_taxe():
         nom = request.form.get('nom', '').strip()
         
         # 1. Créer le TYPE de taxe
-        type_taxe_id = g.models.taxe_pos_model.create_type(current_user.id, nom, 'est_actif' in request.form, magasin_id=get_magasin_id_courant())
+        type_taxe_id = g.models.taxe_pos_model.create_type(current_user.id, magasin_id=get_magasin_id_courant(),
+        nom, 'est_actif' in request.form, )
         
         if type_taxe_id:
             # 2. Ajouter immédiatement un premier TAUX historique
@@ -13305,7 +13120,7 @@ def pos_edit_taxe(type_taxe_id):
 @bp.route('/pos/taxes/<int:taxe_id>/delete', methods=['POST'])
 @login_required
 def pos_delete_taxe(taxe_id):
-    if g.models.taxe_pos_model.delete(taxe_id, current_user.id):
+    if g.models.taxe_pos_model.delete_type(taxe_id, current_user.id):
         flash('Taxe supprimée.', 'success')
     else:
         flash('Impossible : liée à des articles. Désactivez-la.', 'error')
@@ -13509,7 +13324,7 @@ def pos_import_receipts(df):
 
         # Client
         client_nom = str(first.get('Nom.du.client', '')) if pd.notna(first.get('Nom.du.client')) else ''
-        client_id  = g.models.client_pos_model.get_or_create(current_user.id, client_nom)
+        client_id  = g.models.client_pos_model.get_or_create(current_user.id, get_magasin_id_courant(), client_nom)
 
         receipt_id = g.models.receipt_pos_model.create(current_user.id, {
             'date':              parse_date(first.get('Date')),
@@ -13603,7 +13418,7 @@ def pos_stats():
 
     # Série journalière
     by_date = g.models.receipt_pos_model.get_daily_stats(
-        current_user.id, date_from, date_to, employee
+        current_user.id, date_from, date_to, employee, magasin_id=magasin_id
     )
     
     daily = []
@@ -13797,17 +13612,14 @@ def pos_vente_articles_json():
     user_id = current_user.id
     magasin_id = get_magasin_id_courant()
     try:
-        from datetime import date # ✅ Ajouté pour la date du jour
         pdv_id = session.get('pos_pdv_id')
         pdv = g.models.pdv_pos_model.get_by_id(pdv_id) if pdv_id else None
         magasin_id = pdv.get('magasin_id') if pdv else get_magasin_id_courant()
         # 1. Utiliser les modèles existants
         articles = g.models.article_pos_model.get_all(user_id, magasin_id=magasin_id)
-        categories = g.models.categorie_pos_model.get_all(user_id, magasin_id=magasin_id)
-        
+        categories = g.models.categorie_pos_model.get_all(user_id, magasin_id=magasin_id) 
         # Récupérer l'instance db depuis un modèle existant
         db_instance = g.models.article_pos_model.db
-        
         for article in articles:
             # 2. Récupérer UNIQUEMENT les modificateurs liés à cet article spécifique
             with db_instance.get_cursor(dictionary=True) as cursor:
@@ -13818,7 +13630,6 @@ def pos_vente_articles_json():
                     WHERE am.article_id = %s AND m.utilisateur_id = %s
                 """, (article['id'], user_id))
                 modificateurs = cursor.fetchall()
-            
             # 3. Enrichir chaque modificateur avec ses options
             for mod in modificateurs:
                 options = g.models.option_modificateur_pos_model.get_by_modifier(mod['id'])
@@ -13834,9 +13645,7 @@ def pos_vente_articles_json():
                     for o in options
                 ]
                 mod['taux_tva'] = float(mod.get('taux_tva', 0))
-            
             article['modificateurs'] = modificateurs
-            
             # 4. ✅ NOUVEAU : Récupérer le TYPE de taxe, puis le TAUX en vigueur aujourd'hui
             type_taxe = g.models.taxe_pos_model.get_type_for_article(article['id'])
             if type_taxe:
@@ -13848,7 +13657,6 @@ def pos_vente_articles_json():
                 article['type_taxe_id'] = None
                 article['type_taxe_nom'] = 'Aucune'
                 article['taux_taxe'] = 0.0
-        
         return jsonify({
             'articles': articles,
             'categories': categories
@@ -13983,12 +13791,8 @@ def pos_compta_review():
         date_to=date_to,      # ✅ Passé au modèle
         mode=mode
     )
-
     # 🔧 Préparer les données JSON-sérialisables pour le template
-    import json
-    from decimal import Decimal
     from datetime import date as _date, datetime as _datetime
-
     def _make_json(item):
         def _conv(v):
             if isinstance(v, Decimal):
@@ -13996,7 +13800,6 @@ def pos_compta_review():
             if isinstance(v, (_date, _datetime)):
                 return v.isoformat()
             return v
-
         payload = {
             'date_jour':            _conv(item.get('date_jour')),
             'date':                 _conv(item.get('date')),
@@ -14016,13 +13819,10 @@ def pos_compta_review():
             'total_ttc_global':     float(item.get('total_ttc_global') or 0),
         }
         return json.dumps(payload)
-
     for item in a_comptabiliser:
         item['_json'] = _make_json(item)
-
     flash(f"✅ {len(a_comptabiliser)} éléments à comptabiliser pour le mode '{mode}'", 'info')
     modes_paiement = g.models.mode_paiement_pos_model.get_all_with_comptes(user_id, actif_only=False)
-    
     return render_template('pos/compta_review.html', 
                            a_comptabiliser=a_comptabiliser, 
                            mode=mode,
@@ -14036,56 +13836,44 @@ def pos_compta_review():
 def pos_compta_settings():
     """Page de paramétrage de la comptabilisation POS"""
     user_id = current_user.id
-    
     if request.method == 'POST':
         mode = request.form.get('mode_comptabilisation', 'par_jour')
         generation = request.form.get('generation_ecritures', 'manuel')
-        
         if mode not in ['par_ticket', 'par_jour']:
             mode = 'par_jour'
         if generation not in ['automatique', 'manuel']:
             generation = 'manuel'
-        
         succes = g.models.receipt_pos_model.save_compta_settings(user_id, mode, generation)
-        
         if succes:
             flash('✅ Paramètres de comptabilisation enregistrés', 'success')
         else:
             flash('❌ Erreur lors de l\'enregistrement', 'error')
-        
         return redirect(url_for('banking.pos_compta_settings'))
-    
     # GET : afficher la page
     settings = g.models.receipt_pos_model.get_compta_settings(user_id)
-    
     return render_template('pos/compta_settings.html', settings=settings)
 
 @bp.route('/pos/compta-mapping', methods=['GET', 'POST'])
 @login_required
 def pos_compta_mapping():
     """Gère l'association entre les types de TVA POS et les comptes comptables (3000, 2030, etc.)"""
-    user_id = current_user.id
-    
+    user_id = current_user.id  
     if request.method == 'POST':
         type_taxe_id = request.form.get('type_taxe_id', type=int)
         compte_vente_id = request.form.get('compte_vente_id', type=int)
-        
         if not type_taxe_id or not compte_vente_id:
             flash('❌ Veuillez sélectionner un type de taxe et un compte', 'error')
         else:
-            succes = g.models.pos_compta_mapping_model.set_mapping(user_id, type_taxe_id, compte_vente_id)
+            succes = g.models.pos_compta_mapping_model.set_mapping(user_id, get_magasin_id_courant(), type_taxe_id, compte_vente_id)
             if succes:
                 flash('✅ Mapping comptable enregistré', 'success')
             else:
-                flash('❌ Erreur lors de l\'enregistrement', 'error')
-                
+                flash('❌ Erreur lors de l\'enregistrement', 'error')       
         return redirect(url_for('banking.pos_compta_mapping'))
-
     # GET : Récupérer les données pour l'affichage
     types_taxes = g.models.taxe_pos_model.get_all_types(user_id)
     comptes_comptables = g.models.categorie_comptable_model.get_all_categories(user_id) 
     mappings_existants = g.models.pos_compta_mapping_model.get_all_mappings(user_id)
-    
     return render_template(
         'pos/compta_mapping.html', 
         types_taxes=types_taxes,
@@ -14101,19 +13889,15 @@ def update_pos_compta_mapping():
     type_taxe_id = request.form.get('type_taxe_id', type=int)
     compte_vente_id = request.form.get('compte_vente_id', type=int)
     mapping_id = request.form.get('mapping_id', type=int)
-    
     if not type_taxe_id or not compte_vente_id:
         flash('❌ Veuillez sélectionner un type de taxe et un compte', 'error')
         return redirect(url_for('banking.pos_compta_mapping'))
-    
     # Utiliser set_mapping qui fait un UPDATE si le mapping existe déjà
-    succes = g.models.pos_compta_mapping_model.set_mapping(user_id, type_taxe_id, compte_vente_id)
-    
+    succes = g.models.pos_compta_mapping_model.set_mapping(user_id, get_magasin_id_courant(), type_taxe_id, compte_vente_id)
     if succes:
         flash('✅ Mapping comptable mis à jour avec succès', 'success')
     else:
-        flash('❌ Erreur lors de la mise à jour du mapping', 'error')
-        
+        flash('❌ Erreur lors de la mise à jour du mapping', 'error')     
     return redirect(url_for('banking.pos_compta_mapping'))
 
 
@@ -14122,18 +13906,15 @@ def update_pos_compta_mapping():
 def delete_pos_compta_mapping():
     """Supprime un mapping existant"""
     mapping_id = request.form.get('mapping_id', type=int)
-    
     if not mapping_id:
         flash('❌ Mapping invalide', 'error')
         return redirect(url_for('banking.pos_compta_mapping'))
-    
     try:
         with g.db.get_cursor() as cursor:
             cursor.execute("""
                 DELETE FROM pos_compta_mapping_tva 
                 WHERE id = %s AND utilisateur_id = %s
-            """, (mapping_id, current_user.id))
-            
+            """, (mapping_id, current_user.id)) 
             if cursor.rowcount > 0:
                 flash('✅ Mapping supprimé avec succès', 'success')
             else:
@@ -14141,7 +13922,6 @@ def delete_pos_compta_mapping():
     except Exception as e:
         logger.error(f"Erreur suppression mapping: {e}")
         flash('❌ Erreur lors de la suppression', 'error')
-    
     return redirect(url_for('banking.pos_compta_mapping'))
 
 @bp.route('/pos/compta-journal', methods=['GET', 'POST'])
@@ -14149,34 +13929,25 @@ def delete_pos_compta_mapping():
 def pos_compta_journal():
     """Comptabilisation manuelle du journal de caisse (par jour)"""
     user_id = current_user.id
-    
     if request.method == 'POST':
         date_jour = request.form.get('date_jour')
         pdv_id = request.form.get('pdv_id', type=int)
-        
         if not date_jour:
             flash('❌ Date requise', 'error')
             return redirect(url_for('banking.pos_compta_journal'))
-        
-        
         elements_a_comptabiliser = g.models.pos_comptabilisation_model.get_a_comptabiliser(
             user_id, pdv_id=pdv_id, date_from=date_jour, date_to=date_jour, mode='jour'
         )
-        
         if not elements_a_comptabiliser:
             flash('ℹ️ Aucune écriture à comptabiliser pour cette date.', 'info')
             return redirect(url_for('banking.pos_compta_journal'))
-
         succes, message = g.models.pos_comptabilisation_model.comptabiliser_selection(
             user_id, elements_a_comptabiliser
         )
-        
         if succes:
             flash(f'✅ {message}', 'success')
         else:
             flash(f'❌ {message}', 'error')
-        
         return redirect(url_for('banking.pos_compta_journal'))
-    
     # GET : afficher la page de sélection
     return render_template('pos/compta_journal.html')

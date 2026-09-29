@@ -1869,7 +1869,7 @@ class ComptePrincipal(BaseRepository):
             return []
 
 class ComptePrincipalRapport(BaseRepository):
-    __slots__ = ["categorie_comptable_model"]
+    __slots__ = ["categorie_comptable_model", "transaction_financiere_model"]
     def __init__(self, db):
         """
         Initialise le générateur de rapports.
@@ -1878,6 +1878,7 @@ class ComptePrincipalRapport(BaseRepository):
         """
         super().__init__(db)
         self.categorie_comptable_model = CategorieComptable(db)
+        self.transaction_financiere_model = TransactionFinanciere(db)
     def _get_solde_avant_periode(self, compte_id: int, user_id: int, debut_periode: date) -> Decimal:
         """Retourne le solde juste avant le début de la période."""
         with self.db.get_cursor() as cursor:
@@ -1931,14 +1932,14 @@ class ComptePrincipalRapport(BaseRepository):
             raise ValueError("Période doit être 'hebdomadaire', 'mensuel' ou 'annuel'.")
 
         # 2. Récupérer les statistiques de base
-        stats = self.categorie_comptable_model.get_statistiques_compte('compte_principal', compte_id, user_id,
+        stats = self.transaction_financiere_model.get_statistiques_compte('compte_principal', compte_id, user_id,
                                                       date_debut=debut.strftime('%Y-%m-%d'),
                                                       date_fin=fin.strftime('%Y-%m-%d'))
         # 3. Récupérer le solde au début et à la fin de la période
         solde_initial = self._get_solde_avant_periode(compte_id, user_id, debut)
         solde_final = self.categorie_comptable_model.get_solde_courant('compte_principal', compte_id, user_id)
         # 4. Récupérer les transactions
-        transactions, _ = self.tx_model.get_all_user_transactions(
+        transactions, _ = self.transaction_financiere_model.get_all_user_transactions(
             user_id=user_id,
             date_from=debut.strftime('%Y-%m-%d'),
             date_to=fin.strftime('%Y-%m-%d'),
@@ -1947,7 +1948,7 @@ class ComptePrincipalRapport(BaseRepository):
             per_page=1000  # Assure la récupération de tout
         )
         # 5. Catégorisation des transactions
-        categories = self.categorie_comptable_model.get_categories_par_type('compte_principal', compte_id, user_id,
+        categories = self.transaction_financiere_model.get_categories_par_type('compte_principal', compte_id, user_id,
                                                            date_debut=debut.strftime('%Y-%m-%d'),
                                                            date_fin=fin.strftime('%Y-%m-%d'))
         # 6. Génération des graphiques SVG
@@ -1993,8 +1994,8 @@ class ComptePrincipalRapport(BaseRepository):
         """Génère un graphique SVG en barres des flux quotidiens."""
 
         # Récupérer recettes et dépenses quotidiennes
-        recettes = self.categorie_comptable_model._get_daily_balances(compte_id, debut, fin, 'recette')
-        depenses = self.categorie_comptable_model._get_daily_balances(compte_id, debut, fin, 'depense')
+        recettes = self.transaction_financiere_model._get_daily_balances(compte_id, debut, fin, 'recette')
+        depenses = self.transaction_financiere_model._get_daily_balances(compte_id, debut, fin, 'depense')
         dates = sorted(set(recettes.keys()) | set(depenses.keys()))
         if not dates:
             return "<svg width='600' height='300'><text x='10' y='20'>Aucune donnée</text></svg>"
@@ -2211,6 +2212,11 @@ class SousCompte(BaseRepository):
             return 0.0
 
 class TransactionFinanciere(BaseRepository):
+    
+    __slots__ = ["ecriture_comptable_model"]
+    def __init__(self, db):
+        super().__init__(db)
+        self.ecriture_comptable_model = EcritureComptable(db)
     """Classe unifiée pour gérer toutes les transactions financières avec optimisation des soldes"""
     # ===== VALIDATION ET UTILITAIRES =====
     def _valider_solde_suffisant(self, compte_type: str, compte_id: int, montant: Decimal) -> Tuple[bool, Decimal]:
@@ -4668,7 +4674,7 @@ class TransactionFinanciere(BaseRepository):
                     'transaction_id': transaction_id
                 }
                 # Utiliser votre modèle d'écriture comptable existant
-                success = self.ecriture_model.create(ecriture_data)
+                success = self.ecriture_comptable_model.create(ecriture_data)
                 if success:
                     # Marquer la transaction comme comptabilisée
                     self.update_statut_comptable(transaction_id, user_id, 'comptabilise')
@@ -6037,6 +6043,11 @@ class TransactionFinanciere(BaseRepository):
         return svg
 
 class CategorieTransaction(BaseRepository):
+    __slots__ = ["variante_model", "taxe_model"]
+    def __init__(self, db):
+        super().__init__(db)
+        self.variante_model = VariantePOS(db)
+        self.taxe_model = TaxePOS(db)
     """Classe pour gérer les catégories de transactions"""
     def get_categories_utilisateur(self, user_id: int, type_categorie: str = None) -> List[Dict]:
         """Récupère les catégories de transactions pour un utilisateur donné"""
@@ -6092,10 +6103,8 @@ class CategorieTransaction(BaseRepository):
                     SELECT id FROM categories_transactions
                     WHERE id = %s AND utilisateur_id = %s
                 """, (categorie_id, user_id))
-
                 if not cursor.fetchone():
                     return False, "Catégorie non trouvée ou non autorisée"
-
                 # Construire la requête dynamiquement
                 champs = []
                 valeurs = []
@@ -6103,17 +6112,14 @@ class CategorieTransaction(BaseRepository):
                     if valeur is not None:
                         champs.append(f"{champ} = %s")
                         valeurs.append(valeur)
-
                 if not champs:
                     return False, "Aucune modification spécifiée"
-
                 valeurs.extend([categorie_id, user_id])
                 query = f"""
                     UPDATE categories_transactions
                     SET {', '.join(champs)}
                     WHERE id = %s AND utilisateur_id = %s
                 """
-
                 cursor.execute(query, valeurs)
                 return True, "Catégorie modifiée avec succès"
         except MySQLError as e:
@@ -6255,13 +6261,10 @@ class CategorieTransaction(BaseRepository):
                     WHERE tc.categorie_id = %s AND tc.utilisateur_id = %s
                 """
                 params = [categorie_id, user_id]
-
                 if date_debut and date_fin:
                     query += " AND DATE(t.date_transaction) BETWEEN %s AND %s"
                     params.extend([date_debut, date_fin])
-
                 query += " ORDER BY t.date_transaction DESC"
-
                 cursor.execute(query, params)
                 return cursor.fetchall()
         except Exception as e:
@@ -6369,6 +6372,11 @@ class CategorieTransaction(BaseRepository):
             return False, f"Erreur: {str(e)}"
 
 class StatistiquesBancaires(BaseRepository):
+    __slots__ = ["transaction_financiere_model", "taxe_model"]
+    def __init__(self, db):
+        super().__init__(db)
+        self.transaction_financiere_model = TransactionFinanciere(db)
+        self.taxe_model = TaxePOS(db)
     """Classe pour générer des statistiques bancaires"""
     def get_resume_utilisateur(self, user_id: int, statut: str = 'validée') -> Dict:
         """Résumé financier complet en utilisant les classes existantes"""
@@ -6394,11 +6402,10 @@ class StatistiquesBancaires(BaseRepository):
             # Calculer le patrimoine total
             patrimoine_total = solde_total_principal + epargne_totale
             # Récupérer les transactions du mois en utilisant TransactionFinanciere
-            transaction_model = TransactionFinanciere(self.db)
             nb_transactions_mois = 0
             # Pour chaque compte, compter les transactions du mois
             for compte in comptes:
-                transactions = transaction_model.get_historique_compte(
+                transactions = self.transaction_financiere_model.get_historique_compte(
                     'compte_principal', compte['id'], user_id,
                     date_from=(datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'),
                     date_to=datetime.now().strftime('%Y-%m-%d')
@@ -6408,7 +6415,7 @@ class StatistiquesBancaires(BaseRepository):
             for compte in comptes:
                 sous_comptes = sous_compte_model.get_by_compte_principal_id(compte['id'])
                 for sous_compte in sous_comptes:
-                    transactions = transaction_model.get_historique_compte(
+                    transactions = self.transaction_financiere_model.get_historique_compte(
                         'sous_compte', sous_compte['id'], user_id,
                         date_from=(datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'),
                         date_to=datetime.now().strftime('%Y-%m-%d')
@@ -6596,8 +6603,7 @@ class StatistiquesBancaires(BaseRepository):
     def preparer_graphique_solde_quotidien(self, user_id: int, compte_id: int, date_debut: date, date_fin: date) -> Optional[Dict]:
         """Prépare les données pour un graphique SVG de l'évolution quotidienne du solde."""
         try:
-            tx_model = TransactionFinanciere(self.db)
-            soldes = tx_model.get_evolution_soldes_quotidiens_compte(
+            soldes = self.transaction_financiere_model.get_evolution_soldes_quotidiens_compte(
                 compte_id=compte_id,
                 user_id=user_id,
                 date_debut=date_debut.strftime('%Y-%m-%d'),
@@ -6605,12 +6611,10 @@ class StatistiquesBancaires(BaseRepository):
             )
             if not soldes:
                 return None
-
             dates = [s['date'].strftime('%d/%m') for s in soldes]
             valeurs = [float(s['solde_apres']) for s in soldes]
             min_val = min(valeurs)
             max_val = max(valeurs)
-
             # Éviter division par zéro
             if min_val == max_val:
                 if min_val == 0:
@@ -6618,7 +6622,6 @@ class StatistiquesBancaires(BaseRepository):
                 else:
                     min_val *= 0.9
                     max_val *= 1.1
-
             return {
                 'type': 'line',
                 'titre': 'Évolution du solde',
@@ -6635,8 +6638,7 @@ class StatistiquesBancaires(BaseRepository):
     def preparer_graphique_tresorerie(self, user_id: int, compte_id: int, date_debut: date, date_fin: date) -> Optional[Dict]:
         """Prépare les données pour un graphique en barres ou camembert des recettes/dépenses."""
         try:
-            tx_model = TransactionFinanciere(self.db)
-            stats = tx_model.get_statistiques_compte(
+            stats = self.transaction_financiere_model.get_statistiques_compte(
                 compte_type='compte_principal',
                 compte_id=compte_id,
                 user_id=user_id,
@@ -6662,9 +6664,8 @@ class StatistiquesBancaires(BaseRepository):
     def preparer_graphique_tresorerie_cumulee(self, user_id: int, compte_id: int, date_debut: date, date_fin: date) -> Optional[Dict]:
         """Prépare les données pour un graphique du solde cumulé (flux de trésorerie)."""
         try:
-            tx_model = TransactionFinanciere(self.db)
             # Récupérer TOUTES les transactions dans la période, triées
-            transactions = tx_model.get_historique_compte(
+            transactions = self.transaction_financiere_model.get_historique_compte(
                 compte_type='compte_principal',
                 compte_id=compte_id,
                 user_id=user_id,
@@ -6725,8 +6726,7 @@ class StatistiquesBancaires(BaseRepository):
             return None
 
     def preparer_graphique_categories(self, user_id: int, compte_id: int, date_debut: date, date_fin: date) -> Optional[Dict]:
-        tx_model = TransactionFinanciere(self.db)
-        categories = tx_model.get_categories_par_type(
+        categories = self.transaction_financiere_model.get_categories_par_type(
             'compte_principal', compte_id, user_id,
             date_debut.strftime('%Y-%m-%d'),
             date_fin.strftime('%Y-%m-%d')
@@ -6749,8 +6749,7 @@ class StatistiquesBancaires(BaseRepository):
         Les deux sont affichées au-dessus de 0 pour faciliter la comparaison visuelle.
         """
         try:
-            tx_model = TransactionFinanciere(self.db)
-            stats = tx_model.get_statistiques_compte(
+            stats = self.transaction_financiere_model.get_statistiques_compte(
                 compte_type='compte_principal',
                 compte_id=compte_id,
                 user_id=user_id,
@@ -7294,6 +7293,10 @@ class CategorieComptable(BaseRepository):
             return False
         
 class EcritureComptable(BaseRepository):
+    __slots__ = ["categorie_comptable_model"]
+    def __init__(self, db):
+        super().__init__(db)
+        self.categorie_comptable_model = CategorieComptable(db)
     """Modèle pour gérer les écritures comptables"""
     @property
     def upload_folder(self):
@@ -7338,18 +7341,12 @@ class EcritureComptable(BaseRepository):
             print("❌ Dossier n'existe pas")
             return False
 
-    def create(self, categorie_comptable_model, data: Dict, cursor=None, return_id=False) -> bool:
+    def create(self, data: Dict, cursor=None, return_id=False) -> bool:
         """Crée une écriture comptable.
 
         Si `cursor` est fourni, on l'utilise (transaction partagée avec l'appelant).
         Sinon, on ouvre une nouvelle connexion.
         """
-        if isinstance(categorie_comptable_model, dict):
-            if cursor is None and data is not None:
-                cursor = data
-            data = categorie_comptable_model
-            categorie_comptable_model = None
-
         if not isinstance(data, dict):
             raise TypeError(f"create() attend un dict en 2ᵉ argument, reçu {type(data).__name__}")
 
@@ -7381,13 +7378,11 @@ class EcritureComptable(BaseRepository):
             ecriture_principale_id = cur.lastrowid
             logger.info(f"Écriture principale créée ID: {ecriture_principale_id}")
 
-            if categorie_comptable_model:
-                if categorie_comptable_model.has_categorie_complementaire(data['categorie_id']):
-                    logger.info(f"Catégorie {data['categorie_id']} a une complémentaire → écritures secondaires.")
-                    self._create_secondary_ecritures(cur, ecriture_principale_id, data)
-                else:
-                    logger.info(f"Catégorie {data['categorie_id']} sans complémentaire.")
-
+            if self.categorie_comptable_model.has_categorie_complementaire(data['categorie_id']):
+                logger.info(f"Catégorie {data['categorie_id']} a une complémentaire → écritures secondaires.")
+                self._create_secondary_ecritures(cur, ecriture_principale_id, data)
+            else:
+                logger.info(f"Catégorie {data['categorie_id']} sans complémentaire.")
             # 🔄 MODIF 2 : on retourne l'ID (ou True) selon le flag
             return ecriture_principale_id if return_id else True
 
@@ -10437,7 +10432,11 @@ class ContactCompte(BaseRepository):
             return None
 
 class Rapport(BaseRepository):
-    def generate_rapport_mensuel(self, ecriture_comptable, user_id: int, annee: int, mois: int, statut: str = 'validée') -> Dict:
+    __slots__ = ["ecriture_comptable_model"]
+    def __init__(self, db):
+        super().__init__(db)
+        self.ecriture_comptable_model = EcritureComptable(db)
+    def generate_rapport_mensuel(self, user_id: int, annee: int, mois: int, statut: str = 'validée') -> Dict:
         """Génère un rapport mensuel avec filtrage par statut"""
         date_debut = date(annee, mois, 1)
         date_fin = date(annee, mois + 1, 1) if mois < 12 else date(annee + 1, 1, 1)
@@ -10469,8 +10468,8 @@ class Rapport(BaseRepository):
         for mois in range(1, 13):
             donnees_mensuelles.append(
                 self.generate_rapport_mensuel(
-                    ecriture_comptable, user_id, annee, mois, statut))
-        compte_resultat = ecriture_comptable.get_compte_de_resultat(
+                    user_id, annee, mois, statut))
+        compte_resultat = self.ecriture_comptable_model.get_compte_de_resultat(
             user_id, str(date_debut), str(date_fin))
         return {
             'annee': annee,
@@ -10618,8 +10617,7 @@ class Rapport(BaseRepository):
         - Vérification de l'équilibre Actif = Passif
         """
         try:
-            ecriture_model = EcritureComptable(self.db)
-            bilan_base = ecriture_model.get_bilan(user_id, date_bilan)
+            bilan_base = self.ecriture_comptable_model.get_bilan(user_id, date_bilan)
             if not bilan_base or 'erreur' in bilan_base:
                 return {'erreur': 'Impossible de générer le bilan'}
             # Résultat de l'exercice : Produits - Charges depuis le 01/01
@@ -17759,12 +17757,14 @@ class ReceiptPOS(BaseRepository):
     5. 🔗 Mise à jour du solde du compte bancaire
     6. Décrémentation du stock des articles
     """
-    __slots__ = ["transaction_model", "article_model", "pdv_model"]
+    __slots__ = ["transaction_financiere_model", "article_model", "pdv_model", "ecriture_comptable_model", "categorie_comptable_model"]
     def __init__(self, db):
         super().__init__(db)
-        self.transaction_model = TransactionFinanciere(db)
+        self.transaction_financiere_model = TransactionFinanciere(db)
         self.article_model = ArticlePOS(db)
         self.pdv_model = PointDeVentePOS(db)
+        self.ecriture_comptable_model = EcritureComptable(db)
+        self.categorie_comptable_model = CategorieComptable(db)
 
     def get_by_id(self, receipt_id: int, user_id: int) -> Optional[Dict]:
         try:
@@ -18352,7 +18352,7 @@ class ReceiptPOS(BaseRepository):
                         if mode_info['compte_bancaire_id']:
                             compte_effectif = mode_info['compte_bancaire_id']
                     if compte_effectif:
-                        success, msg, trans_id = self.transaction_model._inserer_transaction_with_cursor(
+                        success, msg, trans_id = self.transaction_financiere_model._inserer_transaction_with_cursor(
                             cursor=cursor,
                             compte_type='compte_principal',
                             compte_id=compte_effectif,
@@ -18381,7 +18381,7 @@ class ReceiptPOS(BaseRepository):
                             VALUES (%s, %s, %s)
                         """, (receipt_id, mode_defaut['id'], float(total_collecte)))
                         if compte_effectif:
-                            success, msg, primary_transaction_id = self.transaction_model._inserer_transaction_with_cursor(
+                            success, msg, primary_transaction_id = self.transaction_financiere_model._inserer_transaction_with_cursor(
                                 cursor=cursor,
                                 compte_type='compte_principal',
                                 compte_id=compte_effectif,
@@ -18676,9 +18676,6 @@ class ReceiptPOS(BaseRepository):
                     return False, "Receipt déjà annulé"
                 est_comptabilise = receipt.get('comptabilise') or receipt.get('etat_comptable') == 'comptabilise'
                 if est_comptabilise:
-                    from app.models import EcritureComptable, CategorieComptable
-                    modele_ecriture = EcritureComptable(self.db)
-                    modele_categorie = CategorieComptable(self.db)
                     cursor.execute("""
                         SELECT categorie_id, compte_bancaire_id 
                         FROM ecritures_comptables 
@@ -18710,14 +18707,14 @@ class ReceiptPOS(BaseRepository):
                         'statut': 'validée',
                         'type_ecriture_comptable': 'extourne'
                     }
-                    succes, msg = modele_ecriture.create(modele_categorie, data_extourne)
+                    succes, msg = self.ecriture_comptable_model.create(data_extourne)
                     if not succes:
                         return False, f"Échec de l'extourne comptable : {msg}"
                     cursor.execute("""
                         UPDATE pos_receipts SET etat_comptable = 'extourne' WHERE id = %s
                     """, (receipt_id,))
                 if receipt.get('transaction_id') and receipt.get('compte_bancaire_id'):
-                    success, msg, _ = self.transaction_model._inserer_transaction_with_cursor(
+                    success, msg, _ = self.transaction_financiere_model._inserer_transaction_with_cursor(
                         cursor=cursor,
                         compte_type='compte_principal',
                         compte_id=receipt['compte_bancaire_id'],
@@ -19569,10 +19566,7 @@ class ReceiptPOS(BaseRepository):
                     'type_ecriture_comptable': 'pos_vente'
                 }
                 # 5. Utiliser le modèle EcritureComptable existant
-                from app.models import EcritureComptable, CategorieComptable
-                modele_ecriture = EcritureComptable(self.db)
-                modele_categorie = CategorieComptable(self.db)
-                succes, msg = modele_ecriture.create(modele_categorie, data_ecriture)
+                succes, msg = self.ecriture_comptable_model.create(data_ecriture)
                 if succes:
                     cursor.execute("""
                         UPDATE pos_receipts 
@@ -19661,12 +19655,13 @@ class POSComptaMapping(BaseRepository):
                 return False
 
 class POSComptabilisation(BaseRepository):
-    __slots__ = ["modele_ecriture", "modele_categorie", "pos_compta_mapping"]
+    __slots__ = ["ecriture_comptable_model", "categorie_comptable_model", "pos_compta_mapping", "transaction_financiere_model"]
     def __init__(self, db):
         super().__init__(db)
-        self.modele_ecriture = EcritureComptable(db)
-        self.modele_categorie = CategorieComptable(db)
+        self.ecriture_comptable_model = EcritureComptable(db)
+        self.categorie_comptable_model = CategorieComptable(db)
         self.pos_compta_mapping = POSComptaMapping(db)
+        self.transaction_financiere_model = TransactionFinanciere(db)
 
     def get_a_comptabiliser(self, user_id: int, pdv_id: int = None, 
                         date_from: str = None, date_to: str = None, 
@@ -19858,8 +19853,6 @@ class POSComptabilisation(BaseRepository):
 
     def comptabiliser_selection(self, user_id: int, items_a_comptabiliser: List[Dict]) -> Tuple[bool, str]:
         try:
-            from app.models import TransactionFinanciere
-            transaction_model = TransactionFinanciere(self.db)
             logger.info(f"📊 Début comptabilisation de {len(items_a_comptabiliser)} éléments")
             # ============================================================
             # PRÉCALCUL : total TTC par (date, mode_paiement)
@@ -19959,7 +19952,7 @@ class POSComptabilisation(BaseRepository):
                                 'statut': 'validée',
                                 'type_ecriture_comptable': 'principale'
                             }
-                            if not self.modele_ecriture.create(self.modele_categorie, data_tresorerie, cursor=cursor):
+                            if not self.ecriture_comptable_model.create(data_tresorerie, cursor=cursor):
                                 raise RuntimeError(f"Échec création écriture Trésorerie (item {idx})")
                             nb_ecritures += 1
                             logger.info(f"✅ Trésorerie : {montant_tresorerie_net} CHF net")
@@ -19990,7 +19983,7 @@ class POSComptabilisation(BaseRepository):
                                     'statut': 'validée',
                                     'type_ecriture_comptable': 'principale'
                                 }
-                                if not self.modele_ecriture.create(self.modele_categorie, data_frais, cursor=cursor):
+                                if not self.ecriture_comptable_model.create(data_frais, cursor=cursor):
                                     raise RuntimeError(f"Échec création écriture Frais (item {idx})")
                                 nb_ecritures += 1
                                 logger.info(f"✅ Frais : {montant_frais} CHF")
@@ -20021,7 +20014,7 @@ class POSComptabilisation(BaseRepository):
                             'statut': 'validée',
                             'type_ecriture_comptable': 'principale'
                         }
-                        if not self.modele_ecriture.create(self.modele_categorie, data_vente, cursor=cursor):
+                        if not self.ecriture_comptable_model.create(data_vente, cursor=cursor):
                             raise RuntimeError(f"Échec création écriture Vente (item {idx})")
                         nb_ecritures += 1
                         logger.info(f"✅ Vente : Catégorie {id_compte_vente}")
@@ -20047,7 +20040,7 @@ class POSComptabilisation(BaseRepository):
                                 if existing_tx:
                                     logger.info(f"ℹ️ Transaction existante pour reçu {receipt_id}: ID={existing_tx['id']}")
                                 else:
-                                    success, msg, tx_id = transaction_model._inserer_transaction_with_cursor(
+                                    success, msg, tx_id = self.transaction_financiere_model._inserer_transaction_with_cursor(
                                         cursor=cursor,
                                         compte_type='compte_principal',
                                         compte_id=id_compte_bancaire_reel,
@@ -20121,10 +20114,10 @@ class PeriodeTravailPOS(BaseRepository):
     Gestion des ouvertures/fermetures de caisse.
     Lien : utilisateur qui a ouvert la caisse.
     """
-    __slots__ = ["transaction_model"]
+    __slots__ = ["transaction_financiere_model"]
     def __init__(self, db):
         super().__init__(db)
-        self.transaction_model = TransactionFinanciere(db)
+        self.transaction_financiere_model = TransactionFinanciere(db)
 
     def ouvrir_caisse(self, user_id: int, data: Dict) -> Optional[int]:
         """
@@ -20435,10 +20428,10 @@ class PeriodeTravailPOS(BaseRepository):
 
 class MouvementCaissePOS(BaseRepository):
     """Gestion des retraits et dépôts en caisse"""
-    __slots__ = ["transaction_model"]
+    __slots__ = ["transaction_financiere_model"]
     def __init__(self, db):
         super().__init__(db)
-        self.transaction_model = TransactionFinanciere(db)
+        self.transaction_financiere_model = TransactionFinanciere(db)
 
     def enregistrer_retrait(self, periode_id: int, user_id: int, montant: Decimal,
                             compte_bancaire_id: int = None, description: str = '',
@@ -20467,7 +20460,7 @@ class MouvementCaissePOS(BaseRepository):
                 """, (periode_id, float(montant), date_op, description))
                 # 🔗 Si compte bancaire fourni, créer une transaction de dépôt
                 if compte_bancaire_id:
-                    success, msg, _ = self.transaction_model._inserer_transaction_with_cursor(
+                    success, msg, _ = self.transaction_financiere_model._inserer_transaction_with_cursor(
                         cursor=cursor,
                         compte_type='compte_principal',
                         compte_id=compte_bancaire_id,
@@ -20511,7 +20504,7 @@ class MouvementCaissePOS(BaseRepository):
                     VALUES (%s, %s, %s, %s)
                 """, (periode_id, float(montant), date_op, description))   
                 if compte_bancaire_id:
-                    success, msg, _ = self.transaction_model._inserer_transaction_with_cursor(
+                    success, msg, _ = self.transaction_financiere_model._inserer_transaction_with_cursor(
                         cursor=cursor,
                         compte_type='compte_principal',
                         compte_id=compte_bancaire_id,
