@@ -4769,8 +4769,8 @@ class TransactionFinanciere(BaseRepository):
                     query += " AND DATE(t.date_transaction) <= %s"
                     params.append(date_to)
                 if compte_dest_all:
-                    query += " t.compte_destination_id = %s"
-                    params.append(date_to)
+                    query += " AND t.compte_destination_id = %s"
+                    params.append(compte_dest_all)
                 if statut_comptable:
                     query += " AND t.statut_comptable = %s"
                     params.append(statut_comptable)
@@ -4784,6 +4784,50 @@ class TransactionFinanciere(BaseRepository):
         except MySQLError as e:
             logger.exception(f"Erreur récupération transactions sans écritures par compte: {e}")
             return []
+
+    def get_totaux_a_comptabiliser(self, user_id: int, statut_comptable: str = 'a_comptabiliser') -> Dict[str, Any]:
+        """
+        Calcule de manière ultra-rapide en SQL le montant total et le nombre de transactions 
+        sans écritures pour l'ensemble des comptes de l'utilisateur.
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                query = """
+                SELECT 
+                    COUNT(DISTINCT t.id) as total_len,
+                    COALESCE(SUM(t.montant), 0) as total_montant
+                FROM transactions t
+                INNER JOIN comptes_principaux cp 
+                    ON t.compte_principal_id = cp.id
+                LEFT JOIN ecritures_comptables e 
+                    ON t.id = e.transaction_id
+                WHERE cp.utilisateur_id = %s
+                AND t.statut_comptable = %s
+                GROUP BY t.id
+                HAVING COUNT(e.id) = 0
+                """
+                
+                # Enveloppe la requête ci-dessus dans une sous-requête pour faire le COUNT et SUM global
+                full_query = f"""
+                SELECT 
+                    COUNT(*) as total_len,
+                    COALESCE(SUM(sub.total_montant), 0) as total_montant
+                FROM ({query}) AS sub
+                """
+                
+                cursor.execute(full_query, (user_id, statut_comptable))
+                result = cursor.fetchone()
+                
+                if result:
+                    return {
+                        'total_len': result.get('total_len', 0),
+                        'total_montant': float(result.get('total_montant', 0))
+                    }
+                return {'total_len': 0, 'total_montant': 0.0}
+
+        except MySQLError as e:
+            logger.exception(f"Erreur lors du calcul des totaux à comptabiliser: {e}")
+            return {'total_len': 0, 'total_montant': 0.0}
 
     def _get_daily_balances(self, compte_id: int, date_debut: date, date_fin: date,
                             type_transaction: str = 'total') -> Dict[date, Decimal]:

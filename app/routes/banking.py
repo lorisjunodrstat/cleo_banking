@@ -4904,20 +4904,10 @@ def transactions_sans_ecritures():
         transaction_dict['contact_lie'] = contact_lie
         transactions_avec_contacts.append(transaction_dict)
     
-    total_transactions = []
 
-    for i in comptes:
-        txs = g.models.transaction_financiere_model.get_transactions_sans_ecritures_par_compte(
-            compte_id=i['id'],
-            user_id=current_user.id,
-            date_from=i['date_ouverture'],
-            date_to=date.today().strftime('%Y-%m-%d'),
-            statut_comptable=statut_comptable
-        )
-        total_transactions.extend(txs)
-    
-    total_a_comptabiliser = sum(tx['montant'] for tx in total_transactions if tx['statut_comptable'] == 'a_comptabiliser')
-    total_a_comptabiliser_len = len([tx for tx in total_transactions if tx['statut_comptable'] == 'a_comptabiliser'])
+    totaux = g.models.transaction_financiere_model.get_totaux_a_comptabiliser(current_user.id, statut_comptable)
+    total_a_comptabiliser = totaux['total_montant']
+    total_a_comptabiliser_len = totaux['total_len']
     
     # Récupérer les catégories et celles avec complémentaires
     categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
