@@ -83,7 +83,7 @@
                     <select id="compte_dest_all" name="compte_dest_all" class="form-select">
                         <option value="">Tous</option>
                         {% for cda in compte_dest_all_list | sort(attribute='nom_compte') %}
-                        <option value="{{ cda.id }}" {% if cda.id==compte_dest_selectionne %}selected{% endif %}>
+                        <option value="{{ cda.id }}" {% if cda.id==compte_dest_all_selectionne %}selected{% endif %}>
                             {{ cda.nom_compte }} ({{ cda.id }})
                         </option>
                         {% endfor %}

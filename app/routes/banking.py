@@ -4852,7 +4852,7 @@ def transactions_sans_ecritures():
     date_to = request.args.get('date_to')
     statut_comptable = request.args.get('statut_comptable', 'a_comptabiliser')
     compte_dest = request.args.get('compte_dest', type=int)
-    compte_dest_all = request.args.get('compte_dest_all', type=int)
+    compte_dest_all_id = request.args.get('compte_dest_all', type=int)
     # Statuts comptables disponibles
     statuts_comptables = [
         {'value': 'a_comptabiliser', 'label': 'À comptabiliser'},
@@ -4871,7 +4871,7 @@ def transactions_sans_ecritures():
             user_id=current_user.id,
             date_from=date_from,
             date_to=date_to,
-            compte_dest_all=compte_dest_all,
+            compte_dest_all=compte_dest_all_id,
             statut_comptable=statut_comptable
         )
         comptes_destinataires_dict = {}
@@ -4937,7 +4937,7 @@ def transactions_sans_ecritures():
         taux_disponibles=taux_disponibles,
         compte_dest_selectionne=compte_dest,
         comptes_destinataires=comptes_destinataires,
-        compte_dest_all=compte_dest_all,
+        compte_dest_all_selectionne=compte_dest_all_id,
         compte_dest_all_list=compte_dest_all_list
     )
 
