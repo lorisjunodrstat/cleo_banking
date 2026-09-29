@@ -11563,10 +11563,11 @@ def pos_create_category():
     magasin_id = get_magasin_id_courant()
     if request.method == 'POST':
         cat_id = g.models.categorie_pos_model.create(current_user.id, {
-            'magasin_id' = magasin_id,
+            'magasin_id' : magasin_id,
             'nom_categorie': request.form.get('nom_categorie', '').strip(),
             'description': request.form.get('description', '')
-        })
+        }
+        )
         if cat_id:
             flash('Catégorie créée !', 'success')
             return redirect(url_for('banking.pos_categories_list'))
