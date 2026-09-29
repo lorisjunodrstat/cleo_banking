@@ -79,6 +79,17 @@
                     </select>
                 </div>
                 <div class="col-md-2">
+                    <label for="compte_dest_all" class="form-label">Compte destinataire All</label>
+                    <select id="compte_dest_all" name="compte_dest_all" class="form-select">
+                        <option value="">Tous</option>
+                        {% for cda in compte_dest_all_list | sort(attribute='nom_compte') %}
+                        <option value="{{ cda.id }}" {% if cda.id==compte_dest_selectionne %}selected{% endif %}>
+                            {{ cda.nom_compte }} ({{ cda.id }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
                     <label for="date_from" class="form-label">Du</label>
                     <input type="date" id="date_from" name="date_from" class="form-control" value="{{ date_from }}">
                 </div>

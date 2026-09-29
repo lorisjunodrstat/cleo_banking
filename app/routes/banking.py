@@ -4852,7 +4852,7 @@ def transactions_sans_ecritures():
     date_to = request.args.get('date_to')
     statut_comptable = request.args.get('statut_comptable', 'a_comptabiliser')
     compte_dest = request.args.get('compte_dest', type=int)
-    
+    compte_dest_all = request.args.get('compte_dest_all', type=int)
     # Statuts comptables disponibles
     statuts_comptables = [
         {'value': 'a_comptabiliser', 'label': 'À comptabiliser'},
@@ -4862,6 +4862,7 @@ def transactions_sans_ecritures():
     
     # Récupérer les comptes de l'utilisateur
     comptes = g.models.compte_model.get_by_user_id(current_user.id)
+    compte_dest_all_list = g.models.compte_model.get_all_accounts(current_user.id)
     # Récupérer les transactions sans écritures
     transactions = []
     if compte_id:
@@ -4870,6 +4871,7 @@ def transactions_sans_ecritures():
             user_id=current_user.id,
             date_from=date_from,
             date_to=date_to,
+            compte_dest_all=compte_dest_all,
             statut_comptable=statut_comptable
         )
         comptes_destinataires_dict = {}
@@ -4944,7 +4946,9 @@ def transactions_sans_ecritures():
         contacts=contacts,
         taux_disponibles=taux_disponibles,
         compte_dest_selectionne=compte_dest,
-        comptes_destinataires=comptes_destinataires
+        comptes_destinataires=comptes_destinataires,
+        compte_dest_all=compte_dest_all,
+        compte_dest_all_list=compte_dest_all_list
     )
 
 
@@ -4973,7 +4977,7 @@ def nouvelle_ecriture_from_selected():
         
         if not selected_transaction_ids:
             flash("Aucune transaction sélectionnée", "warning")
-            return redirect(url_for('banking.transactions_sans_ecritures'))
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
 
         succes_count = 0
         secondary_count = 0
@@ -5054,7 +5058,7 @@ def nouvelle_ecriture_from_selected():
         statut_comptable = request.form.get('statut_comptable')
         taux_disponibles=g.models.taux_tva_model.get_taux_for_sel
 
-        return redirect(url_for('banking.transactions_sans_ecritures',
+        return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
                                compte_id=compte_id,
                                date_from=date_from,
                                date_to=date_to,
@@ -5066,7 +5070,7 @@ def nouvelle_ecriture_from_selected():
     transaction_ids = session.get('selected_transaction_ids', [])
     if not transaction_ids:
         flash("Aucune transaction sélectionnée", "warning")
-        return redirect(url_for('banking.transactions_sans_ecritures'))
+        return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
     
     # Récupérer les transactions
     transactions = []
@@ -5143,7 +5147,7 @@ def creer_ecriture_automatique(transaction_id):
             date_from = request.form.get('date_from')
             date_to = request.form.get('date_to')
             statut_comptable = request.form.get('statut_comptable')
-            return redirect(url_for('banking.transactions_sans_ecritures',
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
                                    compte_id=compte_id,
                                    date_from=date_from,
                                    date_to=date_to,
@@ -5161,7 +5165,7 @@ def creer_ecriture_automatique(transaction_id):
             date_from = request.form.get('date_from')
             date_to = request.form.get('date_to')
             statut_comptable = request.form.get('statut_comptable')
-            return redirect(url_for('banking.transactions_sans_ecritures',
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
                                    compte_id=compte_id,
                                    date_from=date_from,
                                    date_to=date_to,
@@ -5241,7 +5245,7 @@ def creer_ecriture_automatique(transaction_id):
     date_from = request.form.get('date_from')
     date_to = request.form.get('date_to')
     statut_comptable = request.form.get('statut_comptable')
-    return redirect(url_for('banking.transactions_sans_ecritures',
+    return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
                            compte_id=compte_id,
                            date_from=date_from,
                            date_to=date_to,
@@ -5546,7 +5550,7 @@ def creer_ecritures_multiple_auto(transaction_id):
             date_from = request.form.get('date_from')
             date_to = request.form.get('date_to')
             statut_comptable = request.form.get('statut_comptable')
-            return redirect(url_for('banking.transactions_sans_ecritures',
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
                                    compte_id=compte_id,
                                    date_from=date_from,
                                    date_to=date_to,
@@ -5560,7 +5564,7 @@ def creer_ecritures_multiple_auto(transaction_id):
             date_from = request.form.get('date_from')
             date_to = request.form.get('date_to')
             statut_comptable = request.form.get('statut_comptable')
-            return redirect(url_for('banking.transactions_sans_ecritures',
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
                                    compte_id=compte_id,
                                    date_from=date_from,
                                    date_to=date_to,
@@ -5579,7 +5583,7 @@ def creer_ecritures_multiple_auto(transaction_id):
             date_from = request.form.get('date_from')
             date_to = request.form.get('date_to')
             statut_comptable = request.form.get('statut_comptable')
-            return redirect(url_for('banking.transactions_sans_ecritures',
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
                                    compte_id=compte_id,
                                    date_from=date_from,
                                    date_to=date_to,
@@ -5593,7 +5597,7 @@ def creer_ecritures_multiple_auto(transaction_id):
             date_from = request.form.get('date_from')
             date_to = request.form.get('date_to')
             statut_comptable = request.form.get('statut_comptable')
-            return redirect(url_for('banking.transactions_sans_ecritures',
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
                                    compte_id=compte_id,
                                    date_from=date_from,
                                    date_to=date_to,
@@ -5692,7 +5696,7 @@ def creer_ecritures_multiple_auto(transaction_id):
     date_from = request.form.get('date_from')
     date_to = request.form.get('date_to')
     statut_comptable = request.form.get('statut_comptable')
-    return redirect(url_for('banking.transactions_sans_ecritures',
+    return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
                            compte_id=compte_id,
                            date_from=date_from,
                            date_to=date_to,
@@ -5801,7 +5805,7 @@ def nouvelle_ecriture_from_transactions():
 
             if not transaction_ids:
                 flash("Aucune transaction à traiter", "warning")
-                return redirect(url_for('banking.transactions_sans_ecritures'))
+                return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
 
             logging.info(f'voici les transactions : {transaction_ids}')
             success_count = 0
@@ -5897,7 +5901,7 @@ def nouvelle_ecriture_from_transactions():
             if success_count > 0:
                 flash(f"{success_count} écriture(s) créée(s) avec succès pour {len(transaction_ids)} transaction(s)", "success")
                 # REDIRECTION CORRIGEE : Utiliser la bonne route pour revenir à la liste filtrée
-                return redirect(url_for('banking.transactions_sans_ecritures',
+                return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
                                     compte_id=request.args.get('compte_id'),
                                     date_from=request.args.get('date_from'),
                                     date_to=request.args.get('date_to')))
@@ -5913,7 +5917,7 @@ def nouvelle_ecriture_from_transactions():
         except Exception as e:
             logging.error(f"Erreur générale lors de la création des écritures: {e}")
             flash(f"Erreur critique lors de la création des écritures: {str(e)}", "error")
-            return redirect(url_for('banking.transactions_sans_ecritures'))
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
 
     # PARTIE GET - Afficher le formulaire pour TOUTES les transactions filtrées
     compte_id = request.args.get('compte_id', type=int) # Correction : type=int
@@ -5933,7 +5937,7 @@ def nouvelle_ecriture_from_transactions():
 
     if not transactions:
         flash("Aucune transaction à comptabiliser avec les filtres actuels", "warning")
-        return redirect(url_for('banking.transactions_sans_ecritures'))
+        return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
 
     # Récupérer les données pour les formulaires
     # Assurez-vous que ces fonctions existent et retournent les bonnes données

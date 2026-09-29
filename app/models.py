@@ -4719,7 +4719,7 @@ class TransactionFinanciere(BaseRepository):
             return None
 
     def get_transactions_sans_ecritures_par_compte(self, compte_id: int, user_id: int,
-                                                date_from: str = None, date_to: str = None,
+                                                date_from: str = None, date_to: str = None,compte_dest_all:int = None,
                                                 statut_comptable: str = None) -> List[Dict]:
         """Récupère les transactions sans écritures comptables pour un compte spécifique"""
         try:
@@ -4767,6 +4767,9 @@ class TransactionFinanciere(BaseRepository):
                     params.append(date_from)
                 if date_to:
                     query += " AND DATE(t.date_transaction) <= %s"
+                    params.append(date_to)
+                if compte_dest_all:
+                    query += " t.compte_destination_id = %s"
                     params.append(date_to)
                 if statut_comptable:
                     query += " AND t.statut_comptable = %s"
