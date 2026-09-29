@@ -11,6 +11,7 @@
             Informations de la catégorie
         </div>
         <div class="card-body">
+            {# ========= FORMULAIRE PRINCIPAL : CATÉGORIE UNIQUEMENT ========= #}
             <form method="post">
                 <div class="row mb-3">
                     <div class="col-md-6">
@@ -18,7 +19,6 @@
                         <input type="text" class="form-control" id="numero" name="numero"
                             value="{{ categorie.numero if categorie else '' }}" required>
                     </div>
-
                     <div class="col-md-6">
                         <label for="nom" class="form-label">Nom*</label>
                         <input type="text" class="form-control" id="nom" name="nom"
@@ -33,21 +33,18 @@
                             <option value="">Aucun groupe</option>
                             {% for cat in categories %}
                             {% if cat.type_compte == 'Groupe' %}
-                            <option value="{{ cat.id }}" {% if categorie and categorie.parent_id==cat.id %}selected{%
-                                endif %}>
+                            <option value="{{ cat.id }}" {% if categorie and categorie.parent_id==cat.id %}selected{% endif %}>
                                 {{ cat.numero }} - {{ cat.nom }}
                             </option>
                             {% endif %}
                             {% endfor %}
                         </select>
                     </div>
-
                     <div class="col-md-6">
                         <label for="type_compte" class="form-label">Type de compte*</label>
                         <select class="form-select" id="type_compte" name="type_compte" required>
                             {% for type in types_compte %}
-                            <option value="{{ type }}" {% if categorie and categorie.type_compte==type %}selected{%
-                                endif %}>
+                            <option value="{{ type }}" {% if categorie and categorie.type_compte==type %}selected{% endif %}>
                                 {{ type }}
                             </option>
                             {% endfor %}
@@ -61,24 +58,19 @@
                         <select class="form-select" id="categorie_complementaire" name="categorie_complementaire">
                             <option value="">Aucune catégorie complémentaire</option>
                             {% for cat in categories %}
-                            <option value="{{ cat.id }}" {% if categorie and
-                                categorie.categorie_complementaire_id==cat.id %}selected{% endif %}>
+                            <option value="{{ cat.id }}" {% if categorie and categorie.categorie_complementaire_id==cat.id %}selected{% endif %}>
                                 {{ cat.numero }} - {{ cat.nom }}
                             </option>
                             {% endfor %}
                         </select>
                     </div>
-
                     <div class="col-md-6">
-                        <label for="type_ecriture_complementaire" class="form-label">Type d'écriture
-                            complémentaire</label>
-                        <select class="form-select" id="type_ecriture_complementaire"
-                            name="type_ecriture_complementaire">
+                        <label for="type_ecriture_complementaire" class="form-label">Type d'écriture complémentaire</label>
+                        <select class="form-select" id="type_ecriture_complementaire" name="type_ecriture_complementaire">
                             <option value="">Aucun type</option>
                             {% for type in types_ecriture %}
                             {% if type %}
-                            <option value="{{ type }}" {% if categorie and categorie.type_ecriture_complementaire==type
-                                %}selected{% endif %}>
+                            <option value="{{ type }}" {% if categorie and categorie.type_ecriture_complementaire==type %}selected{% endif %}>
                                 {{ type|title }}
                             </option>
                             {% endif %}
@@ -93,7 +85,6 @@
                         <input type="text" class="form-control" id="compte_systeme" name="compte_systeme"
                             value="{{ categorie.compte_systeme if categorie else '' }}">
                     </div>
-
                     <div class="col-md-6">
                         <label for="compte_associe" class="form-label">Compte associé</label>
                         <input type="text" class="form-control" id="compte_associe" name="compte_associe"
@@ -106,207 +97,22 @@
                         <label for="type_tva" class="form-label">Type de TVA</label>
                         <select class="form-select" id="type_tva" name="type_tva">
                             {% for type in types_tva %}
-                            <option value="{{ type }}" {% if categorie and categorie.type_tva==type %}selected{% endif
-                                %}>
+                            <option value="{{ type }}" {% if categorie and categorie.type_tva==type %}selected{% endif %}>
                                 {{ type if type else 'Aucun' }}
                             </option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="col-md-6">
-                        <label for="plan_id" class="form-label">Plan comptable</label>
+                        <label for="plan_ids" class="form-label">Plan comptable</label>
                         <select class="form-select" id="plan_ids" name="plan_ids">
                             <option value="">Aucun plan comptable</option>
                             {% for plan in all_plan %}
-                            <option value="{{ plan.id }}" {% if categorie and categorie.id_plan==plan.id %}selected{%
-                                endif %}>
+                            <option value="{{ plan.id }}" {% if categorie and categorie.id_plan==plan.id %}selected{% endif %}>
                                 {{ plan.nom }}
                             </option>
                             {% endfor %}
                         </select>
-                    </div>
-                </div>
-
-                <hr class="my-4">
-
-                <!-- SECTION RÈGLES D'ÉCRITURE -->
-                <div class="row mb-3">
-                    <div class="col-12">
-                        <h5><i class="bi bi-arrow-left-right"></i> Règles d'écriture associées</h5>
-                        <p class="text-muted small">Ces règles génèrent automatiquement des écritures complémentaires 
-                        lorsque cette catégorie est utilisée.</p>
-                    </div>
-                </div>
-
-                <!-- Règles existantes -->
-                {% if regles %}
-                <div class="table-responsive mb-3">
-                    <table class="table table-sm table-bordered">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Destination</th>
-                                <th>Type</th>
-                                <th>Calcul</th>
-                                <th>Valeur</th>
-                                <th>Ordre</th>
-                                <th>Statut</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for regle in regles %}
-                            <tr>
-                                <td>
-                                    <span class="badge bg-success">{{ regle.destination_numero or '' }}</span>
-                                    {{ regle.destination_nom or '' }}
-                                </td>
-                                <td>
-                                    {% if regle.type_regle == 'PERSONNALISE' %}
-                                        <span class="badge bg-secondary">Personnalisée</span>
-                                    {% elif regle.type_regle == 'TVA' %}
-                                        <span class="badge bg-warning text-dark">TVA</span>
-                                    {% elif regle.type_regle == 'TAXE' %}
-                                        <span class="badge bg-info">Taxe</span>
-                                    {% else %}
-                                        <span class="badge bg-secondary">{{ regle.type_regle }}</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if regle.mode_calcul == 'montant_transaction' %}
-                                        Montant
-                                    {% elif regle.mode_calcul == 'pourcentage' %}
-                                        %
-                                    {% elif regle.mode_calcul == 'montant_fixe' %}
-                                        Fixe
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if regle.valeur %}
-                                        {{ regle.valeur }}
-                                        {% if regle.mode_calcul == 'pourcentage' %}%{% endif %}
-                                    {% else %}
-                                        -
-                                    {% endif %}
-                                </td>
-                                <td>{{ regle.ordre or 1 }}</td>
-                                <td>
-                                    {% if regle.actif %}
-                                        <span class="badge bg-success">Actif</span>
-                                    {% else %}
-                                        <span class="badge bg-danger">Inactif</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    <div class="btn-group btn-group-sm">
-                                        <a href="{{ url_for('modifier_regle_ecriture', regle_id=regle.id) }}" 
-                                           class="btn btn-outline-primary" title="Modifier">
-                                            <i class="bi bi-pencil"></i>
-                                        </a>
-                                        <form method="POST" 
-                                              action="{{ url_for('supprimer_regle_ecriture', regle_id=regle.id) }}" 
-                                              style="display: inline;"
-                                              onsubmit="return confirm('Supprimer cette règle ?');">
-                                            <button type="submit" class="btn btn-outline-danger" title="Supprimer">
-                                                <i class="bi bi-trash"></i>
-                                            </button>
-                                        </form>
-                                    </div>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                {% else %}
-                <div class="alert alert-info">
-                    <i class="bi bi-info-circle"></i> Aucune règle associée à cette catégorie.
-                </div>
-                {% endif %}
-
-                <!-- Ajouter une nouvelle règle -->
-                <div class="card bg-light">
-                    <div class="card-header">
-                        <h6 class="mb-0"><i class="bi bi-plus-circle"></i> Ajouter une règle</h6>
-                    </div>
-                    <div class="card-body">
-                        <div class="row g-3">
-                            <div class="col-md-4">
-                                <label for="nouvelle_regle_destination" class="form-label">Catégorie destination</label>
-                                <select class="form-select" id="nouvelle_regle_destination" 
-                                        name="nouvelle_regle_destination">
-                                    <option value="">Sélectionner...</option>
-                                    {% for cat in categories %}
-                                        {% if cat.id != categorie['id'] %}
-                                        <option value="{{ cat.id }}" 
-                                                {% if nouvelle_regle and nouvelle_regle.destination == cat.id %}selected{% endif %}>
-                                            {{ cat.numero }} - {{ cat.nom }}
-                                        </option>
-                                        {% endif %}
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label for="nouvelle_regle_type" class="form-label">Type</label>
-                                <select class="form-select" id="nouvelle_regle_type" name="nouvelle_regle_type">
-                                    <option value="PERSONNALISE" {% if nouvelle_regle and nouvelle_regle.type == 'PERSONNALISE' %}selected{% endif %}>
-                                        Personnalisée
-                                    </option>
-                                    <option value="TVA" {% if nouvelle_regle and nouvelle_regle.type == 'TVA' %}selected{% endif %}>
-                                        TVA
-                                    </option>
-                                    <option value="TAXE" {% if nouvelle_regle and nouvelle_regle.type == 'TAXE' %}selected{% endif %}>
-                                        Taxe
-                                    </option>
-                                </select>
-                            </div>
-                            <div class="col-md-2">
-                                <label for="nouvelle_regle_calcul" class="form-label">Calcul</label>
-                                <select class="form-select" id="nouvelle_regle_calcul" name="nouvelle_regle_calcul">
-                                    <option value="montant_transaction" {% if nouvelle_regle and nouvelle_regle.calcul == 'montant_transaction' %}selected{% endif %}>
-                                        Montant
-                                    </option>
-                                    <option value="pourcentage" {% if nouvelle_regle and nouvelle_regle.calcul == 'pourcentage' %}selected{% endif %}>
-                                        %
-                                    </option>
-                                    <option value="montant_fixe" {% if nouvelle_regle and nouvelle_regle.calcul == 'montant_fixe' %}selected{% endif %}>
-                                        Fixe
-                                    </option>
-                                </select>
-                            </div>
-                            <div class="col-md-2">
-                                <label for="nouvelle_regle_valeur" class="form-label">Valeur</label>
-                                <input type="number" step="0.01" class="form-control" 
-                                       id="nouvelle_regle_valeur" name="nouvelle_regle_valeur"
-                                       value="{{ nouvelle_regle.valeur if nouvelle_regle else '' }}"
-                                       placeholder="Si % ou fixe">
-                            </div>
-                            <div class="col-md-1 d-flex align-items-end">
-                                <button type="submit" name="action" value="ajouter_regle" 
-                                        class="btn btn-primary w-100" title="Ajouter la règle">
-                                    <i class="bi bi-plus-circle"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="row mt-2">
-                            <div class="col-md-6">
-                                <div class="form-check">
-                                    <input type="checkbox" class="form-check-input" id="nouvelle_regle_actif" 
-                                           name="nouvelle_regle_actif" checked>
-                                    <label class="form-check-label" for="nouvelle_regle_actif">
-                                        Règle active
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-check">
-                                    <input type="checkbox" class="form-check-input" id="nouvelle_regle_oppose" 
-                                           name="nouvelle_regle_oppose" checked>
-                                    <label class="form-check-label" for="nouvelle_regle_oppose">
-                                        Sens opposé (débit/crédit inversé)
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </div>
 
@@ -320,40 +126,206 @@
 
                 <div class="actions">
                     <div class="row g-2">
+                        <div class="col-12 col-md-4">
+                            <a href="{{ url_for('banking.liste_categories_comptables') }}"
+                               class="btn btn-outline-secondary w-100">
+                                <i class="bi bi-arrow-left me-2"></i> Retour
+                            </a>
+                        </div>
                         {% if categorie %}
                         <div class="col-12 col-md-4">
-                            <a href="{{ url_for('banking.liste_categories_comptables') }}"
-                                class="btn btn-outline-secondary w-100">
-                                <i class="bi bi-arrow-left me-2"></i> Retour
-                            </a>
+                            {# Suppression : POST obligatoire #}
+                            <form method="POST"
+                                  action="{{ url_for('banking.delete_categorie', categorie_id=categorie.id) }}"
+                                  onsubmit="return confirm('Supprimer cette catégorie ?');"
+                                  class="w-100">
+                                <button type="submit" class="btn btn-outline-danger w-100">
+                                    <i class="bi bi-trash me-2"></i> Supprimer
+                                </button>
+                            </form>
                         </div>
+                        {% endif %}
                         <div class="col-12 col-md-4">
-                            <a href="{{ url_for('banking.delete_categorie', categorie_id=categorie.id) }}"
-                                class="btn btn-outline-danger w-100">
-                                <i class="bi bi-trash me-2"></i> Supprimer
-                            </a>
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <button type="submit" name="action" value="save" class="btn btn-primary-custom w-100">
-                                <i class="bi bi-save me-2"></i> Enregistrer
-                            </button>
-                        </div>
-                        {% else %}
-                        <div class="col-12 col-md-6">
-                            <a href="{{ url_for('banking.liste_categories_comptables') }}"
-                                class="btn btn-outline-secondary w-100">
-                                <i class="bi bi-arrow-left me-2"></i> Retour
-                            </a>
-                        </div>
-                        <div class="col-12 col-md-6">
                             <button type="submit" name="action" value="save" class="btn btn-primary w-100">
                                 <i class="bi bi-save me-2"></i> Enregistrer
                             </button>
                         </div>
-                        {% endif %}
                     </div>
                 </div>
             </form>
+            {# ========= FIN FORMULAIRE CATÉGORIE ========= #}
+
+            {% if categorie %}
+            <hr class="my-4">
+
+            {# ========= SECTION RÈGLES D'ÉCRITURE ========= #}
+            <div class="row mb-3">
+                <div class="col-12">
+                    <h5><i class="bi bi-arrow-left-right"></i> Règles d'écriture associées</h5>
+                    <p class="text-muted small">Ces règles génèrent automatiquement des écritures complémentaires
+                        lorsque cette catégorie est utilisée.</p>
+                </div>
+            </div>
+
+            {% if regles %}
+            <div class="table-responsive mb-3">
+                <table class="table table-sm table-bordered">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Destination</th>
+                            <th>Type</th>
+                            <th>Calcul</th>
+                            <th>Valeur</th>
+                            <th>Ordre</th>
+                            <th>Statut</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for regle in regles %}
+                        <tr>
+                            <td>
+                                <span class="badge bg-success">{{ regle.destination_numero or '' }}</span>
+                                {{ regle.destination_nom or '' }}
+                            </td>
+                            <td>
+                                {% if regle.type_regle == 'PERSONNALISE' %}
+                                    <span class="badge bg-secondary">Personnalisée</span>
+                                {% elif regle.type_regle == 'TVA' %}
+                                    <span class="badge bg-warning text-dark">TVA</span>
+                                {% elif regle.type_regle == 'TAXE' %}
+                                    <span class="badge bg-info">Taxe</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ regle.type_regle }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if regle.mode_calcul == 'montant_transaction' %}
+                                    Montant
+                                {% elif regle.mode_calcul == 'pourcentage' %}
+                                    %
+                                {% elif regle.mode_calcul == 'montant_fixe' %}
+                                    Fixe
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if regle.valeur %}
+                                    {{ regle.valeur }}
+                                    {% if regle.mode_calcul == 'pourcentage' %}%{% endif %}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ regle.ordre or 1 }}</td>
+                            <td>
+                                {% if regle.actif %}
+                                    <span class="badge bg-success">Actif</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Inactif</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{{ url_for('banking.modifier_regle', regle_id=regle.id) }}"
+                                       class="btn btn-outline-primary" title="Modifier">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <form method="POST"
+                                          action="{{ url_for('banking.supprimer_regle_ecriture', regle_id=regle.id) }}"
+                                          style="display: inline;"
+                                          onsubmit="return confirm('Supprimer cette règle ?');">
+                                        <button type="submit" class="btn btn-outline-danger" title="Supprimer">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> Aucune règle associée à cette catégorie.
+            </div>
+            {% endif %}
+
+            {# ========= FORMULAIRE SÉPARÉ POUR AJOUTER UNE RÈGLE ========= #}
+            <div class="card bg-light">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-plus-circle"></i> Ajouter une règle</h6>
+                </div>
+                <div class="card-body">
+                    <form method="POST"
+                          action="{{ url_for('banking.ajouter_regle_categorie', categorie_id=categorie.id) }}">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="nouvelle_regle_destination" class="form-label">Catégorie destination</label>
+                                <select class="form-select" id="nouvelle_regle_destination"
+                                        name="nouvelle_regle_destination">
+                                    <option value="">Sélectionner...</option>
+                                    {% for cat in categories %}
+                                    {% if cat.id != categorie['id'] %}
+                                    <option value="{{ cat.id }}">
+                                        {{ cat.numero }} - {{ cat.nom }}
+                                    </option>
+                                    {% endif %}
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="nouvelle_regle_type" class="form-label">Type</label>
+                                <select class="form-select" id="nouvelle_regle_type" name="nouvelle_regle_type">
+                                    <option value="PERSONNALISE">Personnalisée</option>
+                                    <option value="TVA">TVA</option>
+                                    <option value="TAXE">Taxe</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="nouvelle_regle_calcul" class="form-label">Calcul</label>
+                                <select class="form-select" id="nouvelle_regle_calcul" name="nouvelle_regle_calcul">
+                                    <option value="montant_transaction">Montant</option>
+                                    <option value="pourcentage">%</option>
+                                    <option value="montant_fixe">Fixe</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="nouvelle_regle_valeur" class="form-label">Valeur</label>
+                                <input type="number" step="0.01" class="form-control"
+                                       id="nouvelle_regle_valeur" name="nouvelle_regle_valeur"
+                                       placeholder="Si % ou fixe">
+                            </div>
+                            <div class="col-md-1 d-flex align-items-end">
+                                <button type="submit" class="btn btn-primary w-100" title="Ajouter la règle">
+                                    <i class="bi bi-plus-circle"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="nouvelle_regle_actif"
+                                           name="nouvelle_regle_actif" checked>
+                                    <label class="form-check-label" for="nouvelle_regle_actif">
+                                        Règle active
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="nouvelle_regle_oppose"
+                                           name="nouvelle_regle_oppose" checked>
+                                    <label class="form-check-label" for="nouvelle_regle_oppose">
+                                        Sens opposé (débit/crédit inversé)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
