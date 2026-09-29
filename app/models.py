@@ -7424,41 +7424,51 @@ class EcritureComptable(BaseRepository):
             """
             cursor.execute(query, (categorie_id, utilisateur_id))
             result = cursor.fetchone()
-            if not result:
-                logger.info(f"Aucune catégorie complémentaire configurée pour la catégorie ID {categorie_id}.")
-                return
-            categorie_complementaire_id = result['categorie_complementaire_id']
-            type_tva_config = result['type_tva']  # 'recette' ou 'depense' lu du plan comptable
-            categorie_nom = result['categorie_nom']
-            categorie_numero = result['categorie_numero']
-            categorie_complementaire_nom = result.get('categorie_complementaire_nom', 'N/A')
-            categorie_complementaire_numero = result.get('categorie_complementaire_numero', 'N/A')
-            # 🔧 Le sens comptable vient du plan comptable (type_tva), pas d'une convention codée en dur
-            # - 'recette' → la TVA due (Passif) est créditée
-            # - 'depense' → l'impôt préalable (Actif) est débité
-            sens_comptable = type_tva_config if type_tva_config in ('recette', 'depense') else 'recette'
-            logger.info(
-                f"Catégorie '{categorie_numero} - {categorie_nom}' a une catégorie complémentaire "
-                f"'{categorie_complementaire_numero} - {categorie_complementaire_nom}' "
-                f"(ID: {categorie_complementaire_id}) détectée. Sens comptable: '{sens_comptable}'"
-            )
-            # Le calcul du montant reste basé sur la TVA
-            montant_secondaire = data.get('tva_montant', 0.0)
-            taux_secondaire = data.get('tva_taux', 0.0)
-            if abs(montant_secondaire) > 0.01:
-                comp_cat_simulated = {
-                    'categorie_complementaire_id': categorie_complementaire_id,
-                    'type_complement': sens_comptable,   # 🔧 'recette' ou 'depense' (plus 'tva')
-                    'taux': taux_secondaire
-                }
-                self._create_secondary_ecriture(
-                    cursor, ecriture_principale_id, data, comp_cat_simulated, montant_secondaire)
+
+            if result:
+                categorie_complementaire_id = result['categorie_complementaire_id']
+                type_tva_config = result['type_tva']  # 'recette' ou 'depense' lu du plan comptable
+                categorie_nom = result['categorie_nom']
+                categorie_numero = result['categorie_numero']
+                categorie_complementaire_nom = result.get('categorie_complementaire_nom', 'N/A')
+                categorie_complementaire_numero = result.get('categorie_complementaire_numero', 'N/A')
+                # 🔧 Le sens comptable vient du plan comptable (type_tva), pas d'une convention codée en dur
+                # - 'recette' → la TVA due (Passif) est créditée
+                # - 'depense' → l'impôt préalable (Actif) est débité
+                sens_comptable = type_tva_config if type_tva_config in ('recette', 'depense') else 'recette'
                 logger.info(
-                    f"✅ Écriture secondaire de {montant_secondaire:.2f} CHF créée "
-                    f"pour la catégorie complémentaire ID {categorie_complementaire_id} (sens: {sens_comptable})."
+                    f"Catégorie '{categorie_numero} - {categorie_nom}' a une catégorie complémentaire "
+                    f"'{categorie_complementaire_numero} - {categorie_complementaire_nom}' "
+                    f"(ID: {categorie_complementaire_id}) détectée. Sens comptable: '{sens_comptable}'"
                 )
+                # Le calcul du montant reste basé sur la TVA
+                montant_secondaire = data.get('tva_montant', 0.0)
+                taux_secondaire = data.get('tva_taux', 0.0)
+                if abs(montant_secondaire) > 0.01:
+                    comp_cat_simulated = {
+                        'categorie_complementaire_id': categorie_complementaire_id,
+                        'type_complement': sens_comptable,   # 🔧 'recette' ou 'depense' (plus 'tva')
+                        'taux': taux_secondaire
+                    }
+                    self._create_secondary_ecriture(
+                        cursor, ecriture_principale_id, data, comp_cat_simulated, montant_secondaire)
+                    logger.info(
+                        f"✅ Écriture secondaire de {montant_secondaire:.2f} CHF créée "
+                        f"pour la catégorie complémentaire ID {categorie_complementaire_id} (sens: {sens_comptable})."
+                    )
+                else:
+                    logger.info(f"Montant secondaire négligeable ({montant_secondaire:.2f} CHF), pas de création d'écriture.")
             else:
-                logger.info(f"Montant secondaire négligeable ({montant_secondaire:.2f} CHF), pas de création d'écriture.")
+                logger.info(f"Aucune catégorie complémentaire configurée pour la catégorie ID {categorie_id}.")
+            # Vérification des règles personnalisées pour catégorie ID
+            logger.info(f"🔍 Vérification des règles personnalisées pour catégorie ID {categorie_id}...")
+            self._appliquer_regles_en_cascade(
+                cursor,
+                ecriture_principale_id,
+                data,
+                categorie_id,
+                0
+            ) 
         except Exception as e:
             logger.exception(f"Erreur lors de la création des écritures secondaires pour écriture ID {ecriture_principale_id}")
             raise
@@ -7589,17 +7599,26 @@ class EcritureComptable(BaseRepository):
         if not regles:
             return
         logger.info(f"📋 {len(regles)} règle(s) trouvée(s) pour la catégorie ID {categorie_id} (niveau {niveau})")
+        def _to_decimal(val, default='0'):
+            """Convertit une valeur (potentiellement NULL) en Decimal sans planter."""
+            if val is None or val == '' or str(val).lower() == 'none':
+                return Decimal(default)
+            try:
+                return Decimal(str(val))
+            except (InvalidOperation, ValueError):
+                return Decimal(default)
         for regle in regles:
             # Calculer le montant selon la règle
-            montant_source = Decimal(str(data.get('montant', 0)))
+            montant_source = _to_decimal(data.get('montant', 0))
             if regle['mode_calcul'] == 'montant_transaction':
                 montant_secondaire = montant_source
             elif regle['mode_calcul'] == 'pourcentage':
-                taux = Decimal(str(regle.get('valeur', 0)))
+                taux = _to_decimal(regle.get('valeur', 0))
                 montant_secondaire = montant_source * (taux / Decimal('100'))
             elif regle['mode_calcul'] == 'montant_fixe':
-                montant_secondaire = Decimal(str(regle.get('valeur', 0)))
+                montant_secondaire = _to_decimal(regle.get('valeur', 0))
             else:
+                logger.warning(f"Mode de calcul inconnu pour la règle {regle['id']}: {regle['mode_calcul']}")
                 continue
             if abs(montant_secondaire) <= 0.01:
                 logger.info(f"ℹ️ Montant secondaire négligeable ({montant_secondaire:.2f} CHF) pour la règle {regle['id']}")
