@@ -13038,17 +13038,15 @@ def pos_taxes_list():
 def pos_create_taxe():
     if request.method == 'POST':
         nom = request.form.get('nom', '').strip()
-        
+        est_actif = request.form.get('est_actif')
         # 1. Créer le TYPE de taxe
-        type_taxe_id = g.models.taxe_pos_model.create_type(current_user.id, magasin_id=get_magasin_id_courant(),
-        nom, 'est_actif' in request.form, )
-        
+        type_taxe_id = g.models.taxe_pos_model.create_type(
+            user_id=current_user.id, magasin_id=get_magasin_id_courant(), nom=nom, est_actif=est_actif)
         if type_taxe_id:
             # 2. Ajouter immédiatement un premier TAUX historique
             try:
                 taux = float(request.form.get('taux', '0').replace(',', '.'))
                 date_debut = datetime.strptime(request.form.get('date_debut'), '%Y-%m-%d').date()
-                
                 g.models.taxe_pos_model.add_taux_historique(
                     type_taxe_id=type_taxe_id,
                     taux=taux,
@@ -13061,7 +13059,6 @@ def pos_create_taxe():
                 flash('Format de taux ou date invalide.', 'error')
         else:
             flash('Ce type de taxe existe déjà ou une erreur est survenue.', 'error')
-
     return render_template('pos/create_taxe.html', today=datetime.now().strftime('%Y-%m-%d'))
 
 
