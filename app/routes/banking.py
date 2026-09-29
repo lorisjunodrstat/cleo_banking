@@ -3785,7 +3785,66 @@ def edit_categorie(categorie_id):
                         types_ecriture=types_ecriture,
                         regles=regles)
 
+@bp.route('/comptabilite/categories/<int:categorie_id>/regles/ajouter', methods=['POST'])
+@login_required
+def ajouter_regle_categorie(categorie_id):
+    """Ajoute une règle d'écriture pour une catégorie comptable donnée."""
+    # Vérifier que la catégorie appartient bien à l'utilisateur
+    categorie = g.models.categorie_comptable_model.get_by_id(categorie_id)
+    if not categorie:
+        flash("Catégorie introuvable.", "error")
+        return redirect(url_for('banking.liste_categories_comptables'))
 
+    destination_id = request.form.get('nouvelle_regle_destination', type=int)
+    type_regle     = request.form.get('nouvelle_regle_type', 'PERSONNALISE')
+    mode_calcul    = request.form.get('nouvelle_regle_calcul', 'montant_transaction')
+    valeur         = request.form.get('nouvelle_regle_valeur')
+    actif          = 'nouvelle_regle_actif' in request.form
+    sens           = 'oppose' if 'nouvelle_regle_oppose' in request.form else 'meme'
+
+    # Validations
+    if not destination_id:
+        flash("Veuillez sélectionner une catégorie destination.", "error")
+        return redirect(request.referrer or url_for('banking.edit_categorie', categorie_id=categorie_id))
+    if destination_id == categorie_id:
+        flash("La catégorie destination doit être différente de la source.", "error")
+        return redirect(request.referrer or url_for('banking.edit_categorie', categorie_id=categorie_id))
+
+    data = {
+        'categorie_source_id': categorie_id,
+        'categorie_destination_id': destination_id,
+        'type_regle': type_regle,
+        'sens': sens,
+        'mode_calcul': mode_calcul,
+        'valeur': float(valeur) if valeur else None,
+        'ordre': 1,
+        'actif': actif,
+    }
+
+    new_id = g.models.regle_ecriture_model.create(data)
+    if new_id:
+        flash("Règle d'écriture ajoutée avec succès.", "success")
+    else:
+        flash("Erreur lors de l'ajout de la règle.", "error")
+
+    return redirect(request.referrer or url_for('banking.edit_categorie', categorie_id=categorie_id))
+
+
+@bp.route('/comptabilite/regles/<int:regle_id>/supprimer', methods=['POST'])
+@login_required
+def supprimer_regle_ecriture(regle_id):
+    """Supprime (soft delete) une règle d'écriture."""
+    regle = g.models.regle_ecriture_model.get_by_id(regle_id)
+    if not regle:
+        flash("Règle introuvable.", "error")
+        return redirect(request.referrer or url_for('banking.gestion_regles'))
+
+    if g.models.regle_ecriture_model.delete(regle_id):
+        flash("Règle supprimée.", "success")
+    else:
+        flash("Erreur lors de la suppression.", "error")
+
+    return redirect(request.referrer or url_for('banking.gestion_regles'))
 
 @bp.route('/comptabilite/categories/<int:categorie_id>/delete', methods=['POST'])
 @login_required
