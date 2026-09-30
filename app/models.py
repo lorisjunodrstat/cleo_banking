@@ -11434,7 +11434,7 @@ class Rapport(BaseRepository):
         super().__init__(db)
         self.ecriture_comptable_model = EcritureComptable(db)
     
-        def generate_rapport_rapprochements(self, user_id: int,
+    def generate_rapport_rapprochements(self, user_id: int,
                                         date_from: str, date_to: str,
                                         prestataire: str = None) -> Dict:
         """
