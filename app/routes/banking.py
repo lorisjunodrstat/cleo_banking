@@ -4986,7 +4986,7 @@ def nouvelle_ecriture_from_selected():
                     errors.append(f"Transaction {transaction_id}: introuvable")
                     continue
 
-                montant_ttc = Decimal(str(transaction.montant))
+                montant_ttc = Decimal(str(transaction['montant']))
                 if tva_taux > 0:
                     montant_htva = montant_ttc / (1 + tva_taux / Decimal('100'))
                 else:
@@ -4994,16 +4994,16 @@ def nouvelle_ecriture_from_selected():
                 tva_montant = montant_ttc - montant_htva
 
                 data = {
-                    'date_ecriture': transaction.date_transaction.strftime('%Y-%m-%d'),
-                    'compte_bancaire_id': transaction.compte_bancaire_id,
-                    'categorie_id': categorie_id,          # 🔥 commun
+                    'date_ecriture': transaction['date_transaction'].strftime('%Y-%m-%d'),
+                    'compte_bancaire_id': transaction['compte_bancaire_id'],
+                    'categorie_id': categorie_id,
                     'montant': montant_ttc,
                     'montant_htva': montant_htva,
-                    'description': transaction.description or '',
-                    'id_contact': contact_id,              # 🔥 commun
+                    'description': transaction.get('description') or '',
+                    'id_contact': contact_id,
                     'reference': '',
-                    'type_ecriture': 'depot' if transaction.type_transaction in ['depot', 'transfert_entrant'] else 'retrait',
-                    'tva_taux': tva_taux,                  # 🔥 commun
+                    'type_ecriture': 'depot' if transaction['type_transaction'] in ['depot', 'transfert_entrant'] else 'retrait',
+                    'tva_taux': tva_taux,
                     'tva_montant': tva_montant,
                     'utilisateur_id': current_user.id,
                     'statut': 'pending',
