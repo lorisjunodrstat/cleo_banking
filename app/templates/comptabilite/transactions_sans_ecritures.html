@@ -128,34 +128,7 @@
         </div>
     </div>
 
-    <!-- Formulaire pour sélectionner les transactions -->
-    {% if compte_selectionne %}
-    <form method="POST" action="{{ url_for('banking.nouvelle_ecriture_from_selected') }}">
-        <!-- Transmettre les filtres actuels dans le formulaire POST -->
-        {% if compte_selectionne %}<input type="hidden" name="compte_id" value="{{ compte_selectionne }}">{% endif %}
-        {% if date_from %}<input type="hidden" name="date_from" value="{{ date_from }}">{% endif %}
-        {% if date_to %}<input type="hidden" name="date_to" value="{{ date_to }}">{% endif %}
-        {% if statut_comptable_selectionne %}<input type="hidden" name="statut_comptable"
-            value="{{ statut_comptable_selectionne }}">{% endif %}
 
-        <div class="card mb-3">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="mb-0">Sélectionnez les transactions à comptabiliser</h6>
-                        <small class="text-muted">Cochez les transactions que vous souhaitez transformer en
-                            écritures</small>
-                    </div>
-                    <div>
-                        <button type="submit" class="btn btn-primary" {% if not transactions %}disabled{% endif %}>
-                            <i class="bi bi-layers"></i> Créer les écritures pour la sélection
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </form>
-    {% endif %}
 
     <!-- Résultats -->
     {% if not compte_selectionne %}
@@ -206,7 +179,7 @@
                             <tr>
                                 <!-- Case à cocher pour chaque transaction -->
                                 <td class="checkbox-column">
-                                    <input type="checkbox" name="selected_transaction_ids" value="{{ transaction.id }}">
+                                    <input type="checkbox" name="transaction_ids[]" value="{{ transaction.id }}">
                                 </td>
                                 <td>{{ transaction.date_transaction.strftime('%d.%m.%Y') }}</td>
                                 <td>
@@ -544,5 +517,28 @@
     </div>
 </div>
 {% endfor %}
-
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+    // Gestion du "Tout sélectionner"
+    const selectAll = document.getElementById('select-all');
+    if (selectAll) {
+        selectAll.addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('input[name="transaction_ids[]"]');
+            checkboxes.forEach(cb => cb.checked = this.checked);
+        });
+    }
+    
+    // Validation avant soumission
+    const form = document.querySelector('form[action*="nouvelle_ecriture_from_selected"]');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const checked = document.querySelectorAll('input[name="transaction_ids[]"]:checked');
+            if (checked.length === 0) {
+                e.preventDefault();
+                alert('Veuillez sélectionner au moins une transaction');
+            }
+        });
+    }
+});
+</script>
 {% endblock %}

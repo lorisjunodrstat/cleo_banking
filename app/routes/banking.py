@@ -4948,92 +4948,67 @@ def transactions_sans_ecritures():
 @login_required
 def nouvelle_ecriture_from_selected():
     """Affiche le formulaire de création d'écritures pour transactions sélectionnées"""
-    
     if request.method == 'POST':
-        # Traitement des écritures sélectionnées
+        # Récupérer les IDs des transactions sélectionnées
         selected_transaction_ids = request.form.getlist('transaction_ids[]')
-        dates = request.form.getlist('date_ecriture[]')
-        types_ecriture = request.form.getlist('type_ecriture[]')
-        comptes_ids = request.form.getlist('compte_bancaire_id[]')
-        categories_ids = request.form.getlist('categorie_id[]')
-        montants = request.form.getlist('montant[]')
-        tva_taux = request.form.getlist('tva_taux[]')
-        # 🔥 RÉCUPÉRER LE MONTANT HTVA CALCULÉ PAR LE SERVEUR (ou pas, on le calcule)
-        # montants_htva = request.form.getlist('montant_htva[]') # Ce champ est readonly ou hidden
-        descriptions = request.form.getlist('description[]')
-        references = request.form.getlist('reference[]')
-        statuts = request.form.getlist('statut[]')
-        contacts_ids = request.form.getlist('id_contact[]')
-        
         if not selected_transaction_ids:
             flash("Aucune transaction sélectionnée", "warning")
             return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
-
         succes_count = 0
         secondary_count = 0
         errors = []
-
-        for i in range(len(selected_transaction_ids)):
+        # Récupérer les filtres pour la redirection
+        compte_id = request.form.get('compte_id', type=int)
+        date_from = request.form.get('date_from')
+        date_to = request.form.get('date_to')
+        statut_comptable = request.form.get('statut_comptable')
+        for transaction_id in selected_transaction_ids:
             try:
-                if not all([dates[i], types_ecriture[i], comptes_ids[i], categories_ids[i], montants[i]]):
-                    errors.append(f"Transaction {i+1}: Tous les champs obligatoires doivent être remplis")
+                # Récupérer la transaction
+                transaction = g.models.transaction_financiere_model.get_transaction_with_ecritures_total(
+                    int(transaction_id), current_user.id
+                )
+                if not transaction:
+                    errors.append(f"Transaction {transaction_id}: introuvable")
                     continue
-
-                montant_ttc = Decimal(str(montants[i]))
-                taux_tva = Decimal(str(tva_taux[i])) if tva_taux[i] and tva_taux[i] != '' else Decimal('0')
-
-                # 🔥 CALCUL DU MONTANT HTVA CÔTÉ SERVEUR
-                if taux_tva > 0:
-                    montant_htva_calcule = montant_ttc / (1 + taux_tva / Decimal('100'))
-                else:
-                    montant_htva_calcule = montant_ttc # Si pas de TVA, HTVA = TTC
-
+                # Créer l'écriture avec les données de la transaction
                 data = {
-                    'date_ecriture': dates[i],
-                    'compte_bancaire_id': int(comptes_ids[i]),
-                    'categorie_id': int(categories_ids[i]),
-                    'montant': montant_ttc,
-                    # 🔥 UTILISER LE MONTANT HTVA CALCULÉ CÔTÉ SERVEUR
-                    'montant_htva': montant_htva_calcule,
-                    'description': descriptions[i] if i < len(descriptions) and descriptions[i] else '',
-                    'id_contact': int(contacts_ids[i]) if i < len(contacts_ids) and contacts_ids[i] else None,
-                    'reference': references[i] if i < len(references) and references[i] else '',
-                    'type_ecriture': types_ecriture[i],
-                    'tva_taux': taux_tva,
+                    'date_ecriture': transaction.date_transaction.strftime('%Y-%m-%d'),
+                    'compte_bancaire_id': transaction.compte_bancaire_id,
+                    'categorie_id': None,  # À définir selon votre logique
+                    'montant': transaction.montant,
+                    'montant_htva': transaction.montant,  # Sans TVA par défaut
+                    'description': transaction.description or '',
+                    'id_contact': None,
+                    'reference': '',
+                    'type_ecriture': 'depot' if transaction.type_transaction in ['depot', 'transfert_entrant'] else 'retrait',
+                    'tva_taux': Decimal('0'),
+                    'tva_montant': Decimal('0'),
                     'utilisateur_id': current_user.id,
-                    'statut': statuts[i] if i < len(statuts) and statuts[i] else 'pending',
+                    'statut': 'pending',
                     'devise': 'CHF',
                     'type_ecriture_comptable': 'principale'
                 }
-
-                # 🔥 CORRECTION : Calcul TVA cohérent (déjà fait ci-dessus)
-                if data['tva_taux'] > 0:
-                    data['tva_montant'] = data['montant'] - data['montant_htva']
-                else:
-                    data['tva_montant'] = Decimal('0')
-
                 if g.models.ecriture_comptable_model.create(data):
                     succes_count += 1
-                    ecriture_id = g.models.ecriture_comptable_model.get_last_insert_id
-                    
-                    # 🔥 COMPTAGE DES ÉCRITURES SECONDAIRES
-                    secondaires = g.models.ecriture_comptable_model.get_ecritures_complementaires(ecriture_id, current_user.id)
-                    secondary_count += len(secondaires)
-                    
+                    ecriture_id = g.models.ecriture_comptable_model.get_last_insert_id   
                     # Lier l'écriture à la transaction
-                    transaction_id = int(selected_transaction_ids[i])
-                    g.models.ecriture_comptable_model.link_ecriture_to_transaction(ecriture_id, transaction_id, current_user.id)
+                    g.models.ecriture_comptable_model.link_ecriture_to_transaction(
+                        ecriture_id, int(transaction_id), current_user.id
+                    )
+                    # Compter les écritures secondaires
+                    secondaires = g.models.ecriture_comptable_model.get_ecritures_complementaires(
+                        ecriture_id, current_user.id
+                    )
+                    secondary_count += len(secondaires)
                 else:
-                    errors.append(f"Transaction {i+1}: Erreur lors de l'enregistrement")
-                    
+                    errors.append(f"Transaction {transaction_id}: Erreur lors de l'enregistrement")
             except Exception as e:
-                errors.append(f"Transaction {i+1}: Erreur - {str(e)}")
+                errors.append(f"Transaction {transaction_id}: Erreur - {str(e)}")
                 continue
-
         # Gestion des messages
         for error in errors:
             flash(error, "warning")
-                
         if succes_count > 0:
             message = f"{succes_count} écriture(s) créée(s) avec succès"
             if secondary_count > 0:
@@ -5041,27 +5016,16 @@ def nouvelle_ecriture_from_selected():
             flash(message, "success")
         else:
             flash("Aucune écriture n'a pu être créée", "error")
-            
-        compte_id = request.form.get('compte_id', type=int)
-        date_from = request.form.get('date_from')
-        date_to = request.form.get('date_to')
-        statut_comptable = request.form.get('statut_comptable')
-        taux_disponibles=g.models.taux_tva_model.get_taux_for_sel
-
-        return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
-                               compte_id=compte_id,
-                               date_from=date_from,
-                               date_to=date_to,
-                               statut_comptable=statut_comptable,
-                               taux_disponibles=taux_disponibles))
-    
-    # GET - Afficher le formulaire
-    # Récupérer les transactions sélectionnées depuis la session
+        return redirect(url_for('banking.transactions_sans_ecritures',
+                                compte_id=compte_id,
+                                date_from=date_from,
+                                date_to=date_to,
+                                statut_comptable=statut_comptable))
+    # GET - Afficher le formulaire (si vous voulez garder cette partie)
     transaction_ids = session.get('selected_transaction_ids', [])
     if not transaction_ids:
         flash("Aucune transaction sélectionnée", "warning")
         return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
-    
     # Récupérer les transactions
     transactions = []
     for transaction_id in transaction_ids:
@@ -5070,17 +5034,14 @@ def nouvelle_ecriture_from_selected():
         )
         if transaction:
             transactions.append(transaction)
-    
     if not transactions:
         flash("Aucune transaction valide sélectionnée", "warning")
         return redirect(url_for('banking.transactions_sans_ecritures'))
-    
     # Récupérer les données pour les formulaires
     comptes = g.models.compte_model.get_all_accounts()
     #comptes = g.models.compte_model.get_all_accounts(user_id = current_user.id)
     categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
     contacts = g.models.contact_model.get_all(current_user.id)
-    
     # 🔥 NOUVEAU : Récupérer les catégories avec écritures secondaires
     categories_avec_complementaires = g.models.categorie_comptable_model.get_categories_avec_complementaires(current_user.id)
     categories_avec_complementaires_ids = set()
