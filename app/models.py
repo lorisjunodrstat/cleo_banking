@@ -26,7 +26,7 @@ import re
 import time
 import math
 from collections import defaultdict
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from typing import List, Dict, Optional, Tuple, TypedDict, Any
 import traceback
 from contextlib import contextmanager
@@ -1831,7 +1831,7 @@ class ComptePrincipal(BaseRepository):
                     ELSE 0
                 END)
                 FROM ecritures_comptables
-                WHERE compte_bancaire_id = %s AND synchronise = FALSE
+                WHERE compte_bancaire_id = %s AND statut = 'validée'
                 """
                 params = [compte_id]
                 if date_jusqua:
@@ -7381,14 +7381,14 @@ class CategorieComptable(BaseRepository):
             logger.exception(f"Erreur recherche par tag système {tag}")
             return None
 
-    def is_compte_passif(self, compte_id: int, cursor=None) -> bool:
+    def is_compte_passif(self, compte_id: int, utilisateur_id: int = None,  cursor=None) -> bool:
         """Détecte si le compte est un passif (classe 2)."""
         def _do_query(cur):
             cur.execute("""
                 SELECT type_compte, numero 
                 FROM categories_comptables 
-                WHERE id = %s , utilisateur_id: int
-            """, (compte_id,utilisateur_id))
+                WHERE id = %s AND utilisateur_id = %s
+            """, (compte_id, utilisateur_id))
             res = cur.fetchone()
             if not res:
                 return False
@@ -16613,8 +16613,8 @@ class Planning(BaseRepository):
 class PlanningRegles(BaseRepository):
     def __init__(self, db, equipe_model, competence_model):
         super().__init__(db)
-        self.equipe_model = equipe_model
-        self.competence_model = competence_model
+        self.equipe_model = equipe_model(db)
+        self.competence_model = competence_model(db)
 
     def create_regle(self, user_id: int, nom: str, type_regle: str, params: Dict[str, Any]) -> int:
         """
@@ -20978,7 +20978,7 @@ class POSComptabilisation(BaseRepository):
                         logger.warning(f"⚠️ SAUTÉ : Pas de compte de vente mappé.")
                         nb_sautés += 1
                         continue
-                    is_credit = self.modele_categorie.is_compte_passif(id_compte_vente, cursor=cursor)
+                    is_credit = self.categorie_comptable_model.is_compte_passif(id_compte_vente, cursor=cursor)
                     # ============================================================
                     # ÉTAPE 2 : ÉCRITURES COMPTABLES (AVEC VÉRIFICATION D'IDEMPOTENCE)
                     # ============================================================

@@ -155,7 +155,7 @@ def profil_utilisateur(user_id):
             # ou on redirige avec une erreur
 #            flash("Base de données non accessible", "danger")
  #           return redirect(url_for('banking.banking_dashboard'))
-        utilisateur = g.models.user_model.get_by_id(user_id)        
+        utilisateur = g.models.user_model.get_by_id(user_id, g.db)        
         if not utilisateur:
             flash("Utilisateur non trouvé", "danger")
             return redirect(url_for('banking.dashboard'))
