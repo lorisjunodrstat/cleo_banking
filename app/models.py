@@ -21656,7 +21656,7 @@ class ModelManager:
     def regle_ecriture_model(self):
         return self._get_model('regle_ecriture', RegleEcriture)
     @property
-    def rapprochement_bancaire(self):
+    def rapprochement_bancaire_model(self):
         return self._get_model('rapprochement_bancaire', RapprochementBancaire)
     @property
     def taux_tva_model(self):
