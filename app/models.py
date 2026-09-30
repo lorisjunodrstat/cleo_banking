@@ -8274,7 +8274,6 @@ class EcritureComptable(BaseRepository):
                     ecriture_id,
                     data['utilisateur_id']
                 )
-
                 cursor.execute(query, values)
                 return cursor.rowcount > 0
             #return True
@@ -8293,6 +8292,7 @@ class EcritureComptable(BaseRepository):
                 ecriture = cursor.fetchone()
                 if not ecriture:
                     return False, "Écriture non trouvée ou non autorisée"
+                transaction_id_liee = ecriture.get('transaction_id')
                 if ecriture['transaction_id']:
                     cursor.execute(
                         "UPDATE ecritures_comptables SET transaction_id = NULL WHERE id = %s",
@@ -8302,6 +8302,12 @@ class EcritureComptable(BaseRepository):
                 if ecriture['type_ecriture_comptable'] == 'principale':
                     secondaires = self.get_ecritures_complementaires(ecriture_id, user_id)
                     ecritures_secondaires_ids = [sec['id'] for sec in secondaires]
+                    # 🔥 Délier les secondaires aussi
+                    for sec_id in ecritures_secondaires_ids:
+                        cursor.execute(
+                            "UPDATE ecritures_comptables SET transaction_id = NULL WHERE id = %s",
+                            (sec_id,)
+                        )
                 for sec_id in ecritures_secondaires_ids:
                     cursor.execute(
                         "DELETE FROM ecritures_comptables WHERE id = %s AND utilisateur_id = %s",
@@ -8315,13 +8321,29 @@ class EcritureComptable(BaseRepository):
                     message = f"Écriture {ecriture_id} supprimée avec succès"
                     if ecritures_secondaires_ids:
                         message += f" ainsi que {len(ecritures_secondaires_ids)} écriture(s) secondaire(s)"
+                    # 🔥 Hors du if ecritures_secondaires_ids
+                    if transaction_id_liee:
+                        cursor.execute("""
+                            SELECT COUNT(*) as nb
+                            FROM ecritures_comptables
+                            WHERE transaction_id = %s
+                            AND utilisateur_id = %s
+                            AND statut != 'supprimee'
+                        """, (transaction_id_liee, user_id))
+                        if cursor.fetchone()['nb'] == 0:
+                            cursor.execute("""
+                                UPDATE transactions
+                                SET statut_comptable = 'a_comptabiliser'
+                                WHERE id = %s AND utilisateur_id = %s
+                            """, (transaction_id_liee, user_id))
+                            message += " - transaction remise à 'à comptabiliser'"
                     return True, message
                 else:
                     return False, "Erreur lors de la suppression de l'écriture"
         except MySQLError as e:
             logger.error(f"Erreur lors de la suppression de l'écriture {ecriture_id}: {e}")
             return False, f"Erreur lors de la suppression: {str(e)}"
-
+    
     def delete_soft(self, ecriture_id: int, user_id: int, soft_delete: bool = True) -> Tuple[bool, str]:
         """Supprime une écriture comptable (soft delete par défaut)."""
         try:
@@ -8333,6 +8355,7 @@ class EcritureComptable(BaseRepository):
                 ecriture = cursor.fetchone()
                 if not ecriture:
                     return False, "Écriture non trouvée ou non autorisée"
+                transaction_id_liee = ecriture.get('transaction_id') 
                 if ecriture['transaction_id']:
                     cursor.execute(
                         "UPDATE ecritures_comptables SET transaction_id = NULL WHERE id = %s",
@@ -8342,6 +8365,12 @@ class EcritureComptable(BaseRepository):
                 if ecriture['type_ecriture_comptable'] == 'principale':
                     secondaires = self.get_ecritures_complementaires(ecriture_id, user_id)
                     ecritures_secondaires_ids = [sec['id'] for sec in secondaires]
+                    # 🔥 Délier les secondaires aussi
+                    for sec_id in ecritures_secondaires_ids:
+                        cursor.execute(
+                            "UPDATE ecritures_comptables SET transaction_id = NULL WHERE id = %s",
+                            (sec_id,)
+                        )
                 if soft_delete:
                     success_count = 0
                     for sec_id in ecritures_secondaires_ids:
@@ -8362,6 +8391,21 @@ class EcritureComptable(BaseRepository):
                         message = f"Écriture {ecriture_id} marquée comme supprimée"
                         if ecritures_secondaires_ids:
                             message += f" ainsi que {len(ecritures_secondaires_ids)} écriture(s) secondaire(s)"
+                        if transaction_id_liee:
+                            cursor.execute("""
+                                SELECT COUNT(*) as nb
+                                FROM ecritures_comptables
+                                WHERE transaction_id = %s
+                                AND utilisateur_id = %s
+                                AND statut != 'supprimee'
+                            """, (transaction_id_liee, user_id))
+                            if cursor.fetchone()['nb'] == 0:
+                                cursor.execute("""
+                                    UPDATE transactions
+                                    SET statut_comptable = 'a_comptabiliser'
+                                    WHERE id = %s AND utilisateur_id = %s
+                                """, (transaction_id_liee, user_id))
+                                message += " - transaction remise à 'à comptabiliser'"
                         return True, message
                     else:
                         return False, "Erreur lors du marquage des écritures comme supprimées"
@@ -8379,6 +8423,21 @@ class EcritureComptable(BaseRepository):
                         message = f"Écriture {ecriture_id} supprimée définitivement"
                         if ecritures_secondaires_ids:
                             message += f" ainsi que {len(ecritures_secondaires_ids)} écriture(s) secondaire(s)"
+                        if transaction_id_liee:
+                            cursor.execute("""
+                                SELECT COUNT(*) as nb
+                                FROM ecritures_comptables
+                                WHERE transaction_id = %s
+                                AND utilisateur_id = %s
+                                AND statut != 'supprimee'
+                            """, (transaction_id_liee, user_id))
+                            if cursor.fetchone()['nb'] == 0:
+                                cursor.execute("""
+                                    UPDATE transactions
+                                    SET statut_comptable = 'a_comptabiliser'
+                                    WHERE id = %s AND utilisateur_id = %s
+                                """, (transaction_id_liee, user_id))
+                                message += " - transaction remise à 'à comptabiliser'"
                         return True, message
                     else:
                         return False, "Erreur lors de la suppression de l'écriture"
