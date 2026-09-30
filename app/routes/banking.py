@@ -6444,39 +6444,62 @@ def annuler_rapprochement(rapprochement_id):
     return redirect(url_for('banking.liste_rapprochements'))
 
 
+#@bp.route('/comptabilite/rapprochements/analyser')
+#@login_required
+#def analyser_rapprochement():
+#    """
+#    Analyse un compte d'attente et propose un brouillon
+#    à partir de la période + du net reçu.
+#    """
+#    compte_attente_id = request.args.get('compte_attente_id', type=int)
+#    date_from = request.args.get('date_from')
+#    date_to = request.args.get('date_to')
+#    montant_net = request.args.get('montant_net', type=float)
+#    analyse = {}
+#    suggestion = {}
+#    if compte_attente_id and date_from and date_to:
+#        analyse = g.models.rapprochement_bancaire_model.analyser_compte_attente(
+#            current_user.id, compte_attente_id, date_from, date_to
+#        )
+#        if montant_net is not None:
+#            suggestion = g.models.rapprochement_bancaire_model.suggerer(
+#                current_user.id, compte_attente_id, date_from, date_to, montant_net
+#            )
+#    categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
+#    return render_template(
+#        'comptabilite/analyser_rapprochement.html',
+#        compte_attente_id=compte_attente_id,
+#        date_from=date_from,
+#        date_to=date_to,
+#        montant_net=montant_net,
+#        analyse=analyse,
+#        suggestion=suggestion,
+#        categories=categories,
+#    )
+
 @bp.route('/comptabilite/rapprochements/analyser')
 @login_required
 def analyser_rapprochement():
     """
-    Analyse un compte d'attente et propose un brouillon
-    à partir de la période + du net reçu.
+    Page d'analyse d'un compte d'attente + génération assistée
+    d'un brouillon de rapprochement.
     """
-    compte_attente_id = request.args.get('compte_attente_id', type=int)
-    date_from = request.args.get('date_from')
-    date_to = request.args.get('date_to')
-    montant_net = request.args.get('montant_net', type=float)
-    analyse = {}
-    suggestion = {}
-    if compte_attente_id and date_from and date_to:
-        analyse = g.models.rapprochement_bancaire_model.analyser_compte_attente(
-            current_user.id, compte_attente_id, date_from, date_to
-        )
-        if montant_net is not None:
-            suggestion = g.models.rapprochement_bancaire_model.suggerer(
-                current_user.id, compte_attente_id, date_from, date_to, montant_net
-            )
     categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
+    comptes = g.models.compte_model.get_by_user_id(current_user.id)
+
+    # Liste des comptes d'attente "candidats" (Actif dont le numéro commence par 114x)
+    comptes_attente = [
+        c for c in categories
+        if c['type_compte'] == 'Actif'
+        and str(c['numero']).startswith('114')
+    ]
+
     return render_template(
         'comptabilite/analyser_rapprochement.html',
-        compte_attente_id=compte_attente_id,
-        date_from=date_from,
-        date_to=date_to,
-        montant_net=montant_net,
-        analyse=analyse,
-        suggestion=suggestion,
+        comptes=comptes,
+        comptes_attente=comptes_attente,
         categories=categories,
     )
-
 @bp.route('/comptabilite/rapports/rapprochements')
 @login_required
 def rapport_rapprochements():
@@ -6518,29 +6541,7 @@ def api_solde_creance():
     })
 
 
-@bp.route('/comptabilite/rapprochements/analyser')
-@login_required
-def analyser_rapprochement():
-    """
-    Page d'analyse d'un compte d'attente + génération assistée
-    d'un brouillon de rapprochement.
-    """
-    categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
-    comptes = g.models.compte_model.get_by_user_id(current_user.id)
 
-    # Liste des comptes d'attente "candidats" (Actif dont le numéro commence par 114x)
-    comptes_attente = [
-        c for c in categories
-        if c['type_compte'] == 'Actif'
-        and str(c['numero']).startswith('114')
-    ]
-
-    return render_template(
-        'comptabilite/analyser_rapprochement.html',
-        comptes=comptes,
-        comptes_attente=comptes_attente,
-        categories=categories,
-    )
 @bp.route('/api/comptabilite/rapprochements/analyser', methods=['POST'])
 @login_required
 def api_analyser_rapprochement():
