@@ -9375,6 +9375,7 @@ class EcritureComptable(BaseRepository):
                     SELECT SUM(montant) as total
                     FROM ecritures_comptables
                     WHERE transaction_id = %s AND utilisateur_id = %s
+                    AND type_ecriture_comptable = 'principale'
                 """, (transaction_id, user_id))
                 result = cursor.fetchone()
                 total_actuel = Decimal(str(result['total'])) if result and result['total'] else Decimal('0')      
@@ -9384,7 +9385,8 @@ class EcritureComptable(BaseRepository):
                     SELECT SUM(montant) as total
                     FROM ecritures_comptables
                     WHERE id IN ({placeholders})
-                    AND (transaction_id IS NULL OR transaction_id != %s)
+                    AND (transaction_id IS NULL OR transaction_id != %s
+                    AND type_ecriture_comptable = 'principale')
                 """, ecritures_a_lier + [transaction_id])
                 result = cursor.fetchone()
                 total_a_ajouter = Decimal(str(result['total'])) if result and result['total'] else Decimal('0')
