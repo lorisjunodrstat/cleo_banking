@@ -21,7 +21,6 @@
         margin-right: 0;
     }
 
-    /* Style pour les lignes d'écritures multiples */
     .row.g-3.mb-3.p-3.border.rounded {
         transition: background-color 0.2s ease;
     }
@@ -30,14 +29,12 @@
         background-color: #f8f9fa;
     }
 
-    /* Style pour la colonne des cases à cocher */
     .checkbox-column {
         width: 50px;
         text-align: center;
         vertical-align: middle;
     }
 
-    /* Indicateur de catégorie avec écritures secondaires */
     .categorie-secondaire {
         border-left: 3px solid #0d6efd;
         padding-left: 8px;
@@ -101,8 +98,7 @@
                     <label for="statut_comptable" class="form-label">Statut</label>
                     <select id="statut_comptable" name="statut_comptable" class="form-select">
                         {% for statut in statuts_comptables %}
-                        <option value="{{ statut.value }}" {% if statut.value==statut_comptable_selectionne %}selected{%
-                            endif %}>
+                        <option value="{{ statut.value }}" {% if statut.value==statut_comptable_selectionne %}selected{% endif %}>
                             {{ statut.label }}
                         </option>
                         {% endfor %}
@@ -128,8 +124,6 @@
         </div>
     </div>
 
-
-
     <!-- Résultats -->
     {% if not compte_selectionne %}
     <div class="text-center text-muted py-4">
@@ -142,14 +136,12 @@
         <p class="mt-2">Aucune transaction sans écriture trouvée pour ce compte</p>
     </div>
     {% else %}
-    <!-- Le formulaire entoure désormais le tableau -->
+    <!-- Le formulaire entoure le tableau -->
     <form method="POST" action="{{ url_for('banking.nouvelle_ecriture_from_selected') }}">
-        <!-- Transmettre les filtres actuels dans le formulaire POST -->
         {% if compte_selectionne %}<input type="hidden" name="compte_id" value="{{ compte_selectionne }}">{% endif %}
         {% if date_from %}<input type="hidden" name="date_from" value="{{ date_from }}">{% endif %}
         {% if date_to %}<input type="hidden" name="date_to" value="{{ date_to }}">{% endif %}
-        {% if statut_comptable_selectionne %}<input type="hidden" name="statut_comptable"
-            value="{{ statut_comptable_selectionne }}">{% endif %}
+        {% if statut_comptable_selectionne %}<input type="hidden" name="statut_comptable" value="{{ statut_comptable_selectionne }}">{% endif %}
 
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
@@ -177,14 +169,12 @@
                         <tbody>
                             {% for transaction in transactions %}
                             <tr>
-                                <!-- Case à cocher pour chaque transaction -->
                                 <td class="checkbox-column">
                                     <input type="checkbox" name="transaction_ids[]" value="{{ transaction.id }}">
                                 </td>
                                 <td>{{ transaction.date_transaction.strftime('%d.%m.%Y') }}</td>
                                 <td>
-                                    <span
-                                        class="badge {% if transaction.type_transaction in ['depot', 'transfert_entrant'] %}bg-success{% else %}bg-danger{% endif %}">
+                                    <span class="badge {% if transaction.type_transaction in ['depot', 'transfert_entrant'] %}bg-success{% else %}bg-danger{% endif %}">
                                         {{ transaction.type_transaction|replace('_', ' ')|title }}
                                     </span>
                                 </td>
@@ -193,37 +183,25 @@
                                 <td class="text-end fw-bold">{{ "%.2f"|format(transaction.montant) }} CHF</td>
                                 <td>
                                     <div class="btn-group" role="group">
-                                        <form
-                                            action="{{ url_for('banking.update_statut_comptable', transaction_id=transaction.id) }}"
-                                            method="post" class="d-inline">
+                                        <form action="{{ url_for('banking.update_statut_comptable', transaction_id=transaction.id) }}" method="post" class="d-inline">
                                             <input type="hidden" name="statut_comptable" value="a_comptabiliser">
-                                            <button type="submit"
-                                                class="btn btn-sm {% if transaction.statut_comptable == 'a_comptabiliser' %}btn-warning{% else %}btn-outline-warning{% endif %}">
+                                            <button type="submit" class="btn btn-sm {% if transaction.statut_comptable == 'a_comptabiliser' %}btn-warning{% else %}btn-outline-warning{% endif %}">
                                                 À comptabiliser
                                             </button>
                                         </form>
-                                        <form
-                                            action="{{ url_for('banking.update_statut_comptable', transaction_id=transaction.id) }}"
-                                            method="post" class="d-inline">
+                                        <form action="{{ url_for('banking.update_statut_comptable', transaction_id=transaction.id) }}" method="post" class="d-inline">
                                             <input type="hidden" name="statut_comptable" value="ne_pas_comptabiliser">
-                                            <button type="submit"
-                                                class="btn btn-sm {% if transaction.statut_comptable == 'ne_pas_comptabiliser' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+                                            <button type="submit" class="btn btn-sm {% if transaction.statut_comptable == 'ne_pas_comptabiliser' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
                                                 Ne pas comptabiliser
                                             </button>
                                         </form>
                                     </div>
                                 </td>
                                 <td>
-                                    <!-- Bouton pour ouvrir le modal d'écriture simple -->
-                                    <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal"
-                                        data-bs-target="#modalEcritureSimple{{ transaction.id }}">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalEcritureSimple{{ transaction.id }}">
                                         <i class="bi bi-plus-circle"></i> Créer écriture
                                     </button>
-
-                                    <!-- Bouton pour ouvrir le modal d'écritures multiples -->
-                                    <button type="button" class="btn btn-outline-info btn-sm mt-1"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#modalEcrituresMultiples{{ transaction.id }}">
+                                    <button type="button" class="btn btn-outline-info btn-sm mt-1" data-bs-toggle="modal" data-bs-target="#modalEcrituresMultiples{{ transaction.id }}">
                                         <i class="bi bi-layers"></i> Écritures multiples
                                     </button>
                                 </td>
@@ -234,9 +212,10 @@
                 </div>
             </div>
         </div>
-        <!-- Bouton de soumission en bas du tableau -->
+
+        <!-- Bouton qui ouvre le modal de config groupée -->
         <div class="d-grid gap-2 col-6 mx-auto mt-3">
-            <button type="submit" class="btn btn-primary" {% if not transactions %}disabled{% endif %}>
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalConfigGroupee">
                 <i class="bi bi-layers"></i> Créer les écritures pour la sélection
             </button>
         </div>
@@ -244,7 +223,89 @@
     {% endif %}
 </div>
 
-<!-- Modals pour écriture simple -->
+<!-- Modal de configuration groupée (HORS du form du tableau) -->
+<div class="modal fade" id="modalConfigGroupee" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Configuration commune pour les écritures sélectionnées</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('banking.nouvelle_ecriture_from_selected') }}" id="formGroupee">
+                {% if compte_selectionne %}<input type="hidden" name="compte_id" value="{{ compte_selectionne }}">{% endif %}
+                {% if date_from %}<input type="hidden" name="date_from" value="{{ date_from }}">{% endif %}
+                {% if date_to %}<input type="hidden" name="date_to" value="{{ date_to }}">{% endif %}
+                {% if statut_comptable_selectionne %}<input type="hidden" name="statut_comptable" value="{{ statut_comptable_selectionne }}">{% endif %}
+
+                <div id="hiddenTransactionIds"></div>
+
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        <strong id="nbTransactionsSelectionnees">0</strong> transaction(s) sélectionnée(s).
+                        Les paramètres ci-dessous seront appliqués à toutes les écritures.
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="categorie_groupee" class="form-label">Catégorie comptable *</label>
+                        <select id="categorie_groupee" name="categorie_id" class="form-select" required>
+                            <option value="">Choisir une catégorie...</option>
+                            {% for categorie in categories %}
+                            <option value="{{ categorie.id }}"
+                                class="{% if categorie.id in categories_avec_complementaires_ids %}categorie-secondaire{% endif %}">
+                                {{ categorie.numero }} - {{ categorie.nom }}
+                                {% if categorie.id in categories_avec_complementaires_ids %}
+                                <span class="badge bg-info badge-secondaire">avec écritures secondaires</span>
+                                {% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="contact_groupe" class="form-label">Contact</label>
+                        <select id="contact_groupe" name="contact_id" class="form-select">
+                            <option value="">Aucun contact</option>
+                            {% for contact in contacts %}
+                            <option value="{{ contact.id_contact }}">
+                                {{ contact.nom }} {% if contact.email %}({{ contact.email }}){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="tva_groupee" class="form-label">Taux de TVA applicable</label>
+                        <select class="form-select" id="tva_groupee" name="tva_taux">
+                            <option value="0">0% (Hors TVA / Exonéré)</option>
+                            {% for taux in taux_disponibles %}
+                                <option value="{{ taux.taux }}">{{ taux.label }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text text-muted">
+                            <small>⚠️ Veillez à sélectionner le taux correspondant à l'année des transactions.</small>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <i class="bi bi-lightbulb"></i>
+                        <strong>Écritures secondaires :</strong> Si la catégorie est configurée avec des
+                        complémentaires, des écritures secondaires seront générées automatiquement pour chaque
+                        transaction (TVA, taxes, etc.).
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Créer les écritures
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modals pour écriture simple (par transaction) -->
 {% for transaction in transactions %}
 <!-- Modal Écriture Simple -->
 <div class="modal fade" id="modalEcritureSimple{{ transaction.id }}" tabindex="-1" aria-hidden="true">
@@ -254,8 +315,7 @@
                 <h5 class="modal-title">Créer une écriture comptable</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form action="{{ url_for('banking.creer_ecriture_automatique', transaction_id=transaction.id) }}"
-                method="post">
+            <form action="{{ url_for('banking.creer_ecriture_automatique', transaction_id=transaction.id) }}" method="post">
                 <div class="modal-body">
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle"></i>
@@ -274,31 +334,25 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label"><strong>Date:</strong></label>
-                            <p class="form-control-plaintext">{{ transaction.date_transaction.strftime('%d.%m.%Y') }}
-                            </p>
+                            <p class="form-control-plaintext">{{ transaction.date_transaction.strftime('%d.%m.%Y') }}</p>
                         </div>
                     </div>
 
-                    <!-- Récupérer le contact lié au compte -->
-                    {% set contact_lie =
-                    g.models.contact_compte_model.get_contact_by_compte(transaction.compte_bancaire_id, current_user.id)
-                    %}
+                    {% set contact_lie = g.models.contact_compte_model.get_contact_by_compte(transaction.compte_bancaire_id, current_user.id) %}
 
                     <div class="mb-3">
                         <label for="contact_simple{{ transaction.id }}" class="form-label">Contact</label>
                         <select id="contact_simple{{ transaction.id }}" name="contact_id" class="form-select">
                             <option value="">Aucun contact</option>
                             {% for contact in contacts %}
-                            <option value="{{ contact.id_contact }}" {% if contact_lie and
-                                contact_lie.contact_id==contact.id_contact %}selected{% endif %}>
+                            <option value="{{ contact.id_contact }}" {% if contact_lie and contact_lie.contact_id==contact.id_contact %}selected{% endif %}>
                                 {{ contact.nom }} {% if contact.email %}({{ contact.email }}){% endif %}
                             </option>
                             {% endfor %}
                         </select>
                         <div class="form-text">
                             {% if contact_lie %}
-                            <i class="bi bi-info-circle text-primary"></i> Contact lié au compte détecté : <strong>{{
-                                contact_lie.nom }}</strong>
+                            <i class="bi bi-info-circle text-primary"></i> Contact lié au compte détecté : <strong>{{ contact_lie.nom }}</strong>
                             {% else %}
                             <i class="bi bi-info-circle text-muted"></i> Aucun contact lié à ce compte
                             {% endif %}
@@ -306,10 +360,8 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="categorie_simple{{ transaction.id }}" class="form-label">Catégorie comptable
-                            *</label>
-                        <select id="categorie_simple{{ transaction.id }}" name="categorie_id" class="form-select"
-                            required>
+                        <label for="categorie_simple{{ transaction.id }}" class="form-label">Catégorie comptable *</label>
+                        <select id="categorie_simple{{ transaction.id }}" name="categorie_id" class="form-select" required>
                             <option value="">Choisir une catégorie...</option>
                             {% for categorie in categories %}
                             <option value="{{ categorie.id }}"
@@ -321,11 +373,9 @@
                             </option>
                             {% endfor %}
                         </select>
-                
                         <div class="form-text">
                             <i class="bi bi-info-circle"></i>
-                            Certaines catégories peuvent générer des écritures secondaires automatiquement (TVA, taxes,
-                            etc.)
+                            Certaines catégories peuvent générer des écritures secondaires automatiquement (TVA, taxes, etc.)
                         </div>
                     </div>
                     <div class="mb-3">
@@ -342,20 +392,10 @@
                             <small>⚠️ Veillez à sélectionner le taux correspondant à l'année de la transaction.</small>
                         </div>
                     </div>
-                    <!-- 🔥 NOUVEAU : Section pour les écritures secondaires -->
                     <div class="alert alert-warning">
                         <i class="bi bi-lightbulb"></i>
                         <strong>Écritures secondaires :</strong> Si la catégorie sélectionnée est configurée avec des
-                        complémentaires,
-                        des écritures secondaires seront créées automatiquement (TVA, taxes, etc.).
-                    </div>
-
-                    <!-- 🔥 NOUVEAU : Section pour les écritures secondaires -->
-                    <div class="alert alert-warning">
-                        <i class="bi bi-lightbulb"></i>
-                        <strong>Écritures secondaires :</strong> Si la catégorie sélectionnée est configurée avec des
-                        complémentaires,
-                        des écritures secondaires seront créées automatiquement (TVA, taxes, etc.).
+                        complémentaires, des écritures secondaires seront créées automatiquement (TVA, taxes, etc.).
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -375,8 +415,7 @@
                 <h5 class="modal-title">Créer plusieurs écritures comptables</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form action="{{ url_for('banking.creer_ecritures_multiple_auto', transaction_id=transaction.id) }}"
-                method="post">
+            <form action="{{ url_for('banking.creer_ecritures_multiple_auto', transaction_id=transaction.id) }}" method="post">
                 <div class="modal-body">
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle"></i>
@@ -384,15 +423,12 @@
                         Les écritures seront créées avec le statut "En attente".
                     </div>
 
-                    <!-- 🔥 NOUVEAU : Information sur les écritures secondaires -->
                     <div class="alert alert-warning">
                         <i class="bi bi-lightbulb"></i>
                         <strong>Écritures secondaires :</strong> Si une catégorie est configurée avec des
-                        complémentaires,
-                        des écritures secondaires seront créées automatiquement pour chaque écriture principale.
+                        complémentaires, des écritures secondaires seront créées automatiquement pour chaque écriture principale.
                     </div>
 
-                    <!-- Informations de la transaction -->
                     <div class="card mb-4">
                         <div class="card-header bg-light">
                             <h6 class="mb-0">Transaction originale</h6>
@@ -413,29 +449,22 @@
                                 </div>
                             </div>
 
-                            <!-- Récupérer le contact lié au compte -->
-                            {% set contact_lie =
-                            g.models.contact_compte_model.get_contact_by_compte(transaction.compte_bancaire_id,
-                            current_user.id) %}
+                            {% set contact_lie = g.models.contact_compte_model.get_contact_by_compte(transaction.compte_bancaire_id, current_user.id) %}
 
                             <div class="row mt-3">
                                 <div class="col-md-12">
-                                    <label for="contact_multiple{{ transaction.id }}" class="form-label">Contact
-                                        principal</label>
-                                    <select id="contact_multiple{{ transaction.id }}" name="contact_id"
-                                        class="form-select">
+                                    <label for="contact_multiple{{ transaction.id }}" class="form-label">Contact principal</label>
+                                    <select id="contact_multiple{{ transaction.id }}" name="contact_id" class="form-select">
                                         <option value="">Aucun contact</option>
                                         {% for contact in contacts %}
-                                        <option value="{{ contact.id_contact }}" {% if contact_lie and
-                                            contact_lie.contact_id==contact.id_contact %}selected{% endif %}>
+                                        <option value="{{ contact.id_contact }}" {% if contact_lie and contact_lie.contact_id==contact.id_contact %}selected{% endif %}>
                                             {{ contact.nom }} {% if contact.email %}({{ contact.email }}){% endif %}
                                         </option>
                                         {% endfor %}
                                     </select>
                                     <div class="form-text">
                                         {% if contact_lie %}
-                                        <i class="bi bi-info-circle text-primary"></i> Contact lié au compte détecté :
-                                        <strong>{{ contact_lie.nom }}</strong>
+                                        <i class="bi bi-info-circle text-primary"></i> Contact lié au compte détecté : <strong>{{ contact_lie.nom }}</strong>
                                         {% else %}
                                         <i class="bi bi-info-circle text-muted"></i> Aucun contact lié à ce compte
                                         {% endif %}
@@ -445,7 +474,6 @@
                         </div>
                     </div>
 
-                    <!-- Écritures multiples - 3 lignes fixes -->
                     <div class="card">
                         <div class="card-header bg-light d-flex justify-content-between align-items-center">
                             <h6 class="mb-0">Écritures comptables (maximum 3)</h6>
@@ -476,8 +504,7 @@
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label">Montant (CHF)</label>
-                                    <input type="number" step="0.01" class="form-control" name="montant[]" {% if i==0
-                                        %}value="{{ " %.2f"|format(transaction.montant) }}"{% endif %}>
+                                    <input type="number" step="0.01" class="form-control" name="montant[]" {% if i==0 %}value="{{ "%.2f"|format(transaction.montant) }}"{% endif %}>
                                 </div>
                                 <div class="col-md-2">
                                     <label class="form-label">Taux TVA</label>
@@ -500,8 +527,7 @@
 
                             <div class="alert alert-warning mt-3">
                                 <i class="bi bi-exclamation-triangle"></i>
-                                <strong>Important:</strong> La somme des montants doit être égale à {{
-                                "%.2f"|format(transaction.montant) }} CHF
+                                <strong>Important:</strong> La somme des montants doit être égale à {{ "%.2f"|format(transaction.montant) }} CHF
                             </div>
                         </div>
                     </div>
@@ -517,24 +543,54 @@
     </div>
 </div>
 {% endfor %}
+
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-    // Gestion du "Tout sélectionner"
+document.addEventListener('DOMContentLoaded', function() {
+    // Select-all
     const selectAll = document.getElementById('select-all');
     if (selectAll) {
         selectAll.addEventListener('change', function() {
-            const checkboxes = document.querySelectorAll('input[name="transaction_ids[]"]');
-            checkboxes.forEach(cb => cb.checked = this.checked);
+            document.querySelectorAll('input[name="transaction_ids[]"]').forEach(cb => {
+                cb.checked = this.checked;
+            });
         });
     }
-    
-    // Validation avant soumission
-    const form = document.querySelector('form[action*="nouvelle_ecriture_from_selected"]');
-    if (form) {
-        form.addEventListener('submit', function(e) {
+
+    // Quand on ouvre le modal de config groupée, on copie les IDs cochés
+    const modalConfig = document.getElementById('modalConfigGroupee');
+    if (modalConfig) {
+        modalConfig.addEventListener('show.bs.modal', function() {
+            const checked = document.querySelectorAll('input[name="transaction_ids[]"]:checked');
+            const container = document.getElementById('hiddenTransactionIds');
+            container.innerHTML = '';
+            checked.forEach(cb => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'transaction_ids[]';
+                input.value = cb.value;
+                container.appendChild(input);
+            });
+            document.getElementById('nbTransactionsSelectionnees').textContent = checked.length;
+        });
+
+        // Validation à la soumission du modal
+        document.getElementById('formGroupee').addEventListener('submit', function(e) {
+            const hidden = document.querySelectorAll('#hiddenTransactionIds input[name="transaction_ids[]"]');
+            if (hidden.length === 0) {
+                e.preventDefault();
+                alert('Veuillez sélectionner au moins une transaction dans le tableau');
+            }
+        });
+    }
+
+    // Avertir si on essaie d'ouvrir le modal sans sélection
+    const btnOpenModal = document.querySelector('button[data-bs-target="#modalConfigGroupee"]');
+    if (btnOpenModal) {
+        btnOpenModal.addEventListener('click', function(e) {
             const checked = document.querySelectorAll('input[name="transaction_ids[]"]:checked');
             if (checked.length === 0) {
                 e.preventDefault();
+                e.stopPropagation();
                 alert('Veuillez sélectionner au moins une transaction');
             }
         });

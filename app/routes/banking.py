@@ -4949,54 +4949,75 @@ def transactions_sans_ecritures():
 def nouvelle_ecriture_from_selected():
     """Affiche le formulaire de création d'écritures pour transactions sélectionnées"""
     if request.method == 'POST':
-        # Récupérer les IDs des transactions sélectionnées
         selected_transaction_ids = request.form.getlist('transaction_ids[]')
         if not selected_transaction_ids:
             flash("Aucune transaction sélectionnée", "warning")
             return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+
+        # 🔥 Paramètres communs à toutes les écritures
+        categorie_id = request.form.get('categorie_id', type=int)
+        contact_id = request.form.get('contact_id', type=int) or None
+        tva_taux = Decimal(str(request.form.get('tva_taux') or '0'))
+
+        if not categorie_id:
+            flash("Veuillez sélectionner une catégorie comptable", "warning")
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+        if contact_id and not g.models.ecriture_comptable_model._is_categorie_valid_for_contact(
+            contact_id, categorie_id, current_user.id
+        ):
+            flash("Cette catégorie n'est pas autorisée pour ce contact", "warning")
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+
         succes_count = 0
         secondary_count = 0
         errors = []
-        # Récupérer les filtres pour la redirection
+
         compte_id = request.form.get('compte_id', type=int)
         date_from = request.form.get('date_from')
         date_to = request.form.get('date_to')
         statut_comptable = request.form.get('statut_comptable')
+
         for transaction_id in selected_transaction_ids:
             try:
-                # Récupérer la transaction
                 transaction = g.models.transaction_financiere_model.get_transaction_with_ecritures_total(
                     int(transaction_id), current_user.id
                 )
                 if not transaction:
                     errors.append(f"Transaction {transaction_id}: introuvable")
                     continue
-                # Créer l'écriture avec les données de la transaction
+
+                montant_ttc = Decimal(str(transaction.montant))
+                if tva_taux > 0:
+                    montant_htva = montant_ttc / (1 + tva_taux / Decimal('100'))
+                else:
+                    montant_htva = montant_ttc
+                tva_montant = montant_ttc - montant_htva
+
                 data = {
                     'date_ecriture': transaction.date_transaction.strftime('%Y-%m-%d'),
                     'compte_bancaire_id': transaction.compte_bancaire_id,
-                    'categorie_id': None,  # À définir selon votre logique
-                    'montant': transaction.montant,
-                    'montant_htva': transaction.montant,  # Sans TVA par défaut
+                    'categorie_id': categorie_id,          # 🔥 commun
+                    'montant': montant_ttc,
+                    'montant_htva': montant_htva,
                     'description': transaction.description or '',
-                    'id_contact': None,
+                    'id_contact': contact_id,              # 🔥 commun
                     'reference': '',
                     'type_ecriture': 'depot' if transaction.type_transaction in ['depot', 'transfert_entrant'] else 'retrait',
-                    'tva_taux': Decimal('0'),
-                    'tva_montant': Decimal('0'),
+                    'tva_taux': tva_taux,                  # 🔥 commun
+                    'tva_montant': tva_montant,
                     'utilisateur_id': current_user.id,
                     'statut': 'pending',
                     'devise': 'CHF',
                     'type_ecriture_comptable': 'principale'
                 }
-                if g.models.ecriture_comptable_model.create(data):
+
+                # 🔥 Utiliser return_id=True pour récupérer l'ID
+                ecriture_id = g.models.ecriture_comptable_model.create(data, return_id=True)
+                if ecriture_id:
                     succes_count += 1
-                    ecriture_id = g.models.ecriture_comptable_model.get_last_insert_id   
-                    # Lier l'écriture à la transaction
                     g.models.ecriture_comptable_model.link_ecriture_to_transaction(
                         ecriture_id, int(transaction_id), current_user.id
                     )
-                    # Compter les écritures secondaires
                     secondaires = g.models.ecriture_comptable_model.get_ecritures_complementaires(
                         ecriture_id, current_user.id
                     )
@@ -5006,6 +5027,7 @@ def nouvelle_ecriture_from_selected():
             except Exception as e:
                 errors.append(f"Transaction {transaction_id}: Erreur - {str(e)}")
                 continue
+
         # Gestion des messages
         for error in errors:
             flash(error, "warning")
