@@ -7024,14 +7024,14 @@ class CategorieComptable(BaseRepository):
                 )
                 cursor.execute(query, values)
                 # Le commit est géré par le context manager dans la classe DatabaseManager
-            new_id = cursor.lastrowid
+                new_id = cursor.lastrowid
             return new_id
         except IntegrityError:
             logger.warning(f"numero déjà utilisé : {numero}")
-            return False
+            return None
         except MySQLError as e:
             logger.exceètion(f"Erreur lors de la création de la catégorie comptable")
-            return False
+            return None
 
     def modifier_plan(self, plan_id: int, data: Dict, utilisateur_id: int) -> bool:
         """Met à jour un plan comptable"""
@@ -7062,10 +7062,17 @@ class CategorieComptable(BaseRepository):
             logger.exception(f"Erreur mise à jour plan comptable")
             return False
 
-    def update(self, categorie_id: int, data: Dict) -> bool:
+    def update(self, categorie_id: int, data: Dict, utilisateur_id: int) -> bool:
         """Met à jour une catégorie comptable"""
         try:
             with self.db.get_cursor() as cursor:
+                cursor.execute(
+                    "SELECT id FROM categories_comptables WHERE id = %s AND utilisateur_id = %s",
+                    (categorie_id, utilisateur_id)
+                )
+                if not cursor.fetchone():
+                    logger.warning(f"Catégorie {categorie_id} introuvable ou non autorisée pour user {utilisateur_id}")
+                    return False
                 # ✅ Construire la requête dynamiquement pour n'update que les champs fournis
                 fields = []
                 values = []
@@ -7103,8 +7110,8 @@ class CategorieComptable(BaseRepository):
                 if 'numero' in data and data['numero']:
                     # Vérifier si le numéro existe déjà pour une autre catégorie
                     cursor.execute(
-                        "SELECT id FROM categories_comptables WHERE numero = %s AND id != %s",
-                        (data['numero'], categorie_id)
+                        "SELECT id FROM categories_comptables WHERE numero = %s AND utilisateur_id = %s AND id != %s",
+                        (data['numero'], utilisateur_id, categorie_id)
                     )
                     if cursor.fetchone():
                         raise ValueError(f"Le numéro {data['numero']} est déjà utilisé par une autre catégorie")
@@ -7113,11 +7120,11 @@ class CategorieComptable(BaseRepository):
                 if not fields:
                     return False
                 # Ajouter l'ID pour la clause WHERE
-                values.append(categorie_id)
+                values.append([categorie_id, utilisateur_id])
                 query = f"""
                     UPDATE categories_comptables
                     SET {', '.join(fields)}
-                    WHERE id = %s
+                    WHERE id = %s AND utilisateur_id = %s
                 """
                 cursor.execute(query, values)
             return True
@@ -7128,24 +7135,30 @@ class CategorieComptable(BaseRepository):
             logger.exception(f"Erreur lors de la mise à jour de la catégorie comptable")
             return False
 
-    def delete(self, categorie_id: int) -> bool:
+    def delete(self, categorie_id: int, utilisateur_id: int) -> bool:
         """Supprime une catégorie comptable (soft delete)"""
         try:
             with self.db.get_cursor() as cursor:
-                query = "UPDATE categories_comptables SET actif = FALSE WHERE id = %s"
-                cursor.execute(query, (categorie_id,))
-                # Le commit est géré par le context manager
+                query = """
+                    UPDATE categories_comptables
+                    SET actif = FALSE
+                    WHERE id = %s AND utilisateur_id = %s
+                """
+                cursor.execute(query, (categorie_id, utilisateur_id))
+                if cursor.rowcount == 0:
+                    logger.warning(f"Suppression refusée : catégorie {categorie_id} non trouvée pour user {utilisateur_id}")
+                    return False
             return True
         except MySQLError as e:
-            logger.exception(f"Erreur lors de la suppression de la catégorie comptable")
+            logger.exception("Erreur lors de la suppression de la catégorie comptable")
             return False
 
-    def get_by_id(self, categorie_id: int) -> Optional[Dict]:
+    def get_by_id(self, categorie_id: int, utilisateur_id: int) -> Optional[Dict]:
         """Récupère une catégorie par son ID"""
         try:
             with self.db.get_cursor() as cursor:
-                query = "SELECT * FROM categories_comptables WHERE id = %s"
-                cursor.execute(query, (categorie_id,))
+                query = "SELECT * FROM categories_comptables WHERE id = %s AND utilisateur_id = %s"
+                cursor.execute(query, (categorie_id, utilisateur_id))
                 categorie = cursor.fetchone()
             return categorie
         except MySQLError as e:
@@ -7281,6 +7294,17 @@ class CategorieComptable(BaseRepository):
         """Ajoute une relation de catégorie complémentaire"""
         try:
             with self.db.get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) AS count
+                    FROM categories_comptables
+                    WHERE id IN (%s, %s) AND utilisateur_id = %s
+                    """,
+                    (categorie_id, categorie_complementaire_id, utilisateur_id)
+                )
+                if cursor.fetchone()['count'] != 2:
+                    logger.warning("Tentative d'association de catégories non autorisées")
+                    return False
                 query = """
                 INSERT INTO categories_transactions
                 (categorie_id, categorie_complementaire_id, utilisateur_id, type_complement, taux)
@@ -7296,7 +7320,7 @@ class CategorieComptable(BaseRepository):
             logger.exception(f"Erreur ajouter_categorie_complementaire")
             return False
 
-    def has_categorie_complementaire(self, categorie_id: int) -> bool:
+    def has_categorie_complementaire(self, categorie_id: int, utilisateur_id: int) -> bool:
         """Vérifie si une catégorie a une catégorie complémentaire configurée."""
         try:
             with self.db.get_cursor() as cursor:
@@ -7304,10 +7328,11 @@ class CategorieComptable(BaseRepository):
                 SELECT COUNT(*) as count
                 FROM categories_comptables
                 WHERE id = %s
-                AND categorie_complementaire_id IS NOT NULL
-                AND actif = TRUE
+                    AND utilisateur_id = %s
+                    AND categorie_complementaire_id IS NOT NULL
+                    AND actif = TRUE
                 """
-                cursor.execute(query, (categorie_id,))
+                cursor.execute(query, (categorie_id, utilisateur_id))
                 result = cursor.fetchone()
                 has_complementaire = result['count'] > 0
                 logger.info(f"Catégorie ID {categorie_id} a une catégorie complémentaire: {has_complementaire}")
@@ -7316,22 +7341,30 @@ class CategorieComptable(BaseRepository):
             logger.exception(f"Erreur dans has_categorie_complementaire")
             return False
 
-    def get_categorie_complementaire(self, categorie_id: int, utilisateur_id: int)-> List[Dict]:
+    def get_categorie_complementaire(self, categorie_id: int, utilisateur_id: int) -> List[Dict]:
         try:
             with self.db.get_cursor() as cursor:
                 query = """
-                SELECT ct.id, ct.numero, ct.nom, ct.categorie_complementaire_id as id_complementaire, ct2.numero as numero_complementaire, ct2.nom as nom_complementaire
-                FROM categories_comptables ct
-                JOIN categories_comptables ct2 ON ct.categorie_complementaire_id = ct2.id
-                WHERE ct.id = %s;
-
+                    SELECT
+                        ct.id,
+                        ct.numero,
+                        ct.nom,
+                        ct.categorie_complementaire_id AS id_complementaire,
+                        ct2.numero AS numero_complementaire,
+                        ct2.nom    AS nom_complementaire
+                    FROM categories_comptables ct
+                    JOIN categories_comptables ct2
+                        ON ct.categorie_complementaire_id = ct2.id
+                        AND ct2.utilisateur_id = %s 
+                    WHERE ct.id = %s
+                    AND ct.utilisateur_id = %s  
                 """
-                cursor.execute(query, (categorie_id,))
+                cursor.execute(query, (utilisateur_id, categorie_id, utilisateur_id))
                 result = cursor.fetchall()
-                logger.info(f'La categorie avec id {categorie_id} a : {result}')
+                logger.info(f"Catégorie {categorie_id} (user {utilisateur_id}) a : {result}")
                 return result
         except MySQLError as e:
-            logger.exception(f'Erreur dans la recherche de catégorie complémentaire')
+            logger.exception("Erreur dans la recherche de catégorie complémentaire")
             return []
 
     def get_by_system_tag(self, tag: str, utilisateur_id: int) -> Optional[Dict]:
@@ -7354,8 +7387,8 @@ class CategorieComptable(BaseRepository):
             cur.execute("""
                 SELECT type_compte, numero 
                 FROM categories_comptables 
-                WHERE id = %s
-            """, (compte_id,))
+                WHERE id = %s , utilisateur_id: int
+            """, (compte_id,utilisateur_id))
             res = cur.fetchone()
             if not res:
                 return False

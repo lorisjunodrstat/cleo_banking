@@ -3658,7 +3658,7 @@ def statistiques_comptables():
 @login_required
 def liste_categories_comptables():
     #plan_comptable = PlanComptable(g.db_manager)
-    categories = g.models.categorie_comptable_model.get_all_categories()
+    categories = g.models.categorie_comptable_model.get_all_categories(utilisateur_id=current_user.id)
     return render_template('comptabilite/categories.html', categories=categories)
 
 @bp.route('/comptabilite/categories/nouvelle', methods=['GET', 'POST'])
@@ -3790,7 +3790,7 @@ def edit_categorie(categorie_id):
 def ajouter_regle_categorie(categorie_id):
     """Ajoute une règle d'écriture pour une catégorie comptable donnée."""
     # Vérifier que la catégorie appartient bien à l'utilisateur
-    categorie = g.models.categorie_comptable_model.get_by_id(categorie_id)
+    categorie = g.models.categorie_comptable_model.get_by_id(categorie_id, utilisateur_id=current_user.id)
     if not categorie:
         flash("Catégorie introuvable.", "error")
         return redirect(url_for('banking.liste_categories_comptables'))
@@ -3850,7 +3850,7 @@ def supprimer_regle_ecriture(regle_id):
 @login_required
 def delete_categorie(categorie_id):
     """Supprime une catégorie comptable"""
-    if g.models.categorie_comptable_model.delete(categorie_id):
+    if g.models.categorie_comptable_model.delete(categorie_id, utilisateur_id=current_user.id):
         flash('Catégorie supprimée avec succès', 'success')
     else:
         flash('Erreur lors de la suppression', 'danger')
@@ -7138,9 +7138,9 @@ def export_compte_de_resultat():
 @bp.route('/comptabilite/journal-comptable')
 def journal_comptable():
     # Récupérer les années disponibles
-    annees = g.models.ecriture_comptable_model.get_annees_disponibles(user_id=1)  # À adapter avec le vrai user_id
+    annees = g.models.ecriture_comptable_model.get_annees_disponibles(current_user.id)  
     # Récupérer les catégories comptables
-    categories = g.models.categorie_comptable_model.get_all_categories()
+    categories = g.models.categorie_comptable_model.get_all_categories(utilisateur_id=current_user.id)
     # Paramètres par défaut
     annee_courante = datetime.now().year
     date_from = f"{annee_courante}-01-01"
@@ -7148,7 +7148,7 @@ def journal_comptable():
     # Récupérer les écritures
     ecritures = g.models.ecriture_comptable_model.get_by_compte_bancaire(
         compte_id=None,  # Tous les comptes
-        user_id=1,      # À adapter
+        user_id=current_user.id,      
         date_from=date_from,
         date_to=date_to,
         limit=100
@@ -7177,14 +7177,14 @@ def api_ecritures():
     if categorie_id:
         ecritures = g.models.ecriture_comptable_model.get_by_categorie(
             categorie_id=int(categorie_id),
-            user_id=1,  # À adapter
+            user_id=current_user.id,  
             date_from=date_from,
             date_to=date_to  # Fixed: changed from date_from=date_to to date_to=date_to
         )
     else:
         ecritures = g.models.ecriture_comptable_model.get_by_compte_bancaire(
             compte_id=None,  # Tous les comptes
-            user_id=1,      # À adapter
+            user_id=current_user.id,      
             date_from=date_from,
             date_to=date_to,
             limit=1000
@@ -7200,7 +7200,7 @@ def api_compte_resultat():
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
     resultat = g.models.ecriture_comptable_model.get_compte_de_resultat(
-        user_id=1,  # À adapter
+        user_id=urrent_user.id,  
         date_from=date_from,
         date_to=date_to
     )
@@ -7741,8 +7741,8 @@ def creer_regle():
                 return render_template('regles/form.html', categories=categories)
             
             # Vérifier que les catégories existent (avec categorie_comptable_model)
-            categorie_source = g.models.categorie_comptable_model.get_by_id(int(categorie_source_id))
-            categorie_destination = g.models.categorie_comptable_model.get_by_id(int(categorie_destination_id))
+            categorie_source = g.models.categorie_comptable_model.get_by_id(int(categorie_source_id), utilisateur_id=current_user.id)
+            categorie_destination = g.models.categorie_comptable_model.get_by_id(int(categorie_destination_id), utilisateur_id=current_user.id)
             
             if not categorie_source or not categorie_destination:
                 flash("Une ou plusieurs catégories sont invalides", "error")
@@ -7811,8 +7811,8 @@ def modifier_regle(regle_id):
                 return render_template('regles/form.html', regle=regle, categories=categories)
             
             # Vérifier que les catégories existent
-            categorie_source = g.models.categorie_comptable_model.get_by_id(int(categorie_source_id))
-            categorie_destination = g.models.categorie_comptable_model.get_by_id(int(categorie_destination_id))
+            categorie_source = g.models.categorie_comptable_model.get_by_id(int(categorie_source_id), utilisateur_id=current_user.id)
+            categorie_destination = g.models.categorie_comptable_model.get_by_id(int(categorie_destination_id), utilisateur_id=current_user.id)
             
             if not categorie_source or not categorie_destination:
                 flash("Une ou plusieurs catégories sont invalides", "error")
