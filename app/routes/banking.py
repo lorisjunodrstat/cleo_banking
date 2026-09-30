@@ -4995,7 +4995,7 @@ def nouvelle_ecriture_from_selected():
 
                 data = {
                     'date_ecriture': transaction['date_transaction'].strftime('%Y-%m-%d'),
-                    'compte_bancaire_id': transaction['compte_bancaire_id'],
+                    'compte_bancaire_id': transaction['compte_principal_id'],
                     'categorie_id': categorie_id,
                     'montant': montant_ttc,
                     'montant_htva': montant_htva,
