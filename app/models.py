@@ -687,6 +687,39 @@ class DatabaseManager:
                     INDEX idx_contact_user (contact_id, utilisateur_id),
                     INDEX idx_compte_user (compte_id, utilisateur_id)
                 );""")
+                
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS rapprochements_bancaires (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    utilisateur_id INT NOT NULL,
+                    prestataire VARCHAR(50) NOT NULL,
+                    compte_banque_id INT NOT NULL,
+                    compte_frais_id INT NOT NULL,
+                    compte_attente_id INT NOT NULL,
+                    date_debut DATE NOT NULL,
+                    date_fin DATE NOT NULL,
+                    date_versement DATE NOT NULL,
+                    montant_brut DECIMAL(10,2) NOT NULL,
+                    montant_commission DECIMAL(10,2) NOT NULL,
+                    montant_net DECIMAL(10,2) NOT NULL,
+                    reference_releve VARCHAR(100),
+                    ecriture_groupee_id VARCHAR(100),
+                    statut ENUM('brouillon','valide','annule') DEFAULT 'brouillon',
+                    raison_annulation TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_user_prestataire_ref (utilisateur_id, prestataire, reference_releve),
+                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+                -- Lien optionnel entre écritures et rapprochement
+                ALTER TABLE ecritures_comptables
+                    ADD COLUMN rapprochement_id INT NULL,
+                    ADD INDEX idx_rapprochement (rapprochement_id),
+                    ADD CONSTRAINT fk_ecriture_rapprochement
+                        FOREIGN KEY (rapprochement_id) REFERENCES rapprochements_bancaires(id) ON DELETE SET NULL;
+                                
+                """)
 
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS parametres_utilisateur (
@@ -9354,6 +9387,110 @@ class EcritureComptable(BaseRepository):
             """, (transaction_id, user_id))
             return cursor.fetchall()
 
+    # =====================================================
+    # RAPPROCHEMENT BANCAIRE (support)
+    # =====================================================
+
+    def get_ecritures_non_rapprochees(self, user_id: int, compte_id: int,
+                                      date_from: str = None,
+                                      date_to: str = None) -> List[Dict]:
+        """
+        Récupère les écritures débitées sur un compte d'attente
+        (1140 Concardis, 1141 Eat.ch, ...) qui n'ont pas encore été
+        soldées par un rapprochement bancaire.
+
+        - type_ecriture = 'recette'  → ventes carte (débit du compte d'attente)
+        - rapprochement_id IS NULL   → pas encore rapprochées
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                query = """
+                    SELECT e.*, c.numero AS categorie_numero, c.nom AS categorie_nom
+                    FROM ecritures_comptables e
+                    JOIN categories_comptables c ON c.id = e.categorie_id
+                    WHERE e.utilisateur_id = %s
+                      AND e.categorie_id = %s
+                      AND e.statut = 'validée'
+                      AND e.type_ecriture = 'recette'
+                      AND e.rapprochement_id IS NULL
+                """
+                params = [user_id, compte_id]
+                if date_from:
+                    query += " AND e.date_ecriture >= %s"
+                    params.append(date_from)
+                if date_to:
+                    query += " AND e.date_ecriture <= %s"
+                    params.append(date_to)
+                query += " ORDER BY e.date_ecriture, e.id"
+                cursor.execute(query, tuple(params))
+                return cursor.fetchall()
+        except MySQLError as e:
+            logger.exception(f"Erreur get_ecritures_non_rapprochees pour compte {compte_id}")
+            return []
+
+    def marquer_rapprochees(self, ecriture_ids: List[int], rapprochement_id: int,
+                            user_id: int, cursor=None) -> int:
+        """
+        Marque une liste d'écritures comme rapprochées par un rapprochement
+        donné, en renseignant ecritures_comptables.rapprochement_id.
+        Retourne le nombre d'écritures effectivement mises à jour.
+        """
+        if not ecriture_ids:
+            return 0
+
+        def _do(cur):
+            placeholders = ','.join(['%s'] * len(ecriture_ids))
+            cur.execute(f"""
+                UPDATE ecritures_comptables
+                SET rapprochement_id = %s
+                WHERE id IN ({placeholders}) AND utilisateur_id = %s
+            """, [rapprochement_id] + ecriture_ids + [user_id])
+            return cur.rowcount
+
+        if cursor is not None:
+            return _do(cursor)
+        try:
+            with self.db.get_cursor() as new_cursor:
+                return _do(new_cursor)
+        except MySQLError as e:
+            logger.exception(f"Erreur marquer_rapprochees pour rapprochement {rapprochement_id}")
+            return 0
+
+    def get_ecritures_par_rapprochement(self, rapprochement_id: int,
+                                        user_id: int) -> List[Dict]:
+        """
+        Récupère toutes les écritures rattachées à un rapprochement
+        (aussi bien les ventes carte marquées que les écritures générées
+        par le rapprochement lui-même via groupe_ecriture_id).
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                # 1. Récupérer le groupe associé au rapprochement
+                cursor.execute("""
+                    SELECT ecriture_groupee_id
+                    FROM rapprochements_bancaires
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (rapprochement_id, user_id))
+                row = cursor.fetchone()
+                groupe_id = row['ecriture_groupee_id'] if row else None
+
+                # 2. Récupérer les écritures par rapprochement_id OU groupe_ecriture_id
+                cursor.execute("""
+                    SELECT e.*, c.numero AS categorie_numero, c.nom AS categorie_nom
+                    FROM ecritures_comptables e
+                    LEFT JOIN categories_comptables c ON c.id = e.categorie_id
+                    WHERE e.utilisateur_id = %s
+                      AND (
+                          e.rapprochement_id = %s
+                          OR (%s IS NOT NULL AND e.groupe_ecriture_id = %s)
+                      )
+                    ORDER BY e.date_ecriture, e.id
+                """, (user_id, rapprochement_id, groupe_id, groupe_id))
+                return cursor.fetchall()
+        except MySQLError as e:
+            logger.exception(f"Erreur get_ecritures_par_rapprochement {rapprochement_id}")
+            return []
+
     def get_total_ecritures_for_transaction(self, transaction_id: int, user_id: int) -> Decimal:
         with self.db.get_cursor() as cursor:
             cursor.execute("""
@@ -9889,6 +10026,706 @@ class RegleEcriture(BaseRepository):
             logger.exception(f"Erreur get_all")
             return []
 
+class RapprochementBancaire(BaseRepository):
+    """
+    Gère les versements des prestataires de paiement (Concardis, Eat.ch, Twint…).
+
+    Principe :
+    - Les ventes par carte (ou autre moyen externe) sont d'abord débitées
+      sur un compte d'attente (1140 Concardis en attente, 1141 Eat.ch en attente…).
+    - Quand le prestataire verse effectivement les fonds (net), on crée un
+      rapprochement qui génère 3 écritures :
+        • Débit  : compte banque       (montant net reçu)
+        • Débit  : compte frais        (commission)
+        • Crédit : compte attente      (montant brut, solde la créance)
+    - Les écritures de vente carte concernées sont marquées comme rapprochées
+      via la colonne ecritures_comptables.rapprochement_id.
+    - Contrôle : montant_brut = montant_net + montant_commission
+                  et solde du compte attente revient à 0 après rapprochement.
+    """
+
+    def __init__(self, db):
+        super().__init__(db)
+        self.ecriture_model = EcritureComptable(db)
+        self.categorie_model = CategorieComptable(db)
+
+    # =====================================================
+    # 1. CRÉATION / MISE À JOUR / SUPPRESSION
+    # =====================================================
+
+    def create(self, data: Dict) -> Optional[int]:
+        """
+        Crée un rapprochement en statut 'brouillon'.
+
+        Champs attendus dans data :
+            utilisateur_id, prestataire,
+            compte_banque_id, compte_frais_id, compte_attente_id,
+            date_debut, date_fin, date_versement,
+            montant_brut, montant_commission, montant_net,
+            reference_releve (optionnel)
+        """
+        # --- Validation métier : brut = net + commission ---
+        try:
+            brut = Decimal(str(data['montant_brut']))
+            commission = Decimal(str(data['montant_commission']))
+            net = Decimal(str(data['montant_net']))
+        except (KeyError, InvalidOperation):
+            logger.error("RapprochementBancaire.create : montants invalides ou manquants")
+            return None
+
+        if abs(brut - (net + commission)) > Decimal('0.01'):
+            logger.warning(
+                f"RapprochementBancaire.create : déséquilibre "
+                f"brut={brut} ≠ net={net} + commission={commission}"
+            )
+            return None
+
+        try:
+            with self.db.get_cursor() as cursor:
+                query = """
+                    INSERT INTO rapprochements_bancaires
+                    (utilisateur_id, prestataire,
+                     compte_banque_id, compte_frais_id, compte_attente_id,
+                     date_debut, date_fin, date_versement,
+                     montant_brut, montant_commission, montant_net,
+                     reference_releve, statut)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'brouillon')
+                """
+                values = (
+                    data['utilisateur_id'],
+                    data['prestataire'],
+                    data['compte_banque_id'],
+                    data['compte_frais_id'],
+                    data['compte_attente_id'],
+                    data['date_debut'],
+                    data['date_fin'],
+                    data['date_versement'],
+                    str(brut),
+                    str(commission),
+                    str(net),
+                    data.get('reference_releve'),
+                )
+                cursor.execute(query, values)
+                new_id = cursor.lastrowid
+            logger.info(f"Rapprochement créé : id={new_id}, prestataire={data['prestataire']}")
+            return new_id
+        except IntegrityError:
+            logger.warning(
+                f"Rapprochement déjà existant : "
+                f"prestataire={data['prestataire']}, ref={data.get('reference_releve')}"
+            )
+            return None
+        except MySQLError as e:
+            logger.exception(f"Erreur création rapprochement : {e}")
+            return None
+
+    def update(self, rapprochement_id: int, data: Dict, utilisateur_id: int) -> bool:
+        """
+        Met à jour un rapprochement en statut 'brouillon' uniquement.
+        Refuse la modification d'un rapprochement déjà validé.
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT statut FROM rapprochements_bancaires
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (rapprochement_id, utilisateur_id))
+                row = cursor.fetchone()
+                if not row:
+                    logger.warning(f"Rapprochement {rapprochement_id} introuvable")
+                    return False
+                if row['statut'] != 'brouillon':
+                    logger.warning(
+                        f"Rapprochement {rapprochement_id} non modifiable "
+                        f"(statut={row['statut']})"
+                    )
+                    return False
+
+                fields, values = [], []
+                for champ in ('prestataire', 'compte_banque_id', 'compte_frais_id',
+                              'compte_attente_id', 'date_debut', 'date_fin',
+                              'date_versement', 'montant_brut', 'montant_commission',
+                              'montant_net', 'reference_releve'):
+                    if champ in data:
+                        fields.append(f"{champ} = %s")
+                        values.append(data[champ])
+
+                if not fields:
+                    return False
+
+                # Revalider brut = net + commission si concernés
+                if any(k in data for k in ('montant_brut', 'montant_commission', 'montant_net')):
+                    cursor.execute("""
+                        SELECT montant_brut, montant_commission, montant_net
+                        FROM rapprochements_bancaires
+                        WHERE id = %s
+                    """, (rapprochement_id,))
+                    current = cursor.fetchone()
+                    brut = Decimal(str(data.get('montant_brut', current['montant_brut'])))
+                    commission = Decimal(str(data.get('montant_commission', current['montant_commission'])))
+                    net = Decimal(str(data.get('montant_net', current['montant_net'])))
+                    if abs(brut - (net + commission)) > Decimal('0.01'):
+                        logger.warning("Déséquilibre brut/net/commission, mise à jour refusée")
+                        return False
+
+                values.extend([rapprochement_id, utilisateur_id])
+                cursor.execute(f"""
+                    UPDATE rapprochements_bancaires
+                    SET {', '.join(fields)}
+                    WHERE id = %s AND utilisateur_id = %s
+                """, values)
+                return cursor.rowcount > 0
+        except MySQLError as e:
+            logger.exception(f"Erreur mise à jour rapprochement {rapprochement_id}")
+            return False
+
+    def delete(self, rapprochement_id: int, utilisateur_id: int) -> Tuple[bool, str]:
+        """
+        Supprime un rapprochement :
+        - si 'brouillon' → suppression physique
+        - si 'valide'    → soft delete (statut='annule') + suppression des écritures liées
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT statut, ecriture_groupee_id
+                    FROM rapprochements_bancaires
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (rapprochement_id, utilisateur_id))
+                row = cursor.fetchone()
+                if not row:
+                    return False, "Rapprochement introuvable"
+
+                if row['statut'] == 'brouillon':
+                    cursor.execute("""
+                        DELETE FROM rapprochements_bancaires
+                        WHERE id = %s AND utilisateur_id = %s
+                    """, (rapprochement_id, utilisateur_id))
+                    return True, "Brouillon supprimé"
+
+                if row['statut'] == 'annule':
+                    return False, "Rapprochement déjà annulé"
+
+                # --- Rapprochement validé : on annule proprement ---
+                groupe_id = row['ecriture_groupee_id']
+
+                # 1. Délier les écritures de vente carte marquées rapprochées
+                cursor.execute("""
+                    UPDATE ecritures_comptables
+                    SET rapprochement_id = NULL
+                    WHERE rapprochement_id = %s AND utilisateur_id = %s
+                """, (rapprochement_id, utilisateur_id))
+
+                # 2. Supprimer (soft delete) les écritures de rapprochement
+                if groupe_id:
+                    cursor.execute("""
+                        UPDATE ecritures_comptables
+                        SET statut = 'supprimee'
+                        WHERE groupe_ecriture_id = %s AND utilisateur_id = %s
+                    """, (groupe_id, utilisateur_id))
+
+                # 3. Marquer le rapprochement comme annulé
+                cursor.execute("""
+                    UPDATE rapprochements_bancaires
+                    SET statut = 'annule'
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (rapprochement_id, utilisateur_id))
+
+            return True, "Rapprochement annulé et écritures supprimées"
+        except MySQLError as e:
+            logger.exception(f"Erreur suppression rapprochement {rapprochement_id}")
+            return False, f"Erreur : {str(e)}"
+
+    # =====================================================
+    # 2. LECTURE / RECHERCHE
+    # =====================================================
+
+    def get_by_id(self, rapprochement_id: int, utilisateur_id: int) -> Optional[Dict]:
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT r.*,
+                           cb.numero AS banque_numero, cb.nom AS banque_nom,
+                           cf.numero AS frais_numero,  cf.nom AS frais_nom,
+                           ca.numero AS attente_numero, ca.nom AS attente_nom
+                    FROM rapprochements_bancaires r
+                    LEFT JOIN categories_comptables cb ON cb.id = r.compte_banque_id
+                    LEFT JOIN categories_comptables cf ON cf.id = r.compte_frais_id
+                    LEFT JOIN categories_comptables ca ON ca.id = r.compte_attente_id
+                    WHERE r.id = %s AND r.utilisateur_id = %s
+                """, (rapprochement_id, utilisateur_id))
+                return cursor.fetchone()
+        except MySQLError as e:
+            logger.exception(f"Erreur get_by_id rapprochement {rapprochement_id}")
+            return None
+
+    def get_all(self, utilisateur_id: int,
+                prestataire: str = None,
+                statut: str = None,
+                date_from: str = None,
+                date_to: str = None,
+                limit: int = 200) -> List[Dict]:
+        """Liste les rapprochements avec filtres optionnels."""
+        try:
+            with self.db.get_cursor() as cursor:
+                query = """
+                    SELECT r.*,
+                           cb.numero AS banque_numero, cb.nom AS banque_nom,
+                           cf.numero AS frais_numero,  cf.nom AS frais_nom,
+                           ca.numero AS attente_numero, ca.nom AS attente_nom
+                    FROM rapprochements_bancaires r
+                    LEFT JOIN categories_comptables cb ON cb.id = r.compte_banque_id
+                    LEFT JOIN categories_comptables cf ON cf.id = r.compte_frais_id
+                    LEFT JOIN categories_comptables ca ON ca.id = r.compte_attente_id
+                    WHERE r.utilisateur_id = %s
+                """
+                params = [utilisateur_id]
+                if prestataire:
+                    query += " AND r.prestataire = %s"
+                    params.append(prestataire)
+                if statut:
+                    query += " AND r.statut = %s"
+                    params.append(statut)
+                if date_from:
+                    query += " AND r.date_versement >= %s"
+                    params.append(date_from)
+                if date_to:
+                    query += " AND r.date_versement <= %s"
+                    params.append(date_to)
+                query += " ORDER BY r.date_versement DESC, r.id DESC LIMIT %s"
+                params.append(limit)
+                cursor.execute(query, tuple(params))
+                return cursor.fetchall()
+        except MySQLError as e:
+            logger.exception("Erreur get_all rapprochements")
+            return []
+
+    def get_by_prestataire(self, utilisateur_id: int, prestataire: str,
+                           date_from: str = None, date_to: str = None) -> List[Dict]:
+        return self.get_all(utilisateur_id,
+                            prestataire=prestataire,
+                            date_from=date_from, date_to=date_to)
+
+    # =====================================================
+    # 3. ANALYSE / SUGGESTION
+    # =====================================================
+
+    def get_ecritures_non_rapprochees(self, utilisateur_id: int,
+                                      compte_attente_id: int,
+                                      date_from: str, date_to: str) -> List[Dict]:
+        """
+        Récupère les écritures de vente débitées sur le compte d'attente
+        (1140 Concardis en attente, etc.) qui ne sont pas encore rapprochées.
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT e.*, c.numero AS categorie_numero, c.nom AS categorie_nom
+                    FROM ecritures_comptables e
+                    JOIN categories_comptables c ON c.id = e.categorie_id
+                    WHERE e.utilisateur_id = %s
+                      AND e.categorie_id = %s
+                      AND e.date_ecriture BETWEEN %s AND %s
+                      AND e.statut = 'validée'
+                      AND e.type_ecriture = 'recette'
+                      AND e.rapprochement_id IS NULL
+                    ORDER BY e.date_ecriture, e.id
+                """, (utilisateur_id, compte_attente_id, date_from, date_to))
+                return cursor.fetchall()
+        except MySQLError as e:
+            logger.exception("Erreur get_ecritures_non_rapprochees")
+            return []
+
+    def analyser_compte_attente(self, utilisateur_id: int, compte_attente_id: int,
+                                date_from: str, date_to: str) -> Dict:
+        """
+        Retourne un diagnostic du compte d'attente pour la période :
+        - solde initial (avant date_from)
+        - total débits (ventes carte sur la période)
+        - total crédits (rapprochements déjà passés)
+        - solde final calculé
+        - écritures non rapprochées
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                # Solde initial : débits - crédits jusqu'à la veille
+                cursor.execute("""
+                    SELECT
+                        COALESCE(SUM(CASE WHEN type_ecriture = 'recette' THEN montant ELSE 0 END), 0)
+                      - COALESCE(SUM(CASE WHEN type_ecriture = 'depense' THEN montant ELSE 0 END), 0)
+                        AS solde_initial
+                    FROM ecritures_comptables
+                    WHERE utilisateur_id = %s
+                      AND categorie_id = %s
+                      AND date_ecriture < %s
+                      AND statut = 'validée'
+                """, (utilisateur_id, compte_attente_id, date_from))
+                solde_initial = float(cursor.fetchone()['solde_initial'] or 0)
+
+                # Mouvements de la période
+                cursor.execute("""
+                    SELECT
+                        COALESCE(SUM(CASE WHEN type_ecriture = 'recette' THEN montant ELSE 0 END), 0) AS debits,
+                        COALESCE(SUM(CASE WHEN type_ecriture = 'depense' THEN montant ELSE 0 END), 0) AS credits
+                    FROM ecritures_comptables
+                    WHERE utilisateur_id = %s
+                      AND categorie_id = %s
+                      AND date_ecriture BETWEEN %s AND %s
+                      AND statut = 'validée'
+                """, (utilisateur_id, compte_attente_id, date_from, date_to))
+                mvt = cursor.fetchone()
+                debits = float(mvt['debits'] or 0)
+                credits = float(mvt['credits'] or 0)
+
+            non_rapprochees = self.get_ecritures_non_rapprochees(
+                utilisateur_id, compte_attente_id, date_from, date_to
+            )
+            total_non_rapproche = sum(float(e['montant'] or 0) for e in non_rapprochees)
+
+            return {
+                'compte_attente_id': compte_attente_id,
+                'date_from': date_from,
+                'date_to': date_to,
+                'solde_initial': round(solde_initial, 2),
+                'total_debits': round(debits, 2),
+                'total_credits': round(credits, 2),
+                'solde_final': round(solde_initial + debits - credits, 2),
+                'nb_ecritures_non_rapprochees': len(non_rapprochees),
+                'total_non_rapproche': round(total_non_rapproche, 2),
+                'ecritures_non_rapprochees': non_rapprochees,
+            }
+        except MySQLError as e:
+            logger.exception("Erreur analyser_compte_attente")
+            return {}
+
+    def suggerer(self, utilisateur_id: int, compte_attente_id: int,
+                 date_from: str, date_to: str,
+                 montant_net_recu: float = None) -> Dict:
+        """
+        Propose un brouillon de rapprochement.
+
+        - Si montant_net_recu est fourni : la commission est déduite automatiquement
+        - Sinon : la commission reste à 0 et l'utilisateur devra la saisir
+        """
+        analyse = self.analyser_compte_attente(
+            utilisateur_id, compte_attente_id, date_from, date_to
+        )
+        if not analyse:
+            return {}
+
+        brut = analyse['total_non_rapproche']
+        if montant_net_recu is not None:
+            commission = round(brut - float(montant_net_recu), 2)
+            net = float(montant_net_recu)
+        else:
+            commission = 0.0
+            net = brut
+
+        return {
+            'compte_attente_id': compte_attente_id,
+            'date_debut': date_from,
+            'date_fin': date_to,
+            'montant_brut': round(brut, 2),
+            'montant_commission': round(commission, 2),
+            'montant_net': round(net, 2),
+            'nb_ecritures_a_solder': analyse['nb_ecritures_non_rapprochees'],
+            'ecritures_a_solder': analyse['ecritures_non_rapprochees'],
+            'solde_apres_rapprochement': round(analyse['solde_final'] - brut, 2),
+        }
+
+    # =====================================================
+    # 4. VALIDATION (génère les écritures)
+    # =====================================================
+
+    def valider(self, rapprochement_id: int, utilisateur_id: int,
+                cursor=None) -> Tuple[bool, str]:
+        """
+        Valide un rapprochement : génère 3 écritures équilibrées
+        dans un même groupe (débit banque, débit frais, crédit attente)
+        et marque les écritures de vente carte comme rapprochées.
+        """
+        def _do(cur):
+            # 1. Lire le rapprochement
+            cur.execute("""
+                SELECT * FROM rapprochements_bancaires
+                WHERE id = %s AND utilisateur_id = %s
+            """, (rapprochement_id, utilisateur_id))
+            r = cur.fetchone()
+            if not r:
+                return False, "Rapprochement introuvable"
+            if r['statut'] != 'brouillon':
+                return False, f"Rapprochement en statut '{r['statut']}', validation impossible"
+
+            brut = Decimal(str(r['montant_brut']))
+            commission = Decimal(str(r['montant_commission']))
+            net = Decimal(str(r['montant_net']))
+
+            if abs(brut - (net + commission)) > Decimal('0.01'):
+                return False, "Déséquilibre brut/net/commission"
+
+            # 2. Récupérer les écritures non rapprochées de la période
+            cur.execute("""
+                SELECT id, montant FROM ecritures_comptables
+                WHERE utilisateur_id = %s
+                  AND categorie_id = %s
+                  AND date_ecriture BETWEEN %s AND %s
+                  AND statut = 'validée'
+                  AND type_ecriture = 'recette'
+                  AND rapprochement_id IS NULL
+            """, (utilisateur_id, r['compte_attente_id'],
+                  r['date_debut'], r['date_fin']))
+            ecritures_vente = cur.fetchall()
+            total_vente = sum(Decimal(str(e['montant'])) for e in ecritures_vente)
+
+            if total_vente + Decimal('0.01') < brut:
+                return False, (
+                    f"Total des ventes carte ({total_vente}) "
+                    f"inférieur au montant brut à solder ({brut})"
+                )
+
+            # 3. Groupe d'écriture commun
+            groupe_id = f"RAPPRO-{r['prestataire']}-{r['reference_releve'] or rapprochement_id}"
+
+            date_ecriture = r['date_versement']
+            devise = 'CHF'
+
+            # 4. Écriture 1 : Débit banque (principale)
+            cur.execute("""
+                INSERT INTO ecritures_comptables
+                (date_ecriture, compte_bancaire_id, categorie_id, montant, montant_htva,
+                 devise, description, reference, groupe_ecriture_id, type_ecriture,
+                 tva_taux, tva_montant, utilisateur_id, statut,
+                 type_ecriture_comptable)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'recette',
+                        0, 0, %s, 'validée', 'principale')
+            """, (
+                date_ecriture, None, r['compte_banque_id'],
+                str(net), str(net), devise,
+                f"Versement {r['prestataire']} - net reçu",
+                r['reference_releve'], groupe_id, utilisateur_id,
+            ))
+            ecriture_principale_id = cur.lastrowid
+
+            # 5. Écriture 2 : Débit frais (complémentaire)
+            if commission > Decimal('0'):
+                cur.execute("""
+                    INSERT INTO ecritures_comptables
+                    (date_ecriture, compte_bancaire_id, categorie_id, montant, montant_htva,
+                     devise, description, reference, groupe_ecriture_id, type_ecriture,
+                     tva_taux, tva_montant, utilisateur_id, statut,
+                     ecriture_principale_id, type_ecriture_comptable)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'depense',
+                            0, 0, %s, 'validée', %s, 'complementaire')
+                """, (
+                    date_ecriture, None, r['compte_frais_id'],
+                    str(commission), str(commission), devise,
+                    f"Commission {r['prestataire']}",
+                    r['reference_releve'], groupe_id, utilisateur_id,
+                    ecriture_principale_id,
+                ))
+
+            # 6. Écriture 3 : Crédit compte d'attente (solde la créance)
+            cur.execute("""
+                INSERT INTO ecritures_comptables
+                (date_ecriture, compte_bancaire_id, categorie_id, montant, montant_htva,
+                 devise, description, reference, groupe_ecriture_id, type_ecriture,
+                 tva_taux, tva_montant, utilisateur_id, statut,
+                 ecriture_principale_id, type_ecriture_comptable)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'depense',
+                        0, 0, %s, 'validée', %s, 'complementaire')
+            """, (
+                date_ecriture, None, r['compte_attente_id'],
+                str(brut), str(brut), devise,
+                f"Solde {r['prestataire']} en attente",
+                r['reference_releve'], groupe_id, utilisateur_id,
+                ecriture_principale_id,
+            ))
+
+            # 7. Marquer les écritures de vente comme rapprochées
+            if ecritures_vente:
+                ids = [e['id'] for e in ecritures_vente]
+                placeholders = ','.join(['%s'] * len(ids))
+                cur.execute(f"""
+                    UPDATE ecritures_comptables
+                    SET rapprochement_id = %s
+                    WHERE id IN ({placeholders}) AND utilisateur_id = %s
+                """, [rapprochement_id] + ids + [utilisateur_id])
+
+            # 8. Mettre à jour le rapprochement
+            cur.execute("""
+                UPDATE rapprochements_bancaires
+                SET statut = 'valide', ecriture_groupee_id = %s
+                WHERE id = %s AND utilisateur_id = %s
+            """, (groupe_id, rapprochement_id, utilisateur_id))
+
+            logger.info(
+                f"✅ Rapprochement {rapprochement_id} validé "
+                f"(brut={brut}, commission={commission}, net={net})"
+            )
+            return True, (
+                f"Rapprochement validé : {len(ecritures_vente)} écriture(s) soldée(s), "
+                f"net reçu {net} CHF, frais {commission} CHF"
+            )
+
+        if cursor is not None:
+            return _do(cursor)
+        try:
+            with self.db.get_cursor(dictionary=True) as new_cursor:
+                return _do(new_cursor)
+        except MySQLError as e:
+            logger.exception(f"Erreur validation rapprochement {rapprochement_id}")
+            return False, f"Erreur : {str(e)}"
+
+    # =====================================================
+    # 5. CONTRÔLES / SOLDES
+    # =====================================================
+
+    def get_solde_creance(self, utilisateur_id: int, compte_attente_id: int,
+                          date_bilan: str) -> Decimal:
+        """
+        Solde du compte d'attente à une date donnée.
+        Débit = ventes carte / Crédit = rapprochements passés.
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT
+                        COALESCE(SUM(CASE WHEN type_ecriture = 'recette' THEN montant ELSE 0 END), 0)
+                      - COALESCE(SUM(CASE WHEN type_ecriture = 'depense' THEN montant ELSE 0 END), 0)
+                        AS solde
+                    FROM ecritures_comptables
+                    WHERE utilisateur_id = %s
+                      AND categorie_id = %s
+                      AND date_ecriture <= %s
+                      AND statut = 'validée'
+                """, (utilisateur_id, compte_attente_id, date_bilan))
+                row = cursor.fetchone()
+                return Decimal(str(row['solde'] or 0))
+        except MySQLError as e:
+            logger.exception("Erreur get_solde_creance")
+            return Decimal('0')
+
+    def get_solde_par_prestataire(self, utilisateur_id: int, prestataire: str,
+                                  date_bilan: str) -> Decimal:
+        """
+        Récupère le compte d'attente associé à un prestataire via le dernier
+        rapprochement connu, puis retourne son solde.
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT compte_attente_id
+                    FROM rapprochements_bancaires
+                    WHERE utilisateur_id = %s AND prestataire = %s
+                    ORDER BY date_versement DESC LIMIT 1
+                """, (utilisateur_id, prestataire))
+                row = cursor.fetchone()
+                if not row:
+                    return Decimal('0')
+                return self.get_solde_creance(
+                    utilisateur_id, row['compte_attente_id'], date_bilan
+                )
+        except MySQLError as e:
+            logger.exception("Erreur get_solde_par_prestataire")
+            return Decimal('0')
+
+    def get_resume(self, utilisateur_id: int,
+                   date_from: str, date_to: str) -> Dict:
+        """
+        Résumé des rapprochements sur une période :
+        - nombre de rapprochements, total brut, commission, net
+        - ventilation par prestataire
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT
+                        prestataire,
+                        COUNT(*) AS nb,
+                        SUM(montant_brut) AS brut,
+                        SUM(montant_commission) AS commission,
+                        SUM(montant_net) AS net
+                    FROM rapprochements_bancaires
+                    WHERE utilisateur_id = %s
+                      AND statut = 'valide'
+                      AND date_versement BETWEEN %s AND %s
+                    GROUP BY prestataire
+                """, (utilisateur_id, date_from, date_to))
+                par_prestataire = cursor.fetchall()
+
+            totaux = {
+                'nb': sum(int(r['nb']) for r in par_prestataire),
+                'brut': round(sum(float(r['brut'] or 0) for r in par_prestataire), 2),
+                'commission': round(sum(float(r['commission'] or 0) for r in par_prestataire), 2),
+                'net': round(sum(float(r['net'] or 0) for r in par_prestataire), 2),
+            }
+
+            return {
+                'date_from': date_from,
+                'date_to': date_to,
+                'par_prestataire': par_prestataire,
+                'totaux': totaux,
+            }
+        except MySQLError as e:
+            logger.exception("Erreur get_resume rapprochements")
+            return {'par_prestataire': [], 'totaux': {}}
+
+    # =====================================================
+    # 6. HISTORIQUE
+    # =====================================================
+
+    def get_ecritures_liees(self, rapprochement_id: int, utilisateur_id: int) -> List[Dict]:
+        """
+        Retourne toutes les écritures générées ou marquées par ce rapprochement :
+        - écritures de vente carte (rapprochement_id)
+        - écritures du groupe de rapprochement (banque, frais, attente)
+        """
+        try:
+            with self.db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, ecriture_groupee_id FROM rapprochements_bancaires
+                    WHERE id = %s AND utilisateur_id = %s
+                """, (rapprochement_id, utilisateur_id))
+                row = cursor.fetchone()
+                if not row:
+                    return []
+                groupe_id = row['ecriture_groupee_id']
+
+                cursor.execute("""
+                    SELECT e.*, c.numero AS categorie_numero, c.nom AS categorie_nom
+                    FROM ecritures_comptables e
+                    LEFT JOIN categories_comptables c ON c.id = e.categorie_id
+                    WHERE e.utilisateur_id = %s
+                      AND (
+                          e.rapprochement_id = %s
+                          OR (%s IS NOT NULL AND e.groupe_ecriture_id = %s)
+                      )
+                    ORDER BY e.date_ecriture, e.id
+                """, (utilisateur_id, rapprochement_id, groupe_id, groupe_id))
+                return cursor.fetchall()
+        except MySQLError as e:
+            logger.exception("Erreur get_ecritures_liees")
+            return []
+
+    def count(self, utilisateur_id: int, prestataire: str = None,
+              statut: str = None) -> int:
+        """Compte les rapprochements pour la pagination."""
+        try:
+            with self.db.get_cursor() as cursor:
+                query = "SELECT COUNT(*) AS total FROM rapprochements_bancaires WHERE utilisateur_id = %s"
+                params = [utilisateur_id]
+                if prestataire:
+                    query += " AND prestataire = %s"
+                    params.append(prestataire)
+                if statut:
+                    query += " AND statut = %s"
+                    params.append(statut)
+                cursor.execute(query, tuple(params))
+                return int(cursor.fetchone()['total'] or 0)
+        except MySQLError as e:
+            logger.exception("Erreur count rapprochements")
+            return 0
+        
 class TauxTva(BaseRepository):
     def create(self, data: Dict) -> Optional[int]:
         try:
@@ -10563,6 +11400,69 @@ class Rapport(BaseRepository):
     def __init__(self, db):
         super().__init__(db)
         self.ecriture_comptable_model = EcritureComptable(db)
+    
+        def generate_rapport_rapprochements(self, user_id: int,
+                                        date_from: str, date_to: str,
+                                        prestataire: str = None) -> Dict:
+        """
+        Génère un rapport de rapprochements bancaires sur une période.
+
+        Contenu :
+        - Totaux globaux (nb, brut, commission, net)
+        - Ventilation par prestataire (Concardis / Eat.ch / Twint)
+        - Liste des rapprochements validés de la période
+        - Soldes des comptes d'attente en fin de période
+        """
+        try:
+            rapprochement_model = RapprochementBancaire(self.db)
+
+            # 1. Totaux via la méthode dédiée
+            resume = rapprochement_model.get_resume(
+                user_id, date_from, date_to
+            )
+
+            # 2. Filtre par prestataire si demandé
+            par_prestataire = resume.get('par_prestataire', [])
+            if prestataire:
+                par_prestataire = [
+                    p for p in par_prestataire if p['prestataire'] == prestataire
+                ]
+
+            # 3. Liste détaillée des rapprochements validés de la période
+            rapprochements = rapprochement_model.get_all(
+                utilisateur_id=user_id,
+                prestataire=prestataire,
+                statut='valide',
+                date_from=date_from,
+                date_to=date_to,
+            )
+
+            # 4. Soldes restants sur les comptes d'attente (créance non encore soldée)
+            soldes_attente = []
+            for p in par_prestataire:
+                solde = rapprochement_model.get_solde_par_prestataire(
+                    user_id, p['prestataire'], date_to
+                )
+                soldes_attente.append({
+                    'prestataire': p['prestataire'],
+                    'solde': float(solde),
+                })
+
+            return {
+                'type_document': 'rapport_rapprochements',
+                'titre': f"Rapprochements bancaires du {date_from} au {date_to}",
+                'periode': {'date_debut': date_from, 'date_fin': date_to},
+                'prestataire_filtre': prestataire,
+                'totaux': resume.get('totaux', {}),
+                'par_prestataire': par_prestataire,
+                'rapprochements': rapprochements,
+                'soldes_attente': soldes_attente,
+                'date_generation': datetime.now().isoformat(),
+            }
+        except Exception as e:
+            logger.exception(f"Erreur génération rapport rapprochements: {e}")
+            return {'erreur': str(e)}
+
     def generate_rapport_mensuel(self, user_id: int, annee: int, mois: int, statut: str = 'validée') -> Dict:
         """Génère un rapport mensuel avec filtrage par statut"""
         date_debut = date(annee, mois, 1)
@@ -10586,6 +11486,7 @@ class Rapport(BaseRepository):
             'ecritures_par_categorie': ecritures,
             'statut': statut
         }
+    
     def generate_rapport_annuel(self, user_id: int, annee: int, statut: str = 'validée') -> Dict:
         """Génère un rapport annuel avec filtrage par statut"""
         date_debut = date(annee, 1, 1)
@@ -11379,6 +12280,11 @@ class Rapport(BaseRepository):
             elif type_document == 'rapprochement_bancaire':
                 return self.generate_rapprochement_bancaire(
                     user_id, kwargs['compte_id'], kwargs['date_from'], kwargs['date_to']
+                )
+            elif type_document == 'rapport_rapprochements':
+                return self.generate_rapport_rapprochements(
+                    user_id, kwargs['date_from'], kwargs['date_to'],
+                    kwargs.get('prestataire')
                 )
             else:
                 return {'erreur': f"Type de document inconnu: {type_document}"}
@@ -20716,6 +21622,9 @@ class ModelManager:
     @property
     def regle_ecriture_model(self):
         return self._get_model('regle_ecriture', RegleEcriture)
+    @property
+    def rapprochement_bancaire(self):
+        return self._get_model('rapprochement_bancaire', RapprochementBancaire)
     @property
     def taux_tva_model(self):
         return self._get_model('taux_tva', TauxTva)

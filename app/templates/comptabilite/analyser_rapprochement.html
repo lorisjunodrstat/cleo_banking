@@ -1,0 +1,430 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+  <div class="page-title mb-4">
+    <h1><i class="bi bi-arrow-left-right"></i> Analyse d'un rapprochement bancaire</h1>
+    <p class="text-muted">
+      Sélectionnez un compte d'attente et une période. Le système liste les écritures
+      non rapprochées et calcule automatiquement le montant brut à solder.
+    </p>
+  </div>
+
+  <!-- ÉTAPE 1 : Sélection du compte et de la période -->
+  <div class="card mb-4">
+    <div class="card-header">1. Sélection</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label for="compte_attente_id" class="form-label">Compte d'attente</label>
+          <select id="compte_attente_id" class="form-select" required>
+            <option value="">— Choisir un compte —</option>
+            {% for c in comptes_attente %}
+              <option value="{{ c.id }}"
+                      data-numero="{{ c.numero }}"
+                      data-nom="{{ c.nom }}">
+                {{ c.numero }} — {{ c.nom }}
+              </option>
+            {% endfor %}
+          </select>
+          <small class="text-muted">Ex : 1140 Concardis en attente</small>
+        </div>
+
+        <div class="col-md-3">
+          <label for="date_from" class="form-label">Du</label>
+          <input type="date" id="date_from" class="form-control" required>
+        </div>
+
+        <div class="col-md-3">
+          <label for="date_to" class="form-label">Au</label>
+          <input type="date" id="date_to" class="form-control" required>
+        </div>
+
+        <div class="col-md-2 d-flex align-items-end">
+          <button id="btn-analyser" class="btn btn-primary w-100">
+            <i class="bi bi-search"></i> Analyser
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Zone de résultats (masquée au départ) -->
+  <div id="zone-resultats" style="display:none;">
+
+    <!-- ÉTAPE 2 : Résumé de l'analyse -->
+    <div class="card mb-4">
+      <div class="card-header">2. Résumé du compte d'attente sur la période</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <div class="border rounded p-3 bg-light">
+              <div class="text-muted small">Solde initial</div>
+              <div class="fs-5" id="solde-initial">—</div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="border rounded p-3 bg-light">
+              <div class="text-muted small">Total débits (ventes)</div>
+              <div class="fs-5 text-primary" id="total-debits">—</div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="border rounded p-3 bg-light">
+              <div class="text-muted small">Total crédits (déjà rapprochés)</div>
+              <div class="fs-5 text-success" id="total-credits">—</div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="border rounded p-3 bg-light">
+              <div class="text-muted small">Solde final calculé</div>
+              <div class="fs-5 fw-bold" id="solde-final">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="alert alert-info mt-3 mb-0">
+          <i class="bi bi-info-circle"></i>
+          <span id="info-ecritures">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ÉTAPE 3 : Détail des écritures non rapprochées -->
+    <div class="card mb-4">
+      <div class="card-header">
+        3. Écritures non rapprochées
+        <span class="badge bg-secondary" id="badge-nb-ecritures">0</span>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive" style="max-height: 350px; overflow-y:auto;">
+          <table class="table table-sm table-hover" id="table-ecritures">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th>Date</th>
+                <th>Description</th>
+                <th>Référence</th>
+                <th class="text-end">Montant</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-ecritures">
+              <tr><td colspan="4" class="text-center text-muted">Aucune donnée.</td></tr>
+            </tbody>
+            <tfoot class="table-light">
+              <tr>
+                <th colspan="3" class="text-end">Total à solder</th>
+                <th class="text-end" id="total-a-solder">0.00 CHF</th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ÉTAPE 4 : Préparation du rapprochement -->
+    <div class="card mb-4">
+      <div class="card-header">4. Préparation du rapprochement</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Prestataire</label>
+            <input type="text" id="prestataire" class="form-control"
+                   placeholder="Concardis / Eat.ch / Twint…" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Référence relevé</label>
+            <input type="text" id="reference_releve" class="form-control"
+                   placeholder="CONCARDIS-2022-07">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Date du versement</label>
+            <input type="date" id="date_versement" class="form-control" required>
+          </div>
+        </div>
+
+        <div class="row g-3 mt-2">
+          <div class="col-md-3">
+            <label class="form-label">Montant brut</label>
+            <input type="number" step="0.01" id="montant_brut" class="form-control" readonly>
+            <small class="text-muted">Calculé depuis les écritures</small>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Net reçu</label>
+            <input type="number" step="0.01" id="montant_net" class="form-control"
+                   placeholder="Saisir le montant reçu">
+            <small class="text-muted">D'après le relevé bancaire</small>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Commission (auto)</label>
+            <input type="number" step="0.01" id="montant_commission" class="form-control" readonly>
+            <small class="text-muted">= brut − net</small>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Compte banque (débit)</label>
+            <select id="compte_banque_id" class="form-select" required>
+              {% for c in categories %}
+                {% if c.type_compte == 'Actif' and c.numero[:3] in ('100','101','102','103','104') %}
+                  <option value="{{ c.id }}">{{ c.numero }} — {{ c.nom }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="row g-3 mt-2">
+          <div class="col-md-6">
+            <label class="form-label">Compte frais (débit)</label>
+            <select id="compte_frais_id" class="form-select" required>
+              {% for c in categories %}
+                {% if c.type_compte in ('Charge','Charges') %}
+                  <option value="{{ c.id }}">{{ c.numero }} — {{ c.nom }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Compte attente (crédit)</label>
+            <input type="text" id="compte_attente_display" class="form-control" readonly>
+            <input type="hidden" id="compte_attente_hidden">
+          </div>
+        </div>
+
+        <!-- Contrôle d'équilibre -->
+        <div class="alert alert-secondary mt-3 mb-2" id="controle-equilibre">
+          <i class="bi bi-calculator"></i> En attente de saisie du net reçu.
+        </div>
+
+        <div class="alert alert-warning" id="alerte-solde" style="display:none;">
+          <i class="bi bi-exclamation-triangle"></i>
+          <span id="alerte-solde-texte"></span>
+        </div>
+      </div>
+      <div class="card-footer">
+        <button id="btn-creer-valider" class="btn btn-success">
+          <i class="bi bi-check-circle"></i> Créer et valider le rapprochement
+        </button>
+        <span class="ms-3 text-muted small" id="msg-action"></span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Zone de messages -->
+<div id="zone-messages" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050;"></div>
+
+<script>
+(function () {
+  const csrfToken = "{{ csrf_token() }}";
+
+  const $ = (id) => document.getElementById(id);
+
+  function fmtCHF(n) {
+    return (Number(n) || 0).toFixed(2) + " CHF";
+  }
+
+  function showMessage(text, type) {
+    const cls = type === 'error' ? 'text-bg-danger'
+              : type === 'success' ? 'text-bg-success'
+              : 'text-bg-info';
+    const div = document.createElement('div');
+    div.className = `toast align-items-center ${cls} border-0 show`;
+    div.role = 'alert';
+    div.innerHTML = `
+      <div class="d-flex">
+        <div class="toast-body">${text}</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                data-bs-dismiss="toast"></button>
+      </div>`;
+    $('zone-messages').appendChild(div);
+    setTimeout(() => div.remove(), 5000);
+  }
+
+  async function postJSON(url, body) {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken,
+      },
+      body: JSON.stringify(body),
+      credentials: 'same-origin',
+    });
+    const data = await resp.json().catch(() => ({}));
+    return { ok: resp.ok, status: resp.status, data };
+  }
+
+  // =====================================================
+  // ÉTAPE 1 : ANALYSE
+  // =====================================================
+  $('btn-analyser').addEventListener('click', async () => {
+    const compte_attente_id = $('compte_attente_id').value;
+    const date_from = $('date_from').value;
+    const date_to = $('date_to').value;
+
+    if (!compte_attente_id || !date_from || !date_to) {
+      showMessage('Veuillez remplir tous les champs.', 'error');
+      return;
+    }
+
+    $('btn-analyser').disabled = true;
+    $('btn-analyser').innerHTML = '<span class="spinner-border spinner-border-sm"></span> Analyse…';
+
+    try {
+      const { ok, data } = await postJSON('/api/comptabilite/rapprochements/analyser', {
+        compte_attente_id: parseInt(compte_attente_id, 10),
+        date_from, date_to,
+      });
+
+      if (!ok || !data.success) {
+        showMessage(data.message || "Erreur d'analyse.", 'error');
+        return;
+      }
+
+      // Injecter les résultats
+      $('zone-resultats').style.display = 'block';
+      $('solde-initial').textContent  = fmtCHF(data.solde_initial);
+      $('total-debits').textContent   = fmtCHF(data.total_debits);
+      $('total-credits').textContent  = fmtCHF(data.total_credits);
+      $('solde-final').textContent    = fmtCHF(data.solde_final);
+      $('info-ecritures').textContent =
+        `${data.nb_ecritures} écriture(s) non rapprochée(s) pour un total de ${fmtCHF(data.total_non_rapproche)}.`;
+      $('badge-nb-ecritures').textContent = data.nb_ecritures;
+      $('total-a-solder').textContent     = fmtCHF(data.total_non_rapproche);
+
+      // Table des écritures
+      const tbody = $('tbody-ecritures');
+      tbody.innerHTML = '';
+      if (data.ecritures.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Aucune écriture non rapprochée.</td></tr>';
+      } else {
+        for (const e of data.ecritures) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${e.date}</td>
+            <td>${e.description}</td>
+            <td>${e.reference}</td>
+            <td class="text-end">${fmtCHF(e.montant)}</td>`;
+          tbody.appendChild(tr);
+        }
+      }
+
+      // Préparer l'étape 4
+      $('montant_brut').value = Number(data.total_non_rapproche).toFixed(2);
+      $('montant_net').value = '';
+      $('montant_commission').value = '';
+      $('date_versement').value = date_to; // valeur par défaut
+
+      const select = $('compte_attente_id');
+      const opt = select.options[select.selectedIndex];
+      $('compte_attente_display').value = `${opt.dataset.numero} — ${opt.dataset.nom}`;
+      $('compte_attente_hidden').value = data.compte_attente_id;
+
+      updateEquilibre();
+      updateAlerteSolde(data.solde_final, data.total_non_rapproche);
+    } finally {
+      $('btn-analyser').disabled = false;
+      $('btn-analyser').innerHTML = '<i class="bi bi-search"></i> Analyser';
+    }
+  });
+
+  // =====================================================
+  // ÉTAPE 4 : CALCUL AUTO commission + vérifications
+  // =====================================================
+  function updateEquilibre() {
+    const brut = parseFloat($('montant_brut').value) || 0;
+    const net = parseFloat($('montant_net').value) || 0;
+    const com = brut - net;
+    $('montant_commission').value = com.toFixed(2);
+
+    const box = $('controle-equilibre');
+    if (net <= 0) {
+      box.className = 'alert alert-secondary mt-3 mb-2';
+      box.innerHTML = '<i class="bi bi-calculator"></i> En attente de saisie du net reçu.';
+      return;
+    }
+    if (com < 0) {
+      box.className = 'alert alert-danger mt-3 mb-2';
+      box.innerHTML = `<i class="bi bi-x-circle"></i> Le net (${fmtCHF(net)}) est supérieur au brut (${fmtCHF(brut)}).`;
+    } else {
+      const pct = (com / brut * 100).toFixed(2);
+      box.className = 'alert alert-success mt-3 mb-2';
+      box.innerHTML = `<i class="bi bi-check-circle"></i> Équilibré : brut ${fmtCHF(brut)} = net ${fmtCHF(net)} + commission ${fmtCHF(com)} (${pct}%)`;
+    }
+  }
+
+  function updateAlerteSolde(soldeFinal, brut) {
+    const attendu = soldeFinal - brut;
+    const box = $('alerte-solde');
+    if (Math.abs(attendu) > 0.01) {
+      box.style.display = 'block';
+      $('alerte-solde-texte').textContent =
+        `Après ce rapprochement, le solde du compte d'attente sera ${fmtCHF(attendu)} ` +
+        `(≠ 0). Vérifiez la période ou le montant brut.`;
+    } else {
+      box.style.display = 'none';
+    }
+  }
+
+  $('montant_net').addEventListener('input', updateEquilibre);
+
+  // =====================================================
+  // CRÉATION + VALIDATION
+  // =====================================================
+  $('btn-creer-valider').addEventListener('click', async () => {
+    const brut = parseFloat($('montant_brut').value) || 0;
+    const net  = parseFloat($('montant_net').value) || 0;
+    const com  = parseFloat($('montant_commission').value) || 0;
+
+    if (!brut || !net) {
+      showMessage("Veuillez renseigner le net reçu.", 'error');
+      return;
+    }
+    if (com < 0) {
+      showMessage("Le net ne peut pas dépasser le brut.", 'error');
+      return;
+    }
+
+    const payload = {
+      prestataire: $('prestataire').value.trim(),
+      reference_releve: $('reference_releve').value.trim() || null,
+      compte_banque_id: parseInt($('compte_banque_id').value, 10),
+      compte_frais_id: parseInt($('compte_frais_id').value, 10),
+      compte_attente_id: parseInt($('compte_attente_hidden').value, 10),
+      date_debut: $('date_from').value,
+      date_fin: $('date_to').value,
+      date_versement: $('date_versement').value,
+      montant_brut: brut,
+      montant_commission: com,
+      montant_net: net,
+    };
+
+    if (!payload.prestataire || !payload.date_versement) {
+      showMessage("Prestataire et date de versement obligatoires.", 'error');
+      return;
+    }
+
+    $('btn-creer-valider').disabled = true;
+    $('btn-creer-valider').innerHTML = '<span class="spinner-border spinner-border-sm"></span> Traitement…';
+    $('msg-action').textContent = '';
+
+    try {
+      const { ok, data } = await postJSON('/api/comptabilite/rapprochements/creer-valider', payload);
+      if (!ok || !data.success) {
+        showMessage(data.message || "Erreur lors de la création.", 'error');
+        if (data.rapprochement_id) {
+          $('msg-action').innerHTML =
+            `<a href="/comptabilite/rapprochements/${data.rapprochement_id}">Voir le brouillon</a>`;
+        }
+        return;
+      }
+      showMessage(data.message || "Rapprochement validé.", 'success');
+      setTimeout(() => { window.location.href = data.redirect; }, 900);
+    } finally {
+      $('btn-creer-valider').disabled = false;
+      $('btn-creer-valider').innerHTML = '<i class="bi bi-check-circle"></i> Créer et valider le rapprochement';
+    }
+  });
+
+})();
+</script>
+{% endblock %}

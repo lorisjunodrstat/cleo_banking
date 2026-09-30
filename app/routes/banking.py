@@ -12,7 +12,7 @@ from app.models import (
     StatistiquesBancaires, PlanComptable, EcritureComptable, HeureTravail, Salaire, 
     SyntheseHebdomadaire, SyntheseMensuelle, Contrat, Contacts, ContactCompte, 
     ComptePrincipalRapport, CategorieComptable, Employe, Equipe, Planning, 
-    Competence, PlanningRegles, RegleEcriture, TauxTva, FormulaireTVA, TaxePOS,
+    Competence, PlanningRegles, RegleEcriture, RapprochementBancaire, TauxTva, FormulaireTVA, TaxePOS,
     Utilisateur, PeriodeFavorite, CategorieTransaction, ContactPlan, Rapport,
     Entreprise, ParametreUtilisateur, BaremeIndemnite, BaremeCotisation,
     TypeCotisation, TypeIndemnite, CotisationContrat, IndemniteContrat,
@@ -6317,6 +6317,419 @@ def relink_ecriture():
         flash("Erreur lors du lien.", "danger")
     return redirect(request.referrer)
 
+
+##########################################
+## Route pour les rapprochements
+##########################################
+
+
+
+@bp.route('/comptabilite/rapprochements')
+@login_required
+def liste_rapprochements():
+    """Liste des rapprochements bancaires (Concardis, Eat.ch, Twint…)."""
+    prestataire = request.args.get('prestataire') or None
+    statut = request.args.get('statut') or None
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+    rapprochements = g.models.rapprochement_bancaire_model.get_all(
+        utilisateur_id=current_user.id,
+        prestataire=prestataire,
+        statut=statut,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    # Totaux pour l'entête
+    resume = g.models.rapprochement_bancaire_model.get_resume(
+        current_user.id,
+        date_from or '1970-01-01',
+        date_to or date.today().isoformat(),
+    )
+    return render_template(
+        'comptabilite/rapprochements.html',
+        rapprochements=rapprochements,
+        resume=resume,
+        prestataire_selectionne=prestataire,
+        statut_selectionne=statut,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+@bp.route('/comptabilite/rapprochements/nouveau', methods=['GET', 'POST'])
+@login_required
+def nouveau_rapprochement():
+    """Créer un nouveau rapprochement bancaire (brouillon)."""
+    categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
+    if request.method == 'POST':
+        try:
+            # Récupération des IDs de comptes depuis le formulaire
+            data = {
+                'utilisateur_id': current_user.id,
+                'prestataire': request.form['prestataire'],
+                'compte_banque_id': int(request.form['compte_banque_id']),
+                'compte_frais_id': int(request.form['compte_frais_id']),
+                'compte_attente_id': int(request.form['compte_attente_id']),
+                'date_debut': request.form['date_debut'],
+                'date_fin': request.form['date_fin'],
+                'date_versement': request.form['date_versement'],
+                'montant_brut': float(request.form['montant_brut']),
+                'montant_commission': float(request.form['montant_commission']),
+                'montant_net': float(request.form['montant_net']),
+                'reference_releve': request.form.get('reference_releve') or None,
+            }
+            rapprochement_id = g.models.rapprochement_bancaire_model.create(data)
+            if rapprochement_id:
+                flash('Rapprochement créé (brouillon). Validez-le pour générer les écritures.', 'success')
+                return redirect(url_for('banking.detail_rapprochement',
+                                        rapprochement_id=rapprochement_id))
+            flash("Erreur lors de la création (vérifiez que brut = net + commission)", 'danger')
+        except Exception as e:
+            logger.exception("Erreur création rapprochement")
+            flash(f"Erreur : {e}", 'danger')
+    return render_template(
+        'comptabilite/edit_rapprochement.html',
+        rapprochement=None,
+        categories=categories,
+    )
+
+@bp.route('/comptabilite/rapprochements/<int:rapprochement_id>')
+@login_required
+def detail_rapprochement(rapprochement_id):
+    """Détail d'un rapprochement + écritures liées."""
+    rapprochement = g.models.rapprochement_bancaire_model.get_by_id(
+        rapprochement_id, current_user.id
+    )
+    if not rapprochement:
+        flash('Rapprochement introuvable', 'danger')
+        return redirect(url_for('banking.liste_rapprochements'))
+    ecritures = g.models.ecriture_comptable_model.get_ecritures_par_rapprochement(
+        rapprochement_id, current_user.id
+    )
+    # Solde du compte d'attente après ce rapprochement
+    solde_apres = g.models.rapprochement_bancaire_model.get_solde_creance(
+        current_user.id,
+        rapprochement['compte_attente_id'],
+        rapprochement['date_versement'],
+    )
+    return render_template(
+        'comptabilite/detail_rapprochement.html',
+        rapprochement=rapprochement,
+        ecritures=ecritures,
+        solde_apres=solde_apres,
+    )
+
+
+@bp.route('/comptabilite/rapprochements/<int:rapprochement_id>/valider',
+          methods=['POST'])
+@login_required
+def valider_rapprochement(rapprochement_id):
+    """Valide un rapprochement : génère les écritures équilibrées."""
+    ok, message = g.models.rapprochement_bancaire_model.valider(
+        rapprochement_id, current_user.id
+    )
+    flash(message, 'success' if ok else 'danger')
+    return redirect(url_for('banking.detail_rapprochement',
+                            rapprochement_id=rapprochement_id))
+
+
+@bp.route('/comptabilite/rapprochements/<int:rapprochement_id>/annuler',
+          methods=['POST'])
+@login_required
+def annuler_rapprochement(rapprochement_id):
+    """Annule un rapprochement validé (soft delete + suppression écritures)."""
+    ok, message = g.models.rapprochement_bancaire_model.delete(
+        rapprochement_id, current_user.id
+    )
+    flash(message, 'success' if ok else 'danger')
+    return redirect(url_for('banking.liste_rapprochements'))
+
+
+@bp.route('/comptabilite/rapprochements/analyser')
+@login_required
+def analyser_rapprochement():
+    """
+    Analyse un compte d'attente et propose un brouillon
+    à partir de la période + du net reçu.
+    """
+    compte_attente_id = request.args.get('compte_attente_id', type=int)
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+    montant_net = request.args.get('montant_net', type=float)
+    analyse = {}
+    suggestion = {}
+    if compte_attente_id and date_from and date_to:
+        analyse = g.models.rapprochement_bancaire_model.analyser_compte_attente(
+            current_user.id, compte_attente_id, date_from, date_to
+        )
+        if montant_net is not None:
+            suggestion = g.models.rapprochement_bancaire_model.suggerer(
+                current_user.id, compte_attente_id, date_from, date_to, montant_net
+            )
+    categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
+    return render_template(
+        'comptabilite/analyser_rapprochement.html',
+        compte_attente_id=compte_attente_id,
+        date_from=date_from,
+        date_to=date_to,
+        montant_net=montant_net,
+        analyse=analyse,
+        suggestion=suggestion,
+        categories=categories,
+    )
+
+@bp.route('/comptabilite/rapports/rapprochements')
+@login_required
+def rapport_rapprochements():
+    """Affiche le rapport de rapprochements bancaires sur une période."""
+    date_from = request.args.get('date_from') or date.today().replace(day=1).isoformat()
+    date_to = request.args.get('date_to') or date.today().isoformat()
+    prestataire = request.args.get('prestataire') or None
+    rapport = g.models.rapport_model.generate_rapport_rapprochements(
+        current_user.id, date_from, date_to, prestataire
+    )
+    # Prestataires connus pour le filtre
+    prestataires = sorted({
+        r['prestataire']
+        for r in g.models.rapprochement_bancaire_model.get_all(current_user.id)
+    })
+    return render_template(
+        'comptabilite/rapport_rapprochements.html',
+        rapport=rapport,
+        prestataires=prestataires,
+        prestataire_selectionne=prestataire,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+@bp.route('/api/comptabilite/rapprochements/solde')
+@login_required
+def api_solde_creance():
+    """Retourne le solde du compte d'attente pour un prestataire."""
+    prestataire = request.args.get('prestataire')
+    date_bilan = request.args.get('date_bilan') or date.today().isoformat()
+    solde = g.models.rapprochement_bancaire_model.get_solde_par_prestataire(
+        current_user.id, prestataire, date_bilan
+    )
+    return jsonify({
+        'prestataire': prestataire,
+        'date_bilan': date_bilan,
+        'solde': float(solde),
+    })
+
+
+@bp.route('/comptabilite/rapprochements/analyser')
+@login_required
+def analyser_rapprochement():
+    """
+    Page d'analyse d'un compte d'attente + génération assistée
+    d'un brouillon de rapprochement.
+    """
+    categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
+    comptes = g.models.compte_model.get_by_user_id(current_user.id)
+
+    # Liste des comptes d'attente "candidats" (Actif dont le numéro commence par 114x)
+    comptes_attente = [
+        c for c in categories
+        if c['type_compte'] == 'Actif'
+        and str(c['numero']).startswith('114')
+    ]
+
+    return render_template(
+        'comptabilite/analyser_rapprochement.html',
+        comptes=comptes,
+        comptes_attente=comptes_attente,
+        categories=categories,
+    )
+@bp.route('/api/comptabilite/rapprochements/analyser', methods=['POST'])
+@login_required
+def api_analyser_rapprochement():
+    """
+    Analyse AJAX d'un compte d'attente sur une période.
+    Reçoit du JSON : {compte_attente_id, date_from, date_to}
+    Retourne : solde_initial, total_debits, total_credits, solde_final,
+               nb_ecritures_non_rapprochees, total_non_rapproche,
+               ecritures_non_rapprochees.
+    """
+    try:
+        payload = request.get_json(silent=True) or {}
+        compte_attente_id = int(payload.get('compte_attente_id') or 0)
+        date_from = payload.get('date_from')
+        date_to = payload.get('date_to')
+
+        if not compte_attente_id or not date_from or not date_to:
+            return jsonify({
+                'success': False,
+                'message': 'Paramètres manquants (compte_attente_id, date_from, date_to).'
+            }), 400
+
+        # Vérifier que le compte appartient à l'utilisateur
+        compte = g.models.categorie_comptable_model.get_by_id(
+            compte_attente_id, current_user.id
+        )
+        if not compte:
+            return jsonify({
+                'success': False,
+                'message': "Compte introuvable ou non autorisé."
+            }), 403
+
+        analyse = g.models.rapprochement_bancaire_model.analyser_compte_attente(
+            current_user.id, compte_attente_id, date_from, date_to
+        )
+
+        # Formatage des écritures pour le JS
+        ecritures = [
+            {
+                'id': e['id'],
+                'date': e['date_ecriture'].strftime('%d.%m.%Y') if hasattr(e['date_ecriture'], 'strftime') else str(e['date_ecriture']),
+                'description': e.get('description') or '',
+                'reference': e.get('reference') or '',
+                'montant': float(e['montant'] or 0),
+            }
+            for e in analyse.get('ecritures_non_rapprochees', [])
+        ]
+
+        return jsonify({
+            'success': True,
+            'compte_attente_id': compte_attente_id,
+            'date_from': date_from,
+            'date_to': date_to,
+            'solde_initial': analyse.get('solde_initial', 0),
+            'total_debits': analyse.get('total_debits', 0),
+            'total_credits': analyse.get('total_credits', 0),
+            'solde_final': analyse.get('solde_final', 0),
+            'nb_ecritures': analyse.get('nb_ecritures_non_rapprochees', 0),
+            'total_non_rapproche': analyse.get('total_non_rapproche', 0),
+            'ecritures': ecritures,
+        })
+
+    except Exception as e:
+        logger.exception("Erreur API analyse rapprochement")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@bp.route('/api/comptabilite/rapprochements/suggerer', methods=['POST'])
+@login_required
+def api_suggerer_rapprochement():
+    """
+    Calcule une suggestion de rapprochement à partir :
+    - compte_attente_id
+    - date_from, date_to
+    - montant_net_recu (optionnel)
+    Retourne : montant_brut, montant_commission, montant_net,
+               nb_ecritures_a_solder, solde_apres_rapprochement.
+    """
+    try:
+        payload = request.get_json(silent=True) or {}
+        compte_attente_id = int(payload.get('compte_attente_id') or 0)
+        date_from = payload.get('date_from')
+        date_to = payload.get('date_to')
+        net_recu = payload.get('montant_net_recu')
+
+        if not compte_attente_id or not date_from or not date_to:
+            return jsonify({'success': False, 'message': 'Paramètres manquants.'}), 400
+
+        compte = g.models.categorie_comptable_model.get_by_id(
+            compte_attente_id, current_user.id
+        )
+        if not compte:
+            return jsonify({'success': False, 'message': 'Compte non autorisé.'}), 403
+
+        suggestion = g.models.rapprochement_bancaire_model.suggerer(
+            current_user.id, compte_attente_id, date_from, date_to,
+            montant_net_recu=float(net_recu) if net_recu not in (None, '', 0) else None
+        )
+
+        return jsonify({
+            'success': True,
+            'montant_brut': suggestion.get('montant_brut', 0),
+            'montant_commission': suggestion.get('montant_commission', 0),
+            'montant_net': suggestion.get('montant_net', 0),
+            'nb_ecritures_a_solder': suggestion.get('nb_ecritures_a_solder', 0),
+            'solde_apres_rapprochement': suggestion.get('solde_apres_rapprochement', 0),
+        })
+
+    except Exception as e:
+        logger.exception("Erreur API suggestion rapprochement")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@bp.route('/api/comptabilite/rapprochements/creer-valider', methods=['POST'])
+@login_required
+def api_creer_valider_rapprochement():
+    """
+    Crée un rapprochement et le valide immédiatement (mode assisté).
+    Reçoit tout ce qui est nécessaire pour create() + valider().
+    """
+    try:
+        p = request.get_json(silent=True) or {}
+
+        # Validation des champs obligatoires
+        required = ['prestataire', 'compte_banque_id', 'compte_frais_id',
+                    'compte_attente_id', 'date_debut', 'date_fin',
+                    'date_versement', 'montant_brut', 'montant_commission',
+                    'montant_net']
+        missing = [f for f in required if not p.get(f)]
+        if missing:
+            return jsonify({
+                'success': False,
+                'message': f"Champs manquants : {', '.join(missing)}"
+            }), 400
+
+        # Vérification propriété des 3 comptes
+        for champ in ('compte_banque_id', 'compte_frais_id', 'compte_attente_id'):
+            c = g.models.categorie_comptable_model.get_by_id(
+                int(p[champ]), current_user.id
+            )
+            if not c:
+                return jsonify({
+                    'success': False,
+                    'message': f"Compte {champ} introuvable ou non autorisé."
+                }), 403
+
+        data = {
+            'utilisateur_id': current_user.id,
+            'prestataire': p['prestataire'],
+            'compte_banque_id': int(p['compte_banque_id']),
+            'compte_frais_id': int(p['compte_frais_id']),
+            'compte_attente_id': int(p['compte_attente_id']),
+            'date_debut': p['date_debut'],
+            'date_fin': p['date_fin'],
+            'date_versement': p['date_versement'],
+            'montant_brut': float(p['montant_brut']),
+            'montant_commission': float(p['montant_commission']),
+            'montant_net': float(p['montant_net']),
+            'reference_releve': p.get('reference_releve') or None,
+        }
+
+        # 1. Création
+        rapprochement_id = g.models.rapprochement_bancaire_model.create(data)
+        if not rapprochement_id:
+            return jsonify({
+                'success': False,
+                'message': "Création impossible (déséquilibre brut/net/commission ou doublon de référence)."
+            }), 400
+
+        # 2. Validation immédiate
+        ok, msg = g.models.rapprochement_bancaire_model.valider(
+            rapprochement_id, current_user.id
+        )
+        if not ok:
+            return jsonify({
+                'success': False,
+                'message': f"Rapprochement créé (ID {rapprochement_id}) mais validation échouée : {msg}",
+                'rapprochement_id': rapprochement_id,
+            }), 400
+
+        return jsonify({
+            'success': True,
+            'rapprochement_id': rapprochement_id,
+            'message': msg,
+            'redirect': url_for('banking.detail_rapprochement',
+                                rapprochement_id=rapprochement_id),
+        })
+
+    except Exception as e:
+        logger.exception("Erreur API créer+valider rapprochement")
+        return jsonify({'success': False, 'message': str(e)}), 500
 ##########################################
 ## Route pour la création des plans comptables
 ##########################################
