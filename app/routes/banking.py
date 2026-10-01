@@ -47,7 +47,6 @@ from ..utils.pdf_salaire import generer_pdf_salaire
 
 
 
-
 # Création du blueprint
 bp = Blueprint('banking', __name__)
 
@@ -64,33 +63,26 @@ def inject_pos_magasin_context():
     # 1. Utilisateur authentifié ?
     if not current_user.is_authenticated:
         return {}
-
     # 2. Route POS uniquement ?
     if not request.endpoint or not request.endpoint.startswith('banking.pos'):
         return {}
-
     # 3. Récupérer les magasins
     try:
         magasins = g.models.magasin_pos_model.get_by_user(current_user.id)
     except Exception:
         magasins = []
-
     if not magasins:
         return {
             'pos_magasins': [],
             'pos_magasin_courant': None,
         }
-
     # 4. Résolution du magasin courant
     mid = request.args.get('magasin_id', type=int) or session.get('pos_magasin_id')
     magasin = next((m for m in magasins if m['id'] == mid), None)
-
     if not magasin:
         magasin = magasins[0]
-
     # 5. Mémoriser en session pour les requêtes suivantes
     session['pos_magasin_id'] = magasin['id']
-
     return {
         'pos_magasins': magasins,
         'pos_magasin_courant': magasin,
@@ -227,7 +219,6 @@ def creer_banque():
         couleur = request.form.get('couleur')
         site_web = request.form.get('site_web')
         logo_url = request.form.get('logo_url')
-
         if nom and code_banque:
             success = g.models.banque_model.create_banque(nom, code_banque, pays, couleur, site_web, logo_url)
             if success:
@@ -248,7 +239,6 @@ def edit_banque(banque_id):
     if not banque:
         flash("Banque introuvable.", "danger")
         return redirect(url_for('banking.liste_banques'))
-
     if request.method == 'POST':
         nom = request.form.get('nom')
         code_banque = request.form.get('code_banque')
@@ -256,7 +246,6 @@ def edit_banque(banque_id):
         couleur = request.form.get('couleur')
         site_web = request.form.get('site_web')
         logo_url = request.form.get('logo_url')
-
         success = g.models.banque_model.update_banque(banque_id, nom, code_banque, pays, couleur, site_web, logo_url)
         if success:
             flash("Banque modifiée avec succès.", "success")
@@ -293,14 +282,12 @@ def banking_dashboard():
         repartition = g.models.stats_model.get_repartition_par_banque(user_id)
         comptes = get_comptes_utilisateur(user_id)
         logger.debug(f'Dashboard - Comptes récupérés: {len(comptes)} pour utilisateur {user_id}')
-
         # Correction de la boucle (vous aviez une erreur de logique)
         les_comptes = []
         for c in comptes:
             compte_detail = g.models.compte_model.get_by_id(c['id'])
             if compte_detail:
                 les_comptes.append(compte_detail)
-
         recettes_mois = stats.get('total_recettes_mois', 0)
         depenses_mois = stats.get('total_depenses_mois', 0)
         return render_template('banking/dashboard.html',
@@ -333,8 +320,7 @@ def banking_nouveau_compte():
                 
             if not request.form['numero_compte'].strip():
                 flash('Le numéro de compte est obligatoire', 'error')
-                return redirect(url_for('banking.banking_nouveau_compte'))
-            
+                return redirect(url_for('banking.banking_nouveau_compte'))  
             # Préparation des données
             data = {
                 'utilisateur_id': current_user.id,
@@ -376,7 +362,6 @@ def banking_nouveau_sous_compte(compte_id):
     if not compte or compte['utilisateur_id'] != user_id:
         flash('Compte principal non trouvé ou non autorisé', 'error')
         return redirect(url_for('banking.banking_dashboard'))
-    
     if request.method == 'POST':
         try:
             data = {
@@ -397,7 +382,6 @@ def banking_nouveau_sous_compte(compte_id):
             flash('Erreur lors de la création du sous-compte', 'error')
         except Exception as e:
             flash(f'Erreur: {str(e)}', 'error')
-    
     return render_template('banking/nouveau_sous_compte.html', compte=compte)
 
 
@@ -406,11 +390,9 @@ def banking_nouveau_sous_compte(compte_id):
 def banking_compte_detail(compte_id):
     user_id = current_user.id
     compte = g.models.compte_model.get_by_id(compte_id)
-
     if not compte or compte['utilisateur_id'] != user_id:
         flash('Compte non trouvé ou non autorisé', 'error')
         return redirect(url_for('banking.banking_dashboard'))
-    
     pf = g.models.periode_favorite_model.get_by_user_and_compte(user_id, compte_id, 'principal')
     if pf:
         date_debut_str = pf['date_debut'].strftime('%Y-%m-%d')
@@ -419,7 +401,6 @@ def banking_compte_detail(compte_id):
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)  # Nombre d'éléments par page
     max_per_page = 100  # Limite maximale par sécurité
-    
     if per_page > max_per_page:
         per_page = max_per_page
     # Paramètre de filtrage et tri
@@ -432,18 +413,15 @@ def banking_compte_detail(compte_id):
     toutes_categories = g.models.categorie_transaction_model.get_categories_utilisateur(user_id)
     # Gestion de la période sélectionnée
     periode = request.args.get('periode', 'mois')
-    
     date_debut_str = request.args.get('date_debut')
     date_fin_str = request.args.get('date_fin')
     mois_select = request.args.get('mois_select')
     annee_select = request.args.get('annee_select')
-    
     # Calcul des dates selon la période
     maintenant = datetime.now()
     debut = None
     fin = None
     libelle_periode = "période personnalisée"
-    
     if periode == 'personnalisee' and date_debut_str and date_fin_str:
         try:
             debut = datetime.strptime(date_debut_str, '%Y-%m-%d')
@@ -488,7 +466,6 @@ def banking_compte_detail(compte_id):
             fin = fin_mois.replace(hour=23, minute=59, second=59)
             libelle_periode = "Ce mois"
             periode = 'mois'
-    
     # Récupération des mouvements avec la nouvelle classe unifiée
     mouvements = g.models.transaction_financiere_model.get_historique_compte(
         compte_type='compte_principal',
@@ -498,10 +475,8 @@ def banking_compte_detail(compte_id):
         date_to=fin.strftime('%Y-%m-%d'),
         limit=200
     )
-    
     # 🔥 NOUVEAU : Récupérer les catégories pour chaque transaction
     mouvement_ids = [m['id'] for m in mouvements]
-
     # Une seule requête au lieu de 200 !
     categories_par_transaction = g.models.categorie_transaction_model.get_categories_pour_plusieurs_transactions(
         mouvement_ids, 
@@ -515,7 +490,6 @@ def banking_compte_detail(compte_id):
         else:
             m['categorie_id'] = None
             m['categorie_nom'] = None
-    
     # Utiliser les statistiques corrigées plutôt que le calcul manuel
     stats_compte = g.models.transaction_financiere_model.get_statistiques_compte(
         compte_type='compte_principal',
@@ -524,10 +498,8 @@ def banking_compte_detail(compte_id):
         date_debut=debut.strftime('%Y-%m-%d'),
         date_fin=fin.strftime('%Y-%m-%d')
     )
-    
     # Filtrer les mouvements
     filtred_mouvements = list(mouvements)
-
     if filter_type != 'tous':
         if filter_type == 'entree':
             filtred_mouvements = [m for m in filtred_mouvements if m['type_transaction'] in ['depot', 'transfert_entrant', 'transfert_sous_vers_compte', 'recredit_annulation']]
@@ -541,7 +513,6 @@ def banking_compte_detail(compte_id):
             filtred_mouvements = [m for m in filtred_mouvements if m['type_transaction']  in ['transfert_sous_vers_compte' ]]
         elif filter_type == 'Transfert_intra_compte':
             filtred_mouvements = [m for m in filtred_mouvements if m['type_transaction']  in ['transfert_compte_vers_sous', 'transfert_sous_vers_compte' ]]
-
     if filter_min_amount:
         try:
             min_amount = Decimal(filter_min_amount)
@@ -588,20 +559,16 @@ def banking_compte_detail(compte_id):
         page = 1
     elif page > total_pages and total_pages > 0:
         page = total_pages
-    
     # Pagination des résultats
     start_idx = (page - 1) * per_page
     end_idx = start_idx + per_page
     mouvements_page = filtred_mouvements[start_idx:end_idx]
-    
     # Correction des totaux - utilisation des statistiques plutôt que du calcul manuel
     total_recettes = Decimal(str(stats_compte.get('total_entrees', 0))) if stats_compte else Decimal('0')
     total_depenses = Decimal(str(stats_compte.get('total_sorties', 0))) if stats_compte else Decimal('0')
-
     # Récupération des données existantes
     sous_comptes = g.models.sous_compte_model.get_by_compte_principal_id(compte_id)
     solde_total = g.models.compte_model.get_solde_total_avec_sous_comptes(compte_id)
-    
     # Préparation des données pour le template
     tresorerie_data = {
         'labels': ['Recettes', 'Dépenses'],
@@ -610,15 +577,12 @@ def banking_compte_detail(compte_id):
             'backgroundColor': ['#28a745', '#dc3545']
         }]
     }
-    
     ecritures_non_liees = g.models.ecriture_comptable_model.get_ecritures_non_synchronisees(
         compte_id=compte_id,
         user_id=current_user.id
     )
-    
     nb_jours_periode = (fin - debut).days
     transferts_externes_pending = g.models.transaction_financiere_model.get_transferts_externes_pending(user_id)
-    
     # Appel de la fonction (inchangé, car elle gère maintenant le report de solde)
     soldes_quotidiens = g.models.transaction_financiere_model.get_evolution_soldes_quotidiens_compte(
         compte_id=compte_id, 
@@ -626,17 +590,14 @@ def banking_compte_detail(compte_id):
         date_debut=debut.strftime('%Y-%m-%d'),
         date_fin=fin.strftime('%Y-%m-%d')
     )
-
     # Préparation des données pour le graphique SVG
     largeur_svg = 800
     hauteur_svg = 400
     graphique_svg = None
-
     if soldes_quotidiens:
         soldes_values = [s['solde_apres'] for s in soldes_quotidiens]
         min_solde = min(soldes_values) if soldes_values else 0.0
         max_solde = max(soldes_values) if soldes_values else 0.0
-
         if min_solde == max_solde:
             if min_solde == 0:
                 min_solde = -50.0
@@ -649,17 +610,14 @@ def banking_compte_detail(compte_id):
             y_padding = (max_solde - min_solde) * 0.05
             min_solde -= y_padding
             max_solde += y_padding
-
         n = len(soldes_quotidiens)
         points = []
         margin_x = largeur_svg * 0.1
         margin_y = hauteur_svg * 0.1
         plot_width = largeur_svg * 0.8
         plot_height = hauteur_svg * 0.8
-        
         x_interval = plot_width / (n - 1) if n > 1 else 0
         solde_range = max_solde - min_solde
-
         for i, solde in enumerate(soldes_quotidiens):
             solde_float = solde['solde_apres']
             x = margin_x + i * x_interval if n > 1 else margin_x + plot_width / 2
@@ -668,7 +626,6 @@ def banking_compte_detail(compte_id):
             else:
                 y = margin_y + plot_height / 2
             points.append(f"{x},{y}")
-
         graphique_svg = {
             'points': points,
             'min_solde': min_solde,
@@ -722,18 +679,14 @@ def banking_compte_detail(compte_id):
 @login_required
 def banking_compte_rapport(compte_id):
     user_id = current_user.id
-
-
     # Vérifier l'appartenance du compte
     compte = g.models.compte_model.get_by_id(compte_id)
     if not compte or compte['utilisateur_id'] != user_id:
         flash('Compte non trouvé ou non autorisé', 'error')
         return redirect(url_for('banking.banking_dashboard'))
-
     # Récupérer les paramètres de la requête (période)
     periode = request.args.get('periode', 'mensuel') # Valeur par défaut
     date_ref_str = request.args.get('date_ref') # Date de référence optionnelle
-    
     if date_ref_str:
         try:
             date_ref = datetime.strptime(date_ref_str, '%Y-%m-%d').date()
@@ -742,7 +695,6 @@ def banking_compte_rapport(compte_id):
     else:
         date_ref = date.today()
             # On continuera avec la date par défaut (today)
-
     # Déterminer la plage de dates selon la période
     if periode == "hebdo":
         debut = date_ref - timedelta(days=date_ref.weekday())
@@ -759,9 +711,7 @@ def banking_compte_rapport(compte_id):
         else:
             fin = date(date_ref.year, date_ref.month + 1, 1) - timedelta(days=1)
         titre_periode = f"{debut.strftime('%B %Y')}"
-
     # --- Données du Rapport ---
-
     # 1. Statistiques de base
     stats = g.models.transaction_financiere_model.get_statistiques_compte(
         compte_type='compte_principal',
@@ -772,7 +722,6 @@ def banking_compte_rapport(compte_id):
     )
     solde_initial = g.models.transaction_financiere_model._get_solde_avant_periode(compte_id, user_id, debut)
     solde_final = g.models.transaction_financiere_model.get_solde_courant('compte_principal', compte_id, user_id)
-
     # 2. Répartition par catégories (y compris 'Non catégorisé')
     # On réutilise la logique de `get_categories_par_type` mais en la modifiant pour inclure les transactions non catégorisées
     mapping_categories = {
@@ -785,7 +734,6 @@ def banking_compte_rapport(compte_id):
         'transfert_externe': 'Transferts externes',
         'recredit_annulation': 'Annulations / Recrédits'
     }
-
     # Récupérer TOUTES les transactions de la période
     tx_avec_cats, _ = g.models.transaction_financiere_model.get_all_user_transactions(
         user_id=user_id,
@@ -795,25 +743,22 @@ def banking_compte_rapport(compte_id):
         #compte_dest_id=compte_id,
         per_page=20000 # Récupérer toutes les transactions de la période
     )
-
     # Agréger les montants par catégorie ou par "Non catégorisé"
     repartition_cats = {}
     transactions_non_categorisees = []
     tx_ids = [tx['id'] for tx in tx_avec_cats]
     categories_map = g.models.categorie_transaction_model.get_categories_pour_plusieurs_transactions(tx_ids, user_id)
     tx_cats = categories_map.get(tx['id'], [])
-
-    #for tx in tx_avec_cats:
-    #    tx_cats = g.models.categorie_transaction_model.get_categories_transaction(tx['id'], user_id)
-    #    if not tx_cats:
-    #        cat_name = "Non catégorisé"
-    #        transactions_non_categorisees.append(tx)
-    #    else:
-    #        # Si une transaction a plusieurs catégories, on peut choisir la première ou agréger différemment
-    #        # Pour simplifier, on prend la première.
-    #        cat_name = tx_cats[0]['nom']
-    #    repartition_cats[cat_name] = repartition_cats.get(cat_name, Decimal('0')) + Decimal(str(tx['montant']))
-    
+    for tx in tx_avec_cats:
+        tx_cats = g.models.categorie_transaction_model.get_categories_transaction(tx['id'], user_id)
+        if not tx_cats:
+            cat_name = "Non catégorisé"
+            transactions_non_categorisees.append(tx)
+        else:
+            # Si une transaction a plusieurs catégories, on peut choisir la première ou agréger différemment
+            # Pour simplifier, on prend la première.
+            cat_name = tx_cats[0]['nom']
+        repartition_cats[cat_name] = repartition_cats.get(cat_name, Decimal('0')) + Decimal(str(tx['montant']))
     # 3. Lien vers le comparatif
     lien_comparatif = url_for('banking.banking_comparaison', compte1_id=compte_id, periode=periode, date_ref=date_ref.isoformat())
 
@@ -823,22 +768,18 @@ def banking_compte_rapport(compte_id):
     def generer_graphique_categories_svg(cats_data):
         if not cats_data:
             return "<svg width='600' height='300'><text x='10' y='20'>Aucune donnée</text></svg>"
-        
         # Trier les catégories par montant décroissant et limiter à 10
-        items = sorted(cats_data.items(), key=lambda x: x[1], reverse=True)[:10]
-        
+        items = sorted(cats_data.items(), key=lambda x: x[1], reverse=True)[:10] 
         # Convertir TOUT en float dès le départ
         items_float = [(nom, float(montant)) for nom, montant in items]
         noms = [item[0] for item in items_float]
         montants = [item[1] for item in items_float]
         total = sum(montants) or 1.0  # float
-
         h_svg = max(300, len(noms) * 30)
         w_svg = 700
         ml, mr, mt, mb = 200, 40, 30, 30
         graph_w = w_svg - ml - mr
         graph_h = h_svg - mt - mb
-
         svg = f'<svg width="{w_svg}" height="{h_svg}" xmlns="http://www.w3.org/2000/svg">\n'
         for i, (nom, montant) in enumerate(items_float):  # ← utilise items_float ici
             y = mt + i * (graph_h / len(items_float))
@@ -849,7 +790,6 @@ def banking_compte_rapport(compte_id):
             svg += f'<text x="{ml+largeur+10}" y="{y + graph_h/len(items_float)*0.4}">{montant:.2f}</text>\n'
         svg += '</svg>'
         return svg
-
     graphique_svg = generer_graphique_categories_svg(repartition_cats)
     liste_categories = g.models.categorie_transaction_model.get_categories_utilisateur(user_id)
     # --- Contexte pour le template ---
@@ -874,14 +814,12 @@ def banking_compte_rapport(compte_id):
         "lien_comparatif": lien_comparatif,
         "graphique_svg": graphique_svg, # Ajout du graphique SVG
     }
-
     return render_template("banking/rapport_compte.html", **context)
 
 @bp.route('/banking/comparaison')
 @login_required
 def banking_comparaison():
     user_id = current_user.id
-
     # Récupérer les paramètres de la requête
     compte1_id = request.args.get('compte1_id', type=int)
     periode = request.args.get('periode', 'mensuel') # Valeur par défaut
@@ -893,18 +831,15 @@ def banking_comparaison():
         except ValueError:
             flash('Format de date invalide.', 'error')
             # On continuera avec la date par défaut (today)
-
     # Vérifier que compte1_id est fourni
     if not compte1_id:
         flash('Compte 1 non spécifié pour la comparaison.', 'error')
         return redirect(url_for('banking.banking_dashboard'))
-
     # Récupérer le compte 1
     compte1 = g.models.compte_model.get_by_id(compte1_id)
     if not compte1 or compte1['utilisateur_id'] != user_id:
         flash('Compte 1 non trouvé ou non autorisé', 'error')
         return redirect(url_for('banking.banking_dashboard'))
-
     # Déterminer la plage de dates selon la période (identique à la page rapport)
     if periode == "hebdo":
         debut = date_ref - timedelta(days=date_ref.weekday())
@@ -921,10 +856,8 @@ def banking_comparaison():
         else:
             fin = date(date_ref.year, date_ref.month + 1, 1) - timedelta(days=1)
         titre_periode = f"{debut.strftime('%B %Y')}"
-
     # Récupérer la liste des comptes de l'utilisateur pour le second sélecteur
     tous_les_comptes = g.models.compte_model.get_by_user_id(user_id)
-
     # Récupérer le compte 2 à partir des arguments GET ou POST (s'il est sélectionné)
     compte2_id = request.args.get('compte2_id', type=int)
     compte2 = None
@@ -946,10 +879,8 @@ def banking_comparaison():
             # graphique_svg = transaction_model.compare_comptes_soldes_barres(
             #     compte1_id, compte2_id, debut, fin, 'total', 'total'
             # )
-
             # Pour l'instant, on met un SVG vide ou un message
             graphique_svg = "<svg width='600' height='400'><text x='10' y='20'>Comparaison en cours de développement...</text></svg>"
-
             # Passer les données au template
             donnees_comparaison = {
                 "compte1": compte1,
@@ -960,7 +891,6 @@ def banking_comparaison():
                 "date_fin": fin,
                 # ... autres données de comparaison ...
             }
-
     # Contexte pour le template
     context = {
         "tous_les_comptes": tous_les_comptes,
@@ -975,7 +905,6 @@ def banking_comparaison():
         "date_debut": debut,
         "date_fin": fin,
     }
-
     return render_template("banking/comparaison.html", **context)
 
 @bp.route('/banking/compte/<int:compte_id>/comparer_soldes', methods=['GET', 'POST'])
@@ -984,15 +913,12 @@ def banking_comparer_soldes(compte_id):
     logging.info("Début de la route banking_comparer_soldes")
     """Affiche la page de sélection pour la comparaison des soldes et génère le graphique."""
     user_id = current_user.id
-
     # Vérifier que le compte_id appartient à l'utilisateur (pour le bouton de retour)
     compte = g.models.compte_model.get_by_id(compte_id)
     if not compte or compte['utilisateur_id'] != user_id:
         flash('Compte non trouvé ou non autorisé', 'error')
         return redirect(url_for('banking.banking_dashboard'))
-
     logging.info(f"Utilisateur connecté: {user_id}, Compte de référence: {compte_id}")
-
     try:
         logging.info("Récupération des comptes de l'utilisateur...")
         comptes = g.models.compte_model.get_by_user_id(user_id)
@@ -1002,7 +928,6 @@ def banking_comparer_soldes(compte_id):
         flash("Erreur lors du chargement des comptes.", 'error')
         # Passer 'compte' ici aussi en cas d'erreur
         return render_template('banking/comparer_soldes.html', compte=compte, comptes=[], form_data={}, svg_code=None)
-
     # Initialisation des variables pour le template
     svg_code = None
     form_data = {
@@ -1018,7 +943,6 @@ def banking_comparer_soldes(compte_id):
         'couleur_2_depense': '#FF00FF'
     }
     logging.info("Variables initiales définies.")
-
     if request.method == 'POST':
         logging.info("Requête POST reçue.")
         # Récupérer les données du formulaire
@@ -1035,7 +959,6 @@ def banking_comparer_soldes(compte_id):
             'couleur_2_depense': '#FF00FF',  # Fixé car on n'utilise qu'une couleur par compte-type
         }
         logging.info(f"Données du formulaire récupérées: {form_data}")
-
         # Validation de base
         if not all([form_data['compte_id_1'], form_data['compte_id_2'], form_data['date_debut'], form_data['date_fin']]):
             logging.warning("Formulaire incomplet.")
@@ -1075,7 +998,6 @@ def banking_comparer_soldes(compte_id):
             except (ValueError, Exception) as e:
                 logging.error(f"Erreur lors de la génération du graphique: {e}", exc_info=True) # exc_info=True pour avoir la stack trace
                 flash(f"Erreur: {str(e)}", 'error')
-
     # Pré-remplir les dates si elles ne viennent pas du formulaire
     if not form_data['date_fin']:
         form_data['date_fin'] = date.today().isoformat()
@@ -1083,7 +1005,6 @@ def banking_comparer_soldes(compte_id):
     if not form_data['date_debut']:
         form_data['date_debut'] = (date.today() - timedelta(days=30)).isoformat()
         logging.info(f"Date de début par défaut: {form_data['date_debut']}")
-
     logging.info("Rendu du template comparer_soldes.html.")
     try:
         return render_template('banking/comparer_soldes.html',
@@ -1107,29 +1028,24 @@ def banking_compte_top_echanges(compte_id):
     if not compte or compte['utilisateur_id'] != user_id:
         flash('Compte non trouvé ou non autorisé', 'error')
         return redirect(url_for('banking.banking_dashboard'))
-
     # Valeurs par défaut
     date_debut = (date.today() - timedelta(days=90)).isoformat()
     date_fin = date.today().isoformat()
     direction = 'tous'
     limite = 40
-
     svg_code = None
     if request.method == 'POST':
         date_debut = request.form.get('date_debut', date_debut)
         date_fin = request.form.get('date_fin', date_fin)
         direction = request.form.get('direction', 'tous')
         limite = int(request.form.get('limite', 40))
-
     # Récupérer les données
     donnees = g.models.transaction_financiere_model.get_top_comptes_echanges(
         compte_id, user_id, date_debut, date_fin, direction, limite
     )
-
     # Générer le graphique
     if donnees:
         svg_code = g.models.transaction_financiere_model.generer_graphique_top_comptes_echanges(donnees)
-
     return render_template('banking/compte_top_echanges.html',
                          compte=compte,
                          svg_code=svg_code,
@@ -1146,7 +1062,6 @@ def banking_compte_evolution_echanges(compte_id):
     if not compte_source or compte_source['utilisateur_id'] != user_id:
         flash('Compte non trouvé ou non autorisé', 'error')
         return redirect(url_for('banking.banking_dashboard'))
-
     # Récupérer la liste des comptes avec lesquels il a échangé
     ##top_comptes = g.models.transaction_financiere_model.get_top_comptes_echanges(
     #    compte_id, user_id,
@@ -1172,7 +1087,6 @@ def banking_compte_evolution_echanges(compte_id):
     type_graphique = 'lignes'
     couleur = '#4e79a7'  # Couleur par défaut pour le cumul
     cumuler = False
-
     svg_code = None
     if request.method == 'POST':
         date_debut = request.form.get('date_debut', date_debut)
@@ -1181,7 +1095,6 @@ def banking_compte_evolution_echanges(compte_id):
         type_graphique = request.form.get('type_graphique', 'lignes')
         couleur = request.form.get('couleur', '#4e79a7')
         cumuler = request.form.get('cumuler') == 'on'
-
         if comptes_cibles_ids:
             # Récupérer les données brutes
             donnees_brutes = g.models.transaction_financiere_model.get_transactions_avec_comptes(
@@ -1191,7 +1104,6 @@ def banking_compte_evolution_echanges(compte_id):
             donnees_struct = g.models.transaction_financiere_model._structurer_donnees_pour_graphique(
                 donnees_brutes, cumuler=cumuler
             )
-
             # Gestion des couleurs
             couleurs_a_utiliser = None
             if not cumuler and donnees_struct.get('series'): # Si non cumulé et qu'il y a des séries
@@ -1212,7 +1124,6 @@ def banking_compte_evolution_echanges(compte_id):
                     else:
                         # Si aucune couleur spécifique n'est envoyée pour ce compte, utiliser une par défaut
                         couleurs_a_utiliser.append('#000000') # ou une couleur par défaut dynamique
-
             # Générer le graphique avec les nouvelles méthodes
             if type_graphique == 'barres':
                 svg_code = g.models.transaction_financiere_model.generer_graphique_echanges_temporel_barres(
@@ -1222,7 +1133,6 @@ def banking_compte_evolution_echanges(compte_id):
                 svg_code = g.models.transaction_financiere_model.generer_graphique_echanges_temporel_lignes(
                     donnees_struct, couleurs_a_utiliser
                 )
-
     return render_template('banking/compte_evolution_echanges.html',
                         compte_source=compte_source,
                         all_comptes=all_comptes,
@@ -1239,32 +1149,26 @@ def banking_compte_evolution_echanges(compte_id):
 @login_required
 def banking_evolution():
     user_id = current_user.id
-    
     # 1. Récupérer tous les comptes
     comptes = g.models.compte_model.get_by_user_id(user_id)
-    
     # 2. Paramètres
     periode = request.args.get('periode', 'mois')
     mode = request.args.get('mode', 'solde')
     afficher_total = request.args.get('afficher_total', 'oui') == 'oui'
     comptes_selectionnes = request.args.getlist('comptes')
-    
     # Accepter soit 'compte_id' soit 'comptes'
     compte_id_unique = request.args.get('compte_id', type=int)
     if compte_id_unique:
         comptes_selectionnes = [str(compte_id_unique)]
     elif not comptes_selectionnes:
         comptes_selectionnes = [str(c['id']) for c in comptes]
-    
     compte_ids = [int(cid) for cid in comptes_selectionnes if cid.isdigit()]
-    
     # 3. Calcul des dates
     maintenant = datetime.now()
     date_debut_str = request.args.get('date_debut')
     date_fin_str = request.args.get('date_fin')
     debut = None
     fin = None
-    
     if periode == 'personnalisee' and date_debut_str and date_fin_str:
         try:
             debut = datetime.strptime(date_debut_str, '%Y-%m-%d').date()
@@ -1285,7 +1189,6 @@ def banking_evolution():
             fin = date(maintenant.year + 1, 1, 1) - timedelta(days=1)
         else:
             fin = date(maintenant.year, maintenant.month + 1, 1) - timedelta(days=1)
-    
     # 4. Récupérer les données
     evolution_data = g.models.transaction_financiere_model.get_evolution_multi_comptes(
         user_id=user_id,
@@ -1295,7 +1198,6 @@ def banking_evolution():
         mode=mode,
         inclure_total=afficher_total
     )
-    
     # 5. Générer le graphique avec la nouvelle méthode
     svg_code = None
     if evolution_data.get('dates'):
@@ -1322,7 +1224,6 @@ def banking_evolution():
             'sorties': 'Évolution des sorties (Dépenses)'
         }.get(mode, 'Évolution')
     }
-    
     return render_template('banking/evolution.html', **context)
 
 @bp.route("/compte/<int:compte_id>/set_periode_favorite", methods=["POST"])
@@ -1356,7 +1257,6 @@ def create_periode_favorite(compte_id):
     if not nouveau_of:
         flash("❌ Erreur lors de la création de la période favorite pour {user_id}, compte {compte_id} ({compte_type}), nom: {nom}, début: {date_debut}, fin: {date_fin}, statut: {statut}", "error")
         return redirect(url_for("banking.banking_compte_detail", compte_id=compte_id))
-    
     flash("✅ Période favorite mise à jour avec succès", "success")
     return redirect(url_for("banking.banking_compte_detail", compte_id=compte_id))
 
@@ -1364,7 +1264,6 @@ def create_periode_favorite(compte_id):
 @login_required
 def update_periode_favorite(compte_id, periode_favorite_id):
     user_id = current_user.id
-    
     # Déterminer le type de compte
     compte = g.models.compte_model.get_by_id(compte_id)
     if compte:
@@ -1385,22 +1284,18 @@ def update_periode_favorite(compte_id, periode_favorite_id):
     if not pf or pf['id'] != periode_favorite_id:
         flash("❌ Période favorite introuvable.", "error")
         return redirect(url_for("banking.banking_compte_detail", compte_id=compte_id))
-
     # Récupérer les valeurs du formulaire OU conserver les anciennes
     nom = request.form.get("nouveau_nom") or pf['nom']
     date_debut_str = request.form.get("nouveau_debut")
     date_fin_str = request.form.get("nouveau_fin")
     statut = request.form.get("nouveau_statut") or pf.get('statut') or "active"
-
     # Conserver les anciennes dates si non fournies
     date_debut = date_debut_str if date_debut_str else pf['date_debut']
     date_fin = date_fin_str if date_fin_str else pf['date_fin']
-
     # Vérifier que les dates ne sont pas None (la DB l'interdit)
     if date_debut is None or date_fin is None:
         flash("❌ Les dates de début et de fin sont obligatoires.", "error")
         return redirect(url_for("banking.banking_compte_detail", compte_id=compte_id))
-
     # Mettre à jour
     success = g.models.periode_favorite_model.update(
         periode_id=periode_favorite_id,
@@ -1410,19 +1305,24 @@ def update_periode_favorite(compte_id, periode_favorite_id):
         date_fin=date_fin,
         statut=statut
     )
-
     if not success:
         flash("❌ Erreur lors de la mise à jour de la période favorite.", "error")
     else:
         flash("✅ Période favorite mise à jour avec succès.", "success")
-
     return redirect(url_for("banking.banking_compte_detail", compte_id=compte_id))
+
+
+
+
+
+
+
+
 
 
 ####################################################################################
 ############################## Sous-compte.  #######################################
 ####################################################################################
-
 
 @bp.route('/banking/sous-compte/<int:sous_compte_id>')
 @login_required
@@ -1474,23 +1374,19 @@ def banking_sous_compte_detail(sous_compte_id):
         fin = fin_mois.replace(hour=23, minute=59, second=59)
         libelle_periode = "Ce mois"
     sous_comptes_ = g.models.sous_compte_model.get_all_sous_comptes_by_user_id(user_id)
-
     # Convertir les IDs en entiers
     for sous_compte in sous_comptes_:
         sous_compte['id'] = int(sous_compte['id'])
         sous_compte['compte_principal_id'] = int(sous_compte['compte_principal_id'])
-    
     sous_compte = g.models.sous_compte_model.get_by_id(sous_compte_id)
     if not sous_compte:
         flash('Sous-compte introuvable', 'error')
         return redirect(url_for('banking.banking_dashboard'))
-
     # Vérifie que le sous-compte appartient bien à l'utilisateur
     compte_principal = g.models.compte_model.get_by_id(sous_compte['compte_principal_id'])
     if not compte_principal or compte_principal['utilisateur_id'] != user_id:
         flash('Sous-compte non autorisé', 'error')
         return redirect(url_for('banking.banking_dashboard'))
-        
     mouvements = g.models.transaction_financiere_model.get_historique_compte(
         compte_type='sous_compte',
         compte_id=sous_compte_id,
@@ -1500,7 +1396,6 @@ def banking_sous_compte_detail(sous_compte_id):
         limit=50)
     logger.debug(f'{len(mouvements)} Mouvements récupérés pour le sous-compte {sous_compte_id}: {mouvements}')
     logger.debug(f'{len(mouvements)} Mouvements après filtrage pour le sous-compte {sous_compte_id}: {mouvements}')
-        
     # Ajouter les statistiques du sous-compte
     stats_sous_compte = g.models.transaction_financiere_model.get_statistiques_compte(
         compte_type='sous_compte',
@@ -1509,15 +1404,12 @@ def banking_sous_compte_detail(sous_compte_id):
         date_debut=debut.strftime('%Y-%m-%d'),
         date_fin=fin.strftime('%Y-%m-%d')
     )
-    
     solde = g.models.sous_compte_model.get_solde(sous_compte_id)
-    
     # Ajout du pourcentage calculé
     if sous_compte['objectif_montant'] and Decimal(str(sous_compte['objectif_montant'])) > 0:
         sous_compte['pourcentage_objectif'] = round((Decimal(str(sous_compte['solde'])) / Decimal(str(sous_compte['objectif_montant']))) * 100, 1)
     else:
         sous_compte['pourcentage_objectif'] = 0
-    
     # Récupération de l'évolution des soldes quotidiens pour les 30 derniers jours
     soldes_quotidiens = g.models.transaction_financiere_model.get_evolution_soldes_quotidiens_sous_compte(
         sous_compte_id=sous_compte_id, 
@@ -1530,15 +1422,12 @@ def banking_sous_compte_detail(sous_compte_id):
     graphique_svg = None
     largeur_svg = 500
     hauteur_svg = 200
-
     if soldes_quotidiens:
         soldes_values = [float(s['solde_apres']) for s in soldes_quotidiens]
         min_solde = min(soldes_values) if soldes_values else 0.0
         max_solde = max(soldes_values) if soldes_values else 0.0
-
         # Si un objectif est défini, on l'utilise comme référence
         objectif = float(sous_compte['objectif_montant']) if sous_compte.get('objectif_montant') else None
-
         # Limiter l'axe Y à 150% de l'objectif si défini
         if objectif and objectif > 0:
             max_affichage = objectif * 1.5
@@ -1559,27 +1448,23 @@ def banking_sous_compte_detail(sous_compte_id):
                     max_solde *= 1.1
             min_affichage = min_solde
             max_affichage = max_solde
-
         n = len(soldes_quotidiens)
         points = []
         margin_x = largeur_svg * 0.1
         margin_y = hauteur_svg * 0.1
         plot_width = largeur_svg * 0.8
         plot_height = hauteur_svg * 0.8
-
         for i, solde in enumerate(soldes_quotidiens):
             solde_float = float(solde['solde_apres'])
             x = margin_x + (i / (n - 1)) * plot_width if n > 1 else margin_x + plot_width / 2
             # Calcul de y en fonction de min_affichage / max_affichage
             y = margin_y + plot_height - ((solde_float - min_affichage) / (max_affichage - min_affichage)) * plot_height if max_affichage != min_affichage else margin_y + plot_height / 2
             points.append(f"{x},{y}")
-
         # Ajouter l'objectif au contexte graphique s'il existe
         objectif_y = None
         if objectif and max_affichage != min_affichage:
             # Position Y de la ligne d'objectif
             objectif_y = margin_y + plot_height - ((objectif - min_affichage) / (max_affichage - min_affichage)) * plot_height
-
         graphique_svg = {
             'points': points,
             'min_solde': min_affichage,
@@ -1594,7 +1479,6 @@ def banking_sous_compte_detail(sous_compte_id):
             'objectif': objectif,
             'objectif_y': objectif_y  # Position Y pour tracer la ligne
         }
-        
     return render_template(
         'banking/sous_compte_detail.html',
         sous_compte=sous_compte,
@@ -1623,11 +1507,8 @@ def banking_sous_compte_detail(sous_compte_id):
 @bp.route('/banking/compte/<int:compte_id>/reparer_soldes', methods=['POST'])
 @login_required
 def reparer_soldes_compte(compte_id):
-    """
-    Route pour déclencher la réparation manuelle des soldes d'un compte.
-    """
+    """Route pour déclencher la réparation manuelle des soldes d'un compte."""
     user_id = current_user.id
-
     # Récupérer le compte pour déterminer son type
     compte = g.models.compte_model.get_by_id(compte_id)
     if not compte:
@@ -1636,7 +1517,6 @@ def reparer_soldes_compte(compte_id):
     if  compte.get('utilisateur_id') != user_id:
         flash('Compte non autorisé', 'danger')
         return redirect(url_for('banking.banking_dashboard'))
-
     # Déterminer le type de compte
     compte_type = 'compte_principal' if compte.get('compte_principal_id') is None else 'sous_compte'
     # Appeler la méthode de réparation
@@ -1646,12 +1526,10 @@ def reparer_soldes_compte(compte_id):
         compte_id=compte_id,
         user_id=user_id
     )
-
     if success:
         flash(f"✅ {message}", "success")
     else:
         flash(f"❌ {message}", "danger")
-
     # Rediriger vers la page de détail du compte
     return redirect(url_for('banking.banking_compte_detail', compte_id=compte_id))
 
@@ -1682,45 +1560,37 @@ def est_transfert_valide(compte_source_id, compte_dest_id, user_id, comptes, sou
     dest_type = None
     compte_source = None
     compte_dest = None
-    
     # Vérifier le compte source
     for c in comptes:
         if c['id'] == compte_source_id:
             source_type = 'compte_principal'
             compte_source = c
             break
-    
     if not source_type:
         for sc in sous_comptes:
             if sc['id'] == compte_source_id:
                 source_type = 'sous_compte'
                 compte_source = sc
                 break
-    
     if not source_type:
         return False, "Compte source non trouvé ou non autorisé", None, None
-    
     # Vérifier le compte destination
     for c in comptes:
         if c['id'] == compte_dest_id:
             dest_type = 'compte_principal'
             compte_dest = c
             break
-    
     if not dest_type:
         for sc in sous_comptes:
             if sc['id'] == compte_dest_id:
                 dest_type = 'sous_compte'
                 compte_dest = sc
                 break
-    
     if not dest_type:
         return False, "Compte destination non trouvé ou non autorisé", None, None
-    
     # Vérifier que les comptes sont différents
     if source_type == dest_type and compte_source_id == compte_dest_id:
         return False, "Les comptes source et destination doivent être différents", None, None
-    
     # Appliquer les restrictions spécifiques
     # 1. Si la source est un sous-compte, elle ne peut transférer que vers son compte parent
     if source_type == 'sous_compte':
@@ -1730,7 +1600,6 @@ def est_transfert_valide(compte_source_id, compte_dest_id, user_id, comptes, sou
             compte_parent = next((c for c in comptes if c['id'] == parent_id), None)
             nom_parent = compte_parent['nom_compte'] if compte_parent else "compte parent"
             return False, f"Un sous-compte ne peut transférer que vers son compte parent ({nom_parent})", None, None
-    
     # 2. Si la destination est un sous-compte, elle ne peut recevoir que de son compte parent
     if dest_type == 'sous_compte':
         parent_id = compte_dest['compte_principal_id']
@@ -1739,9 +1608,7 @@ def est_transfert_valide(compte_source_id, compte_dest_id, user_id, comptes, sou
             compte_parent = next((c for c in comptes if c['id'] == parent_id), None)
             nom_parent = compte_parent['nom_compte'] if compte_parent else "compte parent"
             return False, f"Un sous-compte ne peut recevoir que de son compte parent ({nom_parent})", None, None
-    
     # 3. Aucune restriction entre comptes principaux (déjà couvert par les règles ci-dessus)
-    
     return True, "Transfert valide", source_type, dest_type
 
 ##########################################
@@ -1757,7 +1624,6 @@ def depot():
     comptes = g.models.compte_model.get_by_user_id(user_id)
     print(f'Voici les comptes de l\'utilisateur {user_id} : {comptes}')
     all_comptes = g.models.compte_model.get_all_accounts(user_id=user_id)
-    
     if request.method == 'POST':
         # Récupération des données du formulaire
         compte_id = int(request.form['compte_id'])
@@ -1765,7 +1631,6 @@ def depot():
         montant = Decimal(request.form['montant'])
         description = request.form.get('description', '')
         compte_type = request.form['compte_type']
-        
         if montant <= 0:
             flash("Le montant doit être positif", 'error')
             return render_template('banking/depot.html', 
@@ -1783,7 +1648,6 @@ def depot():
                 return render_template('banking/depot.html', comptes=comptes, all_comptes=all_comptes, form_data=request.form)
         else:
             date_transaction = datetime.now()
-        
         # Appel de la fonction create_depot avec la date
         success, message = g.models.transaction_financiere_model.create_depot(
             compte_id, 
@@ -1792,7 +1656,6 @@ def depot():
             description, 
             compte_type, 
             date_transaction)
-        
         if success:
             flash(message, 'success')
             return redirect(url_for('banking.banking_compte_detail', compte_id=compte_id))
@@ -1803,7 +1666,6 @@ def depot():
                                 all_comptes=all_comptes, 
                                 form_data=request.form,
                                 now=datetime.now())
-    
     return render_template('banking/depot.html', 
                         comptes=comptes, 
                         all_comptes=all_comptes, now=datetime.now())
@@ -1816,7 +1678,6 @@ def retrait():
     comptes = g.models.compte_model.get_by_user_id(user_id)
     print(f'Voici les comptes de l\'utilisateur {user_id} : {comptes}')
     all_comptes = g.models.compte_model.get_all_accounts(user_id=user_id)
-    
     if request.method == 'POST':
         # Récupération des données du formulaire
         compte_id = int(request.form['compte_id'])
@@ -1824,7 +1685,6 @@ def retrait():
         montant = Decimal(request.form['montant'])
         description = request.form.get('description', '')
         compte_type = request.form['compte_type']
-        
         # Gestion de la date de transaction
         date_transaction_str = request.form.get('date_transaction')
         if date_transaction_str:
@@ -1840,7 +1700,6 @@ def retrait():
         success, message = g.models.transaction_financiere_model.create_retrait(
             compte_id, user_id, montant, description, compte_type, date_transaction
         )
-        
         if success:
             flash(message, 'success')
             print(f'Retrait effectué avec succès: {message} pour le compte {compte_id} de type {compte_type} pour {montant}')
@@ -1849,7 +1708,6 @@ def retrait():
             flash(message, 'error')
             print('Erreur lors du retrait:', message)
             return render_template('banking/retrait.html', comptes=comptes, all_comptes=all_comptes, form_data=request.form)
-    
     return render_template('banking/retrait.html', comptes=comptes, all_comptes=all_comptes, now=datetime.now())
 
 @bp.route('/banking/')
@@ -1859,14 +1717,11 @@ def banking_transfert():
     user_id = current_user.id
     comptes = g.models.compte_model.get_by_user_id(user_id)
     print(f'Voici les comptes de l\'utilisateur {user_id} : {comptes}')
-
     # Convertir les IDs en entiers pour éviter les problèmes de comparaison
     for compte in comptes:
         compte['id'] = int(compte['id'])
-    
     # Récupérer TOUS les comptes pour le transfert global
     all_comptes_global = g.models.compte_model.get_all_accounts(user_id=user_id)
-    
     # Sous-comptes de l'utilisateur
     sous_comptes = []
     for c in comptes:
@@ -1874,15 +1729,11 @@ def banking_transfert():
         for sub in subs:
             sub['id'] = int(sub['id'])
         sous_comptes += subs
-
     # Comptes externes (autres utilisateurs) pour transfert "externe"
     all_comptes = [c for c in all_comptes_global if c['utilisateur_id'] != user_id]
-
     #all_comptes = [c for c in g.models.compte_model.get_all_accounts() if c['utilisateur_id'] != user_id]
-    
     if request.method == "POST":
         step = request.form.get('step')
-
         if step == 'select_type':
             transfert_type = request.form.get('transfert_type')
             if not transfert_type:
@@ -1897,17 +1748,14 @@ def banking_transfert():
                 transfert_type=transfert_type,
                 now=datetime.now()
             )
-
         elif step == 'confirm':
             transfert_type = request.form.get('transfert_type')
-            
             try:
                 # Montant
                 montant_str = request.form.get('montant', '').replace(',', '.').strip()
                 if not montant_str:
                     flash("Montant manquant", "danger")
                     return redirect(url_for("banking.banking_transfert"))
-                
                 try:
                     montant = Decimal(montant_str)
                     if montant <= 0:
@@ -1916,7 +1764,6 @@ def banking_transfert():
                 except (InvalidOperation, ValueError):
                     flash("Format de montant invalide. Utilisez un nombre avec maximum 2 décimales", "danger")
                     return redirect(url_for("banking.banking_transfert"))
-                
                 # Date de transaction
                 date_transaction_str = request.form.get('date_transaction')
                 if date_transaction_str:
@@ -1927,31 +1774,25 @@ def banking_transfert():
                         return redirect(url_for("banking.banking_transfert"))
                 else:
                     date_transaction = datetime.now()
-
                 success = False
                 message = ""
-
                 if transfert_type == 'interne':
                     # Vérification et conversion des IDs de compte
                     source_id_str = request.form.get('compte_source')
                     dest_id_str = request.form.get('compte_dest')
-                    
                     if not source_id_str or not dest_id_str:
                         flash("Compte source ou destination manquant", "danger")
                         return redirect(url_for("banking.banking_transfert"))
-                    
                     try:
                         source_id = int(source_id_str)
                         dest_id = int(dest_id_str)
                     except (ValueError, TypeError) as e:
                         flash("Identifiant de compte invalide", "danger")
                         return redirect(url_for("banking.banking_transfert"))
-                    
                     # Vérification que les IDs sont valides
                     if source_id <= 0 or dest_id <= 0:
                         flash("Les IDs de comptes doivent être positifs", "danger")
                         return redirect(url_for("banking.banking_transfert"))
-                    
                     # Déterminer le type de compte source
                     source_type = None
                     if any(c['id'] == source_id for c in comptes):
@@ -1961,7 +1802,6 @@ def banking_transfert():
                     else:
                         flash("Compte source non valide", "danger")
                         return redirect(url_for("banking.banking_transfert"))
-                    
                     # Déterminer le type de compte destination
                     dest_type = None
                     if any(c['id'] == dest_id for c in comptes):
@@ -1971,17 +1811,14 @@ def banking_transfert():
                     else:
                         flash('Compte destination non valide', "danger")
                         return redirect(url_for("banking.banking_transfert"))
-                    
                     # Vérification que le compte source appartient à l'utilisateur
                     if not any(c['id'] == source_id for c in comptes + sous_comptes):
                         flash("Vous ne pouvez pas transférer depuis ce compte", "danger")
                         return redirect(url_for("banking.banking_transfert"))
-
                     # Vérification interne : comptes différents
                     if source_id == dest_id and source_type == dest_type:
                         flash("Le compte source et le compte destination doivent être différents", "danger")
                         return redirect(url_for("banking.banking_transfert"))
-                    
                     # Vérification spécifique pour les sous-comptes
                     if source_type == 'sous_compte':
                         # Récupérer le sous-compte source
@@ -1989,17 +1826,14 @@ def banking_transfert():
                         if sous_compte_source and sous_compte_source['compte_principal_id'] != dest_id:
                             flash("Un sous-compte ne peut être transféré que vers son compte principal", "danger")
                             return redirect(url_for("banking.banking_transfert"))
-                    
                     if dest_type == 'sous_compte':
                         # Récupérer le sous-compte destination
                         sous_compte_dest = next((sc for sc in sous_comptes if sc['id'] == dest_id), None)
                         if sous_compte_dest and sous_compte_dest['compte_principal_id'] != source_id:
                             flash("Un sous-compte ne peut recevoir des fonds que depuis son compte principal", "danger")
                             return redirect(url_for("banking.banking_transfert"))
-                    
                     # Exécution du transfert interne
                     commentaire = request.form.get('commentaire', '').strip()
-
                     success, message = g.models.transaction_financiere_model.create_transfert_interne(
                         source_type=source_type,
                         source_id=source_id,
@@ -2009,45 +1843,37 @@ def banking_transfert():
                         montant=montant,
                         description=commentaire,
                         date_transaction=date_transaction
-                    )
-                                            
+                    )                       
                 elif transfert_type == 'externe':
                     # Récupérer compte source (doit appartenir à l'utilisateur)
                     source_id_str = request.form.get('compte_source')
                     if not source_id_str:
                         flash("Compte source manquant", "danger")
                         return redirect(url_for("banking.banking_transfert"))
-                    
                     try:
                         source_id = int(source_id_str)
                     except (ValueError, TypeError):
                         flash("Identifiant de compte invalide", "danger")
                         return redirect(url_for("banking.banking_transfert"))
-
                     # Vérifier que le compte source appartient à l'utilisateur
                     source_compte = next((c for c in comptes + sous_comptes if c['id'] == source_id), None)
                     if not source_compte:
                         flash("Vous ne pouvez transférer que depuis vos propres comptes", "danger")
                         return redirect(url_for("banking.banking_transfert"))
-
                     # Déterminer type de compte source
                     source_type = 'compte_principal' if any(c['id'] == source_id for c in comptes) else 'sous_compte'
-
                     # Récupérer infos externes
                     iban_dest = request.form.get('iban_dest', '').strip()
                     bic_dest = request.form.get('bic_dest', '').strip()
                     nom_dest = request.form.get('nom_dest', '').strip()
                     devise = request.form.get('devise', 'CHF')
-
                     if not iban_dest:
                         flash("IBAN destination requis", "danger")
                         return redirect(url_for("banking.banking_transfert"))
                     if not nom_dest:
                         flash("Nom du bénéficiaire requis", "danger")
                         return redirect(url_for("banking.banking_transfert"))
-
                     commentaire = request.form.get('commentaire', '').strip()
-
                     success, message = g.models.transaction_financiere_model.create_transfert_externe(
                         source_type=source_type,
                         source_id=source_id,
@@ -2060,43 +1886,34 @@ def banking_transfert():
                         description=commentaire,
                         date_transaction=date_transaction
                     )
-
                 elif transfert_type == 'global':
                     # Récupérer et valider les IDs
                     source_id_str = request.form.get('compte_source_global')
                     dest_id_str = request.form.get('compte_dest_global')
-
                     if not source_id_str or not dest_id_str:
                         flash("Compte source ou destination manquant", "danger")
                         return redirect(url_for("banking.banking_transfert"))
-
                     try:
                         source_id = int(source_id_str)
                         dest_id = int(dest_id_str)
                     except (ValueError, TypeError):
                         flash("Identifiant de compte invalide", "danger")
                         return redirect(url_for("banking.banking_transfert"))
-
                     # Vérifier que les comptes existent et sont actifs
                     source_compte = g.models.compte_model.get_by_id(source_id)
                     dest_compte = g.models.compte_model.get_by_id(dest_id)
-
                     if not source_compte:
                         flash("Le compte source n'existe pas ou est inactif", "danger")
                         return redirect(url_for("banking.banking_transfert"))
-
                     if not dest_compte:
                         flash("Le compte destinataire n'existe pas ou est inactif", "danger")
                         return redirect(url_for("banking.banking_transfert"))
-
                     if source_id == dest_id:
                         flash("Le compte source et destination doivent être différents", "danger")
                         return redirect(url_for("banking.banking_transfert"))
-
                     # Exécuter le transfert global
                     commentaire = request.form.get('commentaire', '').strip()
                     commentaire = f"[GLOBAL] {commentaire}"
-
                     success, message = g.models.transaction_financiere_model.create_transfert_interne(
                         source_type='compte_principal',
                         source_id=source_id,
@@ -2107,22 +1924,17 @@ def banking_transfert():
                         description=commentaire,
                         date_transaction=date_transaction
                     )
-
                 else:
                     flash("Type de transfert non reconnu", "danger")
                     return redirect(url_for("banking.banking_transfert"))
-
                 if success:
                     flash(message, "success")
                 else:
                     flash(message, "danger")
-
                 return redirect(url_for("banking.banking_transfert"))
-
             except Exception as e:
                 flash(f"Erreur lors du transfert: {str(e)}", "danger")
                 return redirect(url_for("banking.banking_transfert"))
-
     return render_template(
         "banking/transfert.html",
         comptes=comptes,
@@ -2136,15 +1948,12 @@ def banking_transfert():
 @login_required
 def banking_transfert_compte_sous_compte():    
     user_id = current_user.id
-
-        # Récupérer les comptes de l'utilisateur
+# Récupérer les comptes de l'utilisateur
     comptes = g.models.compte_model.get_by_user_id(user_id)
-    print(f"DEBUG: Comptes de l'utilisateur {user_id}: {comptes}")
-        
+    print(f"DEBUG: Comptes de l'utilisateur {user_id}: {comptes}")        
         # Récupérer tous les sous-comptes de l'utilisateur en une seule requête
     sous_comptes = g.models.sous_compte_model.get_all_sous_comptes_by_user_id(user_id)
     print(f"DEBUG: Tous les sous-comptes: {sous_comptes}")
-        
         # Convertir les IDs en entiers
         # Vérifier d'abord si sous_comptes est une liste
     if isinstance(sous_comptes, list):
@@ -2159,7 +1968,6 @@ def banking_transfert_compte_sous_compte():
             sous_compte['id'] = int(sous_compte['id'])
             sous_compte['compte_principal_id'] = int(sous_compte['compte_principal_id'])
             print(f'Voici un sous-compte (converti): {sous_compte}')
-
     if request.method == "POST":
         try:
             # Récupération des données
@@ -2184,15 +1992,12 @@ def banking_transfert_compte_sous_compte():
             except (InvalidOperation, ValueError):
                 flash("Format de montant invalide", "danger")
                 return redirect(url_for("banking.banking_transfert_compte_sous_compte"))
-
             # Vérification que les comptes appartiennent à l'utilisateur
             compte_valide = any(c['id'] == compte_id for c in comptes)
             sous_compte_valide = any(sc['id'] == sous_compte_id and sc['compte_principal_id'] == compte_id for sc in sous_comptes)
-            
             if not compte_valide or not sous_compte_valide:
                 flash("Compte ou sous-compte invalide", "danger")
                 return redirect(url_for("banking.banking_transfert_compte_sous_compte"))
-
             # Exécution du transfert
             if direction == 'compte_vers_sous':
                 success, message = g.models.transaction_financiere_model.transfert_compte_vers_sous_compte(
@@ -2204,19 +2009,14 @@ def banking_transfert_compte_sous_compte():
                     sous_compte_id, compte_id, montant, user_id, commentaire, date_transaction
                 )
                 logger.debug(f'voici les données envoyées : {compte_id}, {sous_compte_id}, {montant}, {user_id}, {date_transaction}')
-
-
             if success:
                 flash(message, "success")
             else:
                 flash(message, "danger")
-
             return redirect(url_for("banking.banking_transfert_compte_sous_compte"))
-
         except Exception as e:
             flash(f"Erreur lors du transfert: {str(e)}", "danger")
             return redirect(url_for("banking.banking_transfert_compte_sous_compte"))
-
     return render_template(
         "banking/transfert_compte_sous_compte.html",
         comptes=comptes,
@@ -2240,12 +2040,10 @@ def annuler_transfert_externe(transfert_id):
 @login_required
 def modifier_transfert(transfert_id):
     user_id = current_user.id
-
     transaction = g.models.transaction_financiere_model.get_transaction_by_id(transfert_id)
     if not transaction or transaction.get('owner_user_id') != user_id:
         flash("Transaction non trouvée ou non autorisée", "danger")
         return redirect(url_for('banking.banking_dashboard'))
-
     # Récupérer le compte pour la devise
     compte_id = transaction.get('compte_principal_id') or transaction.get('sous_compte_id')
     compte = None
@@ -2255,16 +2053,13 @@ def modifier_transfert(transfert_id):
         sous_compte = g.models.sous_compte_model.get_by_id(transaction.get('sous_compte_id'))
         if sous_compte:
             compte = g.models.compte_model.get_by_id(sous_compte['compte_principal_id'])
-
     if request.method == 'POST':
         # 🔑 Récupérer l'URL de retour
         return_to = request.form.get('return_to')
         # 🔒 Sécurité : s'assurer que c'est une URL interne
         if not return_to or not return_to.startswith('/'):
             return_to = url_for('banking.banking_compte_detail', compte_id=compte_id)
-
         action = request.form.get('action')
-
         if action == 'supprimer':
             success, message = g.models.transaction_financiere_model.supprimer_transaction(transfert_id, user_id)
             if success:
@@ -2272,21 +2067,17 @@ def modifier_transfert(transfert_id):
             else:
                 flash(message, "danger")
             return redirect(return_to)
-
         elif action == 'modifier':
             try:
                 nouveau_montant = Decimal(request.form.get('nouveau_montant', '0'))
                 nouvelle_date_str = request.form.get('nouvelle_date')
                 nouvelle_description = request.form.get('nouvelle_description', '').strip()
                 nouvelle_reference = request.form.get('nouvelle_reference', '').strip()
-
                 if not nouvelle_date_str:
                     flash("La date est obligatoire", "danger")
                     # ❌ Ne pas faire render_template ici !
                     return redirect(return_to)
-
                 nouvelle_date = datetime.fromisoformat(nouvelle_date_str)
-
                 success, message = g.models.transaction_financiere_model.modifier_transaction(
                     transaction_id=transfert_id,
                     user_id=user_id,
@@ -2295,18 +2086,14 @@ def modifier_transfert(transfert_id):
                     nouvelle_date=nouvelle_date,
                     nouvelle_reference=nouvelle_reference
                 )
-
                 if success:
                     flash(f"La transaction {transfert_id} a été modifiée avec succès", "success")
                 else:
                     flash(message, "danger")
-
                 return redirect(return_to)
-
             except Exception as e:
                 flash(f"Erreur de validation : {str(e)}", "danger")
                 return redirect(return_to)
-
     # ❌ Cette ligne NE DOIT PAS ÊTRE ATTEINTE en usage normal
     # Car le modal est inclus dans une page, pas ouvert via GET
     flash("Accès direct au modal impossible", "warning")
@@ -2316,29 +2103,24 @@ def modifier_transfert(transfert_id):
 @login_required
 def supprimer_transfert(transfert_id):
     user_id = current_user.id
-
     # Récupérer la transaction pour vérification
     transaction = g.models.transaction_financiere_model.get_transaction_by_id(transfert_id)
     if not transaction or transaction.get('owner_user_id') != user_id:
         flash("Transaction non trouvée ou non autorisée", "danger")
         return redirect(url_for('banking.banking_dashboard'))
-
     # Déterminer le type et l'ID du compte pour la réparation des soldes
     compte_type = 'compte_principal' if transaction.get('compte_principal_id') else 'sous_compte'
     compte_id = transaction.get('compte_principal_id') or transaction.get('sous_compte_id')
-
     # Récupérer l'URL de retour
     return_to = request.form.get('return_to')
     if not return_to or not return_to.startswith('/'):
         # Fallback sécurisé si return_to absent ou invalide
         return_to = url_for('banking.banking_dashboard')
-
     # Supprimer la transaction
     success, message = g.models.transaction_financiere_model.supprimer_transaction(
         transaction_id=transfert_id,
         user_id=user_id
     )
-
     if success:
         # Réparer les soldes du compte concerné
         success_rep, message_rep = g.models.transaction_financiere_model.reparer_soldes_compte(
@@ -2346,14 +2128,12 @@ def supprimer_transfert(transfert_id):
             compte_id=compte_id,
             user_id=user_id
         )
-
         if success_rep:
             flash(f"Transaction {transfert_id} supprimée et soldes réparés avec succès", "success")
         else:
             flash(f"Transaction {transfert_id} supprimée mais erreur lors de la réparation des soldes : {message_rep}", "warning")
     else:
         flash(message, "danger")
-
     return redirect(return_to)
 
 @bp.route('/banking/liste_transferts', methods=['GET'])
@@ -2385,13 +2165,12 @@ def liste_transferts():
     sous_comptes = []
     for c in comptes_user:
         sous_comptes += g.models.sous_compte_model.get_by_compte_principal_id(c['id'])
-
     # Récupération des mouvements financiers avec filtres
     mouvements, total = g.models.transaction_financiere_model.get_all_user_transactions(
         user_id=user_id,
         date_from=date_from,
         date_to=date_to,
-        compte_source_id=compte_source_id,      # ← maintenant bien nommé
+        compte_source_id=compte_source_id,
         compte_dest_id=compte_dest_id,
         sous_compte_source_id=sous_compte_source_id,
         sous_compte_dest_id=sous_compte_dest_id,
@@ -2399,7 +2178,6 @@ def liste_transferts():
         q=q,
         page=page,
         per_page=per_page)
-
     pages = (total + per_page - 1) // per_page
     categories = g.models.categorie_transaction_model.get_categories_utilisateur(user_id)
         # Export CSV
@@ -2420,33 +2198,29 @@ def liste_transferts():
         si = StringIO()
         cw = csv_mod.writer(si, delimiter=';')
         cw.writerow(['Date', 'Type', 'Description', 'Source', 'Destination', 'Montant'])
-        
-        for t in mouv:  # ✅ utilise 'mouv', pas 'mouvements'
+        for t in mouv:  
             # Source
             source = ""
-            if t['compte_principal_id']:  # ✅ bon nom de champ
+            if t['compte_principal_id']:  
                 source = t.get('nom_compte_source', 'N/A')
-                if t.get('sous_compte_id'):  # ✅ bon nom
+                if t.get('sous_compte_id'): 
                     source += f" ({t.get('nom_sous_compte_source', 'N/A')})"
             else:
                 source = t.get('nom_source_externe', 'Externe')
-
             # Destination
             destination = ""
-            if t['compte_destination_id']:  # ✅ bon nom
+            if t['compte_destination_id']:
                 destination = t.get('nom_compte_dest', 'N/A')
-                if t.get('sous_compte_destination_id'):  # ✅ bon nom
+                if t.get('sous_compte_destination_id'):
                     destination += f" ({t.get('nom_sous_compte_dest', 'N/A')})"
             else:
                 destination = t.get('nom_dest_externe', 'Externe')
-
             # Type de transfert
             type_transfert = "N/A"
             cp_src = t['compte_principal_id']
             cp_dst = t['compte_destination_id']
             sc_src = t['sous_compte_id']
             sc_dst = t['sous_compte_destination_id']
-
             if (cp_src or sc_src) and (cp_dst or sc_dst):
                 type_transfert = "interne"
             elif (cp_src or sc_src) and not (cp_dst or sc_dst):
@@ -2455,22 +2229,18 @@ def liste_transferts():
                 type_transfert = "externe"
             elif not (cp_src or sc_src) and not (cp_dst or sc_dst):
                 type_transfert = "global"
-
             cw.writerow([
-                t['date_transaction'].strftime("%Y-%m-%d %H:%M"),  # ✅ bon champ
+                t['date_transaction'].strftime("%Y-%m-%d %H:%M"),
                 t['type_transaction'],
                 t.get('description'),
                 source,
                 destination,
                 f"{t['montant']:.2f}"
             ])
-        
         output = make_response(si.getvalue())
         output.headers["Content-Disposition"] = "attachment; filename=mouvements.csv"
         output.headers["Content-Type"] = "text/csv; charset=utf-8"
         return output
-
-
     # Rendu de la page unifiée
     return render_template(
         'banking/liste_transactions.html', # Nom de la nouvelle page unifiée
@@ -2499,20 +2269,16 @@ def liste_transferts():
 @login_required
 def manage_transaction(transaction_id):
     user_id = current_user.id
-
     # Récupérer la transaction
     transaction = g.models.transaction_financiere_model.get_transaction_by_id(transaction_id)
     if not transaction or transaction.get('owner_user_id') != user_id:
         flash("Transaction non trouvée ou non autorisée", "danger")
         return redirect(url_for('banking.banking_compte_detail', compte_id=request.args.get('compte_id')))
-
     # Récupérer le compte pour la devise
     compte_id = transaction.get('compte_principal_id') or transaction.get('sous_compte_id')
     compte = g.models.compte_model.get_by_id(compte_id) if transaction.get('compte_principal_id') else None
-
     if request.method == 'POST':
         action = request.form.get('action')
-
         if action == 'supprimer':
             success, message = g.models.transaction_financiere_model.supprimer_transaction(transaction_id, user_id)
             if success:
@@ -2520,20 +2286,16 @@ def manage_transaction(transaction_id):
             else:
                 flash(message, "danger")
             return redirect(url_for('banking.banking_compte_detail', compte_id=compte_id))
-
         elif action == 'modifier':
             try:
                 nouveau_montant = Decimal(request.form.get('nouveau_montant', '0'))
                 nouvelle_date_str = request.form.get('nouvelle_date')
                 nouvelle_description = request.form.get('nouvelle_description', '').strip()
                 nouvelle_reference = request.form.get('nouvelle_reference', '').strip()
-
                 if not nouvelle_date_str:
                     flash("La date est obligatoire", "danger")
                     return render_template('banking/transaction_modal.html', transaction=transaction, compte=compte)
-
                 nouvelle_date = datetime.fromisoformat(nouvelle_date_str)
-
                 success, message = g.models.transaction_financiere_model.modifier_transaction(
                     transaction_id=transaction_id,
                     user_id=user_id,
@@ -2542,16 +2304,13 @@ def manage_transaction(transaction_id):
                     nouvelle_date=nouvelle_date,
                     nouvelle_reference=nouvelle_reference
                 )
-
                 if success:
                     flash("Transaction modifiée avec succès", "success")
                     return redirect(url_for('banking.banking_compte_detail', compte_id=compte_id))
                 else:
                     flash(message, "danger")
-
             except Exception as e:
                 flash(f"Erreur de validation : {str(e)}", "danger")
-
     # Pour GET ou en cas d'erreur de validation
     return render_template('banking/transaction_modal.html', transaction=transaction, compte=compte)
 
@@ -2563,15 +2322,12 @@ def manage_transaction(transaction_id):
 @bp.route('/import/csv', methods=['GET', 'POST'])
 @login_required
 def import_csv_upload():
-    
     if request.method == 'GET':
         return render_template('banking/import_csv_upload.html')
-    
     file = request.files.get('csv_file')
     if not file or not file.filename.endswith('.csv'):
         flash("Veuillez uploader un fichier CSV.", "danger")
         return redirect(url_for('banking.import_csv_upload'))
-
     # Lire le CSV
     file_content = file.read().decode('utf-8-sig')
     raw_lines = file_content.splitlines()
@@ -2584,7 +2340,6 @@ def import_csv_upload():
         delimiter = csv_mod.Sniffer().sniff(sample, delimiters=";,|\t").delimiter
     except:
         delimiter = ';'
-
     reader_raw = csv_mod.reader(raw_lines, delimiter=delimiter)
     headers_raw = next(reader_raw)
     headers = [h.strip().strip('"') for h in headers_raw]
@@ -2595,15 +2350,12 @@ def import_csv_upload():
             value = row_raw[i].strip().strip('"') if i < len(row_raw) else ''
             row_dict[h] = value
         rows.append(row_dict)
-
     # Sauvegarder dans la session
     session['csv_headers'] = headers
     session['csv_rows'] = rows
-
     # Récupérer les comptes de l'utilisateur
     user_id = current_user.id
     comptes = g.models.compte_model.get_all_accounts(user_id)
-
     comptes_possibles = []
     for c in comptes:
         comptes_possibles.append({
@@ -2611,10 +2363,8 @@ def import_csv_upload():
             'nom': c.get('nom_compte') or c.get('nom_sous_compte'),
             'type': c.get('type_logique', 'compte_principal')
         })
-
     session['comptes_possibles'] = comptes_possibles
     comptes_possibles.sort(key=lambda x: x['nom'])
-
     return redirect(url_for('banking.import_csv_map'))
 
 
@@ -2623,7 +2373,6 @@ def import_csv_upload():
 def import_csv_map():
     print(f"=== DEBUG: csv_headers = {session.get('csv_headers')}")
     print(f"=== DEBUG: csv_rows count = {len(session.get('csv_rows', []))}")
-    
     if 'csv_headers' not in session:
         flash("Session expirée. Veuillez recommencer.", "warning")
         return redirect(url_for('banking.import_csv_upload'))
@@ -2640,15 +2389,13 @@ def import_csv_confirm():
         'description': request.form.get('col_description') or None,
         'source': request.form['col_source'],
         'dest': request.form.get('col_dest') or None,
-        'date_format': request.form.get('date_format', '%Y-%m-%d'),  # ✅ format choisi
+        'date_format': request.form.get('date_format', '%Y-%m-%d'),
     }
     session['column_mapping'] = mapping
-
     csv_rows = session.get('csv_rows', [])
     type_col = mapping['type']
     date_col = mapping['date']
     date_format = mapping['date_format']
-
     # Ajouter le type à chaque ligne + trier
     enriched_rows = []
     for row in csv_rows:
@@ -2661,7 +2408,7 @@ def import_csv_confirm():
         d = row.get(date_col, '').strip()
         if not d:
             return datetime.max
-        # ✅ Essayer d'abord le format choisi par l'utilisateur
+        #Essayer d'abord le format choisi par l'utilisateur
         try:
             return datetime.strptime(d, date_format)
         except ValueError:
@@ -2675,10 +2422,8 @@ def import_csv_confirm():
             except ValueError:
                 continue
         return datetime.max
-
     enriched_rows_sorted = sorted(enriched_rows, key=parse_date_for_sort)
     session['csv_rows_with_type'] = enriched_rows_sorted
-
     rows_for_template = []
     for i, row in enumerate(enriched_rows_sorted):
         source_val = row.get(mapping['source'], '').strip()
@@ -2701,16 +2446,12 @@ def import_csv_final():
     mapping = session.get('column_mapping')
     csv_rows = session.get('csv_rows_with_type', [])
     comptes_possibles = {str(c['id']) + '|' + c['type']: c for c in session.get('comptes_possibles', [])}
-
     if not mapping or not csv_rows:
         flash("Données d'import manquantes. Veuillez recommencer.", "danger")
         return redirect(url_for('banking.import_csv_upload'))
-
-    date_format = mapping.get('date_format', '%Y-%m-%d')  # ✅ format choisi
-
+    date_format = mapping.get('date_format', '%Y-%m-%d')
     success_count = 0
     errors = []
-
     for i, row in enumerate(csv_rows):
         try:
             # Extraction
@@ -2718,7 +2459,6 @@ def import_csv_final():
             montant_str = row[mapping['montant']].strip().replace(',', '.')
             tx_type = row[mapping['type']].lower().strip()
             desc = row.get(mapping['description'], '').strip() if mapping['description'] else ''
-
             # Conversion
             try:
                 montant = Decimal(montant_str)
@@ -2727,8 +2467,7 @@ def import_csv_final():
             except (InvalidOperation, ValueError) as e:
                 errors.append(f"Ligne {i+1}: montant invalide ({montant_str})")
                 continue
-
-            # ✅ Parsing date : format choisi d'abord, puis fallback
+            # Parsing date : format choisi d'abord, puis fallback
             date_tx = None
             try:
                 date_tx = datetime.strptime(date_str, date_format)
@@ -2741,23 +2480,18 @@ def import_csv_final():
                         break
                     except ValueError:
                         continue
-
             if date_tx is None:
                 errors.append(f"Ligne {i+1}: date invalide ({date_str})")
                 continue
-
             # Récupérer les choix utilisateur
             source_key = request.form.get(f'row_{i}_source')
             dest_key = request.form.get(f'row_{i}_dest')
-
             if not source_key or source_key not in comptes_possibles:
                 errors.append(f"Ligne {i+1}: compte source invalide")
                 continue
-
             source_info = comptes_possibles[source_key]
             source_id = source_info['id']
             source_type = source_info['type']
-
             if tx_type in ['depot', 'retrait']:
                 if tx_type == 'depot':
                     ok, msg = g.models.transaction_financiere_model.create_depot(
@@ -2781,7 +2515,6 @@ def import_csv_final():
                     success_count += 1
                 else:
                     errors.append(f"Ligne {i+1}: {msg}")
-
             elif tx_type == 'transfert':
                 if not dest_key or dest_key not in comptes_possibles:
                     errors.append(f"Ligne {i+1}: compte destination requis pour transfert")
@@ -2793,7 +2526,6 @@ def import_csv_final():
                 if source_id == dest_id and source_type == dest_type:
                     errors.append(f"Ligne {i+1}: source et destination identiques")
                     continue
-
                 ok, msg = g.models.transaction_financiere_model.create_transfert_interne(
                     source_type=source_type,
                     source_id=source_id,
@@ -2808,23 +2540,18 @@ def import_csv_final():
                     success_count += 1
                 else:
                     errors.append(f"Ligne {i+1}: {msg}")
-
             else:
                 errors.append(f"Ligne {i+1}: type inconnu '{tx_type}' (attendu: depot, retrait, transfert)")
-
         except Exception as e:
             errors.append(f"Ligne {i+1}: erreur inattendue ({str(e)})")
-
     # Nettoyer la session
     session.pop('csv_headers', None)
     session.pop('csv_rows', None)
     session.pop('comptes_possibles', None)
     session.pop('column_mapping', None)
-
     flash(f"✅ Import terminé : {success_count} transaction(s) créée(s).", "success")
     for err in errors[:5]:
         flash(f"❌ {err}", "danger")
-
     return redirect(url_for('banking.banking_dashboard'))
 
 @bp.route('/import/csv/distinct_confirm', methods=['POST'])
@@ -2837,39 +2564,32 @@ def import_csv_distinct_confirm():
         'description': request.form.get('col_description') or None,
         'source': request.form['col_source'],
         'dest': request.form.get('col_dest') or None,
-        'date_format': request.form.get('date_format', '%Y-%m-%d'),  # ✅ AJOUT
+        'date_format': request.form.get('date_format', '%Y-%m-%d'),
     }
     session['column_mapping'] = mapping
-
     csv_rows = session.get('csv_rows', [])
     if not csv_rows:
         flash("Aucune donnée à traiter.", "danger")
         return redirect(url_for('banking.import_csv_upload'))
-
     compte_names = set()
     source_col = mapping['source']
     for row in csv_rows:
         val = row.get(source_col, '').strip()
         if val:
             compte_names.add(val)
-
     dest_col = mapping.get('dest')
     if dest_col:
         for row in csv_rows:
             val = row.get(dest_col, '').strip()
             if val:
                 compte_names.add(val)
-
     compte_names = sorted(compte_names)
-
     session['distinct_compte_names'] = compte_names
     session['csv_rows_raw'] = csv_rows
-
     comptes_possibles = sorted(
         session.get('comptes_possibles', []),
         key=lambda x: x.get('nom', '')
     )
-
     return render_template(
         'banking/import_csv_distinct_confirm.html',
         compte_names=compte_names,
@@ -2883,13 +2603,10 @@ def import_csv_final_distinct():
     mapping = session.get('column_mapping')
     csv_rows = session.get('csv_rows_raw', [])
     comptes_possibles = {str(c['id']) + '|' + c['type']: c for c in session.get('comptes_possibles', [])}
-
     if not mapping or not csv_rows:
         flash("Données d'import manquantes.", "danger")
         return redirect(url_for('banking.import_csv_upload'))
-
-    date_format = mapping.get('date_format', '%Y-%m-%d')  # ✅ AJOUT
-
+    date_format = mapping.get('date_format', '%Y-%m-%d')
     # Construire un mapping GLOBAL : nom → compte
     global_mapping = {}
     i = 0
@@ -2899,17 +2616,14 @@ def import_csv_final_distinct():
         if key and key in comptes_possibles:
             global_mapping[name] = key
         i += 1
-
     success_count = 0
     errors = []
-
     for idx, row in enumerate(csv_rows):
         try:
             date_str = row[mapping['date']].strip()
             montant_str = row[mapping['montant']].strip().replace(',', '.')
             tx_type = row[mapping['type']].lower().strip()
             desc = row.get(mapping['description'], '').strip() if mapping.get('description') else ''
-
             try:
                 montant = Decimal(montant_str)
                 if montant <= 0:
@@ -2917,8 +2631,6 @@ def import_csv_final_distinct():
             except (InvalidOperation, ValueError):
                 errors.append(f"Ligne {idx+1}: montant invalide ({montant_str})")
                 continue
-
-            # ✅ REMPLACER le bloc try/except imbriqué par :
             date_tx = None
             try:
                 date_tx = datetime.strptime(date_str, date_format)
@@ -2931,14 +2643,11 @@ def import_csv_final_distinct():
                         break
                     except ValueError:
                         continue
-
             if date_tx is None:
                 errors.append(f"Ligne {idx+1}: date invalide ({date_str})")
                 continue
-
             source_val = row.get(mapping['source'], '').strip()
             source_key = global_mapping.get(source_val)
-
             if tx_type in ('depot', 'retrait'):
                 if not source_key:
                     errors.append(f"Ligne {idx+1}: compte non associé pour '{source_val}'")
@@ -2955,11 +2664,9 @@ def import_csv_final_distinct():
             else:
                 errors.append(f"Ligne {idx+1}: type inconnu '{tx_type}'")
                 continue
-
             source_info = comptes_possibles[source_key]
             source_id = source_info['id']
             source_type = source_info['type']
-
             if tx_type == 'depot':
                 ok, msg = g.models.transaction_financiere_model.create_depot(
                     compte_id=source_id, user_id=user_id, montant=montant,
@@ -2979,23 +2686,18 @@ def import_csv_final_distinct():
                     dest_type=dest_type, dest_id=dest_id,
                     user_id=user_id, montant=montant, description=desc, date_transaction=date_tx
                 )
-
             if ok:
                 success_count += 1
             else:
                 errors.append(f"Ligne {idx+1}: {msg}")
-
         except Exception as e:
             errors.append(f"Ligne {idx+1}: erreur inattendue ({str(e)})")
-
     for key in ['csv_headers', 'csv_rows', 'comptes_possibles', 'column_mapping',
                 'distinct_compte_names', 'csv_rows_raw']:
         session.pop(key, None)
-
     flash(f"✅ Import terminé : {success_count} transaction(s) créée(s).", "success")
     for err in errors[:5]:
         flash(f"❌ {err}", "danger")
-
     return redirect(url_for('banking.banking_dashboard'))
 
 ##########################################
@@ -3007,12 +2709,10 @@ def import_csv_final_distinct():
 def import_csv_upload_temp():
     if request.method == 'GET':
         return render_template('banking/import_csv_upload_temp.html')
-    
     file = request.files.get('csv_file')
     if not file or not file.filename.endswith('.csv'):
         flash("Veuillez uploader un fichier CSV.", "danger")
         return redirect(url_for('banking.import_csv_upload_temp'))
-
     #stream = io.TextIOWrapper(file.stream, encoding='utf-8')
     #raw_lines = stream.read().splitlines()
     file_content = file.read().decode('utf-8-sig') 
@@ -3020,9 +2720,7 @@ def import_csv_upload_temp():
     if not raw_lines:
         flash("Fichier vide", "danger")
         return redirect(url_for('banking.import_csv_upload_temp'))
-
     sample = '\n'.join(raw_lines[:5])
-    
     try:
         #delimiter = csv_mod.Sniffer().sniff(sample, delimiters=";,|\t").delimiter
         dialect = csv_mod.Sniffer().sniff(sample, delimiters=";,|\t")
@@ -3033,10 +2731,8 @@ def import_csv_upload_temp():
         # Fallback intelligent
         if ',' in sample: delimiter = ','
         else: delimiter = ';'
-        
     f = io.StringIO(file_content)
     reader_raw = csv_mod.reader(f, delimiter=delimiter)
-
     reader_raw = csv_mod.reader(raw_lines, delimiter=delimiter)
     try:
         headers_raw = next(reader_raw)
@@ -3052,10 +2748,8 @@ def import_csv_upload_temp():
             value = row_raw[i].strip().strip('"') if i < len(row_raw) else ''
             row_dict[h] = value
         rows.append(row_dict)
-
     user_id = current_user.id
     comptes_unifies = g.models.compte_model.get_all_accounts(user_id)
-
     comptes_possibles = []
     for c in comptes_unifies:
         comptes_possibles.append({
@@ -3063,15 +2757,13 @@ def import_csv_upload_temp():
             'nom': c.get('nom_compte') or c.get('nom_sous_compte'),
             'type': c.get('type_logique', 'compte_principal')
         })
-
     csv_data = {
         'csv_headers': headers,
         'csv_rows': rows,
         'comptes_possibles': sorted(comptes_possibles, key=lambda x: x['nom'])
     }
-    temp_key = db_csv_store.save(user_id, csv_data)  # ✅ user_id = entier
+    temp_key = db_csv_store.save(user_id, csv_data)
     session['csv_temp_key'] = temp_key
-
     return redirect(url_for('banking.import_csv_map_temp'))
 
 @bp.route('/import/temp/csv/map', methods=['GET'])
@@ -3081,17 +2773,14 @@ def import_csv_map_temp():
     if not temp_key:
         flash("Données manquantes.", "warning")
         return redirect(url_for('banking.import_csv_upload_temp'))
-
     csv_data = db_csv_store.load(temp_key, current_user.id)
     if not csv_data:
         flash("Données expirées.", "warning")
         return redirect(url_for('banking.import_csv_upload_temp'))
-
     headers = csv_data.get('csv_headers', [])
     if not headers:
         flash("Aucune colonne trouvée.", "danger")
         return redirect(url_for('banking.import_csv_upload_temp'))
-
     return render_template('banking/import_csv_map_temp.html', csv_headers=headers)
 
 @bp.route('/import/temp/csv/confirm', methods=['POST'])
@@ -3103,7 +2792,6 @@ def import_csv_confirm_temp():
     if not csv_data:
         flash("Données expirées.", "danger")
         return redirect(url_for('banking.import_csv_upload_temp'))
-
     mapping = {
         'date': request.form['col_date'],
         'montant': request.form['col_montant'],
@@ -3113,31 +2801,26 @@ def import_csv_confirm_temp():
         'dest': request.form.get('col_dest') or None,
     }
     session['column_mapping'] = mapping
-
     csv_rows = csv_data['csv_rows']
     type_col = mapping['type']
     date_col = mapping['date']
-
     enriched_rows = []
     for row in csv_rows:
         tx_type = row.get(type_col, '').strip().lower()
         if tx_type not in ('depot', 'retrait', 'transfert'):
             tx_type = 'inconnu'
         enriched_rows.append({**row, '_tx_type': tx_type})
-
     def parse_date_for_sort(row):
         d = row.get(date_col, '').strip()
         if not d:
             return datetime.max
-        for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%dT%H:%M', '%Y-%m-%d', '%d.%m.%y %H:%M'):  # ✅ format suisse ajouté
+        for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%dT%H:%M', '%Y-%m-%d', '%d.%m.%y %H:%M'):
             try:
                 return datetime.strptime(d, fmt)
             except ValueError:
                 continue
         return datetime.max
-
     enriched_rows_sorted = sorted(enriched_rows, key=parse_date_for_sort)
-
     rows_for_template = []
     for i, row in enumerate(enriched_rows_sorted):
         source_val = row.get(mapping['source'], '').strip()
@@ -3148,7 +2831,6 @@ def import_csv_confirm_temp():
             'source_val': source_val,
             'dest_val': dest_val,
         })
-
     comptes_possibles = csv_data['comptes_possibles']
     # ❌ PLUS DE db_csv_store.save() ICI
     return render_template('banking/import_csv_confirm_temp.html', rows=rows_for_template, comptes_possibles=comptes_possibles)
@@ -3160,23 +2842,19 @@ def import_csv_final_temp():
     temp_key = session.get('csv_temp_key')
     csv_data = db_csv_store.load(temp_key, user_id) if temp_key else None
     mapping = session.get('column_mapping')
-
     if not mapping or not csv_data:
         flash("Données manquantes.", "danger")
         return redirect(url_for('banking.import_csv_upload_temp'))
-
-    # ✅ RECONSTRUIRE enriched_rows_sorted ICI (pas stocké)
+    # RECONSTRUIRE enriched_rows_sorted ICI (pas stocké)
     csv_rows = csv_data['csv_rows']
     type_col = mapping['type']
     date_col = mapping['date']
-
     enriched_rows = []
     for row in csv_rows:
         tx_type = row.get(type_col, '').strip().lower()
         if tx_type not in ('depot', 'retrait', 'transfert'):
             tx_type = 'inconnu'
         enriched_rows.append({**row, '_tx_type': tx_type})
-
     def parse_date_for_sort(row):
         d = row.get(date_col, '').strip()
         if not d:
@@ -3187,21 +2865,17 @@ def import_csv_final_temp():
             except ValueError:
                 continue
         return datetime.max
-
     enriched_rows_sorted = sorted(enriched_rows, key=parse_date_for_sort)
     csv_rows = enriched_rows_sorted  # utiliser cette liste
-
     comptes_possibles = {str(c['id']) + '|' + c['type']: c for c in csv_data['comptes_possibles']}
     success_count = 0
     errors = []
-
     for i, row in enumerate(csv_rows):
         try:
             date_str = row[mapping['date']].strip()
             montant_str = row[mapping['montant']].strip().replace(',', '.')
             tx_type = row[mapping['type']].lower().strip()
             desc = row.get(mapping['description'], '').strip() if mapping['description'] else ''
-
             try:
                 montant = Decimal(montant_str)
                 if montant <= 0:
@@ -3209,7 +2883,6 @@ def import_csv_final_temp():
             except (InvalidOperation, ValueError):
                 errors.append(f"Ligne {i+1}: montant invalide ({montant_str})")
                 continue
-
             date_tx = None
             for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%dT%H:%M', '%Y-%m-%d', '%d.%m.%y %H:%M'):
                 try:
@@ -3220,18 +2893,14 @@ def import_csv_final_temp():
             if date_tx is None:
                 errors.append(f"Ligne {i+1}: date invalide ({date_str})")
                 continue
-
             source_key = request.form.get(f'row_{i}_source')
             dest_key = request.form.get(f'row_{i}_dest')
-
             if not source_key or source_key not in comptes_possibles:
                 errors.append(f"Ligne {i+1}: compte source invalide")
                 continue
-
             source_info = comptes_possibles[source_key]
             source_id = source_info['id']
             source_type = source_info['type']
-
             if tx_type == 'depot':
                 ok, msg = g.models.transaction_financiere_model.create_depot(
                     compte_id=source_id, user_id=user_id, montant=montant,
@@ -3260,24 +2929,19 @@ def import_csv_final_temp():
             else:
                 errors.append(f"Ligne {i+1}: type inconnu '{tx_type}'")
                 continue
-
             if ok:
                 success_count += 1
             else:
                 errors.append(f"Ligne {i+1}: {msg}")
-
         except Exception as e:
             errors.append(f"Ligne {i+1}: erreur inattendue ({str(e)})")
-
     if temp_key:
         db_csv_store.delete(temp_key)
     session.pop('csv_temp_key', None)
     session.pop('column_mapping', None)
-
     flash(f"✅ Import terminé : {success_count} transaction(s) créée(s).", "success")
     for err in errors[:5]:
         flash(f"❌ {err}", "danger")
-
     return redirect(url_for('banking.banking_dashboard'))
 
 @bp.route('/import/temp/csv/distinct_confirm', methods=['POST'])
@@ -3289,7 +2953,6 @@ def import_csv_distinct_confirm_temp():
     if not csv_data:
         flash("Données expirées.", "danger")
         return redirect(url_for('banking.import_csv_upload_temp'))
-
     mapping = {
         'date': request.form['col_date'],
         'montant': request.form['col_montant'],
@@ -3299,7 +2962,6 @@ def import_csv_distinct_confirm_temp():
         'dest': request.form.get('col_dest') or None,
     }
     session['column_mapping'] = mapping
-
     csv_rows = csv_data['csv_rows']
     compte_names = set()
     source_col = mapping['source']
@@ -3313,11 +2975,8 @@ def import_csv_distinct_confirm_temp():
             val = row.get(dest_col, '').strip()
             if val:
                 compte_names.add(val)
-
     compte_names = sorted(compte_names)
     comptes_possibles = sorted(csv_data['comptes_possibles'], key=lambda x: x.get('nom', ''))
-
-    # ❌ PLUS DE db_csv_store.save() ICI
     return render_template(
         'banking/import_csv_distinct_confirm_temp.html',
         compte_names=compte_names,
@@ -3332,14 +2991,11 @@ def import_csv_final_distinct_temp():
     temp_key = session.get('csv_temp_key')
     csv_data = db_csv_store.load(temp_key, user_id) if temp_key else None
     mapping = session.get('column_mapping')
-
     if not mapping or not csv_data:
         flash("Données manquantes.", "danger")
         return redirect(url_for('banking.import_csv_upload_temp'))
-
-    csv_rows = csv_data['csv_rows']  # ✅ données brutes
+    csv_rows = csv_data['csv_rows']
     comptes_possibles = {str(c['id']) + '|' + c['type']: c for c in csv_data['comptes_possibles']}
-
     global_mapping = {}
     i = 0
     while f'compte_name_{i}' in request.form:
@@ -3348,17 +3004,14 @@ def import_csv_final_distinct_temp():
         if key and key in comptes_possibles:
             global_mapping[name] = key
         i += 1
-
     success_count = 0
     errors = []
-
     for idx, row in enumerate(csv_rows):
         try:
             date_str = row[mapping['date']].strip()
             montant_str = row[mapping['montant']].strip().replace(',', '.')
             tx_type = row[mapping['type']].lower().strip()
             desc = row.get(mapping['description'], '').strip() if mapping.get('description') else ''
-
             try:
                 montant = Decimal(montant_str)
                 if montant <= 0:
@@ -3366,7 +3019,6 @@ def import_csv_final_distinct_temp():
             except (InvalidOperation, ValueError):
                 errors.append(f"Ligne {idx+1}: montant invalide ({montant_str})")
                 continue
-
             date_tx = None
             for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%dT%H:%M', '%Y-%m-%d', '%d.%m.%y %H:%M'):
                 try:
@@ -3377,10 +3029,8 @@ def import_csv_final_distinct_temp():
             if date_tx is None:
                 errors.append(f"Ligne {idx+1}: date invalide ({date_str})")
                 continue
-
             source_val = row.get(mapping['source'], '').strip()
             source_key = global_mapping.get(source_val)
-
             if tx_type in ('depot', 'retrait'):
                 if not source_key:
                     errors.append(f"Ligne {idx+1}: compte non associé pour '{source_val}'")
@@ -3397,7 +3047,6 @@ def import_csv_final_distinct_temp():
             else:
                 errors.append(f"Ligne {idx+1}: type inconnu '{tx_type}'")
                 continue
-
             source_info = comptes_possibles[source_key]
             source_id = source_info['id']
             source_type = source_info['type']
@@ -3421,24 +3070,19 @@ def import_csv_final_distinct_temp():
                     dest_type=dest_type, dest_id=dest_id,
                     user_id=user_id, montant=montant, description=desc, date_transaction=date_tx
                 )
-
             if ok:
                 success_count += 1
             else:
                 errors.append(f"Ligne {idx+1}: {msg}")
-
         except Exception as e:
             errors.append(f"Ligne {idx+1}: erreur inattendue ({str(e)})")
-
     if temp_key:
         db_csv_store.delete(temp_key)
     session.pop('csv_temp_key', None)
     session.pop('column_mapping', None)
-
     flash(f"✅ Import terminé : {success_count} transaction(s) créée(s).", "success")
     for err in errors[:5]:
         flash(f"❌ {err}", "danger")
-
     return redirect(url_for('banking.banking_dashboard'))
 
 
@@ -3731,7 +3375,7 @@ def edit_categorie(categorie_id):
         return redirect(url_for('banking.liste_categories_comptables'))
     if request.method == 'POST':
         try:
-            # ✅ Construire data avec seulement les champs à modifier
+            # onstruire data avec seulement les champs à modifier
             data = {
                 'nom': request.form['nom'],
                 'type_compte': request.form['type_compte'],
@@ -3743,14 +3387,14 @@ def edit_categorie(categorie_id):
                 'compte_associe': request.form.get('compte_associe') or None,
                 'actif': True
             }
-            # ✅ NE PAS inclure le numéro si inchangé
+            # NE PAS inclure le numéro si inchangé
             nouveau_numero = request.form.get('numero')
             if nouveau_numero and nouveau_numero != categorie['numero']:
                 data['numero'] = nouveau_numero
             plan_id = request.form.get('plan_ids', type=int)
-            # ✅ Mettre à jour la catégorie
+            # Mettre à jour la catégorie
             if g.models.categorie_comptable_model.update(categorie_id, data):
-                # ✅ Mettre à jour la relation plan_categorie
+                #  Mettre à jour la relation plan_categorie
                 if plan_id:
                     # Supprimer l'ancienne relation
                     with g.db_manager.get_cursor() as cursor:
@@ -4032,25 +3676,21 @@ def liste_ecritures():
     type_ecriture_comptable = request.args.get('type_ecriture_comptable', 'tous')
     date_created_from = request.args.get('date_created_from')
     date_created_to = request.args.get('date_created_to')
-    
-    # ✅ NOUVEAU : Pagination
+    # Pagination
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
     per_page = min(per_page, 200)  # Plafond de sécurité
-    
     # Définition des options disponibles
     types_ecriture_disponibles = [
         {'value': 'tous', 'label': 'Tous les types'},
         {'value': 'recette', 'label': 'Recettes'},
         {'value': 'depense', 'label': 'Dépenses'}
     ]
-    
     type_ecriture_comptable_disponibles = [
         {'value': 'tous', 'label': 'Tous les types'},
         {'value': 'principale', 'label': 'Écritures principales'},
         {'value': 'complementaire', 'label': 'Écritures complémentaires'}
     ]
-    
     statuts_disponibles = [
         {'value': 'tous', 'label': 'Tous les statuts'},
         {'value': 'pending', 'label': 'En attente'},
@@ -4058,7 +3698,6 @@ def liste_ecritures():
         {'value': 'rejetée', 'label': 'Rejetées'},
         {'value': 'supprimee', 'label': 'Archivées'}
     ]
-    
     # Préparer les filtres pour la méthode
     filtres = {
         'user_id': current_user.id,
@@ -4072,38 +3711,31 @@ def liste_ecritures():
         'type_ecriture_comptable': type_ecriture_comptable if type_ecriture_comptable != 'tous' else None,
         'date_created_from': date_created_from,
         'date_created_to': date_created_to,
-        # ✅ Pagination au lieu du limit fixe
         'limit': per_page,
         'offset': (page - 1) * per_page
     }
-    
     # Récupérer les écritures avec filtres
     ecritures = g.models.ecriture_comptable_model.get_with_filters(**filtres)
-    
-    # ✅ NOUVEAU : Récupérer le total pour la pagination
+    # Récupérer le total pour la pagination
     total_ecritures = g.models.ecriture_comptable_model.count_with_filters(**{
         k: v for k, v in filtres.items() if k not in ('limit', 'offset')
     })
     total_pages = (total_ecritures + per_page - 1) // per_page if total_ecritures > 0 else 1
-    
-    # ✅ CORRECTION CRITIQUE : Précharger les écritures secondaires EN UNE SEULE REQUÊTE
+    # Précharger les écritures secondaires EN UNE SEULE REQUÊTE
     # Au lieu de faire N requêtes SQL dans le template (problème N+1)
     ecriture_ids = [e['id'] for e in ecritures if e.get('type_ecriture_comptable') == 'principale']
     secondaires_map = g.models.ecriture_comptable_model.get_ecritures_complementaires_batch(
         ecriture_ids, current_user.id
     )
-    
     # Récupérer les données supplémentaires
     comptes = g.models.compte_model.get_by_user_id(current_user.id)
     contacts = g.models.contact_model.get_all(current_user.id)
     categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
     contact_map = {c['id_contact']: c['nom'] for c in contacts}
-
     # Gestion du modal de liaison
     show_link_modal = request.args.get('show_link_modal') == '1'
     ecriture_link = None
     transactions_eligibles = []
-
     if show_link_modal:
         eid = request.args.get('ecriture_id', type=int)
         if eid:
@@ -4115,8 +3747,7 @@ def liste_ecritures():
                     date_from=date_tx,
                     date_to=date_tx
                 )[0]
-                
-                # ✅ CORRECTION N+1 : Récupérer toutes les transactions en une fois
+                # Récupérer toutes les transactions en une fois
                 # au lieu de boucler avec get_transaction_with_ecritures_total
                 for tx in all_tx:
                     full_tx = g.models.transaction_financiere_model.get_transaction_with_ecritures_total(
@@ -4124,18 +3755,15 @@ def liste_ecritures():
                     )
                     if full_tx:
                         transactions_eligibles.append(full_tx)
-
     # Gestion du modal de détail de transaction
     show_transaction_modal = request.args.get('show_transaction_modal') == '1'
     transaction_detail = None
-
     if show_transaction_modal:
         tid = request.args.get('transaction_id', type=int)
         if tid:
             transaction_detail = g.models.transaction_financiere_model.get_transaction_by_id(tid)
             if not (transaction_detail and transaction_detail.get('owner_user_id') == current_user.id):
                 transaction_detail = None
-
     return render_template('comptabilite/ecritures.html',
         ecritures=ecritures,
         comptes=comptes,
@@ -4160,14 +3788,12 @@ def liste_ecritures():
         contact_map=contact_map,
         show_transaction_modal=show_transaction_modal,
         transaction_detail=transaction_detail,
-        # ✅ NOUVEAU : Variables pour la pagination
         secondaires_map=secondaires_map,
         page=page,
         per_page=per_page,
         total_ecritures=total_ecritures,
         total_pages=total_pages
     )
-
 
 # Route pour l'export
 @bp.route('/comptabilite/ecritures/export')
@@ -4227,7 +3853,6 @@ def liste_ecritures_par_contact(contact_id):
     if not contact:
         flash('Contact introuvable', 'danger')
         return redirect(url_for('banking.liste_contacts_comptables'))
-    
     ecritures = g.models.ecriture_comptable_model.get_by_contact_id(contact_id, utilisateur_id=current_user.id)
     ecritures_avec_secondaires = []
     for ecriture in ecritures:
@@ -4237,24 +3862,22 @@ def liste_ecritures_par_contact(contact_id):
             ecriture_dict['ecritures_secondaires'] = secondaires
         ecritures_avec_secondaires.append(ecriture_dict)
     comptes = g.models.compte_model.get_by_user_id(current_user.id)
-
     # Modal de liaison
     show_link_modal = request.args.get('show_link_modal') == '1'
     ecriture_link = None
     transactions_eligibles = []
-
     if show_link_modal:
         eid = request.args.get('ecriture_id', type=int)
         ecriture_link = g.models.ecriture_comptable_model.get_by_id(eid)
         if ecriture_link and ecriture_link['utilisateur_id'] == current_user.id:
             date_tx = ecriture_link['date_ecriture']
-            # 🔥 CORRECTION : Récupérer TOUTES les transactions de l'utilisateur à cette date
+            # Récupérer TOUTES les transactions de l'utilisateur à cette date
             transactions_all, _ = g.models.transaction_financiere_model.get_all_user_transactions(
                 user_id=current_user.id,
                 date_from=date_tx.strftime('%Y-%m-%d'),
                 date_to=date_tx.strftime('%Y-%m-%d')
             )
-            # 🔥 CORRECTION : Ne garder que celles qui ont un solde cohérent avec le montant de l'écriture
+            # Ne garder que celles qui ont un solde cohérent avec le montant de l'écriture
             montant_ecriture = Decimal(str(ecriture_link['montant']))
             for tx in transactions_all:
                 montant_tx = Decimal(str(tx.get('montant', 0)))
@@ -4265,25 +3888,22 @@ def liste_ecritures_par_contact(contact_id):
                     )
                     if total_ecritures + montant_ecriture <= montant_tx:
                         transactions_eligibles.append(tx)
-
-    # 🔥 AJOUT : Gestion du modal de détail de transaction
+    # AJOUT : Gestion du modal de détail de transaction
     show_transaction_modal = request.args.get('show_transaction_modal') == '1'
     transaction_detail = None
-
     if show_transaction_modal:
         tid = request.args.get('transaction_id', type=int)
         if tid:
             transaction_detail = g.models.transaction_financiere_model.get_transaction_by_id(tid)
             if not (transaction_detail and transaction_detail.get('owner_user_id') == current_user.id):
                 transaction_detail = None
-
     return render_template('comptabilite/ecritures_par_contact.html',
         ecritures=ecritures_avec_secondaires,
         contact=contact,
         comptes=comptes,
         show_link_modal=show_link_modal,
         ecriture_link=ecriture_link,
-        transactions_eligibles=transactions_eligibles,  # 🔥 CORRECTION : Cette variable doit être définie
+        transactions_eligibles=transactions_eligibles,
         show_transaction_modal=show_transaction_modal,
         transaction_detail=transaction_detail
     )
@@ -4294,27 +3914,22 @@ def update_statut_ecriture(ecriture_id):
     """Met à jour uniquement le statut d'une écriture via modal"""
     nouveau_statut = request.form.get('statut')
     commentaire = request.form.get('commentaire', '')
-    
     if nouveau_statut not in ['pending', 'validée', 'rejetée']:
         flash('Statut invalide', 'error')
         return redirect(request.referrer or url_for('banking.liste_ecritures'))
-    
     try:
         success = g.models.ecriture_comptable_model.update_statut(
             ecriture_id, current_user.id, nouveau_statut
         )
-        
         if success:
             if commentaire:
                 logging.info(f"Statut écriture {ecriture_id} changé: {commentaire}")
             flash(f"Statut mis à jour: {nouveau_statut}", 'success')
         else:
-            flash("Erreur lors de la mise à jour", 'error')
-            
+            flash("Erreur lors de la mise à jour", 'error')    
     except Exception as e:
         logging.error(f"Erreur mise à jour statut: {e}")
         flash("Erreur lors de la mise à jour", 'error')
-    
     return redirect(request.referrer or url_for('banking.liste_ecritures'))
 
 ##### Fichier dans transactions 
@@ -4323,44 +3938,31 @@ def update_statut_ecriture(ecriture_id):
 def upload_fichier_ecriture(ecriture_id):
     """Upload un fichier pour une écriture"""
     logging.info(f"Route upload appelée - Écriture: {ecriture_id}, Utilisateur: {current_user.id}")
-    
     if 'fichier' not in request.files:
         flash('Aucun fichier sélectionné', 'error')
         return redirect(request.referrer or url_for('banking.liste_ecritures'))
-    
     fichier = request.files['fichier']
-    
     # Sécurité : vérifier qu'un fichier a bien été sélectionné (pas juste un champ vide)
     if fichier.filename == '':
         flash('Aucun fichier sélectionné', 'error')
         return redirect(request.referrer or url_for('banking.liste_ecritures'))
-
     logging.info(f"Fichier reçu - Nom: {fichier.filename}, Type: {fichier.content_type}")
-    
     success, message = g.models.ecriture_comptable_model.ajouter_fichier(
         ecriture_id, current_user.id, fichier
     )
-    
     logging.info(f"Résultat upload: {success} - {message}")
-    
     if success:
         flash(message, 'success')
         flash(f'Fichier uploadé avec succès : {fichier.filename}', 'success')
     else:
         flash(message, 'error')
-    
     return redirect(request.referrer or url_for('banking.liste_ecritures'))
+
 @bp.route('/test_upload')
 @login_required
 def test_upload():
     """Route de test pour vérifier le dossier d'upload"""
- # Importez votre classe
-    
-    # Créer une instance du modèle
-
-    # Tester le dossier
     result = g.models.ecriture_comptable_model.test_dossier_upload()
-    
     return f"Test terminé - Vérifiez les logs pour les résultats détaillés: {result}"
 
 @bp.route('/comptabilite/ecritures/download_fichier/<int:ecriture_id>')
@@ -4368,11 +3970,9 @@ def test_upload():
 def download_fichier_ecriture(ecriture_id):
     """Télécharge le fichier joint d'une écriture"""
     fichier_info = g.models.ecriture_comptable_model.get_fichier(ecriture_id, current_user.id)
-    
     if not fichier_info:
         flash('Fichier non trouvé', 'error')
         return redirect(request.referrer or url_for('banking.liste_ecritures'))
-    
     try:
         return send_file(
             fichier_info['chemin_complet'],
@@ -4390,23 +3990,18 @@ def download_fichier_ecriture(ecriture_id):
 def view_fichier_ecriture(ecriture_id):
     """Affiche le fichier joint dans le navigateur"""
     logging.info(f"📍 Route view_fichier appelée - Écriture: {ecriture_id}")
-    
     fichier_info = g.models.ecriture_comptable_model.get_fichier(ecriture_id, current_user.id)
-    
     if not fichier_info:
         logging.error(f"❌ Fichier non trouvé pour l'écriture {ecriture_id}")
         flash('Fichier non trouvé', 'error')
         return redirect(request.referrer or url_for('banking.liste_ecritures'))
-    
     logging.info(f"📍 Fichier info: {fichier_info}")
-    
     try:
         # Vérifications supplémentaires
         if not os.path.exists(fichier_info['chemin_complet']):
             logging.error(f"❌ Fichier manquant sur le disk: {fichier_info['chemin_complet']}")
             flash('Fichier manquant sur le serveur', 'error')
             return redirect(request.referrer or url_for('banking.liste_ecritures'))
-        
         logging.info(f"📍 Envoi du fichier: {fichier_info['chemin_complet']}")
         
         return send_file(
@@ -4428,12 +4023,10 @@ def supprimer_fichier_ecriture(ecriture_id):
     success, message = g.models.ecriture_comptable_model.supprimer_fichier(
         ecriture_id, current_user.id
     )
-    
     if success:
         flash(message, 'success')
     else:
         flash(message, 'error')
-    
     return redirect(request.referrer or url_for('banking.liste_ecritures'))
 
 ###################################################################################$
@@ -4489,8 +4082,7 @@ def creer_categorie():
             if len(nom) > 100:
                 flash("Le nom de la catégorie ne peut pas dépasser 100 caractères", "error")
                 return render_template('categories/creer_categorie.html')
-            
-            # 🔥 VALIDATION : Budget mensuel
+            # VALIDATION : Budget mensuel
             try:
                 if budget_mensuel:
                     budget_mensuel = float(budget_mensuel)
@@ -4502,21 +4094,17 @@ def creer_categorie():
             except ValueError:
                 flash("Le budget mensuel doit être un nombre valide", "error")
                 return render_template('categories/creer_categorie.html')
-
             success, message = g.models.categorie_transaction_model.creer_categorie(
                 current_user.id, nom, type_categorie, description, couleur, icone, budget_mensuel
             )
-            
             if success:
                 flash(message, "success")
                 return redirect(url_for('banking.gestion_categories'))
             else:
-                flash(message, "error")
-                
+                flash(message, "error")  
         except Exception as e:
             logging.error(f"Erreur création catégorie: {e}")
             flash("Erreur lors de la création de la catégorie", "error")
-    
     return render_template('categories/creer_categorie.html')
 
 @bp.route('/categorie/<int:categorie_id>/modifier', methods=['GET', 'POST'])
@@ -4524,11 +4112,9 @@ def creer_categorie():
 def modifier_categorie(categorie_id):
     """Modifier une catégorie existante"""
     categorie = g.models.categorie_transaction_model.get_categorie_par_id(categorie_id, current_user.id)
-    
     if not categorie:
         flash("Catégorie non trouvée", "error")
         return redirect(url_for('banking.gestion_categories'))
-    
     if request.method == 'POST':
         try:
             nom = request.form.get('nom', '').strip()
@@ -5784,32 +5370,27 @@ def nouvelle_ecriture_from_transactions():
                 for error in errors:
                     flash(error, "error")
                 return redirect(url_for('banking.nouvelle_ecriture_from_transactions', compte_id=request.args.get('compte_id'), date_from=request.args.get('date_from'), date_to=request.args.get('date_to')))
-
             for i in range(len(transaction_ids)):
                 try:
                     if not all([dates[i], comptes_ids[i], categories_ids[i], montants[i]]):
                         errors.append(f"Transaction {i+1}: Champs obligatoires manquants")
                         continue
-
-                    # 🔥 RÉCUPÉRER LE type_transaction DE LA TRANSACTION ORIGINALE
+                    # RÉCUPÉRER LE type_transaction DE LA TRANSACTION ORIGINALE
                     type_transaction_bancaire = transactions_originales[i]['type_transaction']
-                    # 🔥 MAPPER CE type_transaction VERS LE type_ecriture COMPTABLE
+                    # MAPPER CE type_transaction VERS LE type_ecriture COMPTABLE
                     type_ecriture_db = map_type_transaction_to_ecriture(type_transaction_bancaire)
 
                     # Récupérer l'ID du contact, en gérant les chaînes vides
                     contact_id_val = None
                     if i < len(contacts_ids) and contacts_ids[i]: # Gestion des chaînes vides
                         contact_id_val = int(contacts_ids[i])
-
                     montant_ttc = Decimal(str(montants[i]))
                     taux_tva = Decimal(str(tva_taux[i])) if i < len(tva_taux) and tva_taux[i] else Decimal('0')
-
                     # 🔥 CALCUL DU MONTANT HTVA CÔTÉ SERVEUR (comme dans nouvelle_ecriture_from_selected)
                     if taux_tva > 0:
                         montant_htva_calcule = montant_ttc / (1 + taux_tva / Decimal('100'))
                     else:
                         montant_htva_calcule = montant_ttc # Si pas de TVA, HTVA = TTC
-
                     data = {
                         'date_ecriture': dates[i],
                         'compte_bancaire_id': int(comptes_ids[i]),
@@ -5827,13 +5408,11 @@ def nouvelle_ecriture_from_transactions():
                         'devise': 'CHF', # Ajout de la devise
                         'type_ecriture_comptable': 'principale' # Ajout du type d'écriture comptable
                     }
-
-                    # 🔥 CORRECTION : Calcul TVA cohérent (comme dans nouvelle_ecriture_from_selected)
+                    # Calcul TVA cohérent (comme dans nouvelle_ecriture_from_selected)
                     if data['tva_taux'] > 0:
                         data['tva_montant'] = data['montant'] - data['montant_htva']
                     else:
                         data['tva_montant'] = Decimal('0')
-
                     if g.models.ecriture_comptable_model.create(data):
                         ecriture_id = g.models.ecriture_comptable_model.get_last_insert_id()
                         # Lier l'écriture à la transaction
@@ -5850,12 +5429,10 @@ def nouvelle_ecriture_from_transactions():
                     logging.error(f"Erreur inattendue pour la transaction {i+1} (ID {transaction_ids[i]}): {e}")
                     errors.append(f"Transaction {i+1} (ID {transaction_ids[i]}): Erreur interne - {e}")
                     continue # Passer à la transaction suivante
-
             # Gestion des messages de retour
             if errors:
                 for error in errors:
                     flash(error, "error") # Utilisez "error" pour les erreurs critiques
-
             if success_count > 0:
                 flash(f"{success_count} écriture(s) créée(s) avec succès pour {len(transaction_ids)} transaction(s)", "success")
                 # REDIRECTION CORRIGEE : Utiliser la bonne route pour revenir à la liste filtrée
@@ -5871,17 +5448,14 @@ def nouvelle_ecriture_from_transactions():
                                     compte_id=request.args.get('compte_id'),
                                     date_from=request.args.get('date_from'),
                                     date_to=request.args.get('date_to')))
-
         except Exception as e:
             logging.error(f"Erreur générale lors de la création des écritures: {e}")
             flash(f"Erreur critique lors de la création des écritures: {str(e)}", "error")
             return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
-
     # PARTIE GET - Afficher le formulaire pour TOUTES les transactions filtrées
     compte_id = request.args.get('compte_id', type=int) # Correction : type=int
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
-
     # Récupérer les transactions avec les mêmes filtres
     transactions = g.models.transaction_financiere_model.get_transactions_sans_ecritures(
         current_user.id,
@@ -5892,24 +5466,20 @@ def nouvelle_ecriture_from_transactions():
     logging.info(f' route nouvelle_ecriture_from_transaction Transactions récupérées avant filtrage: {len(transactions)}') # Info plus claire
     if compte_id is not None: # Correction : Tester None explicitement
         transactions = [t for t in transactions if t.get('compte_bancaire_id') == compte_id]
-
     if not transactions:
         flash("Aucune transaction à comptabiliser avec les filtres actuels", "warning")
         return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
-
     # Récupérer les données pour les formulaires
     # Assurez-vous que ces fonctions existent et retournent les bonnes données
     comptes = g.models.compte_model.get_all_accounts(user_id=current_user.id)
     categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
     contacts = g.models.contact_model.get_all(current_user.id)
-
-    # 🔥 NOUVEAU : Récupérer les catégories avec écritures secondaires (comme dans nouvelle_ecriture_from_selected)
+    # Récupérer les catégories avec écritures secondaires (comme dans nouvelle_ecriture_from_selected)
     categories_avec_complementaires = g.models.categorie_comptable_model.get_categories_avec_complementaires(current_user.id)
     categories_avec_complementaires_ids = set()
     for cat in categories_avec_complementaires:
         if cat.get('categorie_complementaire_id'):
             categories_avec_complementaires_ids.add(cat['id'])
-
     return render_template('comptabilite/creer_ecritures_groupées.html',
                         transactions=transactions,
                         comptes=comptes,
@@ -5929,18 +5499,16 @@ def modifier_statut_ecriture(ecriture_id):
     if not ecriture or ecriture['utilisateur_id'] != current_user.id:
         flash('Écriture non trouvée', 'danger')
         return redirect(url_for('banking.liste_ecritures'))
-
     nouveau_statut = request.form.get('statut')
     if nouveau_statut not in ['pending', 'validée', 'rejetée', 'supprimée']:
         flash('Statut invalide', 'danger')
         return redirect(url_for('banking.liste_ecritures'))
-
-    # 🔥 CORRECTION : Appeler la méthode sur le bon modèle
+    # Appeler la méthode sur le bon modèle
     if g.models.ecriture_comptable_model.update_statut(ecriture_id, current_user.id, nouveau_statut):
         flash(f'Statut modifié en "{nouveau_statut}"', 'success')
     else:
         flash('Erreur lors de la modification du statut', 'danger')
-    # 🔥 CORRECTION : Retirer le paramètre incorrect de redirect
+    # Retirer le paramètre incorrect de redirect
     return redirect(url_for('banking.liste_ecritures')) # Ne pas passer contacts=contacts ici
 
 
@@ -6023,8 +5591,6 @@ def edit_ecriture(ecriture_id):
         {'value': 'validée', 'label': 'Validée'},
         {'value': 'rejetée', 'label': 'Rejetée'}
     ]
-
-        
     return render_template('comptabilite/nouvelle_ecriture.html', 
                         comptes=comptes, 
                         categories=categories,
@@ -6040,10 +5606,8 @@ def edit_ecriture(ecriture_id):
 @login_required
 def delete_ecriture(ecriture_id):
     """Suppression d'une écriture avec gestion des impacts."""
-    
     action = request.form.get('action')
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
-    
     # ============================================================
     # MODE 1 : ANALYSE D'IMPACT (appel AJAX depuis le tableau)
     # ============================================================
@@ -6051,8 +5615,7 @@ def delete_ecriture(ecriture_id):
         impact = g.models.ecriture_comptable_model.get_impact_suppression(
             ecriture_id, current_user.id
         )
-        
-        # ✅ CORRECTION : Vérifier que l'écriture existe avant de rendre le template
+        # Vérifier que l'écriture existe avant de rendre le template
         if not impact['ecriture']:
             if is_ajax:
                 return jsonify({
@@ -6062,7 +5625,6 @@ def delete_ecriture(ecriture_id):
             else:
                 flash("Écriture introuvable ou non autorisée.", "error")
                 return redirect(url_for('banking.liste_ecritures'))
-        
         if is_ajax:
             # Retourne UNIQUEMENT le fragment HTML du modal
             return render_template(
@@ -6073,7 +5635,6 @@ def delete_ecriture(ecriture_id):
             # Fallback pour les navigateurs sans JavaScript
             flash("Veuillez activer JavaScript pour utiliser cette fonctionnalité.", "warning")
             return redirect(request.referrer or url_for('banking.liste_ecritures'))
-    
     # ============================================================
     # MODE 2 : SUPPRESSION EFFECTIVE (soumission du modal)
     # ============================================================
@@ -6082,7 +5643,7 @@ def delete_ecriture(ecriture_id):
         impact = g.models.ecriture_comptable_model.get_impact_suppression(
             ecriture_id, current_user.id
         )
-        # ✅ CORRECTION : Vérifier que l'écriture existe
+        # Vérifier que l'écriture existe
         if not impact['ecriture']:
             flash("Écriture introuvable ou déjà supprimée.", "error")
             return redirect(url_for('banking.liste_ecritures'))
@@ -6114,12 +5675,12 @@ def delete_ecriture(ecriture_id):
             logger.error(f"Erreur suppression écriture: {e}", exc_info=True)
             flash(f"Erreur lors de la suppression: {str(e)}", "error")
         return redirect(request.referrer or url_for('banking.liste_ecritures'))
-    
     # ============================================================
     # ACTION INVALIDE
     # ============================================================
     flash("Action invalide.", "error")
     return redirect(request.referrer or url_for('banking.liste_ecritures'))
+
 def supprimer_avec_impact(self, ecriture_id: int, user_id: int, 
                           delier_transaction: bool = False,
                           supprimer_cascade: bool = False) -> Tuple[bool, str]:
@@ -6133,15 +5694,12 @@ def supprimer_avec_impact(self, ecriture_id: int, user_id: int,
                 WHERE id = %s AND utilisateur_id = %s
             """, (ecriture_id, user_id))
             ecriture = cursor.fetchone()
-            
             if not ecriture:
                 return False, "Écriture introuvable."
-            
             # Si liée à une transaction et qu'on ne veut pas délier → refus
             if ecriture['transaction_id'] and not delier_transaction:
                 return False, ("Cette écriture est liée à une transaction. "
                               "Veuillez choisir de la délier ou annuler.")
-            
             # Délier la transaction si demandé
             if ecriture['transaction_id'] and delier_transaction:
                 cursor.execute("""
@@ -6149,7 +5707,6 @@ def supprimer_avec_impact(self, ecriture_id: int, user_id: int,
                     SET transaction_id = NULL 
                     WHERE id = %s
                 """, (ecriture_id,))
-            
             # Cascade des secondaires
             nb_secondaires = 0
             if (ecriture['type_ecriture_comptable'] == 'principale' 
@@ -6162,20 +5719,16 @@ def supprimer_avec_impact(self, ecriture_id: int, user_id: int,
                       AND statut != 'supprimee'
                 """, (ecriture_id, user_id))
                 nb_secondaires = cursor.rowcount
-            
             # Soft delete de l'écriture principale
             cursor.execute("""
                 UPDATE ecritures_comptables 
                 SET statut = 'supprimee', date_suppression = NOW()
                 WHERE id = %s AND utilisateur_id = %s
             """, (ecriture_id, user_id))
-            
             message = "Écriture archivée avec succès."
             if nb_secondaires > 0:
                 message += f" {nb_secondaires} écriture(s) secondaire(s) également archivée(s)."
-            
             return True, message
-            
     except Exception as e:
         logger.error(f"Erreur suppression avec impact: {e}", exc_info=True)
         return False, f"Erreur technique: {str(e)}"
@@ -6222,12 +5775,10 @@ def delete_groupe_ecritures(groupe_id):
 def hard_delete_ecriture(ecriture_id):
     """Supprime définitivement une écriture comptable"""
     success, message = g.models.ecriture_comptable_model.delete_hard(ecriture_id, current_user.id)
-    
     if success:
         flash(message, 'success')
     else:
         flash(message, 'danger')
-    
     return redirect(url_for('banking.liste_ecritures'))
 
 # Ajouter une route pour lier une transaction à une écriture
@@ -6255,7 +5806,6 @@ def link_transaction_to_ecritures():
     else:
         flash("❌ Erreur lors du lien des écritures", "danger")
     return redirect(request.referrer or url_for('banking.banking_dashboard'))
-
     
 @bp.route('/banking/unlink_ecriture', methods=['POST'])
 @login_required
@@ -6535,13 +6085,11 @@ def api_analyser_rapprochement():
         compte_attente_id = int(payload.get('compte_attente_id') or 0)
         date_from = payload.get('date_from')
         date_to = payload.get('date_to')
-
         if not compte_attente_id or not date_from or not date_to:
             return jsonify({
                 'success': False,
                 'message': 'Paramètres manquants (compte_attente_id, date_from, date_to).'
             }), 400
-
         # Vérifier que le compte appartient à l'utilisateur
         compte = g.models.categorie_comptable_model.get_by_id(
             compte_attente_id, current_user.id
@@ -6551,11 +6099,9 @@ def api_analyser_rapprochement():
                 'success': False,
                 'message': "Compte introuvable ou non autorisé."
             }), 403
-
         analyse = g.models.rapprochement_bancaire_model.analyser_compte_attente(
             current_user.id, compte_attente_id, date_from, date_to
         )
-
         # Formatage des écritures pour le JS
         ecritures = [
             {
@@ -6567,7 +6113,6 @@ def api_analyser_rapprochement():
             }
             for e in analyse.get('ecritures_non_rapprochees', [])
         ]
-
         return jsonify({
             'success': True,
             'compte_attente_id': compte_attente_id,
@@ -6581,7 +6126,6 @@ def api_analyser_rapprochement():
             'total_non_rapproche': analyse.get('total_non_rapproche', 0),
             'ecritures': ecritures,
         })
-
     except Exception as e:
         logger.exception("Erreur API analyse rapprochement")
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -6603,21 +6147,17 @@ def api_suggerer_rapprochement():
         date_from = payload.get('date_from')
         date_to = payload.get('date_to')
         net_recu = payload.get('montant_net_recu')
-
         if not compte_attente_id or not date_from or not date_to:
             return jsonify({'success': False, 'message': 'Paramètres manquants.'}), 400
-
         compte = g.models.categorie_comptable_model.get_by_id(
             compte_attente_id, current_user.id
         )
         if not compte:
             return jsonify({'success': False, 'message': 'Compte non autorisé.'}), 403
-
         suggestion = g.models.rapprochement_bancaire_model.suggerer(
             current_user.id, compte_attente_id, date_from, date_to,
             montant_net_recu=float(net_recu) if net_recu not in (None, '', 0) else None
         )
-
         return jsonify({
             'success': True,
             'montant_brut': suggestion.get('montant_brut', 0),
@@ -6626,7 +6166,6 @@ def api_suggerer_rapprochement():
             'nb_ecritures_a_solder': suggestion.get('nb_ecritures_a_solder', 0),
             'solde_apres_rapprochement': suggestion.get('solde_apres_rapprochement', 0),
         })
-
     except Exception as e:
         logger.exception("Erreur API suggestion rapprochement")
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -6640,7 +6179,6 @@ def api_creer_valider_rapprochement():
     """
     try:
         p = request.get_json(silent=True) or {}
-
         # Validation des champs obligatoires
         required = ['prestataire', 'compte_banque_id', 'compte_frais_id',
                     'compte_attente_id', 'date_debut', 'date_fin',
@@ -6652,7 +6190,6 @@ def api_creer_valider_rapprochement():
                 'success': False,
                 'message': f"Champs manquants : {', '.join(missing)}"
             }), 400
-
         # Vérification propriété des 3 comptes
         for champ in ('compte_banque_id', 'compte_frais_id', 'compte_attente_id'):
             c = g.models.categorie_comptable_model.get_by_id(
@@ -6663,7 +6200,6 @@ def api_creer_valider_rapprochement():
                     'success': False,
                     'message': f"Compte {champ} introuvable ou non autorisé."
                 }), 403
-
         data = {
             'utilisateur_id': current_user.id,
             'prestataire': p['prestataire'],
@@ -6678,7 +6214,6 @@ def api_creer_valider_rapprochement():
             'montant_net': float(p['montant_net']),
             'reference_releve': p.get('reference_releve') or None,
         }
-
         # 1. Création
         rapprochement_id = g.models.rapprochement_bancaire_model.create(data)
         if not rapprochement_id:
@@ -6697,7 +6232,6 @@ def api_creer_valider_rapprochement():
                 'message': f"Rapprochement créé (ID {rapprochement_id}) mais validation échouée : {msg}",
                 'rapprochement_id': rapprochement_id,
             }), 400
-
         return jsonify({
             'success': True,
             'rapprochement_id': rapprochement_id,
@@ -6705,7 +6239,6 @@ def api_creer_valider_rapprochement():
             'redirect': url_for('banking.detail_rapprochement',
                                 rapprochement_id=rapprochement_id),
         })
-
     except Exception as e:
         logger.exception("Erreur API créer+valider rapprochement")
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -6726,7 +6259,6 @@ def import_plan_comptable_csv():
     all_plan = g.models.plan_comptable_model.get_all_plans(current_user.id)
     if request.method == 'GET':
         return render_template('comptabilite/import_categories_csv.html', all_plan=all_plan)
-
     try:
         if 'csv_file' not in request.files:
             flash('Aucun fichier sélectionné', 'danger')
@@ -6744,10 +6276,8 @@ def import_plan_comptable_csv():
                 content = raw_data.decode("utf-8-sig")
             except UnicodeDecodeError:
                 content = raw_data.decode("latin-1")
-            
             # --- DEBUG (Facultatif, pour voir ce qu'on lit) ---
             print(f"DEBUG: Taille du contenu : {len(content)}")
-            
             # 2. Détection du délimiteur
             stream = io.StringIO(content)
             sniffer = csv_mod.Sniffer()
@@ -6759,20 +6289,15 @@ def import_plan_comptable_csv():
                 class DefaultDialect(csv_mod.excel):
                     delimiter = ','
                 dialect = DefaultDialect
-            
             # 3. Traitement
             stream.seek(0) # On rembobine au début du StringIO
             csv_input = csv_mod.reader(stream, dialect=dialect)
-            
             # Sauter l'en-tête
             header = next(csv_input, None)
-            
             nb_insertions = 0
-            
             with g.db_manager.get_cursor() as cursor:
                 # Vider la table
                 #cursor.execute("DELETE FROM categories_comptables")
-                
                 # Insertion
                 for row in csv_input:
                     if len(row) >= 9:
@@ -6803,15 +6328,12 @@ def import_plan_comptable_csv():
                             VALUES (%s, %s)
                         """, (plan_id, categorie_id))
                         nb_insertions += 1
-            
             flash(f'Plan comptable importé avec succès: {nb_insertions} lignes.', 'success')
         else:
             flash('Format invalide, veuillez uploader un fichier CSV.', 'danger')
-            
     except Exception as e:
         print(f"ERREUR IMPORT: {e}") # Vérifiez bien votre terminal ici
         flash(f'Erreur lors de l\'importation: {str(e)}', 'danger')
-        
     return redirect(url_for('banking.liste_categories_comptables'))
 
 @bp.route('/plans/creer', methods=['GET', 'POST'])
@@ -6831,7 +6353,6 @@ def editer_plan(plan_id):
     plan = g.models.plan_comptable_model.get_plan_with_categories(plan_id, current_user.id)
     if not plan:
         abort(404)
-
     if request.method == 'POST':
         data = request.form.to_dict()
         updated = g.models.plan_comptable_model.modifier_plan(
@@ -6844,7 +6365,6 @@ def editer_plan(plan_id):
             return redirect(url_for('banking.editer_plan', plan_id=plan_id))
         else:
             flash("Erreur lors de la mise à jour.", "danger")
-
     return render_template('plans/editer_plan.html', plan=plan)
 
 @bp.route('/plans/<int:plan_id>/supprimer', methods=['POST'])
@@ -6876,18 +6396,15 @@ def transactions_by_contact_and_compte(compte_id: int, contact_id: int):
     compte = g.models.compte_model.get_by_id(compte_id)
     if not compte or compte['utilisateur_id'] != current_user.id:
         abort(403)
-
     # Vérifier que le contact existe et appartient à l'utilisateur (si tu gères des contacts par utilisateur)
     contact = g.models.contact_model.get_by_id(contact_id)
     if not contact or contact['utilisateur_id'] != current_user.id:
         abort(404)
-
     transactions = g.models.transaction_financiere_model.get_transactions_by_contact_and_compte(
         contact_id=contact_id,
         compte_id=compte_id,
         user_id=current_user.id
     )
-
     return render_template(
         'banking/transactions_par_contact.html',
         compte=compte,
@@ -6905,7 +6422,6 @@ def compte_de_resultat():
             annee = int(annee_str)
         else:
             annee = datetime.now().year
-        
         date_from = f"{annee}-01-01"
         date_to = f"{annee}-12-31"
         
@@ -6917,9 +6433,7 @@ def compte_de_resultat():
             niveau=3,  # 1=groupes, 2=+sous-groupes, 3=+comptes
             show_zero=True  # Afficher toutes les catégories même sans écritures
         )
-        
         annees_disponibles = g.models.ecriture_comptable_model.get_annees_disponibles(current_user.id)
-        
         return render_template('comptabilite/compte_de_resultat.html',
                               compte_resultat=compte_resultat,
                               annee_selectionnee=annee,
@@ -6938,7 +6452,6 @@ def detail_ecritures_categorie(type, categorie_id):
         annee = request.args.get('annee', datetime.now().year)
         date_from = f"{annee}-01-01"
         date_to = f"{annee}-12-31"
-        
         # Utiliser la méthode de la classe EcritureComptable
         ecritures, total, titre = g.models.ecriture_comptable_model.get_ecritures_by_categorie_period(
             user_id=current_user.id,
@@ -6947,7 +6460,6 @@ def detail_ecritures_categorie(type, categorie_id):
             date_from=date_from,
             date_to=date_to,
         )
-        
         # Récupérer les écritures secondaires pour chaque écriture principale
         ecritures_avec_secondaires = []
         total_htva = 0
@@ -6955,23 +6467,19 @@ def detail_ecritures_categorie(type, categorie_id):
         total_ttc = 0
         total_taux_tva = 0
         nb_avec_tva = 0
-        
         for ecriture in ecritures:
             ecriture_dict = dict(ecriture)
-            
             # Calculer les totaux TVA
             montant_htva = float(ecriture_dict.get('montant_htva', ecriture_dict.get('montant', 0)))
             tva_montant = float(ecriture_dict.get('tva_montant', 0))
             montant_ttc = float(ecriture_dict.get('montant', 0))
             taux_tva = float(ecriture_dict.get('tva_taux', 0))
-            
             total_htva += montant_htva
             total_tva += tva_montant
             total_ttc += montant_ttc
             if taux_tva > 0:
                 total_taux_tva += taux_tva
                 nb_avec_tva += 1
-            
             # Si c'est une écriture principale, récupérer ses écritures secondaires
             if ecriture_dict.get('type_ecriture_comptable') == 'principale' or not ecriture_dict.get('ecriture_principale_id'):
                 secondaires = g.models.ecriture_comptable_model.get_ecritures_complementaires(
@@ -6988,18 +6496,14 @@ def detail_ecritures_categorie(type, categorie_id):
                     if float(sec.get('tva_taux', 0)) > 0:
                         total_taux_tva += float(sec.get('tva_taux', 0))
                         nb_avec_tva += 1
-                
                 ecriture_dict['ecritures_secondaires'] = secondaires
                 ecriture_dict['has_secondaires'] = len(secondaires) > 0
             else:
                 ecriture_dict['ecritures_secondaires'] = []
                 ecriture_dict['has_secondaires'] = False
-            
             ecritures_avec_secondaires.append(ecriture_dict)
-        
         # Calculer le taux moyen
         taux_moyen = total_taux_tva / nb_avec_tva if nb_avec_tva > 0 else 0
-        
         totaux_tva = {
             'total_htva': total_htva,
             'total_tva': total_tva,
@@ -7007,10 +6511,8 @@ def detail_ecritures_categorie(type, categorie_id):
             'taux_moyen': taux_moyen,
             'nb_ecritures': len(ecritures)
         }
-        
         logging.info(f"INFO: {len(ecritures_avec_secondaires)} écritures récupérées pour le détail")
-        
-        # ✅ Assurez-vous que totaux_tva est bien passé
+        # ssurez-vous que totaux_tva est bien passé
         return render_template('comptabilite/detail_ecritures.html',
                             ecritures=ecritures_avec_secondaires,
                             total=total,
@@ -7019,12 +6521,6 @@ def detail_ecritures_categorie(type, categorie_id):
                             type=type,
                             categorie_id=categorie_id,
                             totaux_tva=totaux_tva)  # <-- ICI
-  
-    except Exception as e:
-        logging.error(f"Erreur lors du chargement des détails: {e}")
-        flash(f"Erreur lors du chargement des détails: {str(e)}", "danger")
-        return redirect(url_for('banking.compte_de_resultat'))
-    
     except Exception as e:
         logging.error(f"Erreur lors du chargement des détails: {e}")
         flash(f"Erreur lors du chargement des détails: {str(e)}", "danger")
@@ -7038,7 +6534,6 @@ def get_ecritures_compte_resultat():
         annee = request.args.get('annee', datetime.now().year)
         type_ecriture = request.args.get('type', '')  # 'produit' ou 'charge'
         categorie_id = request.args.get('categorie_id', '')
-        
         date_from = f"{annee}-01-01"
         date_to = f"{annee}-12-31"
         # Construire la requête en fonction des paramètres
@@ -7059,9 +6554,7 @@ def get_ecritures_compte_resultat():
             AND e.date_ecriture BETWEEN %s AND %s
             AND e.statut = 'validée'
         """
-        
         params = [current_user.id, date_from, date_to]
-        
         if type_ecriture == 'produit':
             query += " AND c.type_compte = 'Revenus'"
         elif type_ecriture == 'charge':
@@ -7151,7 +6644,6 @@ def api_ecritures():
     date_to = request.args.get('date_to')
     categorie_id = request.args.get('categorie_id')
     type_ecriture = request.args.get('type_ecriture')
-    
     # Récupérer les écritures filtrées
     if categorie_id:
         ecritures = g.models.ecriture_comptable_model.get_by_categorie(
@@ -7202,11 +6694,9 @@ def bilan_comptable():
             user_id=current_user.id,
             date_bilan=date_bilan
         )
-        
         if 'erreur' in rapport_data:
             flash(f"Erreur lors de la génération du bilan : {rapport_data['erreur']}", "danger")
-            return redirect(url_for('banking.banking_dashboard'))
-            
+            return redirect(url_for('banking.banking_dashboard')) 
         return render_template(
             'comptabilite/bilan.html',
             rapport=rapport_data,
@@ -7238,11 +6728,9 @@ def declaration_tva():
             annee=annee,
             trimestre=trimestre
         )
-        
         if 'erreur' in rapport_data:
             flash(f"Erreur lors de la génération de la déclaration TVA : {rapport_data['erreur']}", "danger")
             return redirect(url_for('banking.banking_dashboard'))
-            
         return render_template(
             'comptabilite/declaration_tva.html',
             rapport=rapport_data,
@@ -7266,7 +6754,6 @@ def grand_livre():
         date_from = request.args.get('date_from', f"{annee}-01-01")
         date_to = request.args.get('date_to', f"{annee}-12-31")
         categorie_id = request.args.get('categorie_id', type=int) # Optionnel : filtrer par un seul compte
-        
         rapport_data = g.models.rapport_model.generate_grand_livre(
             user_id=current_user.id,
             date_from=date_from,
@@ -7274,13 +6761,10 @@ def grand_livre():
             categorie_id=categorie_id,
             statut='validée'
         )
-        
         if 'erreur' in rapport_data:
             flash(f"Erreur lors de la génération du grand livre : {rapport_data['erreur']}", "danger")
-            return redirect(url_for('banking.banking_dashboard'))
-            
+            return redirect(url_for('banking.banking_dashboard'))  
         categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
-            
         return render_template(
             'comptabilite/grand_livre.html',
             rapport=rapport_data,
@@ -7303,16 +6787,13 @@ def balance_generale():
         now = datetime.now()
         annee = int(request.args.get('annee', now.year))
         date_bilan = request.args.get('date_bilan', f"{annee}-12-31")
-        
         rapport_data = g.models.rapport_model.generate_balance_generale(
             user_id=current_user.id,
             date_bilan=date_bilan
         )
-        
         if 'erreur' in rapport_data:
             flash(f"Erreur lors de la génération de la balance : {rapport_data['erreur']}", "danger")
             return redirect(url_for('banking.banking_dashboard'))
-            
         return render_template(
             'comptabilite/balance_generale.html',
             rapport=rapport_data,
@@ -7334,18 +6815,15 @@ def journal_general():
         annee = int(request.args.get('annee', now.year))
         date_from = request.args.get('date_from', f"{annee}-01-01")
         date_to = request.args.get('date_to', f"{annee}-12-31")
-        
         rapport_data = g.models.rapport_model.generate_journal_general(
             user_id=current_user.id,
             date_from=date_from,
             date_to=date_to,
             statut='validée'
         )
-        
         if 'erreur' in rapport_data:
             flash(f"Erreur lors de la génération du journal : {rapport_data['erreur']}", "danger")
             return redirect(url_for('banking.banking_dashboard'))
-            
         return render_template(
             'comptabilite/journal_general.html',
             rapport=rapport_data,
@@ -7365,16 +6843,13 @@ def etat_creances_dettes():
     """Affiche l'état des créances clients et dettes fournisseurs avec ancienneté"""
     try:
         date_reference = request.args.get('date_reference', datetime.now().strftime('%Y-%m-%d'))
-        
         rapport_data = g.models.rapport_model.generate_etat_creances_dettes(
             user_id=current_user.id,
             date_reference=date_reference
         )
-        
         if 'erreur' in rapport_data:
             flash(f"Erreur lors de la génération de l'état des créances/dettes : {rapport_data['erreur']}", "danger")
             return redirect(url_for('banking.banking_dashboard'))
-            
         return render_template(
             'comptabilite/creances_dettes.html',
             rapport=rapport_data,
@@ -7400,26 +6875,21 @@ def export_rapport(type_rapport):
             date_bilan = request.args.get('date_bilan', datetime.now().strftime('%Y-%m-%d'))
             data = g.models.rapport_model.generate_bilan_detaille(current_user.id, date_bilan)
             filename = f"bilan_{date_bilan}"
-            
         elif type_rapport == 'tva':
             annee = int(request.args.get('annee', datetime.now().year))
             trimestre = int(request.args.get('trimestre', 1))
             data = g.models.rapport_model.generate_declaration_tva_trimestrielle(current_user.id, annee, trimestre)
             filename = f"declaration_tva_t{trimestre}_{annee}"
-            
         elif type_rapport == 'balance':
             date_bilan = request.args.get('date_bilan', datetime.now().strftime('%Y-%m-%d'))
             data = g.models.rapport_model.generate_balance_generale(current_user.id, date_bilan)
             filename = f"balance_generale_{date_bilan}"
-            
         else:
             flash("Type de rapport non supporté pour l'export", "warning")
             return redirect(request.referrer or url_for('banking.banking_dashboard'))
-
         if 'erreur' in data:
             flash(f"Impossible d'exporter : {data['erreur']}", "danger")
             return redirect(request.referrer or url_for('banking.banking_dashboard'))
-
         # Ici, vous pouvez appeler votre fonction de génération CSV/Excel/PDF
         # Exemple simplifié pour CSV :
         # csv_data = generate_csv_from_dict(data)
@@ -7427,11 +6897,9 @@ def export_rapport(type_rapport):
         # response.headers["Content-Disposition"] = f"attachment; filename={filename}.csv"
         # response.headers["Content-type"] = "text/csv"
         # return response
-        
         # En attendant l'implémentation de l'export, on renvoie vers le rapport avec un message
         flash(f"Préparation de l'export pour {type_rapport}... (Fonction d'export à implémenter)", "info")
         return redirect(request.referrer or url_for('banking.banking_dashboard'))
-
     except Exception as e:
         logging.error(f"Erreur export rapport {type_rapport}: {e}")
         flash("Erreur lors de la préparation de l'export.", "danger")
@@ -7487,13 +6955,11 @@ def comptabilite_tva():
         annee, trimestre = (int(x) for x in periode.split('-'))
     else:
         annee, trimestre = today.year, (today.month - 1) // 3 + 1
-
     if request.method == 'POST' and request.form.get('action') == 'cloturer':
         chiffres = {k: v for k, v in request.form.items() if k != 'action'}
         g.models.formulaire_tva_model.cloturer(current_user.id, annee, trimestre, chiffres)
         flash(f'Trimestre T0{trimestre}/{annee} marqué comme clôturé.', 'success')
         return redirect(url_for('banking.comptabilite_tva', periode=f'{annee}-{trimestre}'))
-
     donnees = g.models.formulaire_tva_model.get_donnees_formulaire(current_user.id, annee, trimestre)
     cloture = g.models.formulaire_tva_model.get_cloture(current_user.id, annee, trimestre)
     if cloture and cloture.get('donnees_json'):
@@ -7530,10 +6996,8 @@ def comptabilite_tva_pdf():
         annee, trimestre = (int(x) for x in periode.split('-'))
     else:
         annee, trimestre = today.year, (today.month - 1) // 3 + 1
-
     donnees = g.models.formulaire_tva_model.get_donnees_formulaire(current_user.id, annee, trimestre)
     chiffres = donnees['chiffres']
-
     # Si clôturé → valeurs sauvegardées ; si POST → valeurs de l'écran
     cloture = g.models.formulaire_tva_model.get_cloture(current_user.id, annee, trimestre)
     if cloture and cloture.get('donnees_json'):
@@ -7546,7 +7010,6 @@ def comptabilite_tva_pdf():
         for k in list(chiffres.keys()):
             if k in request.form:
                 chiffres[k] = _float_form(request.form, k)
-
     # Totaux dérivés (mêmes formules que le JS)
     chiffres['c289'] = round(sum(chiffres[k] for k in ('c220','c221','c225','c230','c235','c280')), 2)
     chiffres['c299'] = round(chiffres['c200'] - chiffres['c289'], 2)
@@ -7556,10 +7019,8 @@ def comptabilite_tva_pdf():
     solde = round(chiffres['c399'] - chiffres['c479'], 2)
     chiffres['c500'] = solde if solde > 0 else 0.0
     chiffres['c510'] = -solde if solde < 0 else 0.0
-
     date_debut, date_fin = g.models.formulaire_tva_model.dates_trimestre(annee, trimestre)
     entreprise = g.models.entreprise_model.get_or_create_for_user(current_user.id)
-
     html = render_template('comptabilite/tva_pdf.html',
                            donnees=donnees, chiffres=chiffres,
                            annee=annee, trimestre=trimestre,
@@ -7571,7 +7032,6 @@ def comptabilite_tva_pdf():
     except Exception as e:
         flash(f"Erreur export PDF : {e}", 'danger')
         return redirect(url_for('banking.comptabilite_tva', periode=f'{annee}-{trimestre}'))
-
     return Response(pdf, mimetype='application/pdf',
                     headers={'Content-Disposition':
                              f'attachment; filename=TVA_T0{trimestre}_{annee}.pdf'})
@@ -7590,7 +7050,6 @@ def api_taux_by_date():
         annee_courante = datetime.now().year
         taux_valides = g.models.taux_tva_model.get_taux_by_date(f"{annee_courante}-01-01")
     return jsonify(taux_valides)
-
 
 def _params_compte_resultat():
     today = date.today()
@@ -7698,7 +7157,6 @@ def creer_regle():
     """Créer une nouvelle règle d'écriture"""
     # Récupérer les catégories comptables (pas les catégories de transactions)
     categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
-    
     if request.method == 'POST':
         try:
             categorie_source_id = request.form.get('categorie_source_id')
@@ -7709,24 +7167,19 @@ def creer_regle():
             valeur = request.form.get('valeur')
             ordre = request.form.get('ordre', 1)
             actif = request.form.get('actif') == 'on'
-            
             # Validation
             if not categorie_source_id or not categorie_destination_id:
                 flash("Veuillez sélectionner les catégories source et destination", "error")
                 return render_template('regles/form.html', categories=categories)
-            
             if categorie_source_id == categorie_destination_id:
                 flash("La catégorie source et destination ne peuvent pas être identiques", "error")
                 return render_template('regles/form.html', categories=categories)
-            
             # Vérifier que les catégories existent (avec categorie_comptable_model)
             categorie_source = g.models.categorie_comptable_model.get_by_id(int(categorie_source_id), utilisateur_id=current_user.id)
             categorie_destination = g.models.categorie_comptable_model.get_by_id(int(categorie_destination_id), utilisateur_id=current_user.id)
-            
             if not categorie_source or not categorie_destination:
                 flash("Une ou plusieurs catégories sont invalides", "error")
                 return render_template('regles/form.html', categories=categories)
-            
             # Préparer les données
             data = {
                 'categorie_source_id': int(categorie_source_id),
@@ -7738,21 +7191,18 @@ def creer_regle():
                 'ordre': int(ordre),
                 'actif': actif
             }
-            
             regle_id = g.models.regle_ecriture_model.create(data)
             if regle_id:
                 flash("Règle créée avec succès", "success")
                 return redirect(url_for('banking.gestion_regles'))
             else:
                 flash("Erreur lors de la création de la règle", "error")
-                
         except ValueError as e:
             logging.error(f"Erreur de validation: {e}")
             flash(f"Erreur de validation: {str(e)}", "error")
         except Exception as e:
             logging.error(f"Erreur création règle: {e}")
             flash("Erreur lors de la création de la règle", "error")
-    
     # GET - Afficher le formulaire avec les catégories comptables
     return render_template('regles/form.html', categories=categories)
 
@@ -8859,22 +8309,14 @@ def employe_login():
 def salaire_pdf(mois: int, annee: int):
     user_id = current_user.id
     selected_employeur = request.args.get('employeur')
-
     # Récupérer les données comme dans /salaires
     contrat = g.models.contrat_model.get_contrat_for_date(user_id, selected_employeur, f"{annee}-{mois:02d}-01")
     if not contrat:
         abort(404)
-
     heures_reelles = g.models.heure_model.get_total_heures_mois(user_id, selected_employeur, contrat['id'], annee, mois) or 0.0
     salaires_db = g.models.salaire_model.get_by_mois_annee(user_id, annee, mois, selected_employeur, contrat['id'])
     salaire_data = salaires_db[0] if salaires_db else None
-
     result = g.models.salaire_model.calculer_salaire_net_avec_details(
-        g.models.heure_model,
-        g.models.cotisations_contrat_model,
-        g.models.indemnites_contrat_model,
-        g.models.bareme_indemnite_model,
-        g.models.bareme_cotisation_model,
         heures_reelles=heures_reelles,
         contrat=contrat,
         contrat_id=contrat['id'],
@@ -8884,10 +8326,8 @@ def salaire_pdf(mois: int, annee: int):
         jour_estimation=contrat.get('jour_estimation_salaire', 15)
     )
     details = result.get('details', {})
-
     # Récupérer infos entreprise
     entreprise = g.models.entreprise_model.get_or_create_for_user(user_id)
-
     # === GÉNÉRATION PDF ===
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=72)
@@ -8900,19 +8340,16 @@ def salaire_pdf(mois: int, annee: int):
         spaceAfter=14,
         alignment=1  # center
     )
-
     # En-tête entreprise
     if entreprise.get('logo_path') and os.path.exists(os.path.join(current_app.static_folder, entreprise['logo_path'])):
         logo_path = os.path.join(current_app.static_folder, entreprise['logo_path'])
         img = Image(logo_path, width=1.5*inch, height=1.5*inch)
         elements.append(img)
         elements.append(Spacer(1, 12))
-
     elements.append(Paragraph(entreprise.get('nom', 'Votre entreprise'), title_style))
     elements.append(Paragraph(f"{entreprise.get('rue', '')}", styles['Normal']))
     elements.append(Paragraph(f"{entreprise.get('code_postal', '')} {entreprise.get('commune', '')}", styles['Normal']))
     elements.append(Spacer(1, 24))
-
     # Titre du document
     mois_noms = ["", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
                  "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"]
@@ -8920,7 +8357,6 @@ def salaire_pdf(mois: int, annee: int):
     if selected_employeur:
         elements.append(Paragraph(f"Employeur : {selected_employeur}", styles['Normal']))
     elements.append(Spacer(1, 18))
-
     # Tableau de synthèse
     data = [
         ["Élément", "Montant (CHF)"],
@@ -8942,14 +8378,11 @@ def salaire_pdf(mois: int, annee: int):
     ]))
     elements.append(table)
     elements.append(Spacer(1, 24))
-
     # Signature
     elements.append(Paragraph("_________________________", styles['Normal']))
     elements.append(Paragraph("Signature employeur", styles['Normal']))
-
     doc.build(elements)
     buffer.seek(0)
-
     filename = f"salaire_{selected_employeur or 'perso'}_{annee}_{mois:02d}.pdf"
     return send_file(
         buffer,
@@ -8977,11 +8410,6 @@ def salaire_employe_pdf(employe_id: int, annee: int, mois: int):
     employeur = contrat['employeur']
     heures_reelles = g.models.heure_model.get_total_heures_mois(user_id, employeur, contrat['id'], annee, mois) or 0.0
     result = g.models.salaire_model.calculer_salaire_net_avec_details(
-        g.models.heure_model,
-        g.models.cotisations_contrat_model,
-        g.models.indemnites_contrat_model,
-        g.models.bareme_indemnite_model,
-        g.models.bareme_cotisation_model,
         heures_reelles=heures_reelles,
         contrat=contrat,
         contrat_id=contrat['id'],
@@ -9078,11 +8506,6 @@ def employe_salaire_view():
         if heures_reelles > 0:
             # 1. Salaire net + détails
             result = g.models.salaire_model.calculer_salaire_net_avec_details(
-                heure_model=g.models.heure_model,
-                cotisations_contrat_model=g.models.cotisations_contrat_model,
-                indemnites_contrat_model=g.models.indemnites_contrat_model,
-                bareme_indemnite_model=g.models.bareme_indemnite_model,
-                bareme_cotisation_model=g.models.bareme_cotisation_model,
                 heures_reelles=heures_reelles,
                 contrat=contrat,
                 contrat_id=id_contrat,
@@ -9098,12 +8521,8 @@ def employe_salaire_view():
             # 2. Acompte 25 = heures(1–15)
             acompte_25_estime = 0.0
             if contrat.get('versement_25'):
-                heure_model=g.models.heure_model
-                acompte_25_estime = g.models.salaire_model.calculer_acompte_25(heure_model,
-                    user_id, annee, m, salaire_horaire, employeur, id_contrat, jour_estimation
-                )
+                acompte_25_estime = g.models.salaire_model.calculer_acompte_25(user_id, annee, m, salaire_horaire, employeur, id_contrat, jour_estimation)
                 acompte_25_estime = round(acompte_25_estime, 2)
-
             # 3. Acompte 10 = salaire_net − acompte_25_estime
             acompte_10_estime = round(salaire_net - acompte_25_estime, 2)
 
@@ -9289,11 +8708,6 @@ def salaires():
             if heures_reelles > 0:
                 # 1. Salaire net + détails (via nouvelles tables)
                 result = g.models.salaire_model.calculer_salaire_net_avec_details(
-                    g.models.heure_model,
-                    g.models.cotisations_contrat_model,
-                    g.models.indemnites_contrat_model,
-                    g.models.bareme_indemnite_model,
-                    g.models.bareme_cotisation_model,
                     heures_reelles=heures_reelles,
                     contrat=contrat,
                     contrat_id=id_contrat,
@@ -9319,10 +8733,7 @@ def salaires():
                 # 2. Acompte 25 = heures(1–15) × salaire_horaire
                 acompte_25_estime = 0.0
                 if contrat.get('versement_25'):
-                    heure_model = g.models.heure_model
-                    acompte_25_estime = g.models.salaire_model.calculer_acompte_25(heure_model,
-                        current_user_id, annee, m, salaire_horaire, employeur, id_contrat, jour_estimation
-                    )
+                    acompte_25_estime = g.models.salaire_model.calculer_acompte_25(current_user_id, annee, m, salaire_horaire, employeur, id_contrat, jour_estimation)
                     acompte_25_estime = round(acompte_25_estime, 2)
                 # 3. Acompte 10 = salaire_net − acompte_25_estime
                 acompte_10_estime = round(salaire_net - acompte_25_estime, 2)
@@ -9529,27 +8940,17 @@ def details_calcul_salaire():
         if mois is None or annee is None or not employeur:
             return jsonify({'erreur': 'Mois, année et employeur requis'}), 400
         # Récupération du contrat actuel
-
         current_user_id = current_user.id
         date_str = f'{annee}-{mois:02d}-01'
         contrat = g.models.contrat_model.get_contrat_for_date(current_user_id, employeur, date_str)
-    
         if not contrat:
             return jsonify({'erreur': 'Aucun contrat trouvé pour cette période'}), 404
-        
         # Récupération des heures réelles
         heures_reelles = g.models.heure_model.get_total_heures_mois(current_user_id, employeur, contrat['id'], annee, mois) or 0.0
-        
         # Calcul avec détails
         resultats = g.models.salaire_model.calculer_salaire_net_avec_details(
-            g.models.heure_model,
-            g.models.cotisations_contrat_model,
-            g.models.indemnites_contrat_model,
-            g.models.bareme_indemnite_model,
-            g.models.bareme_cotisation_model,
             heures_reelles,
             contrat, user_id=current_user_id, annee=annee, mois=mois)
-        
         # Ajout du mois et de l'année aux résultats
         resultats['mois'] = mois
         resultats['annee'] = annee
@@ -9565,7 +8966,6 @@ def update_salaire():
     employeur = request.form.get('employeur')
     current_user_id = current_user.id
     annee_now = datetime.now().year
-
     # Validation et conversion sécurisée
     try:
         mois = int(mois_str) if mois_str and mois_str.strip() else None
@@ -9573,44 +8973,36 @@ def update_salaire():
         salaire_verse = float(request.form.get('salaire_verse') or 0.0)
         acompte_25 = float(request.form.get('acompte_25') or 0.0)
         acompte_10 = float(request.form.get('acompte_10') or 0.0)
-
         if mois is None or annee is None:
             flash("Mois et année sont requis", "error")
             return redirect(url_for('banking.salaires', annee=annee_now))
     except (ValueError, TypeError):
         flash("Format de données invalide", "error")
         return redirect(url_for('banking.salaires', annee=annee_now))
-
     # Récupération du contrat actif pour ce mois/employeur
     date_ref = f"{annee}-{mois:02d}-01"
     contrat = g.models.contrat_model.get_contrat_for_date(current_user_id, employeur, date_ref)
     if not contrat:
         flash("Aucun contrat trouvé pour cet employeur et cette période", "error")
         return redirect(url_for('banking.salaires', annee=annee))
-
     id_contrat = contrat['id']
     salaire_horaire = float(contrat.get('salaire_horaire', 24.05))
     jour_estimation = int(contrat.get('jour_estimation_salaire', 15))
-
     # Heures réelles
     heures_reelles = g.models.heure_model.get_total_heures_mois(
         current_user_id, employeur, id_contrat, annee, mois
     ) or 0.0
-
     # Recherche d'une entrée existante
     existing = g.models.salaire_model.get_by_mois_annee(
         current_user_id, annee, mois, employeur, id_contrat
     )
     salaire_existant = next((s for s in existing if s.get('employeur') == employeur), None)
-
     # Calcul du salaire théorique
     salaire_calcule = g.models.salaire_model.calculer_salaire(heures_reelles, salaire_horaire)
-
     # Différence
     difference, difference_pourcent = g.models.salaire_model.calculer_differences(
         salaire_calcule, salaire_verse
     )
-
     # === Étape 1 : Sauvegarder les valeurs saisies (création ou mise à jour) ===
     if salaire_existant:
         salaire_id = salaire_existant['id']
@@ -9649,37 +9041,27 @@ def update_salaire():
         existing = g.models.salaire_model.get_by_mois_annee(current_user_id, annee, mois, employeur, id_contrat)
         salaire_existant = next((s for s in existing if s.get('employeur') == employeur), None)
         salaire_id = salaire_existant['id'] if salaire_existant else None
-
     # === Étape 2 : Recalculer les champs ESTIMÉS et NET, puis mettre à jour ===
     if success and salaire_id:
         # Recalculer les acomptes estimés avec la logique précise
         acompte_25_estime = 0.0
         acompte_10_estime = 0.0
         if contrat.get('versement_25'):
-            heure_model = g.models.heure_model
-            acompte_25_estime = g.models.salaire_model.calculer_acompte_25(heure_model,
-                current_user_id, annee, mois, salaire_horaire, employeur, id_contrat, jour_estimation
-            )
+            acompte_25_estime = g.models.salaire_model.calculer_acompte_25(current_user_id, annee, mois, salaire_horaire, employeur, id_contrat, jour_estimation)
         if contrat.get('versement_10'):
-            acompte_10_estime = g.models.salaire_model.calculer_acompte_10(heure_model,
-                current_user_id, annee, mois, salaire_horaire, employeur, id_contrat, jour_estimation
-            )
-
+            acompte_10_estime = g.models.salaire_model.calculer_acompte_10(current_user_id, annee, mois, salaire_horaire, employeur, id_contrat, jour_estimation)
         # Recalculer le salaire net proprement
         salaire_net = g.models.salaire_model.calculer_salaire_net(heures_reelles, contrat)
-
         # Mettre à jour les champs calculés (sans toucher aux saisies manuelles)
         g.models.salaire_model.update(salaire_id, {
             'acompte_25_estime': round(acompte_25_estime, 2),
             'acompte_10_estime': round(acompte_10_estime, 2),
             'salaire_net': round(salaire_net, 2),
         })
-
     if success:
         flash("Les valeurs ont été mises à jour avec succès", "success")
     else:
         flash("Erreur lors de la mise à jour des données", "error")
-
     return redirect(url_for('banking.salaires', annee=annee))
 
 @bp.route('/recalculer_salaires', methods=['POST'])
@@ -9692,7 +9074,6 @@ def recalculer_salaires():
     if not annee or not employeur:
         flash("Année et employeur requis pour le recalcul", "error")
         return redirect(url_for('banking.salaires', annee=annee or datetime.now().year))
-
     # Récupérer un contrat valide pour cet employeur
     date_ref = f"{annee}-06-01"
     contrat = g.models.contrat_model.get_contrat_for_date(current_user_id, employeur, date_ref)
@@ -9700,27 +9081,21 @@ def recalculer_salaires():
         # Essayer de trouver n'importe quel contrat pour cet employeur
         tous_contrats = g.models.contrat_model.get_all_contrats(current_user_id)
         contrat = next((c for c in tous_contrats if c['employeur'] == employeur), None)
-    
     if not contrat:
         flash(f"Aucun contrat trouvé pour l'employeur '{employeur}' en {annee}", "error")
         return redirect(url_for('banking.salaires', annee=annee))
-
     id_contrat = contrat['id']
-
     # Récupérer tous les salaires de cette année pour cet employeur/contrat
     salaires = g.models.salaire_model.get_by_user_and_month(
         user_id=current_user_id,
      #   employeur=employeur,
         id_contrat=id_contrat,
-        annee=annee
-    )
-
+        annee=annee)
     count = 0
     for sal in salaires:
-        if g.models.salaire_model.recalculer_salaire(g.models.heure_model, g.models.cotisations_contrat_model, g.models.indemnites_contrat_model, g.models.bareme_indemnite_model,g.models.bareme_cotisation_model, sal['id'], contrat):
+        if g.models.salaire_model.recalculer_salaire(sal['id'], contrat):
             count += 1
             logging.info(f'salaire corrigé : {salaires} - {sal}')
-
     flash(f"✅ {count} salaires ont été recalculés avec succès pour {employeur} en {annee}.", "success")
     return redirect(url_for('banking.salaires', annee=annee, employeur=employeur))
 
@@ -9738,42 +9113,33 @@ def synthese_hebdomadaire():
     except (ValueError, TypeError):
         seuil_h2f_heure = 20.0
     seuil_h2f_minutes = int(round(seuil_h2f_heure * 60))  # ← entier en minutes
-
     # Déterminer la semaine courante si non fournie
     if semaine is None or not semaine.isdigit():
         semaine = datetime.now().isocalendar()[1]
     else:
         semaine = int(semaine)
-
     # Calculer et sauvegarder les synthèses par contrat pour la semaine si nécessaire
     data_list = g.models.synthese_hebdo_model.calculate_for_week_by_contrat(user_id, annee, semaine)
     for data in data_list:
         g.models.synthese_hebdo_model.create_or_update_batch([data])
-
     # Données de la semaine sélectionnée
     synthese_list = g.models.synthese_hebdo_model.get_by_user_and_filters(
         user_id=user_id, annee=annee, semaine=semaine,
         employeur=employeur_filtre, contrat_id=id_contrat_filtre
     )
-    
     # Calcul des totaux pour la semaine
     total_heures = sum(float(s.get('heures_reelles', 0)) for s in synthese_list)
     total_simule = sum(float(s.get('heures_simulees', 0)) for s in synthese_list)
-
-    # --- NOUVEAU : Calcul des stats h2f pour l'année ---
-  
-
+    # ---  Calcul des stats h2f pour l'année ---
     if employeur_filtre and id_contrat_filtre:
-        stats_h2f = g.models.synthese_hebdo_model.calculate_h2f_stats(
-            g.models.heure_model, user_id, employeur_filtre, int(id_contrat_filtre), annee, seuil_h2f_minutes)
+        stats_h2f = g.models.synthese_hebdo_model.calculate_h2f_stats(user_id, employeur_filtre, int(id_contrat_filtre), annee, seuil_h2f_minutes)
         moyenne_hebdo_h2f = stats_h2f['moyennes_hebdo'].get(semaine, 0.0)
         moyenne_mobile_h2f = stats_h2f['moyennes_mobiles'].get(semaine, 0.0)
     else:
-        stats_h2f = g.models.synthese_hebdo_model.calculate_h2f_stats(g.models.heure_model, user_id, None, None, annee, seuil_h2f_minutes)
+        stats_h2f = g.models.synthese_hebdo_model.calculate_h2f_stats(user_id, None, None, annee, seuil_h2f_minutes)
         # On récupère la moyenne pour la semaine affichée
         moyenne_hebdo_h2f = stats_h2f['moyennes_hebdo'].get(semaine, 0.0)
         moyenne_mobile_h2f = stats_h2f['moyennes_mobiles'].get(semaine, 0.0)
-
     # --- NOUVEAU : Préparation des données SVG pour le graphique horaire de la semaine ---
     # Pour simplifier, on suppose que l'employeur et le contrat sont connus ou qu'on veut les combiner.
     # Ici, on va chercher les données brutes pour la semaine et on les affiche ensemble.
@@ -9783,17 +9149,14 @@ def synthese_hebdomadaire():
     employeur_exemple = synthese_list[0]['employeur'] if synthese_list else None
     id_contrat_svg = id_contrat_filtre if id_contrat_filtre else (synthese_list[0]['id_contrat'])
     employeur_svg = employeur_filtre if employeur_filtre else synthese_list[0]['employeur']
-
     svg_horaire_data = None
     if id_contrat_exemple and employeur_exemple:
         svg_horaire_data = g.models.synthese_hebdo_model.prepare_svg_data_horaire_jour(
-            g.models.heure_model, user_id, employeur_exemple, id_contrat_exemple, annee, semaine, seuil_h2f_heure)
+            user_id, employeur_exemple, id_contrat_exemple, annee, semaine, seuil_h2f_heure)
     elif id_contrat_svg and employeur_svg:
         svg_horaire_data = g.models.synthese_hebdo_model.prepare_svg_data_horaire_jour(
-            g.models.heure_model, user_id, employeur_svg, id_contrat_svg, annee, semaine, seuil_h2f_heure)
-
+            user_id, employeur_svg, id_contrat_svg, annee, semaine, seuil_h2f_heure)
     # Si pas de contrat trouvé, svg_horaire_data restera None, gère-le dans ton template.
-
     # Préparer le graphique SVG pour l'année entière (heures totales)
     graphique_svg = g.models.synthese_hebdo_model.prepare_svg_data_hebdo(user_id, annee)
     employeurs_disponibles = g.models.contrat_model.get_all_contrats(user_id)
@@ -9821,7 +9184,6 @@ def synthese_hebdomadaire():
 def generer_syntheses_hebdomadaires():
     user_id = current_user.id
     annee = int(request.form.get('annee', datetime.now().year))
-    
     # Générer les 53 semaines → uniquement si aucune synthèse n'existe pour cette semaine
     for semaine in range(1, 54):
         # Vérifier si des synthèses existent déjà pour cette semaine (au moins une ligne)
@@ -9833,7 +9195,6 @@ def generer_syntheses_hebdomadaires():
             data_list = g.models.synthese_hebdo_model.calculate_for_week_by_contrat(user_id, annee, semaine)
             for data in data_list:
                 g.models.synthese_hebdo_model.create_or_update_batch([data])
-    
     flash(f"Synthèses hebdomadaires générées pour l'année {annee}.", "success")
     return redirect(url_for('banking.synthese_heures', annee=annee))
 
@@ -9842,13 +9203,10 @@ def generer_syntheses_hebdomadaires():
 def synthese_heures():
     user_id = current_user.id
     annee = int(request.args.get('annee', datetime.now().year))
-    
     # Récupérer TOUTES les synthèses de l'année (pour le tableau)
     semaines = g.models.synthese_hebdo_model.get_by_user_and_year(user_id, annee)
-    
     # Générer le graphique SVG global
     graphique_svg = g.models.synthese_hebdo_model.prepare_svg_data_hebdo(user_id, annee)
-    
     # Liste des employeurs pour les filtres (optionnel)
     try:
         with g.models.synthese_hebdo_model.db.get_cursor() as cursor:
@@ -9862,7 +9220,6 @@ def synthese_heures():
     except Exception as e:
         logging.error(f"Erreur employeurs: {e}")
         employeurs = []
-
     return render_template('salaires/synthese_heures.html',
                         semaines=semaines,
                         graphique_svg=graphique_svg,
@@ -9875,16 +9232,13 @@ def synthese_heures():
 def generer_syntheses_mensuelles():
     user_id = current_user.id
     annee = int(request.form.get('annee', datetime.now().year))
-    
     # Supprimer les anciennes synthèses de l'année pour éviter les doublons
     g.models.synthese_mensuelle_model.delete_by_user_and_year(user_id, annee)
-    
     # Générer les 12 mois → une synthèse PAR CONTRAT
     for mois in range(1, 13):
         data_list = g.models.synthese_mensuelle_model.calculate_for_month_by_contrat(user_id, annee, mois)
         for data in data_list:
             g.models.synthese_mensuelle_model.create_or_update(data)
-    
     flash(f"Synthèses mensuelles générées par contrat pour l'année {annee} (en CHF).", "success")
     return redirect(url_for('banking.synthese_mensuelle', annee=annee))
 
@@ -9899,7 +9253,6 @@ def synthese_mensuelle():
     logging.info(f'employeur par defaut : {employeurs_default}')
     contrats_default = contrats[0]['id'] if contrats else None
     logging.info(f'contrat par défaut : {contrats_default}')
-    
     annee = int(request.args.get('annee', datetime.now().year))
     mois = request.args.get('mois')
     employeur = request.args.get('employeur', employeurs_default)
@@ -9910,9 +9263,7 @@ def synthese_mensuelle():
             contrat_id = int(contrat_id_raw)
         except (ValueError, TypeError):
             contrat_id = None
-    
     mois = int(mois) if mois and mois.isdigit() else None
-
     synthese_list = g.models.synthese_mensuelle_model.get_by_user_and_filters(
         user_id=user_id,
         annee=annee,
@@ -9920,11 +9271,9 @@ def synthese_mensuelle():
         employeur=employeur,
         contrat_id=contrat_id
     )
-    logging.info(f'voici la synthese list : {synthese_list}')
-   
+    logging.info(f'voici la synthese list : {synthese_list}')  
         
-        
-    # ✅ Préparer le graphique SVG (toujours pour l'année entière, en CHF)
+    # Préparer le graphique SVG (toujours pour l'année entière, en CHF)
     graphique_svg = g.models.synthese_mensuelle_model.prepare_svg_data_mensuel(user_id, annee)
     logging.info(f'Voici les données graphiques {graphique_svg} ')
     # --- NOUVEAU : Calcul des stats h2f pour le mois ---
@@ -9937,15 +9286,12 @@ def synthese_mensuelle():
             return redirect(url_for('banking.synthese_mensuelle')) 
     else:
         seuil_h2f_heure = 20.0
-    seuil_h2f_minutes = int(round(seuil_h2f_heure * 60))  # ← entier en minutes
+    seuil_h2f_minutes = int(round(seuil_h2f_heure * 60))
     logging.info(f'Voici le seuil : {seuil_h2f_minutes} pour {seuil_h2f_heure_input}')
-
-    seuil_h2f_minutes = int(round(seuil_h2f_heure * 60))  # ✅ garantit un int
+    seuil_h2f_minutes = int(round(seuil_h2f_heure * 60))
     graphique_h2f_annuel = None
     if employeur and contrat_id:
         graphique_h2f_annuel = g.models.synthese_mensuelle_model.prepare_svg_data_h2f_annuel(
-            synthese_hebdo_model=g.models.synthese_hebdo_model,
-            heure_model=g.models.heure_model,
             user_id=user_id,
             employeur=employeur,
             id_contrat=contrat_id,
@@ -9956,8 +9302,6 @@ def synthese_mensuelle():
         )
     elif synthese_list:
         graphique_h2f_annuel = g.models.synthese_mensuelle_model.prepare_svg_data_h2f_annuel(
-            synthese_hebdo_model=g.models.synthese_hebdo_model,
-            heure_model=g.models.heure_model,
             user_id=user_id,
             employeur=employeur_exemple,
             id_contrat=id_contrat_exemple,
@@ -9972,30 +9316,21 @@ def synthese_mensuelle():
         # Comme synthese_mensuelle est par contrat, on suppose un seul contrat est affiché ou on prend un exemple.
         id_contrat_exemple = synthese_list[0]['id_contrat'] if synthese_list else None
         employeur_exemple = synthese_list[0]['employeur'] if synthese_list else None
-
         if contrat_id and employeur :
-            stats_h2f_mois = g.models.synthese_mensuelle_model.calculate_h2f_stats_mensuel(g.models.heure_model,
-                user_id, employeur, contrat_id, annee, mois, seuil_h2f_minutes)
-            svg_horaire_mois_data = g.models.synthese_mensuelle_model.prepare_svg_data_horaire_mois(g.models.heure_model,
-                user_id, employeur, contrat_id, annee, mois, )
+            stats_h2f_mois = g.models.synthese_mensuelle_model.calculate_h2f_stats_mensuel(user_id, employeur, contrat_id, annee, mois, seuil_h2f_minutes)
+            svg_horaire_mois_data = g.models.synthese_mensuelle_model.prepare_svg_data_horaire_mois(user_id, employeur, contrat_id, annee, mois, )
         elif id_contrat_exemple and employeur_exemple:
-            stats_h2f_mois = g.models.synthese_mensuelle_model.calculate_h2f_stats_mensuel(g.models.heure_model,
-                user_id, employeur_exemple, id_contrat_exemple, annee, mois, seuil_h2f_minutes)
+            stats_h2f_mois = g.models.synthese_mensuelle_model.calculate_h2f_stats_mensuel(user_id, employeur_exemple, id_contrat_exemple, annee, mois, seuil_h2f_minutes)
             # --- NOUVEAU : Préparation des données SVG pour le graphique horaire du mois ---
-            svg_horaire_mois_data = g.models.synthese_mensuelle_model.prepare_svg_data_horaire_mois(g.models.heure_model, 
-                user_id, employeur_exemple, id_contrat_exemple, annee, mois)
+            svg_horaire_mois_data = g.models.synthese_mensuelle_model.prepare_svg_data_horaire_mois( user_id, employeur_exemple, id_contrat_exemple, annee, mois)
             logging.info(f'Voici les données pour {mois} : {svg_horaire_mois_data}')
     # --- NOUVEAU : Graphique hebdomadaire du dépassement de seuil DANS le mois ---
     graphique_h2f_semaines = None
     if mois and synthese_list:
         id_contrat_exemple = synthese_list[0]['id_contrat']
         employeur_exemple = synthese_list[0]['employeur']
-        
-        donnees_semaines = g.models.synthese_mensuelle_model.calculate_h2f_stats_weekly_for_month(g.models.heure_model, 
-            user_id, employeur_exemple, id_contrat_exemple, annee, mois, seuil_h2f_minutes
-        )
+        donnees_semaines = g.models.synthese_mensuelle_model.calculate_h2f_stats_weekly_for_month( user_id, employeur_exemple, id_contrat_exemple, annee, mois, seuil_h2f_minutes)
         logging.info(f'voici les données pour {mois}: {donnees_semaines}')
-
         # Préparer les données SVG (barres + ligne)
         semaines = donnees_semaines['semaines']
         depassements = donnees_semaines['jours_depassement']
@@ -12122,7 +11457,7 @@ def pos_edit_modifier(mod_id):
         flash('Modificateur introuvable.', 'error')
         return redirect(url_for('banking.pos_modifiers_list'))
 
-    # ✅ Récupérer les taux de TVA du système
+    # Récupérer les taux de TVA du système
     types_taxes_disponibles = g.models.taxe_pos_model.get_all_types(current_user.id, magasin_id=magasin_id, actif_only=True)
 
     if request.method == 'POST':
@@ -12157,7 +11492,7 @@ def pos_modifier_detail(mod_id):
     if not mod:
         flash('Modificateur introuvable.', 'error')
         return redirect(url_for('banking.pos_modifiers_list'))
-    # ✅ Récupérer les types de taxes disponibles avec leur taux actuel
+    # Récupérer les types de taxes disponibles avec leur taux actuel
     types_taxes_disponibles = g.models.taxe_pos_model.get_all_types(current_user.id, magasin_id=get_magasin_id_courant(), actif_only=True)
     for tt in types_taxes_disponibles:
         taux_info = g.models.taxe_pos_model.get_taux_for_date(tt['id'], date.today())
@@ -12175,7 +11510,7 @@ def pos_modifier_detail(mod_id):
         elif action == 'add_option':
             nom = request.form.get('nom_option', '').strip()
             if nom:
-                # ✅ Gestion de la TVA : vide = hérite du parent, sinon valeur spécifique
+                # Gestion de la TVA : vide = hérite du parent, sinon valeur spécifique
                 taux_tva_form = request.form.get('taux_tva_option', '').strip()
                 if taux_tva_form == '':
                     # Hérite de la TVA du modificateur parent
@@ -12211,7 +11546,7 @@ def pos_modifier_detail(mod_id):
         options=options, 
         articles=articles,
         articles_by_id=articles_by_id,
-        types_taxes_disponibles=types_taxes_disponibles,  # ✅ Variable injectée
+        types_taxes_disponibles=types_taxes_disponibles,
         total_options=len(options), 
         articles_lies_count=articles_lies,
     )
@@ -12375,11 +11710,11 @@ def pos_edit_article(article_id):
     all_modifiers = g.models.modificateur_pos_model.get_all(current_user.id, magasin_id=get_magasin_id_courant())
     linked_mod_ids = [m['id'] for m in g.models.article_pos_model.get_linked_modifiers(article_id)]
     variantes = g.models.variante_pos_model.get_by_article(article_id)
-    # ✅ Récupérer la taxe actuellement attribuée
+    # Récupérer la taxe actuellement attribuée
     type_taxe_actuel = g.models.taxe_pos_model.get_type_for_article(article_id)
     article['type_taxe_actuel'] = type_taxe_actuel
     if request.method == 'POST':
-        # ✅ Données complètes et cohérentes
+        # Données complètes et cohérentes
         data = {
             'nom_article': request.form.get('nom_article', '').strip(),
             'id_categorie': int(request.form.get('id_categorie')),
@@ -12392,13 +11727,13 @@ def pos_edit_article(article_id):
             'stock': int(safe_float(request.form.get('stock', 0))),
             'stock_alerte': int(safe_float(request.form.get('stock_alerte', 0))),
             'code_barre': request.form.get('code_barre', ''),
-            'variante': 'variante' in request.form  # ✅ Ajout du champ manquant
+            'variante': 'variante' in request.form  # 
         }
         g.models.article_pos_model.update(article_id, current_user.id, data)
         # Modificateurs
         selected_ids = [int(x) for x in request.form.getlist('modifier_ids') if x.isdigit()]
         g.models.article_pos_model.set_modifiers(article_id, selected_ids)
-        # ✅ Gestion de la taxe
+        # Gestion de la taxe
         type_taxe_id = request.form.get('type_taxe_id')
         if type_taxe_id and type_taxe_id.isdigit():
             g.models.taxe_pos_model.assigner_type_to_article(article_id, int(type_taxe_id))
@@ -12469,7 +11804,7 @@ def pos_create_sale():
     data = request.get_json()
     if not data:
         return jsonify({'success': False, 'message': 'Données invalides'}), 400
-    # ✅ NOUVEAU : On récupère le pdv_id (depuis les données ou la session)
+    # NOUVEAU : On récupère le pdv_id (depuis les données ou la session)
     pdv_id = data.get('pdv_id') or session.get('pos_pdv_id')
     pdv = g.models.pdv_pos_model.get_by_id(pdv_id) if pdv_id else None
     if not pdv or pdv.get('utilisateur_id') != current_user.id:
@@ -12477,7 +11812,7 @@ def pos_create_sale():
     data['pdv'] = pdv['nom_pdv']
     data['magasin'] = pdv.get('nom_magasin', '')
     data['nom_du_caissier'] = getattr(current_user, 'nom_utilisateur', '') or ''
-    # ✅ APPEL MIS À JOUR : on passe pdv_id
+    # APPEL MIS À JOUR : on passe pdv_id
     success, msg, receipt_id = g.models.receipt_pos_model.creer_vente(
         user_id=current_user.id,
         data=data,
@@ -12519,7 +11854,7 @@ def pos_receipts_list():
         pdv=pdv or None,
         limit=10000
     )
-    # ✅ Construire receipts_data (format attendu par le template : rd.r + rd.payment_str)
+    # Construire receipts_data (format attendu par le template : rd.r + rd.payment_str)
     receipts_data = []
     for r in receipts:
         methods = g.models.receipt_pos_model.get_payment_methods(r['id'])
@@ -12790,7 +12125,7 @@ def pos_create_modifier_option():
         taux_info = g.models.taxe_pos_model.get_taux_for_date(tt['id'], date.today())
         tt['taux_actuel'] = taux_info['taux'] if taux_info else 0.00
     if request.method == 'POST':
-        # ✅ Récupérer les nouveaux champs
+        # Récupérer les nouveaux champs
         type_option = request.form.get('type_option', 'redistribution')
         est_obligatoire = request.form.get('est_obligatoire') == 'on'
         option_id = g.models.option_modificateur_pos_model.create(current_user.id, {
@@ -12800,8 +12135,8 @@ def pos_create_modifier_option():
             'prix_supplement': safe_float(request.form.get('prix_supplement', '0')),
             'description': request.form.get('description', ''),
             'taux_tva': safe_float(request.form.get('taux_tva')) if request.form.get('taux_tva') else None,
-            'type_option': type_option,  # ✅ NOUVEAU
-            'est_obligatoire': est_obligatoire  # ✅ NOUVEAU
+            'type_option': type_option,
+            'est_obligatoire': est_obligatoire
         })
         if option_id:
             flash('Option de modificateur créée avec succès !', 'success')
@@ -12820,11 +12155,9 @@ def pos_article_modifiers(article_id):
         flash("Article non trouvé ou non autorisé.", "error")
         return redirect(url_for('banking.pos_articles_list'))  
     all_modifiers = g.models.modificateur_pos_model.get_all(current_user.id)
-    # ✅ VRAI APPEL AU MODÈLE
     linked_modifier_ids = [m['id'] for m in g.models.article_pos_model.get_linked_modifiers(article_id)]
     if request.method == 'POST':
         selected_ids = [int(id) for id in request.form.getlist('modifier_ids') if id.isdigit()]
-        # ✅ VRAIE SAUVEGARDE
         g.models.article_pos_model.set_modifiers(article_id, selected_ids)
         flash(f'Modificateurs mis à jour pour {article["nom_article"]} !', 'success')
         return redirect(url_for('banking.pos_articles_list'))
@@ -12832,7 +12165,7 @@ def pos_article_modifiers(article_id):
                          article=article, all_modifiers=all_modifiers,
                          linked_modifier_ids=linked_modifier_ids)
 
-                         # ============================================================
+# ============================================================
 
 # HISTORIQUE DES TAXES PAR ARTICLE
 # ============================================================
@@ -12844,9 +12177,9 @@ def pos_article_taxes_history(article_id):
     if not article or article.get('utilisateur_id') != current_user.id:
         flash("Article non trouvé.", "error")
         return redirect(url_for('banking.pos_articles_list'))
-    # ✅ On récupère tous les types de taxes disponibles
+    # On récupère tous les types de taxes disponibles
     types_taxes_disponibles = g.models.taxe_pos_model.get_all_types(current_user.id, actif_only=False)
-    # ✅ On récupère le type actuellement assigné
+    # On récupère le type actuellement assigné
     type_actuel = g.models.taxe_pos_model.get_type_for_article(article_id)
     if request.method == 'POST':
         action = request.form.get('action')
@@ -13032,7 +12365,7 @@ def pos_client_detail(client_id):
     if not client:
         flash('Client introuvable.', 'error')
         return redirect(url_for('banking.pos_clients_list'))
-    # ✅ Stats recalculées depuis les reçus (toujours à jour)
+    # Stats recalculées depuis les reçus (toujours à jour)
     db = g.models.receipt_pos_model.db
     with g.db.get_cursor(dictionary=True) as cursor:
         cursor.execute("""
@@ -13216,7 +12549,7 @@ def pos_stats_payment_methods():
     date_to = request.args.get('date_to', '').strip() or None
     magasin_id = get_magasin_id_courant()
     try:
-        # ✅ Appel propre au modèle
+        # ppel propre au modèle
         rows = g.models.receipt_pos_model.get_payment_methods_stats(
             current_user.id,
             date_from=date_from,
@@ -13290,14 +12623,14 @@ def pos_create_payment_method():
         if any(m['nom'].lower() == nom.lower() for m in existing):
             flash('Ce mode de paiement existe déjà.', 'error')
         else:
-            # ✅ CORRECTION : compte_tresorerie_id pointe vers comptes_principaux.id
+            # compte_tresorerie_id pointe vers comptes_principaux.id
             compte_bancaire_id = request.form.get('compte_bancaire_id')
             compte_bancaire_id = int(compte_bancaire_id) if compte_bancaire_id and str(compte_bancaire_id).isdigit() else None
 
             compte_tresorerie_id = request.form.get('compte_tresorerie_id')
             compte_tresorerie_id = int(compte_tresorerie_id) if compte_tresorerie_id and str(compte_tresorerie_id).isdigit() else None
             
-            # ✅ CORRECTION : compte_frais_service_id pointe vers categories_comptables.id
+            # compte_frais_service_id pointe vers categories_comptables.id
             compte_frais_service_id = request.form.get('compte_frais_service_id')
             compte_frais_service_id = int(compte_frais_service_id) if compte_frais_service_id and str(compte_frais_service_id).isdigit() else None
             
@@ -13306,10 +12639,10 @@ def pos_create_payment_method():
                 'nom': nom,
                 'description': request.form.get('description', ''),
                 'est_actif': 'est_actif' in request.form,
-                # ✅ Compte bancaire réel (comptes_principaux)
+                # Compte bancaire réel (comptes_principaux)
                 'compte_bancaire_id' : compte_bancaire_id,
                 'compte_tresorerie_id': compte_tresorerie_id,
-                # ✅ Compte comptable de charge (categories_comptables)
+                # Compte comptable de charge (categories_comptables)
                 'compte_frais_service_id': compte_frais_service_id,
                 'frais_pourcentage': float(request.form.get('frais_pourcentage', 0) or 0),
                 'frais_fixe': float(request.form.get('frais_fixe', 0) or 0)
@@ -13317,10 +12650,10 @@ def pos_create_payment_method():
             flash('Mode de paiement créé avec succès !', 'success')
             return redirect(url_for('banking.pos_payment_methods_list'))
     
-    # ✅ CORRECTION : Récupérer les VRAIS comptes bancaires (comptes_principaux)
+    # Récupérer les VRAIS comptes bancaires (comptes_principaux)
     comptes_bancaires = g.models.compte_model.get_all_accounts(current_user.id)
     
-    # ✅ CORRECTION : Récupérer les comptes comptables de type Charge pour les frais
+    # Récupérer les comptes comptables de type Charge pour les frais
     comptes_charges = g.models.categorie_comptable_model.get_all_categories(current_user.id)
     
     return render_template('pos/create_payment_method.html', 
@@ -13339,7 +12672,7 @@ def pos_edit_payment_method(mode_id):
         flash('❌ Mode de paiement non trouvé', 'error')
         return redirect(url_for('banking.pos_payment_methods_list'))
     
-    # ✅ CORRECTION : Récupérer les VRAIS comptes bancaires (comptes_principaux)
+    # Récupérer les VRAIS comptes bancaires (comptes_principaux)
     # et non les catégories comptables
     comptes_bancaires = g.models.compte_model.get_all_accounts(user_id)
     
@@ -13351,7 +12684,7 @@ def pos_edit_payment_method(mode_id):
         description = request.form.get('description', '').strip()
         est_actif = request.form.get('est_actif') == 'on'
         
-        # ✅ CORRECTION : compte_tresorerie_id pointe maintenant vers comptes_principaux.id
+        # compte_tresorerie_id pointe maintenant vers comptes_principaux.id
         compte_bancaire_id = request.form.get('compte_bancaire_id')
         compte_tresorerie_id = request.form.get('compte_tresorerie_id')
         compte_frais_service_id = request.form.get('compte_frais_service_id')
@@ -13441,7 +12774,7 @@ def pos_delete_payment_method(mode_id):
 @bp.route('/pos/taxes-list')
 @login_required
 def pos_taxes_list():
-    # ✅ On liste les TYPES de taxes
+    # On liste les TYPES de taxes
     types_taxes = g.models.taxe_pos_model.get_all_types(current_user.id, magasin_id=get_magasin_id_courant(), actif_only=False)
     # Optionnel : Enrichir la liste avec le taux actuel pour l'affichage UI
     for tt in types_taxes:
@@ -13483,20 +12816,17 @@ def pos_create_taxe():
 @bp.route('/pos/taxes/<int:type_taxe_id>/edit', methods=['GET', 'POST'])
 @login_required
 def pos_edit_taxe(type_taxe_id):
-    # ✅ On récupère le TYPE, pas l'ancienne taxe
+    # On récupère le TYPE, pas l'ancienne taxe
     type_taxe = g.models.taxe_pos_model.get_by_id(type_taxe_id, current_user.id)
     if not type_taxe:
         flash('Type de taxe introuvable.', 'error')
         return redirect(url_for('banking.pos_taxes_list'))
-
-    # ✅ On récupère l'historique des taux pour ce type
+    # On récupère l'historique des taux pour ce type
     historique_taux = g.models.taxe_pos_model.get_historique_taux(type_taxe_id)
-
     if request.method == 'POST':
         action = request.form.get('action')
-
         if action == 'update_type':
-            # ⬇️ CORRIGÉ : 3 arguments positionnels, pas de magasin_id
+            # 3 arguments positionnels, pas de magasin_id
             g.models.taxe_pos_model.update_type(
                 type_taxe_id,
                 current_user.id,
@@ -13994,8 +13324,6 @@ def pos_vente_caisse():
     if not periode:
         return redirect(url_for('banking.pos_vente'))
     magasin_id = pdv.get('magasin_id')
-
-    # ✅ AJOUT : récupérer les réductions actives
     try:
         discounts_raw = g.models.discount_pos_model.get_all(current_user.id, magasin_id=magasin_id)
         discounts = [
@@ -14009,7 +13337,6 @@ def pos_vente_caisse():
         ]
     except Exception:
         discounts = []
-
     return render_template(
         'pos/vente.html',
         etat='caisse',
@@ -14017,7 +13344,7 @@ def pos_vente_caisse():
         periode=periode,
         restaurant_options=g.models.restaurant_option_pos_model.get_all(current_user.id,magasin_id=magasin_id),
         modes_paiement=g.models.mode_paiement_pos_model.get_all(current_user.id,magasin_id=magasin_id),
-        discounts=discounts,   # ✅ AJOUT
+        discounts=discounts,
         detail=None,
     )
 
@@ -14054,7 +13381,7 @@ def pos_vente_articles_json():
                         'id': o['id'],
                         'nom_option': o['nom_option'],
                         'prix_supplement': float(o.get('prix_supplement', 0)),
-                        # ✅ Gestion stricte : si NULL en base, on envoie None (le JS le gérera proprement)
+                        # Gestion stricte : si NULL en base, on envoie None (le JS le gérera proprement)
                         'taux_tva': float(o['taux_tva']) if o.get('taux_tva') is not None else None,
                         'description': o.get('description', '')
                     }
@@ -14062,7 +13389,7 @@ def pos_vente_articles_json():
                 ]
                 mod['taux_tva'] = float(mod.get('taux_tva', 0))
             article['modificateurs'] = modificateurs
-            # 4. ✅ NOUVEAU : Récupérer le TYPE de taxe, puis le TAUX en vigueur aujourd'hui
+            # 4.  Récupérer le TYPE de taxe, puis le TAUX en vigueur aujourd'hui
             type_taxe = g.models.taxe_pos_model.get_type_for_article(article['id'])
             if type_taxe:
                 article['type_taxe_id'] = type_taxe['id']
@@ -14103,28 +13430,22 @@ def pos_vente_pay():
     data = request.get_json(silent=True) or {}
     pdv_id = session.get('pos_pdv_id')
     pdv = g.models.pdv_pos_model.get_by_id(pdv_id) if pdv_id else None
-
     if not pdv or pdv.get('utilisateur_id') != current_user.id:
         return jsonify({'success': False, 'message': 'PDV non sélectionné ou session expirée.'}), 400
-    
-    # ✅ NOUVEAU : On ne bloque plus si le PDV n'a pas de compte bancaire.
     # Le compte du PDV servira de fallback pour les espèces, mais les cartes/Twint 
     # iront sur leurs comptes dédiés configurés dans le mode de paiement.
-    
+
     if not data.get('items'):
         return jsonify({'success': False, 'tdetails': 'Ticket vide.'}), 400
-
     data['pdv'] = pdv['nom_pdv']
     data['magasin'] = pdv.get('nom_magasin', '')
     data['nom_du_caissier'] = getattr(current_user, 'nom_utilisateur', '') or ''
-
-    # ✅ APPEL MIS À JOUR : on passe pdv_id, la méthode resolvera les comptes elle-même
+    # APPEL MIS À JOUR : on passe pdv_id, la méthode resolvera les comptes elle-même
     success, msg, receipt_id = g.models.receipt_pos_model.creer_vente(
         user_id=current_user.id,
         data=data,
         pdv_id=pdv['id']
     )
-    
     if success:
         receipt = g.models.receipt_pos_model.get_by_id(receipt_id, current_user.id)
         return jsonify({
@@ -14133,7 +13454,6 @@ def pos_vente_pay():
             'recu_numero': receipt.get('recu_numero') if receipt else None,
             'message': msg,
         })
-    
     return jsonify({'success': False, 'message': msg}), 400
 
 
@@ -14186,11 +13506,9 @@ def pos_compta_review():
     user_id = current_user.id
     pdv_id = request.args.get('pdv_id', type=int)
     mode = request.args.get('mode', 'jour')
-    
-    # ✅ NOUVEAU : Récupération des filtres de date
+    # Récupération des filtres de date
     date_from = request.args.get('date_from', type=str)
     date_to = request.args.get('date_to', type=str)
-    
     if request.method == 'POST':
         selection = request.json.get('selection', [])
         succes, message = g.models.pos_comptabilisation_model.comptabiliser_selection(user_id, selection)
@@ -14198,16 +13516,15 @@ def pos_compta_review():
             return jsonify({'success': True, 'message': message})
         else:
             return jsonify({'success': False, 'message': message}), 400
-
     # GET : Afficher la page de revue avec les filtres appliqués
     a_comptabiliser = g.models.pos_comptabilisation_model.get_a_comptabiliser(
         user_id, 
         pdv_id, 
-        date_from=date_from,  # ✅ Passé au modèle
-        date_to=date_to,      # ✅ Passé au modèle
+        date_from=date_from,
+        date_to=date_to,
         mode=mode
     )
-    # 🔧 Préparer les données JSON-sérialisables pour le template
+    #Préparer les données JSON-sérialisables pour le template
     from datetime import date as _date, datetime as _datetime
     def _make_json(item):
         def _conv(v):
@@ -14242,9 +13559,9 @@ def pos_compta_review():
     return render_template('pos/compta_review.html', 
                            a_comptabiliser=a_comptabiliser, 
                            mode=mode,
-                           pdv_id=pdv_id,             # ✅ Ajouté pour le lien de réinitialisation
-                           date_from=date_from,       # ✅ Passé au template
-                           date_to=date_to,           # ✅ Passé au template
+                           pdv_id=pdv_id,      
+                           date_from=date_from,
+                           date_to=date_to,
                            modes_paiement=modes_paiement)
 
 @bp.route('/pos/compta-settings', methods=['GET', 'POST'])

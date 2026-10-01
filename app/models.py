@@ -34,6 +34,13 @@ from flask_login import UserMixin
 import logging
 import secrets
 
+
+#from werkzeug.security import generate_password_hash, check_password_hash
+# À la création
+#hashed_password = generate_password_hash(mot_de_passe)
+# Méthode de vérification à ajouter dans la classe Utilisateur
+#def verify_password(self, password):
+#    return check_password_hash(self.mot_de_passe, password)
 logger = logging.getLogger(__name__)
 
 class Utilisateur(UserMixin):
@@ -68,7 +75,7 @@ class Utilisateur(UserMixin):
         return False
 
     def get_id(self):
-        return str(self.id)
+        return str(self.id) if self.id is not None else None
 
     @staticmethod
     def get_by_id(user_id: int, db):
@@ -79,7 +86,14 @@ class Utilisateur(UserMixin):
                 row = cursor.fetchone()
                 if row:
                     # On envoie l'ID en premier pour correspondre au nouveau __init__
-                    return Utilisateur(row['id'], row['nom'], row['prenom'], row['email'], row['mot_de_passe'], row['created_at'])
+                    return Utilisateur(
+                        id=row['id'],
+                        nom=row['nom'],
+                        prenom=row['prenom'],
+                        email=row['email'],
+                        mot_de_passe=row['mot_de_passe'],
+                        created_at=row.get('created_at')
+                    )
                 return None
         except MySQLError as e:
             # Note: évite logger ici pour ne pas relancer la récursion
@@ -163,7 +177,6 @@ class DatabaseManager:
         except Exception:
             pass
 
-
     def _get_connection_pool(self):
         """Initialise et retourne le pool de connexions avec DBUtils."""
         if self._connection_pool is None:
@@ -217,15 +230,11 @@ class DatabaseManager:
             pool = self._get_connection_pool()
             if not pool:
                 raise RuntimeError("Impossible d'obtenir une connexion à la base de données.")
-
             # Obtient une connexion du pool
             connection = pool.connection()
-
             # Crée un curseur (dictionnaire si nécessaire)
             cursor = connection.cursor(pymysql.cursors.DictCursor) if dictionary else connection.cursor()
-
             yield cursor
-
             # Commit la transaction après une exécution réussie si commit=True
             if commit:
                 connection.commit()
@@ -1533,6 +1542,7 @@ class DatabaseManager:
             logger.exception(f"Erreur lors de la création des tables : {e}")
             raise e
 
+
 class BaseRepository:
     __slots__ = ("db",)
 
@@ -1600,6 +1610,7 @@ class PeriodeFavorite(BaseRepository):
         except Error as e:
             logger.error(f"Erreur lors de la suppression de la période favorite: {e}")
             return False
+    
     def get_by_user_and_compte(self, user_id: int, compte_id: int, compte_type: str) -> Optional[Dict]:
         """Récupère une période favorite par utilisateur et compte"""
         try:
@@ -2025,7 +2036,6 @@ class ComptePrincipalRapport(BaseRepository):
 
     def _generer_graphique_flux_journalier(self, compte_id: int, user_id: int, debut: date, fin: date) -> str:
         """Génère un graphique SVG en barres des flux quotidiens."""
-
         # Récupérer recettes et dépenses quotidiennes
         recettes = self.transaction_financiere_model._get_daily_balances(compte_id, debut, fin, 'recette')
         depenses = self.transaction_financiere_model._get_daily_balances(compte_id, debut, fin, 'depense')
@@ -13740,6 +13750,11 @@ class Employe(BaseRepository):
             return cursor.fetchone()
 
 class HeureTravail(BaseRepository):
+    __slots__ = ['contrat_model']
+    def __init__(self, db):
+        super().__init__(db)
+        self.contrat_model = Contrat(db)
+    
     def create_or_update(self, data: dict, cursor=None) -> bool:
         """Version améliorée acceptant un curseur externe"""
         if cursor:
@@ -14096,27 +14111,7 @@ class HeureTravail(BaseRepository):
             return 0.0
         total = diff_heures(h1d, h1f) + diff_heures(h2d, h2f)
         return round(total, 2)
-    #def get_by_date(self, date_str: str, user_id: int, employeur: str, id_contrat: int) -> Optional[Dict]:
-    #    """Récupère les données pour une date et un utilisateur donnés"""
-    #    try:
-    #        with self.db.get_cursor() as cursor:
-    #            query = "SELECT * FROM heures_travail WHERE date = %s AND user_id = %s AND employeur = %s AND id_contrat = %s"
-    #            logger.debug(f"[get_by_date] Query: {query} avec params: ({date_str}, {user_id}, {employeur}, {id_contrat})")
-    #
-    #            cursor.execute(query, (date_str, user_id, employeur, id_contrat))
-    #            jour = cursor.fetchone()
-    #
-    #            if jour:
-    #                logger.debug(f"[get_by_date] Données trouvées pour {date_str}, user_id: {user_id}, employeur: {employeur}, id_contrat: {id_contrat}  ")
-    #                self._convert_timedelta_fields(jour, ['h1d', 'h1f', 'h2d', 'h2f'])
-    #            else:
-    #               logger.debug(f"[get_by_date] Aucune donnée trouvée pour {date_str}, user_id: {user_id}, employeur: {employeur}, id_contrat: {id_contrat}  ")
-    #
-    #            return jour
-    #
-    #    except Exception as e:
-    #        logger.error(f"Erreur get_by_date pour {date_str}: {str(e)}")
-    #        return []
+
 
     def get_jours_travail(self, mois: int, semaine: int, user_id: int, employeur: str, id_contrat: int) -> List[Dict]:
         """Récupère les jours de travail pour une période"""
@@ -14514,9 +14509,9 @@ class HeureTravail(BaseRepository):
         except (ValueError, AttributeError):
             return -1
 
-    def get_h1d_h2f_for_period_with_employe(self, contrat_model, user_id: int, annee: int,mois: Optional[int] = None,semaine: Optional[int] = None, employe_id: Optional[int] = None ) -> List[Dict]:
+    def get_h1d_h2f_for_period_with_employe(self, user_id: int, annee: int,mois: Optional[int] = None,semaine: Optional[int] = None, employe_id: Optional[int] = None ) -> List[Dict]:
         # On récupère d’abord les contrats de l’utilisateur
-        contrats = contrat_model.get_all_contrats(user_id)
+        contrats = self.contrat_model.get_all_contrats(user_id)
         if not contrats:
             return []
         # Extraire les paires (employeur, id_contrat)
@@ -14553,9 +14548,7 @@ class HeureTravail(BaseRepository):
                 self._convert_timedelta_fields(row, ['h1d', 'h2f'])
             return rows
     def get_shifts_for_week(self, user_id: int, start_date: str, end_date: str) -> List[Dict]:
-        """
-        Récupère tous les shifts (plages horaires) pour une semaine donnée
-        """
+        """ Récupère tous les shifts (plages horaires) pour une semaine donnée"""
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 query = """
@@ -14577,6 +14570,15 @@ class HeureTravail(BaseRepository):
             return []
 
 class Salaire(BaseRepository):
+    __slots__ = ["heure_model", "cotisations_contrat_model", "indemnites_contrat_model", "bareme_cotisation_model"]
+    def __init__(self, db):
+        super().__init__(db)
+        self.heure_model = HeureTravail(db)
+        self.cotisations_contrat_model = CotisationContrat(db)
+        self.indemnites_contrat_model = IndemniteContrat(db)
+        self.bareme_indemnite_model = BaremeIndemnite(db)
+        self.bareme_cotisation_model = BaremeCotisation(db)
+    
     def create(self, data: dict) -> bool:
         try:
             with self.db.get_cursor() as cursor:
@@ -14734,8 +14736,7 @@ class Salaire(BaseRepository):
             logger.warning(f"Calcul salaire net impossible : contrat={contrat.get('id') if contrat else None}")
             return 0.0
 
-    def calculer_salaire_net_avec_details(self, heure_model, cotisations_contrat_model, indemnites_contrat_model,
-                                    bareme_indemnite_model, bareme_cotisation_model, heures_reelles: float, 
+    def calculer_salaire_net_avec_details(self, heures_reelles: float, 
                                     contrat: Dict, contrat_id: int, annee: int, user_id: Optional[int] = None, 
                                     mois: Optional[int] = None, jour_estimation: int = 15) -> Dict:
         """
@@ -14765,8 +14766,8 @@ class Salaire(BaseRepository):
             heures_reelles_dec = to_decimal(heures_reelles)
             salaire_brut = (heures_reelles_dec * salaire_horaire).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
             # Récupérer cotisations et indemnités dynamiques
-            cotisations_contrat = cotisations_contrat_model.get_for_contrat_and_annee(contrat_id, annee)
-            indemnites_contrat = indemnites_contrat_model.get_for_contrat_and_annee(contrat_id, annee)
+            cotisations_contrat = self.cotisations_contrat_model.get_for_contrat_and_annee(contrat_id, annee)
+            indemnites_contrat = self.indemnites_contrat_model.get_for_contrat_and_annee(contrat_id, annee)
             logger.info(f"DEBUG indemnites_contrat: {indemnites_contrat}")
             logger.info(f'Cotisations pour contrat {contrat_id}, année {annee}: {cotisations_contrat}')
             logger.info(f'Indemnites pour contrat {contrat_id}, année {annee}: {indemnites_contrat}')
@@ -14776,8 +14777,7 @@ class Salaire(BaseRepository):
             for item in indemnites_contrat:
                 # Convertir base_montant en float pour la compatibilité
                 base_montant_float = to_float(salaire_brut)
-                montant = indemnites_contrat_model.calculer_montant_indemnite(
-                    bareme_indemnite_model=bareme_indemnite_model,
+                montant = self.indemnites_contrat_model.calculer_montant_indemnite(
                     type_indemnite_id=item['type_indemnite_id'],
                     base_montant=base_montant_float,
                     taux_fallback=item['taux']
@@ -14805,7 +14805,7 @@ class Salaire(BaseRepository):
                 base_montant_float = to_float(base_montant_decimal)
                 # CORRECTION : Récupérer le nom correctement
                 nom_cotisation = item.get('nom_cotisation', f"Cotisation {item.get('type_cotisation_id', 'inconnue')}")
-                montant = cotisations_contrat_model.calculer_montant_cotisation(
+                montant = self.cotisations_contrat_model.calculer_montant_cotisation(
                     bareme_cotisation_model,
                     type_cotisation_id=item['type_cotisation_id'],
                     base_montant=base_montant_float,
@@ -14832,7 +14832,6 @@ class Salaire(BaseRepository):
                     # Convertir salaire_horaire en float pour calculer_acompte_25
                     salaire_horaire_float = to_float(salaire_horaire)
                     acompte_25 = self.calculer_acompte_25(
-                        heure_model=heure_model,
                         user_id=user_id,
                         annee=annee,
                         mois=mois,
@@ -14853,7 +14852,6 @@ class Salaire(BaseRepository):
                     # Convertir salaire_horaire en float pour calculer_acompte_10
                     salaire_horaire_float = to_float(salaire_horaire)
                     acompte_10 = self.calculer_acompte_10(
-                        heure_model=heure_model,
                         user_id=user_id,
                         annee=annee,
                         mois=mois,
@@ -14892,8 +14890,7 @@ class Salaire(BaseRepository):
                         'moins_versements': float(salaire_net_final.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
                     }
                 }
-            }
-            
+            } 
         except MySQLError as e:                             # ✅ ciblé : erreur DB
             logger.exception(f"Erreur DB dans calculer_salaire_net_avec_details")
             return {'salaire_net': 0.0, 'erreur': 'Erreur technique, veuillez réessayer', 'details': {}}
@@ -14988,30 +14985,22 @@ class Salaire(BaseRepository):
             cursor.execute(query, tuple(params))
             return cursor.fetchall()
 
-    def calculer_acompte_25(self, heure_model, user_id: int, annee: int, mois: int, salaire_horaire: float, employeur: str, id_contrat: int, jour_estimation: int = 15) -> float:
-        heures = heure_model.get_heures_periode(
-            user_id, employeur, id_contrat, annee, mois, 1, jour_estimation
-        )
+    def calculer_acompte_25(self, user_id: int, annee: int, mois: int, salaire_horaire: float, employeur: str, id_contrat: int, jour_estimation: int = 15) -> float:
+        heures = self.heure_model.get_heures_periode(user_id, employeur, id_contrat, annee, mois, 1, jour_estimation)
         # Protection contre les valeurs négatives ou None
         heures = max(0.0, heures or 0.0)
         return round(max(0.0, heures or 0.0) * salaire_horaire, 2)
 
-    def calculer_acompte_10(self, heure_model, user_id: int, annee: int, mois: int, salaire_horaire: float, employeur: str, id_contrat: int, jour_estimation: int = 15) -> float:
-        if not heure_model:
-            raise ValueError("HeureTravail manager non initialisé")
-
-        heures_total = heure_model.get_total_heures_mois(user_id, employeur, id_contrat, annee, mois)
-        heures_avant = heure_model.get_heures_periode(
+    def calculer_acompte_10(self, user_id: int, annee: int, mois: int, salaire_horaire: float, employeur: str, id_contrat: int, jour_estimation: int = 15) -> float:
+        heures_total = self.heure_model.get_total_heures_mois(user_id, employeur, id_contrat, annee, mois)
+        heures_avant = self.heure_model.get_heures_periode(
             user_id, employeur, id_contrat, annee, mois, 1, jour_estimation
         ) or 0.0
-
         # Normaliser les valeurs
         heures_total = float(heures_total)
         heures_avant = float(heures_avant)
-
         # Heures après le jour d'estimation
         heures_apres = max(0.0, heures_total - heures_avant)
-
         # Log en cas d’incohérence (utile pour le debug)
         if heures_apres < 0:
             logger.warning(
@@ -15022,13 +15011,13 @@ class Salaire(BaseRepository):
         result = round(heures_apres * salaire_horaire, 2)
         logger.info(f"calculer_acompte_10 → heures_apres={heures_apres}, result={result}")
         return result
-    def recalculer_salaire(self, heure_model, cotisations_contrat_model, indemnites_contrat_model, bareme_indemnite_model, bareme_cotisation_model, salaire_id: int, contrat: Dict) -> bool:
+
+    def recalculer_salaire(self, salaire_id: int, contrat: Dict) -> bool:
         try:
             salaire = self.get_by_id(salaire_id)
             if not salaire:
                 logger.warning(f"Salaire ID {salaire_id} introuvable.")
                 return False
-
             heures_reelles = salaire.get('heures_reelles') or 0.0
             salaire_horaire_raw = contrat.get('salaire_horaire')
             if salaire_horaire_raw is None:
@@ -15042,14 +15031,8 @@ class Salaire(BaseRepository):
             annee = salaire['annee']
             mois = salaire['mois']
             jour_estimation = contrat.get('jour_estimation_salaire', 15)
-
             # 1. Calcul du salaire net réel (mois entier)
             result = self.calculer_salaire_net_avec_details(
-                heure_model=heure_model,
-                cotisations_contrat_model=cotisations_contrat_model,
-                indemnites_contrat_model= indemnites_contrat_model,
-                bareme_indemnite_model=bareme_indemnite_model,
-                bareme_cotisation_model=bareme_cotisation_model,
                 heures_reelles=heures_reelles,
                 contrat=contrat,
                 contrat_id=id_contrat,
@@ -15058,18 +15041,14 @@ class Salaire(BaseRepository):
                 mois=mois,
                 jour_estimation=jour_estimation
             )
-
             if result['erreur']:
                 logger.error(f"Erreur recalcul salaire : {result['erreur']}")
                 return False
-
             salaire_net = result['salaire_net']
-
             # 2. Acompte du 25 → heures du 1 au 15
             acompte_25_estime = 0.0
             if contrat.get('versement_25', False):
                 acompte_25_estime = self.calculer_acompte_25(
-                    heure_model=heure_model,
                     user_id=user_id,
                     annee=annee,
                     mois=mois,
@@ -15078,14 +15057,11 @@ class Salaire(BaseRepository):
                     id_contrat=id_contrat,
                     jour_estimation=jour_estimation
                 )
-
             # 3. Acompte du 10 → différence SALAIRE NET - ACOMPTE 25
             acompte_10_estime = round(salaire_net - acompte_25_estime, 2)
-
             # 4. Différence avec salaire versé (si saisi)
             salaire_verse = salaire.get('salaire_verse')
             difference, difference_pourcent = self.calculer_differences(salaire_net, salaire_verse)
-
             # 5. Mise à jour
             update_data = {
                 'salaire_horaire': salaire_horaire,
@@ -15096,9 +15072,7 @@ class Salaire(BaseRepository):
                 'difference': round(difference, 2),
                 'difference_pourcent': round(difference_pourcent, 2),
             }
-
             return self.update(salaire_id, update_data)
-
         except (MySQLError, ValueError, KeyError) as e:
             logger.exception(f"Erreur recalcul salaire ID {salaire_id}: {e}", exc_info=True)
             return False
@@ -15212,6 +15186,10 @@ class Salaire(BaseRepository):
             return cursor.fetchall()
 
 class SyntheseHebdomadaire(BaseRepository):
+    __slots__ = ['heure_model']
+    def __ini__(db):
+        super().__init__(db)
+        self.heure_model = HeureTravail(db)
     def calculate_for_week_by_contrat(self, user_id: int, annee: int, semaine: int) -> list[dict]:
         try:
             with self.db.get_cursor() as cursor:
@@ -15442,7 +15420,6 @@ class SyntheseHebdomadaire(BaseRepository):
         """Prépare les données pour un graphique SVG des heures hebdomadaires TOTALES (agrégées par semaine)."""
         # Récupère TOUTES les synthèses de l'année (y compris plusieurs contrats/semaine)
         synthese_list = self.get_by_user_and_year(user_id, annee)
-
         # Agrège par semaine
         total_par_semaine = {}
         for s in synthese_list:
@@ -15451,35 +15428,29 @@ class SyntheseHebdomadaire(BaseRepository):
                 total_par_semaine[semaine] = {'heures_reelles': 0.0, 'heures_simulees': 0.0}
             total_par_semaine[semaine]['heures_reelles'] += float(s.get('heures_reelles', 0))
             total_par_semaine[semaine]['heures_simulees'] += float(s.get('heures_simulees', 0))
-
         # Prépare les listes pour les 53 semaines
         heures_reelles_vals = []
         heures_simulees_vals = []
         semaine_labels = []
-
         for semaine in range(1, 54):
             data = total_par_semaine.get(semaine, {'heures_reelles': 0.0, 'heures_simulees': 0.0})
             heures_reelles_vals.append(data['heures_reelles'])
             heures_simulees_vals.append(data['heures_simulees'])
             semaine_labels.append(f"S{semaine}")
-
         # Calcul des bornes Y
         all_vals = heures_reelles_vals + heures_simulees_vals
         min_val = min(all_vals) if all_vals else 0.0
         max_val = max(all_vals) if all_vals else 100.0
         if min_val == max_val:
             max_val = min_val + 40.0 if min_val == 0 else min_val * 1.1
-
         margin_x = largeur_svg * 0.1
         margin_y = hauteur_svg * 0.1
         plot_width = largeur_svg * 0.8
         plot_height = hauteur_svg * 0.8
-
         def y_coord(val):
             if max_val == min_val:
                 return margin_y + plot_height / 2
             return margin_y + plot_height - ((val - min_val) / (max_val - min_val)) * plot_height
-
         # Ticks (tous les 10h)
         ticks = []
         step = 10
@@ -15489,7 +15460,6 @@ class SyntheseHebdomadaire(BaseRepository):
                 y_px = y_coord(y_val)
                 ticks.append({'value': int(y_val), 'y_px': y_px})
             y_val += step
-
         # Barres (heures réelles)
         bar_width = plot_width / 53 * 0.6
         colonnes_svg = []
@@ -15501,13 +15471,11 @@ class SyntheseHebdomadaire(BaseRepository):
                 height = 0
                 y_top = margin_y + plot_height
             colonnes_svg.append({'x': x, 'y': y_top, 'width': bar_width, 'height': height})
-
         # Ligne simulée (heures simulées)
         points_simule = [
             f"{margin_x + (i + 0.5) * (plot_width / 53)},{y_coord(heures_simulees_vals[i])}"
             for i in range(53)
         ]
-
         return {
             'colonnes': colonnes_svg,
             'ligne_simule': points_simule,
@@ -15538,26 +15506,23 @@ class SyntheseHebdomadaire(BaseRepository):
             logger.exception(f"Erreur employeurs: {e}")
             return []
 
-    def calculate_h2f_stats(self, heure_model, user_id: int, employeur: str, id_contrat: int, annee: int, seuil_h2f_minutes: int = 18 * 60) -> Dict:
+    def calculate_h2f_stats(self, user_id: int, employeur: str, id_contrat: int, annee: int, seuil_h2f_minutes: int = 18 * 60) -> Dict:
         """
         Calcule les statistiques sur h2f pour une année donnée.
         seuil_h2f_minutes: seuil en minutes (ex: 18h = 18*60 min). Défaut à 18h.
         Retourne un dictionnaire avec les moyennes hebdomadaires et la moyenne mobile.
         """
         weekly_counts = {} # { semaine: nb_jours_avec_h2f_apres_seuil }
-
         for semaine in range(1, 53): # Semaines de 1 à 52 (ou 53)
-            jours_semaine = heure_model.get_h1d_h2f_for_period(user_id, employeur, id_contrat, annee, semaine=semaine)
+            jours_semaine = self.heure_model.get_h1d_h2f_for_period(user_id, employeur, id_contrat, annee, semaine=semaine)
             count = 0
             for jour in jours_semaine:
-                h2f_minutes = heure_model.time_to_minutes(jour.get('h2f'))
+                h2f_minutes = self.heure_model.time_to_minutes(jour.get('h2f'))
                 if h2f_minutes != -1 and h2f_minutes > seuil_h2f_minutes:
                     count += 1
             weekly_counts[semaine] = count
-
         # Calcul des moyennes hebdomadaires
         moyennes_hebdo = { semaine: float(count) for semaine, count in weekly_counts.items() }
-
         # Calcul de la moyenne mobile
         moyennes_mobiles = {}
         cumulative_count = 0
@@ -15569,7 +15534,6 @@ class SyntheseHebdomadaire(BaseRepository):
                 moyennes_mobiles[semaine] = round(cumulative_count / cumulative_weeks, 2)
             else:
                 moyennes_mobiles[semaine] = 0.0
-
         return {
             'moyennes_hebdo': moyennes_hebdo,
             'moyennes_mobiles': moyennes_mobiles,
@@ -15577,16 +15541,14 @@ class SyntheseHebdomadaire(BaseRepository):
         }
 
 
-    def prepare_svg_data_horaire_jour(self, heure_model, user_id: int, employeur: str, id_contrat: int, annee: int, semaine: int, seuil_h2f_heure: float = 18.0, largeur_svg: int = 800, hauteur_svg: int = 400) -> Dict:
+    def prepare_svg_data_horaire_jour(self, user_id: int, employeur: str, id_contrat: int, annee: int, semaine: int, seuil_h2f_heure: float = 18.0, largeur_svg: int = 800, hauteur_svg: int = 400) -> Dict:
         """
         Prépare les données pour un graphique SVG des horaires de début/fin de journée.
         Axe X: Jours de la semaine (Lun, Mar, Mer, Jeu, Ven, Sam, Dim)
         Axe Y: Heures (6h en haut, 24h en bas)
         seuil_h2f_heure: Heure du seuil à afficher (par défaut 18h).
         """
-
-        jours_semaine = heure_model.get_h1d_h2f_for_period(user_id, employeur, id_contrat, annee, semaine=semaine)
-
+        jours_semaine = self.heure_model.get_h1d_h2f_for_period(user_id, employeur, id_contrat, annee, semaine=semaine)
         # Constantes pour la conversion des heures en pixels
         heure_debut_affichage = 6  # 6h du matin
         heure_fin_affichage = 24   # 24h (minuit)
@@ -15594,17 +15556,13 @@ class SyntheseHebdomadaire(BaseRepository):
         minute_debut_affichage = heure_debut_affichage * 60
         minute_fin_affichage = heure_fin_affichage * 60
         plage_minutes = plage_heures * 60 # 1080 minutes
-
         seuil_h2f_minutes = int(seuil_h2f_heure * 60) # Convertir le seuil en minutes
-
         # Marges
         margin_x = largeur_svg * 0.1
         margin_y = hauteur_svg * 0.1
         plot_width = largeur_svg * 0.8
         plot_height = hauteur_svg * 0.8
-
         # Calcul de la position Y de la ligne seuil
-
         seuil_minutes_affiche = max(minute_debut_affichage, min(seuil_h2f_minutes, minute_fin_affichage))
         seuil_y = margin_y + plot_height - ((seuil_minutes_affiche - minute_debut_affichage) / plage_minutes) * plot_height
         # Calcul des rectangles pour chaque jour
@@ -15623,36 +15581,29 @@ class SyntheseHebdomadaire(BaseRepository):
             else:
                 logger.error(f'Type inattendu pour la date : {type(date_obj_raw)}, valeur : {date_obj_raw}')
                 continue
-
             jour_semaine_numero = date_obj.isocalendar()[2] # 1=Lundi, 7=Dimanche
             if jour_semaine_numero < 1 or jour_semaine_numero > 7:
                 continue # Ignorer les jours en dehors de Lundi-Dimanche si nécessaire
-
-            h1d_minutes = heure_model.time_to_minutes(jour_data.get('h1d'))
-            h2f_minutes = heure_model.time_to_minutes(jour_data.get('h2f'))
-
+            h1d_minutes = self.heure_model.time_to_minutes(jour_data.get('h1d'))
+            h2f_minutes = self.heure_model.time_to_minutes(jour_data.get('h2f'))
             # Calcul des coordonnées X pour la colonne du jour
             x_jour_debut = margin_x + (jour_semaine_numero - 1) * (plot_width / 7)
             x_jour_fin = margin_x + jour_semaine_numero * (plot_width / 7)
             largeur_rect = (x_jour_fin - x_jour_debut) * 0.8 # Laisser un peu d'espace
             x_rect_debut = x_jour_debut + (x_jour_fin - x_jour_debut) * 0.1
-
             # Calcul des coordonnées Y pour h1d (début) et h2f (fin)
             # La formule est: y = marge_y + hauteur_plot - ((minutes - minute_debut) / plage_minutes) * hauteur_plot
             if h1d_minutes != -1 and h1d_minutes >= minute_debut_affichage and h1d_minutes <= minute_fin_affichage:
                 y_h1d = margin_y + plot_height - ((h1d_minutes - minute_debut_affichage) / plage_minutes) * plot_height
             else:
                 y_h1d = None # Ne pas afficher si hors plage ou manquant
-
             if h2f_minutes != -1 and h2f_minutes >= minute_debut_affichage and h2f_minutes <= minute_fin_affichage:
                 y_h2f = margin_y + plot_height - ((h2f_minutes - minute_debut_affichage) / plage_minutes) * plot_height
             else:
                 y_h2f = None
-
             # Vérifier si h2f dépasse le seuil
             depasse_seuil = (h2f_minutes != -1 and h2f_minutes > seuil_h2f_minutes)
-            couleur = 'red' if depasse_seuil else 'steelblue'
-
+            couleur_seuil = 'red' if depasse_seuil else 'steelblue'
             if y_h1d is not None and y_h2f is not None:
                 # Dessiner un rectangle entre h1d et h2f
                 y_top = min(y_h1d, y_h2f)
@@ -15666,7 +15617,7 @@ class SyntheseHebdomadaire(BaseRepository):
                     'jour': jour_data['date'], # Pour info éventuelle dans le template
                     'type': 'h1d_to_h2f', # Type pour distinguer dans le template
                     'depasse_seuil': depasse_seuil, # Indicateur pour la couleur.
-                    'couleur': 'red' if depasse_seuil else 'steelblue'
+                    'couleur': couleur_seuil
                 })
             elif y_h1d is not None: # Si h2f est manquant ou hors plage
                 # Dessiner un point ou une petite barre pour h1d
@@ -15678,7 +15629,7 @@ class SyntheseHebdomadaire(BaseRepository):
                     'jour': jour_data['date'],
                     'type': 'h1d_only',
                     'depasse_seuil': False, # h1d seul ne dépasse pas le seuil de h2f
-                    'couleur': 'red' if depasse_seuil else 'steelblue'
+                    'couleur': couleur_seuil
                 })
             elif y_h2f is not None: # Si h1d est manquant ou hors plage
                 # Dessiner un point ou une petite barre pour h2f
@@ -15690,15 +15641,13 @@ class SyntheseHebdomadaire(BaseRepository):
                     'jour': jour_data['date'],
                     'type': 'h2f_only',
                     'depasse_seuil': depasse_seuil, # Utiliser la vérification pour h2f
-                    'couleur': 'red' if depasse_seuil else 'steelblue'
+                    'couleur': couleur_seuil
                 })
-
         # Ticks pour l'axe Y (heures)
         ticks_y = []
         for h in range(heure_debut_affichage, heure_fin_affichage + 1):
             y_tick = margin_y + plot_height - ((h * 60 - minute_debut_affichage) / plage_minutes) * plot_height
             ticks_y.append({'heure': f"{h:02d}h", 'y': y_tick})
-
         # Labels pour l'axe X (jours)
         labels_x = []
         for i in range(7):
@@ -15708,7 +15657,6 @@ class SyntheseHebdomadaire(BaseRepository):
         heures = total_minutes // 60
         minutes = total_minutes % 60
         seuil_heure_label = f"{heures}h{minutes:02d}"
-
         return {
             'rectangles': rectangles_svg,
             'ticks_y': ticks_y,
@@ -15726,6 +15674,10 @@ class SyntheseHebdomadaire(BaseRepository):
         }
 
 class SyntheseMensuelle(BaseRepository):
+    __slots__ = ['synthese_hebdo_model']
+    super().__init__(db)
+        self.synthese_hebdo_model = SyntheseHebdomadaire(db)
+        self.heure_model = HeureTravail(db)
     def calculate_for_month_by_contrat(self, user_id: int, annee: int, mois: int) -> list[dict]:
         try:
             with self.db.get_cursor() as cursor:
@@ -16015,19 +15967,16 @@ class SyntheseMensuelle(BaseRepository):
             logger.error(f"Erreur récupération synthèses: {e}")
             return []
 
-    def calculate_h2f_stats_mensuel(self,heure_model, user_id: int, employeur: str, id_contrat: int,
+    def calculate_h2f_stats_mensuel(self, user_id: int, employeur: str, id_contrat: int,
                                     annee: int, mois: int, seuil_h2f_minutes: int = 18 * 60) -> Dict:
-        """
-        Calcule les statistiques sur h2f pour un mois donné.
-        """
+        """Calcule les statistiques sur h2f pour un mois donné."""
         seuil_h2f_minutes = int(round(seuil_h2f_minutes))
-        jours_mois = heure_model.get_h1d_h2f_for_period(user_id, employeur, id_contrat, annee, mois=mois)
+        jours_mois = self.heure_model.get_h1d_h2f_for_period(user_id, employeur, id_contrat, annee, mois=mois)
         count = 0
         for jour in jours_mois:
-            h2f_minutes = heure_model.time_to_minutes(jour.get('h2f'))
+            h2f_minutes = self.heure_model.time_to_minutes(jour.get('h2f'))
             if h2f_minutes != -1 and h2f_minutes > seuil_h2f_minutes:
                 count += 1
-
         moyenne_mensuelle = count / len(jours_mois) if jours_mois else 0.0
         seuil_int = int(round(seuil_h2f_minutes))
         return {
@@ -16037,13 +15986,13 @@ class SyntheseMensuelle(BaseRepository):
             'seuil_heure': f"{seuil_int // 60}:{seuil_int % 60:02d}"
         }
 
-    def prepare_svg_data_horaire_mois(self, heure_model, user_id: int, employeur: str, id_contrat: int, annee: int, mois: int, largeur_svg: int = 1000, hauteur_svg: int = 400) -> Dict:
+    def prepare_svg_data_horaire_mois(self, user_id: int, employeur: str, id_contrat: int, annee: int, mois: int, largeur_svg: int = 1000, hauteur_svg: int = 400) -> Dict:
         """
         Prépare les données pour un graphique SVG des horaires sur un mois.
         Axe X: Jours du mois (1, 2, 3, ..., 31)
         Axe Y: Heures (6h en haut, 22h en bas)
         """
-        jours_mois = heure_model.get_h1d_h2f_for_period(user_id, employeur, id_contrat, annee, mois=mois)
+        jours_mois = self.heure_model.get_h1d_h2f_for_period(user_id, employeur, id_contrat, annee, mois=mois)
         # Constantes pour la conversion des heures en pixels
         heure_debut_affichage = 6
         heure_fin_affichage = 22
@@ -16068,8 +16017,8 @@ class SyntheseMensuelle(BaseRepository):
                 logger.warning(f"Type de date inattendu : {type(date_value)}")
                 continue
             jour_du_mois = date_obj.day
-            h1d_minutes = heure_model.time_to_minutes(jour_data.get('h1d'))
-            h2f_minutes = heure_model.time_to_minutes(jour_data.get('h2f'))
+            h1d_minutes = self.heure_model.time_to_minutes(jour_data.get('h1d'))
+            h2f_minutes = self.heure_model.time_to_minutes(jour_data.get('h2f'))
             # Coordonnée X basée sur le jour du mois
             # On suppose que le mois a au maximum 31 jours
             x_jour_debut = margin_x + (jour_du_mois - 1) * (plot_width / 31)
@@ -16141,11 +16090,9 @@ class SyntheseMensuelle(BaseRepository):
             'annee': annee
         }
 
-    def prepare_svg_data_h2f_annuel(self, synthese_hebdo_model, heure_model, user_id: int, employeur: str, id_contrat: int, annee: int, seuil_h2f_minutes: int = 18 * 60, largeur_svg: int = 900, hauteur_svg: int = 400) -> Dict:
+    def prepare_svg_data_h2f_annuel(self, user_id: int, employeur: str, id_contrat: int, annee: int, seuil_h2f_minutes: int = 18 * 60, largeur_svg: int = 900, hauteur_svg: int = 400) -> Dict:
     # Récupérer les stats hebdomadaires
-
-        stats = synthese_hebdo_model.calculate_h2f_stats(heure_model, user_id, employeur, id_contrat, annee, seuil_h2f_minutes)
-
+        stats = self.synthese_hebdo_model.calculate_h2f_stats(user_id, employeur, id_contrat, annee, seuil_h2f_minutes)
         semaines = list(range(1, 53))  # ou 54 si besoin
         depassements = [stats['moyennes_hebdo'].get(s, 0) for s in semaines]
         moyennes_mobiles = [stats['moyennes_mobiles'].get(s, 0) for s in semaines]
@@ -16155,9 +16102,7 @@ class SyntheseMensuelle(BaseRepository):
         margin_y = 40
         plot_width = largeur_svg - margin_x - 50
         plot_height = hauteur_svg - margin_y - 50
-
         max_val = max(max(depassements), max(moyennes_mobiles)) if (depassements or moyennes_mobiles) else 1
-
         # Barres
         barres = []
         for i, (semaine, val) in enumerate(zip(semaines, depassements)):
@@ -16172,14 +16117,12 @@ class SyntheseMensuelle(BaseRepository):
                 'height': hauteur_barre,
                 'value': val
             })
-
         # Ligne moyenne mobile
         points_ligne = []
         for i, val in enumerate(moyennes_mobiles):
             x = margin_x + (i + 0.5) * (plot_width / 52)
             y = hauteur_svg - margin_y - (val / max_val) * plot_height if max_val > 0 else hauteur_svg - margin_y
             points_ligne.append(f"{x},{y}")
-
         return {
             'barres': barres,
             'ligne': points_ligne,
@@ -16196,23 +16139,21 @@ class SyntheseMensuelle(BaseRepository):
         }
 
 
-    def calculate_h2f_stats_weekly_for_month(self, heure_model, user_id: int, employeur: str, id_contrat: int, annee: int, mois: int, seuil_h2f_minutes: int) -> Dict:
+    def calculate_h2f_stats_weekly_for_month(self, user_id: int, employeur: str, id_contrat: int, annee: int, mois: int, seuil_h2f_minutes: int) -> Dict:
         # Bornes du mois
         if mois == 12:
             fin_mois = date(annee + 1, 1, 1) - timedelta(days=1)
         else:
             fin_mois = date(annee, mois + 1, 1) - timedelta(days=1)
         debut_mois = date(annee, mois, 1)
-
         # Récupérer TOUS les jours du mois
-        tous_les_jours = heure_model.get_h1d_h2f_for_period(
+        tous_les_jours = self.heure_model.get_h1d_h2f_for_period(
             user_id=user_id,
             employeur=employeur,
             id_contrat=id_contrat,
             annee=annee,
             mois=mois
         )
-
         # Regrouper par semaine ISO
         par_semaine = {}
         for j in tous_les_jours:
@@ -16226,16 +16167,13 @@ class SyntheseMensuelle(BaseRepository):
                 d = date_val
             else:
                 continue  # type inconnu, on ignore
-
             # Vérifier que la date est bien dans le mois (sécurité)
             if d < debut_mois or d > fin_mois:
                 continue
-
             semaine_iso = d.isocalendar()[1]
             if semaine_iso not in par_semaine:
                 par_semaine[semaine_iso] = []
             par_semaine[semaine_iso].append(j)
-
         # Compter les dépassements
         semaines_sorted = sorted(par_semaine.keys())
         depassements = []
@@ -16246,14 +16184,12 @@ class SyntheseMensuelle(BaseRepository):
                 if h2f_min != -1 and h2f_min > seuil_h2f_minutes:
                     count += 1
             depassements.append(count)
-
         # Moyenne mobile cumulative
         moyennes_mobiles = []
         cumul = 0
         for i, val in enumerate(depassements, 1):
             cumul += val
             moyennes_mobiles.append(round(cumul / i, 2))
-
         return {
             'semaines': semaines_sorted,
             'jours_depassement': depassements,
