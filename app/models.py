@@ -7491,7 +7491,7 @@ class EcritureComptable(BaseRepository):
             ecriture_principale_id = cur.lastrowid
             logger.info(f"Écriture principale créée ID: {ecriture_principale_id}")
 
-            if self.categorie_comptable_model.has_categorie_complementaire(data['categorie_id']):
+            if self.categorie_comptable_model.has_categorie_complementaire(data['categorie_id'], utilisateur_id):
                 logger.info(f"Catégorie {data['categorie_id']} a une complémentaire → écritures secondaires.")
                 self._create_secondary_ecritures(cur, ecriture_principale_id, data)
             else:
@@ -10079,7 +10079,7 @@ class RapprochementBancaire(BaseRepository):
 
     def __init__(self, db):
         super().__init__(db)
-        self.ecriture_model = EcritureComptable(db)
+        self.ecriture_comptable_model = EcritureComptable(db)
         self.categorie_model = CategorieComptable(db)
 
     # =====================================================
@@ -10089,7 +10089,6 @@ class RapprochementBancaire(BaseRepository):
     def create(self, data: Dict) -> Optional[int]:
         """
         Crée un rapprochement en statut 'brouillon'.
-
         Champs attendus dans data :
             utilisateur_id, prestataire,
             compte_banque_id, compte_frais_id, compte_attente_id,
@@ -10105,14 +10104,12 @@ class RapprochementBancaire(BaseRepository):
         except (KeyError, InvalidOperation):
             logger.error("RapprochementBancaire.create : montants invalides ou manquants")
             return None
-
         if abs(brut - (net + commission)) > Decimal('0.01'):
             logger.warning(
                 f"RapprochementBancaire.create : déséquilibre "
                 f"brut={brut} ≠ net={net} + commission={commission}"
             )
             return None
-
         try:
             with self.db.get_cursor() as cursor:
                 query = """
@@ -10200,7 +10197,6 @@ class RapprochementBancaire(BaseRepository):
                     if abs(brut - (net + commission)) > Decimal('0.01'):
                         logger.warning("Déséquilibre brut/net/commission, mise à jour refusée")
                         return False
-
                 values.extend([rapprochement_id, utilisateur_id])
                 cursor.execute(f"""
                     UPDATE rapprochements_bancaires
@@ -10211,7 +10207,6 @@ class RapprochementBancaire(BaseRepository):
         except MySQLError as e:
             logger.exception(f"Erreur mise à jour rapprochement {rapprochement_id}")
             return False
-
     def delete(self, rapprochement_id: int, utilisateur_id: int) -> Tuple[bool, str]:
         """
         Supprime un rapprochement :
@@ -10228,27 +10223,22 @@ class RapprochementBancaire(BaseRepository):
                 row = cursor.fetchone()
                 if not row:
                     return False, "Rapprochement introuvable"
-
                 if row['statut'] == 'brouillon':
                     cursor.execute("""
                         DELETE FROM rapprochements_bancaires
                         WHERE id = %s AND utilisateur_id = %s
                     """, (rapprochement_id, utilisateur_id))
                     return True, "Brouillon supprimé"
-
                 if row['statut'] == 'annule':
                     return False, "Rapprochement déjà annulé"
-
                 # --- Rapprochement validé : on annule proprement ---
                 groupe_id = row['ecriture_groupee_id']
-
                 # 1. Délier les écritures de vente carte marquées rapprochées
                 cursor.execute("""
                     UPDATE ecritures_comptables
                     SET rapprochement_id = NULL
                     WHERE rapprochement_id = %s AND utilisateur_id = %s
                 """, (rapprochement_id, utilisateur_id))
-
                 # 2. Supprimer (soft delete) les écritures de rapprochement
                 if groupe_id:
                     cursor.execute("""
@@ -10256,14 +10246,12 @@ class RapprochementBancaire(BaseRepository):
                         SET statut = 'supprimee'
                         WHERE groupe_ecriture_id = %s AND utilisateur_id = %s
                     """, (groupe_id, utilisateur_id))
-
                 # 3. Marquer le rapprochement comme annulé
                 cursor.execute("""
                     UPDATE rapprochements_bancaires
                     SET statut = 'annule'
                     WHERE id = %s AND utilisateur_id = %s
                 """, (rapprochement_id, utilisateur_id))
-
             return True, "Rapprochement annulé et écritures supprimées"
         except MySQLError as e:
             logger.exception(f"Erreur suppression rapprochement {rapprochement_id}")
@@ -10394,7 +10382,6 @@ class RapprochementBancaire(BaseRepository):
                       AND statut = 'validée'
                 """, (utilisateur_id, compte_attente_id, date_from))
                 solde_initial = float(cursor.fetchone()['solde_initial'] or 0)
-
                 # Mouvements de la période
                 cursor.execute("""
                     SELECT
@@ -10409,12 +10396,10 @@ class RapprochementBancaire(BaseRepository):
                 mvt = cursor.fetchone()
                 debits = float(mvt['debits'] or 0)
                 credits = float(mvt['credits'] or 0)
-
             non_rapprochees = self.get_ecritures_non_rapprochees(
                 utilisateur_id, compte_attente_id, date_from, date_to
             )
             total_non_rapproche = sum(float(e['montant'] or 0) for e in non_rapprochees)
-
             return {
                 'compte_attente_id': compte_attente_id,
                 'date_from': date_from,
@@ -10488,14 +10473,11 @@ class RapprochementBancaire(BaseRepository):
                 return False, "Rapprochement introuvable"
             if r['statut'] != 'brouillon':
                 return False, f"Rapprochement en statut '{r['statut']}', validation impossible"
-
             brut = Decimal(str(r['montant_brut']))
             commission = Decimal(str(r['montant_commission']))
             net = Decimal(str(r['montant_net']))
-
             if abs(brut - (net + commission)) > Decimal('0.01'):
                 return False, "Déséquilibre brut/net/commission"
-
             # 2. Récupérer les écritures non rapprochées de la période
             cur.execute("""
                 SELECT id, montant FROM ecritures_comptables
@@ -10509,19 +10491,15 @@ class RapprochementBancaire(BaseRepository):
                   r['date_debut'], r['date_fin']))
             ecritures_vente = cur.fetchall()
             total_vente = sum(Decimal(str(e['montant'])) for e in ecritures_vente)
-
             if total_vente + Decimal('0.01') < brut:
                 return False, (
                     f"Total des ventes carte ({total_vente}) "
                     f"inférieur au montant brut à solder ({brut})"
                 )
-
             # 3. Groupe d'écriture commun
             groupe_id = f"RAPPRO-{r['prestataire']}-{r['reference_releve'] or rapprochement_id}"
-
             date_ecriture = r['date_versement']
             devise = 'CHF'
-
             # 4. Écriture 1 : Débit banque (principale)
             cur.execute("""
                 INSERT INTO ecritures_comptables
@@ -10538,7 +10516,6 @@ class RapprochementBancaire(BaseRepository):
                 r['reference_releve'], groupe_id, utilisateur_id,
             ))
             ecriture_principale_id = cur.lastrowid
-
             # 5. Écriture 2 : Débit frais (complémentaire)
             if commission > Decimal('0'):
                 cur.execute("""
@@ -10556,7 +10533,6 @@ class RapprochementBancaire(BaseRepository):
                     r['reference_releve'], groupe_id, utilisateur_id,
                     ecriture_principale_id,
                 ))
-
             # 6. Écriture 3 : Crédit compte d'attente (solde la créance)
             cur.execute("""
                 INSERT INTO ecritures_comptables
@@ -10573,7 +10549,6 @@ class RapprochementBancaire(BaseRepository):
                 r['reference_releve'], groupe_id, utilisateur_id,
                 ecriture_principale_id,
             ))
-
             # 7. Marquer les écritures de vente comme rapprochées
             if ecritures_vente:
                 ids = [e['id'] for e in ecritures_vente]
@@ -10583,14 +10558,12 @@ class RapprochementBancaire(BaseRepository):
                     SET rapprochement_id = %s
                     WHERE id IN ({placeholders}) AND utilisateur_id = %s
                 """, [rapprochement_id] + ids + [utilisateur_id])
-
             # 8. Mettre à jour le rapprochement
             cur.execute("""
                 UPDATE rapprochements_bancaires
                 SET statut = 'valide', ecriture_groupee_id = %s
                 WHERE id = %s AND utilisateur_id = %s
             """, (groupe_id, rapprochement_id, utilisateur_id))
-
             logger.info(
                 f"✅ Rapprochement {rapprochement_id} validé "
                 f"(brut={brut}, commission={commission}, net={net})"
@@ -10599,7 +10572,6 @@ class RapprochementBancaire(BaseRepository):
                 f"Rapprochement validé : {len(ecritures_vente)} écriture(s) soldée(s), "
                 f"net reçu {net} CHF, frais {commission} CHF"
             )
-
         if cursor is not None:
             return _do(cursor)
         try:
@@ -10685,14 +10657,12 @@ class RapprochementBancaire(BaseRepository):
                     GROUP BY prestataire
                 """, (utilisateur_id, date_from, date_to))
                 par_prestataire = cursor.fetchall()
-
             totaux = {
                 'nb': sum(int(r['nb']) for r in par_prestataire),
                 'brut': round(sum(float(r['brut'] or 0) for r in par_prestataire), 2),
                 'commission': round(sum(float(r['commission'] or 0) for r in par_prestataire), 2),
                 'net': round(sum(float(r['net'] or 0) for r in par_prestataire), 2),
             }
-
             return {
                 'date_from': date_from,
                 'date_to': date_to,
@@ -11439,7 +11409,6 @@ class Rapport(BaseRepository):
                                         prestataire: str = None) -> Dict:
         """
         Génère un rapport de rapprochements bancaires sur une période.
-
         Contenu :
         - Totaux globaux (nb, brut, commission, net)
         - Ventilation par prestataire (Concardis / Eat.ch / Twint)
@@ -11448,19 +11417,16 @@ class Rapport(BaseRepository):
         """
         try:
             rapprochement_model = RapprochementBancaire(self.db)
-
             # 1. Totaux via la méthode dédiée
             resume = rapprochement_model.get_resume(
                 user_id, date_from, date_to
             )
-
             # 2. Filtre par prestataire si demandé
             par_prestataire = resume.get('par_prestataire', [])
             if prestataire:
                 par_prestataire = [
                     p for p in par_prestataire if p['prestataire'] == prestataire
                 ]
-
             # 3. Liste détaillée des rapprochements validés de la période
             rapprochements = rapprochement_model.get_all(
                 utilisateur_id=user_id,
@@ -11469,7 +11435,6 @@ class Rapport(BaseRepository):
                 date_from=date_from,
                 date_to=date_to,
             )
-
             # 4. Soldes restants sur les comptes d'attente (créance non encore soldée)
             soldes_attente = []
             for p in par_prestataire:
@@ -11480,7 +11445,6 @@ class Rapport(BaseRepository):
                     'prestataire': p['prestataire'],
                     'solde': float(solde),
                 })
-
             return {
                 'type_document': 'rapport_rapprochements',
                 'titre': f"Rapprochements bancaires du {date_from} au {date_to}",

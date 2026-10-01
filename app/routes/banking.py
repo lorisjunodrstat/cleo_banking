@@ -6082,29 +6082,23 @@ def delete_ecriture(ecriture_id):
         impact = g.models.ecriture_comptable_model.get_impact_suppression(
             ecriture_id, current_user.id
         )
-        
         # ✅ CORRECTION : Vérifier que l'écriture existe
         if not impact['ecriture']:
             flash("Écriture introuvable ou déjà supprimée.", "error")
             return redirect(url_for('banking.liste_ecritures'))
-        
         if not impact['peut_supprimer']:
             flash("Impossible de supprimer : " + "; ".join(impact['messages']), "error")
             return redirect(request.referrer or url_for('banking.liste_ecritures'))
-        
         # Vérifications de sécurité : les cases à cocher doivent être cochées si affichées
         if impact['est_liee_transaction'] and request.form.get('delier_transaction') != '1':
             flash("⚠️ Vous devez confirmer la déliaison de la transaction.", "error")
             return redirect(request.referrer or url_for('banking.liste_ecritures'))
-        
         if impact['secondaires'] and request.form.get('supprimer_cascade') != '1':
             flash("⚠️ Vous devez confirmer la suppression des écritures secondaires.", "error")
             return redirect(request.referrer or url_for('banking.liste_ecritures'))
-        
         # Options validées
         delier_transaction = request.form.get('delier_transaction') == '1'
         supprimer_cascade = request.form.get('supprimer_cascade') == '1'
-        
         try:
             success, message = g.models.ecriture_comptable_model.supprimer_avec_impact(
                 ecriture_id=ecriture_id,
@@ -6112,7 +6106,6 @@ def delete_ecriture(ecriture_id):
                 delier_transaction=delier_transaction,
                 supprimer_cascade=supprimer_cascade
             )
-            
             if success:
                 flash(f"✅ {message}", "success")
             else:
@@ -6120,7 +6113,6 @@ def delete_ecriture(ecriture_id):
         except Exception as e:
             logger.error(f"Erreur suppression écriture: {e}", exc_info=True)
             flash(f"Erreur lors de la suppression: {str(e)}", "error")
-        
         return redirect(request.referrer or url_for('banking.liste_ecritures'))
     
     # ============================================================
@@ -6207,26 +6199,21 @@ def delete_groupe_ecritures(groupe_id):
                 LIMIT 1
             """, (groupe_id, current_user.id))
             row = cursor.fetchone()
-
         if not row:
             flash("Groupe introuvable ou déjà supprimé.", "warning")
             return redirect(request.referrer or url_for('banking.liste_ecritures'))
-
         success, message = g.models.ecriture_comptable_model.supprimer_avec_impact(
             ecriture_id=row['id'],
             user_id=current_user.id,
             raison=request.form.get('raison', f'Suppression du groupe {groupe_id}')
         )
-
         if success:
             flash(f"✅ {message}", "success")
         else:
             flash(f"❌ {message}", "error")
-
     except Exception as e:
         logger.error(f"Erreur suppression groupe {groupe_id}: {e}", exc_info=True)
         flash(f"Erreur lors de la suppression du groupe: {str(e)}", "error")
-
     return redirect(request.referrer or url_for('banking.liste_ecritures'))
 
 # Route pour la suppression définitive (hard delete)
@@ -6249,21 +6236,17 @@ def hard_delete_ecriture(ecriture_id):
 def link_transaction_to_ecritures():
     transaction_id = request.form.get('transaction_id', type=int)
     ecriture_id = request.form.get('ecriture_id', type=int)
-
     if not transaction_id or not ecriture_id:
         flash("Paramètres manquants", "danger")
         return redirect(request.referrer or url_for('banking.banking_dashboard'))
-
     # Vérifier la transaction
     transaction = g.models.transaction_financiere_model.get_transaction_by_id(transaction_id)
     if not transaction:
         flash("Transaction non trouvée", "danger")
         return redirect(request.referrer or url_for('banking.banking_dashboard'))
-    
     if transaction.get('owner_user_id') != current_user.id:
         flash("Transaction non autorisée", "danger")
         return redirect(request.referrer or url_for('banking.banking_dashboard'))
-
     # Lier l'écriture (principale + secondaires) à la transaction
     if g.models.ecriture_comptable_model.link_ecriture_to_transaction(
         ecriture_id, transaction_id, current_user.id
@@ -6271,7 +6254,6 @@ def link_transaction_to_ecritures():
         flash("✅ Écriture(s) liée(s) avec succès", "success")
     else:
         flash("❌ Erreur lors du lien des écritures", "danger")
-
     return redirect(request.referrer or url_for('banking.banking_dashboard'))
 
     
@@ -6290,26 +6272,22 @@ def unlink_ecriture():
 def relink_ecriture():
     ecriture_id = request.form.get('ecriture_id', type=int)
     new_transaction_id = request.form.get('new_transaction_id', type=int)
-    
     # Récupérer l'écriture et la transaction
     ecriture = g.models.ecriture_comptable_model.get_by_id(ecriture_id)
     if not ecriture or ecriture['utilisateur_id'] != current_user.id:
         flash("Écriture non autorisée", "danger")
         return redirect(request.referrer)
-    
     tx = g.models.transaction_financiere_model.get_transaction_with_ecritures_total(
         new_transaction_id, current_user.id
     )
     if not tx:
         flash("Transaction introuvable", "danger")
         return redirect(request.referrer)
-    
     # Calculer le nouveau total si on ajoute cette écriture
     nouveau_total = (tx['total_ecritures'] or 0) + ecriture['montant']
     if nouveau_total > tx['montant']:
         flash(f"⚠️ Impossible : le total des écritures ({nouveau_total:.2f} CHF) dépasserait le montant de la transaction ({tx['montant']} CHF).", "warning")
         return redirect(request.referrer)
-    
     # Lier
     if g.models.ecriture_comptable_model.link_ecriture_to_transaction(ecriture_id, new_transaction_id, current_user.id):
         flash("Écriture reliée à la transaction.", "success")
@@ -6324,7 +6302,7 @@ def relink_ecriture():
 
 
 
-@bp.route('/comptabilite/rapprochements')
+@bp.route('/comptabilite/rapprochements', methods=['GET', 'POST'])
 @login_required
 def liste_rapprochements():
     """Liste des rapprochements bancaires (Concardis, Eat.ch, Twint…)."""
@@ -6345,10 +6323,12 @@ def liste_rapprochements():
         date_from or '1970-01-01',
         date_to or date.today().isoformat(),
     )
+    prestataire = []
     return render_template(
         'comptabilite/rapprochements.html',
         rapprochements=rapprochements,
         resume=resume,
+        prestataire=prestataire,
         prestataire_selectionne=prestataire,
         statut_selectionne=statut,
         date_from=date_from,
@@ -6486,14 +6466,12 @@ def analyser_rapprochement():
     """
     categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
     comptes = g.models.compte_model.get_by_user_id(current_user.id)
-
     # Liste des comptes d'attente "candidats" (Actif dont le numéro commence par 114x)
     comptes_attente = [
         c for c in categories
         if c['type_compte'] == 'Actif'
         and str(c['numero']).startswith('114')
     ]
-
     return render_template(
         'comptabilite/analyser_rapprochement.html',
         comptes=comptes,
@@ -11924,17 +11902,14 @@ def pos_create_pdv():
                 'nom_pdv': nom_pdv,
                 'compte_bancaire_id': int(compte_bancaire_id) if compte_bancaire_id else None
             }
-        )
-        
+        )  
         if pdv_id:
             flash('Point de vente créé avec succès !', 'success')
             return redirect(url_for('banking.pos_pdv_list'))
         flash('Erreur lors de la création.', 'error')
-    
     # Récupérer les magasins et les comptes pour le formulaire
     magasins = g.models.magasin_pos_model.get_by_user(current_user.id)
     comptes = g.models.compte_model.get_by_user_id(current_user.id)
-    
     return render_template('pos/create_pos.html', magasins=magasins, comptes=comptes)
 
 
