@@ -15675,9 +15675,11 @@ class SyntheseHebdomadaire(BaseRepository):
 
 class SyntheseMensuelle(BaseRepository):
     __slots__ = ['synthese_hebdo_model']
-    super().__init__(db)
+    def __init__(self, db):
+        super().__init__(db)
         self.synthese_hebdo_model = SyntheseHebdomadaire(db)
         self.heure_model = HeureTravail(db)
+    
     def calculate_for_month_by_contrat(self, user_id: int, annee: int, mois: int) -> list[dict]:
         try:
             with self.db.get_cursor() as cursor:
