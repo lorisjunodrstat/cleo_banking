@@ -3571,7 +3571,7 @@ class TransactionFinanciere(BaseRepository):
             date_transaction = datetime.now()
         try:
             with self.db.get_cursor(dictionary=True, commit=True) as cursor:
-            # ✅ Vérifier l'existence des comptes (pas l'appartenance)
+            # Vérifier l'existence des comptes (pas l'appartenance)
                 logger.info(f"🔍 Vérification existence compte source: type={source_type}, id={source_id}")
                 if not self._verifier_existence_compte_with_cursor(cursor, source_type, source_id):
                     logger.error(f"❌ Compte source INEXISTANT: type={source_type}, id={source_id}")
@@ -3804,7 +3804,7 @@ class TransactionFinanciere(BaseRepository):
                 if not self._verifier_existence_compte_with_cursor(cursor, source_type, source_id):
                     return False, "Compte source non trouvé ou non autorisé"
                 
-                # ✅ CORRECTION : Appel COMPLET à _inserer_transaction_with_cursor
+                # Appel COMPLET à _inserer_transaction_with_cursor
                 success, message, transaction_id = self._inserer_transaction_with_cursor(
                     cursor,
                     source_type,
@@ -6576,11 +6576,9 @@ class StatistiquesBancaires(BaseRepository):
             comptes = compte_model.get_by_user_id(user_id)
             sous_compte_model = SousCompte(self.db)
             repartition = {}
-
             for compte in comptes:
                 banque_nom = compte['nom_banque']
                 banque_couleur = compte.get('couleur_banque', '#3498db')
-
                 if banque_nom not in repartition:
                     repartition[banque_nom] = {
                         'nom_banque': banque_nom,
@@ -6588,17 +6586,13 @@ class StatistiquesBancaires(BaseRepository):
                         'montant_total': Decimal('0'),
                         'nb_comptes': 0
                     }
-
                 repartition[banque_nom]['montant_total'] += Decimal(str(compte['solde']))
                 repartition[banque_nom]['nb_comptes'] += 1
-
                 sous_comptes = sous_compte_model.get_by_compte_principal_id(compte['id'])
                 for sous_compte in sous_comptes:
                     repartition[banque_nom]['montant_total'] += Decimal(str(sous_compte['solde']))
-
             result = list(repartition.values())
             result.sort(key=lambda x: x['montant_total'], reverse=True)
-
             return result
         except MySQLError as e:
             logger.exception(f"Erreur lors du calcul de la répartition par banque")
@@ -6655,7 +6649,6 @@ class StatistiquesBancaires(BaseRepository):
                 """
                 cursor.execute(query_comptes, (user_id, nb_jours))
                 evolution_comptes = cursor.fetchall()
-
                 # Pour les sous-comptes - utiliser les transactions
                 query_sous_comptes = """
                 SELECT
@@ -6678,7 +6671,6 @@ class StatistiquesBancaires(BaseRepository):
                 """
                 cursor.execute(query_sous_comptes, (user_id, nb_jours))
                 evolution_sous_comptes = cursor.fetchall()
-
                 return {
                     'comptes_principaux': evolution_comptes,
                     'sous_comptes': evolution_sous_comptes,
@@ -6765,10 +6757,8 @@ class StatistiquesBancaires(BaseRepository):
             )
             if not transactions:
                 return None
-
             # Trier par date (au cas où)
             transactions.sort(key=lambda x: x['date_transaction'])
-
             # Récupérer le solde initial AVANT la période
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
@@ -6777,9 +6767,7 @@ class StatistiquesBancaires(BaseRepository):
                 """, (compte_id,))
                 row = cursor.fetchone()
                 solde_initial = float(row['solde_initial']) if row else 0.0
-
             # Calculer le solde cumulé JOUR PAR JOUR
-
             daily_net = defaultdict(float)
             for tx in transactions:
                 date_key = tx['date_transaction'].date()
@@ -6788,20 +6776,17 @@ class StatistiquesBancaires(BaseRepository):
                     daily_net[date_key] += montant
                 else:
                     daily_net[date_key] -= montant
-
             # Générer série complète de dates
             current = date_debut
             dates = []
             soldes_cumules = []
             solde_courant = solde_initial
-
             while current <= date_fin:
                 dates.append(current.strftime('%d/%m'))
                 if current in daily_net:
                     solde_courant += daily_net[current]
                 soldes_cumules.append(solde_courant)
                 current += timedelta(days=1)
-
             return {
                 'type': 'line',
                 'titre': 'Trésorerie cumulée',
@@ -7083,7 +7068,7 @@ class CategorieComptable(BaseRepository):
                 if not cursor.fetchone():
                     logger.warning(f"Catégorie {categorie_id} introuvable ou non autorisée pour user {utilisateur_id}")
                     return False
-                # ✅ Construire la requête dynamiquement pour n'update que les champs fournis
+                # Construire la requête dynamiquement pour n'update que les champs fournis
                 fields = []
                 values = []
                 # Champs obligatoires
@@ -7115,7 +7100,6 @@ class CategorieComptable(BaseRepository):
                 if 'type_ecriture_complementaire' in data:
                     fields.append("type_ecriture_complementaire = %s")
                     values.append(data['type_ecriture_complementaire'])
-                # ✅ NE PAS modifier le numéro s'il existe déjà
                 # Si vous voulez permettre la modification du numéro, faites une vérification d'unicité
                 if 'numero' in data and data['numero']:
                     # Vérifier si le numéro existe déjà pour une autre catégorie
@@ -7466,20 +7450,17 @@ class EcritureComptable(BaseRepository):
 
     def create(self, data: Dict, cursor=None, return_id=False) -> bool:
         """Crée une écriture comptable.
-
         Si `cursor` est fourni, on l'utilise (transaction partagée avec l'appelant).
         Sinon, on ouvre une nouvelle connexion.
         """
         if not isinstance(data, dict):
             raise TypeError(f"create() attend un dict en 2ᵉ argument, reçu {type(data).__name__}")
-
         if data.get('id_contact'):
             if not self._is_categorie_valid_for_contact(
                 data['id_contact'], data['categorie_id'], data['utilisateur_id']
             ):
                 logger.warning("Catégorie non autorisée pour ce contact.")
                 return False
-
         def _do_insert(cur):
             query = """
                 INSERT INTO ecritures_comptables
@@ -7500,19 +7481,16 @@ class EcritureComptable(BaseRepository):
             cur.execute(query, values)
             ecriture_principale_id = cur.lastrowid
             logger.info(f"Écriture principale créée ID: {ecriture_principale_id}")
-
-            if self.categorie_comptable_model.has_categorie_complementaire(data['categorie_id'], utilisateur_id):
+            if self.categorie_comptable_model.has_categorie_complementaire(data['categorie_id'], data['utilisateur_id']):
                 logger.info(f"Catégorie {data['categorie_id']} a une complémentaire → écritures secondaires.")
                 self._create_secondary_ecritures(cur, ecriture_principale_id, data)
             else:
                 logger.info(f"Catégorie {data['categorie_id']} sans complémentaire.")
-            # 🔄 MODIF 2 : on retourne l'ID (ou True) selon le flag
+            #on retourne l'ID (ou True) selon le flag
             return ecriture_principale_id if return_id else True
-
         # Cas 1 : cursor externe fourni → laisser remonter les exceptions
         if cursor is not None:
             return _do_insert(cursor)
-
         # Cas 2 : pas de cursor → connexion dédiée
         try:
             with self.db.get_cursor(dictionary=True) as new_cursor:
@@ -7783,7 +7761,7 @@ class EcritureComptable(BaseRepository):
             cursor.execute(query, values)
             ecriture_secondaire_id = cursor.lastrowid
             logger.info(f"✅ Écriture secondaire créée (ID: {ecriture_secondaire_id}) pour la règle {regle['id']}")
-            # 🔥 CASCADE : Cette écriture secondaire peut déclencher d'autres règles
+            # CASCADE : Cette écriture secondaire peut déclencher d'autres règles
             self._appliquer_regles_en_cascade(
                 cursor, 
                 ecriture_principale_id, 
@@ -8378,7 +8356,7 @@ class EcritureComptable(BaseRepository):
                 if ecriture['type_ecriture_comptable'] == 'principale':
                     secondaires = self.get_ecritures_complementaires(ecriture_id, user_id)
                     ecritures_secondaires_ids = [sec['id'] for sec in secondaires]
-                    # 🔥 Délier les secondaires aussi
+                    # Délier les secondaires aussi
                     for sec_id in ecritures_secondaires_ids:
                         cursor.execute(
                             "UPDATE ecritures_comptables SET transaction_id = NULL WHERE id = %s",
@@ -8397,7 +8375,7 @@ class EcritureComptable(BaseRepository):
                     message = f"Écriture {ecriture_id} supprimée avec succès"
                     if ecritures_secondaires_ids:
                         message += f" ainsi que {len(ecritures_secondaires_ids)} écriture(s) secondaire(s)"
-                    # 🔥 Hors du if ecritures_secondaires_ids
+                    # Hors du if ecritures_secondaires_ids
                     if transaction_id_liee:
                         cursor.execute("""
                             SELECT COUNT(*) as nb
@@ -8441,7 +8419,7 @@ class EcritureComptable(BaseRepository):
                 if ecriture['type_ecriture_comptable'] == 'principale':
                     secondaires = self.get_ecritures_complementaires(ecriture_id, user_id)
                     ecritures_secondaires_ids = [sec['id'] for sec in secondaires]
-                    # 🔥 Délier les secondaires aussi
+                    # Délier les secondaires aussi
                     for sec_id in ecritures_secondaires_ids:
                         cursor.execute(
                             "UPDATE ecritures_comptables SET transaction_id = NULL WHERE id = %s",
@@ -8680,7 +8658,7 @@ class EcritureComptable(BaseRepository):
                 ORDER BY c.numero
                 """
 
-                cursor.execute(query, tuple(params)) # Le nombre de placeholders et de paramètres correspond maintenant.
+                cursor.execute(query, tuple(params))
                 stats = cursor.fetchall()
             return stats
         except Error as e:
@@ -8691,7 +8669,7 @@ class EcritureComptable(BaseRepository):
     def _validate_date(date_str: str) -> bool:
         """Valide le format d'une chaîne de date YYYY-MM-DD"""
         try:
-            datetime.strptime(date_str, '%Y-%m-%d')  # Corrigé: %m ajouté
+            datetime.strptime(date_str, '%Y-%m-%d') 
             return True
         except (ValueError, TypeError):
             return False
@@ -8699,7 +8677,6 @@ class EcritureComptable(BaseRepository):
     def _fetch_ecritures_by_type(self, user_id: int, date_from: str, date_to: str, type_ecriture: str) -> List[Dict]:
         """Récupère les écritures pour le compte de résultat (uniquement comptes de résultat, pas de bilan)"""
         with self.db.get_cursor() as cursor:
-            # ✅ CORRECTION : Utiliser les bons types_compte selon votre base
             if type_ecriture == 'recette':
                 type_compte_filter = "'Revenus'"  # Produits (classe 3)
             else:  # depense
@@ -8869,12 +8846,10 @@ class EcritureComptable(BaseRepository):
                     AND e.type_ecriture_comptable = 'principale'
                 """
                 params = [user_id, date_from, date_to, statut]
-                # ✅ CORRECTION : Si categorie_id est spécifié, filtrer uniquement sur celui-ci
                 if categorie_id and categorie_id != 'all':
                     query += " AND e.categorie_id = %s"
                     params.append(int(categorie_id))
                 elif type_categorie:
-                    # ✅ CORRECTION : Ajouter des parenthèses pour la priorité SQL
                     if type_categorie == 'produit':
                         query += " AND (c.type_compte IN ('Revenus', 'Actif') AND e.type_ecriture = 'recette')"
                     elif type_categorie == 'charge':
@@ -9814,7 +9789,7 @@ class EcritureComptable(BaseRepository):
         except MySQLError as e:
             logger.error(f"Erreur critique ajout fichier écriture {ecriture_id}: {e}", exc_info=True)
             return False, f"Erreur interne lors de l'ajout du fichier: {str(e)}"
-        except OSError as e:                               # ✅ ciblé : erreur disque
+        except OSError as e:
             logger.exception(f"Erreur disque ajout fichier écriture {ecriture_id}")
             return False, "Impossible d'enregistrer le fichier sur le serveur"
         
@@ -9867,7 +9842,7 @@ class EcritureComptable(BaseRepository):
         except MySQLError as e:
             logger.error(f"Erreur récupération fichier écriture {ecriture_id}: {e}")
             return None
-        except OSError as e:                               # ✅ ciblé : erreur disque
+        except OSError as e:
             logger.exception(f"Erreur disque récupération fichier écriture {ecriture_id}")
             return None
 
@@ -9927,7 +9902,7 @@ class EcritureComptable(BaseRepository):
         except MySQLError as e:
             logger.exception(f"❌ Erreur suppression fichier écriture {ecriture_id}: {e}")
             return False, f"Erreur lors de la suppression: {str(e)}"
-        except OSError as e:                               # ✅ ciblé : erreur disque
+        except OSError as e:
             logger.exception(f"❌ Erreur disque suppression fichier écriture {ecriture_id}")
             return False, "Impossible de supprimer le fichier sur le serveur"
 
@@ -11383,7 +11358,7 @@ class ContactCompte(BaseRepository):
                 cursor.execute("""
                     SELECT c.id_contact, c.nom, c.email, c.telephone, c.adresse, c.ville
                     FROM contact_comptes cc
-                    JOIN contacts c ON cc.contact_id = c.id_contact  # ✅ Jointure corrigée
+                    JOIN contacts c ON cc.contact_id = c.id_contact  #
                     WHERE cc.compte_id = %s AND cc.utilisateur_id = %s
                     ORDER BY c.nom
                 """, (compte_id, utilisateur_id))
@@ -11399,7 +11374,7 @@ class ContactCompte(BaseRepository):
                 cursor.execute("""
                     SELECT cc.contact_id, c.nom, c.email
                     FROM contact_comptes cc
-                    INNER JOIN contacts c ON cc.contact_id = c.id_contact  # ✅ Jointure corrigée
+                    INNER JOIN contacts c ON cc.contact_id = c.id_contact  #
                     WHERE cc.compte_id = %s AND cc.utilisateur_id = %s
                     LIMIT 1
                 """, (compte_id, utilisateur_id))
@@ -13863,8 +13838,6 @@ class HeureTravail(BaseRepository):
             except Exception as calc_error:
                 logger.warning(f"Impossible de calculer le total des heures: {calc_error}")
                 # Continuer malgré l'erreur de calcul
-            
-            # ✅ LOG CORRECTEMENT PLACÉ - HORS DU BLOC EXCEPT
             logger.info(f"create_or_update réussi pour heure_travail_id {heure_travail_id} avec données: {cleaned_data}")
             return True
         except MySQLError as e:
@@ -14891,10 +14864,10 @@ class Salaire(BaseRepository):
                     }
                 }
             } 
-        except MySQLError as e:                             # ✅ ciblé : erreur DB
+        except MySQLError as e:
             logger.exception(f"Erreur DB dans calculer_salaire_net_avec_details")
             return {'salaire_net': 0.0, 'erreur': 'Erreur technique, veuillez réessayer', 'details': {}}
-        except (ValueError, TypeError, KeyError) as e:      # ✅ ciblé : données invalides
+        except (ValueError, TypeError, KeyError) as e:
             logger.warning(f"Données invalides dans calculer_salaire_net_avec_details : {e}")
             return {'salaire_net': 0.0, 'erreur': 'Données de contrat invalides', 'details': {}}
     
@@ -17018,7 +16991,6 @@ class MagasinPOS(BaseRepository):
             return cursor.fetchone() is not None
     
     def update(self, magasin_id: int, user_id: int, data: Dict) -> bool:
-        # ✅ Vérification avant mise à jour
         if not self.verify_magasin_belongs_to_user(magasin_id, user_id):
             logger.warning(f"Tentative de mise à jour d'un magasin non autorisé: {magasin_id}")
             return False
@@ -17042,7 +17014,6 @@ class MagasinPOS(BaseRepository):
             return False
     
     def delete(self, magasin_id: int, user_id: int) -> bool:
-        # ✅ Vérification avant suppression
         if not self.verify_magasin_belongs_to_user(magasin_id, user_id):
             logger.warning(f"Tentative de suppression d'un magasin non autorisé: {magasin_id}")
             return False
@@ -17699,7 +17670,6 @@ class ModePaiementPOS(BaseRepository):
                     WHERE id = %s AND utilisateur_id = %s
                 """, (data['nom'], data.get('description', ''), 
                     data.get('est_actif', True), data.get('compte_bancaire_id'), data.get('compte_tresorerie_id'), mode_id, user_id))
-                # ✅ Succès même si rowcount = 0 (données déjà à jour)
                 return True
         except MySQLError as e:
             logger.error(f"Erreur mise à jour mode paiement: {e}")
@@ -18098,7 +18068,6 @@ class ArticlePOS(BaseRepository):
         if not article:
             return None
         article['variantes'] = self.variante_model.get_by_article(article_id)
-        # ✅ NOUVEAU : On récupère le TYPE de taxe (ex: "TVA Alimentaire")
         article['type_taxe'] = self.taxe_model.get_type_for_article(article_id)
         # 💡 OPTIONNEL (pour l'affichage UI) : Si vous voulez montrer le taux actuel à l'utilisateur
         if article['type_taxe']:
@@ -18290,7 +18259,7 @@ class ModificateurPOS(BaseRepository):
                     data['nom_modificateur'], 
                     data.get('prix_modificateur', 0),
                     data.get('description', ''), 
-                    data.get('taux_tva', 0.00), # ✅ Nouveau champ
+                    data.get('taux_tva', 0.00),
                     mod_id, 
                     user_id
                 ))
@@ -19167,7 +19136,6 @@ class ReceiptPOS(BaseRepository):
                     cursor.execute("UPDATE pos_articles SET stock = stock - %s WHERE id = %s",
                                    (qte, item['article_id']))
                     cout_marchandises += Decimal(str(article['cout_unitaire'] or 0)) * qte
-                    # ✅ GESTION DU TVA_BREAKDOWN (paniers mixtes)
                     if 'tva_breakdown' in item and item['tva_breakdown']:
                         for breakdown in item['tva_breakdown']:
                             montant_ttc_comp = Decimal(str(breakdown['montant_ttc'])) * qte
@@ -19386,10 +19354,10 @@ class ReceiptPOS(BaseRepository):
                 else:
                     logger.info(f"ℹ️ Ticket {receipt_id} en attente de comptabilisation manuelle")
                 return True, "Vente créée avec succès", receipt_id
-        except MySQLError as e:                             # ✅ ciblé : erreur DB
+        except MySQLError as e:  
             logger.exception("Erreur DB création vente POS")
             return False, "Erreur technique, veuillez réessayer", None
-        except (ValueError, KeyError) as e:                 # ✅ ciblé : données panier invalides
+        except (ValueError, KeyError) as e:
             logger.warning(f"Données de vente invalides : {e}")
             return False, "Panier invalide, veuillez vérifier les articles", None
 
@@ -19491,10 +19459,10 @@ class ReceiptPOS(BaseRepository):
                         item['commentaire'], item['modificateurs']
                     ))
                 return True, "Ticket enregistré", receipt_id
-        except MySQLError as e:                             # ✅ ciblé : erreur DB
+        except MySQLError as e:
             logger.exception("Erreur DB création ticket ouvert")
             return False, "Erreur technique, veuillez réessayer", None
-        except (ValueError, KeyError) as e:                 # ✅ ciblé : données panier invalides
+        except (ValueError, KeyError) as e: 
             logger.warning(f"Données de ticket invalides : {e}")
             return False, "Panier invalide, veuillez vérifier les articles", None
 
@@ -19546,10 +19514,10 @@ class ReceiptPOS(BaseRepository):
                         json.dumps(item.get('tva_breakdown', []))
                     ))
                 return True, "Ticket enregistré", receipt_id
-        except MySQLError as e:                             # ✅ ciblé : erreur DB
+        except MySQLError as e: 
             logger.exception("Erreur DB save_open_ticket")
             return False, "Erreur technique, veuillez réessayer", None
-        except (ValueError, json.JSONDecodeError) as e:     # ✅ ciblé : JSON panier invalide
+        except (ValueError, json.JSONDecodeError) as e: 
             logger.warning(f"JSON ticket invalide : {e}")
             return False, "Format de ticket invalide", None
 
@@ -21142,7 +21110,6 @@ class PeriodeTravailPOS(BaseRepository):
                     FROM pos_depots WHERE periode_travail_id = %s
                 """, (periode_id,))
                 total_depots = Decimal(str(cursor.fetchone()['total_depots']))
-                # ✅ FIX : filtre désormais par magasin ET pdv (colonnes texte de pos_receipts),
                 # plus seulement par date — sinon on additionne les espèces de TOUS les
                 # PDV actifs pendant la même plage horaire.
                 cursor.execute("""
@@ -21254,7 +21221,6 @@ class PeriodeTravailPOS(BaseRepository):
 
     def get_detail_json(self, periode_id: int, user_id: int) -> Optional[Dict]:
         """Retourne toutes les données d'une période pour la modale de fermeture
-        ✅ FIX : toutes les requêtes d'agrégation sur pos_receipts / pos_payments
         filtrent désormais aussi sur (r.magasin = period.magasin AND r.pdv =
         period.nom_pdv), en plus de la plage de dates. Sans ce filtre, un
         rapport d'équipe additionne les ventes de TOUS les PDV/caisses actifs
@@ -21407,11 +21373,10 @@ class MouvementCaissePOS(BaseRepository):
         """
         Enregistre un retrait de caisse.
         Si compte_bancaire_id fourni, crée une transaction de dépôt dans le compte.
-        ✅ NOUVEAU : date_operation permet d'importer des données historiques.
         Si None, utilise datetime.now() (comportement par défaut).
         """
         try:
-            # ✅ Si aucune date fournie, on prend la date actuelle
+            # Si aucune date fournie, on prend la date actuelle
             date_op = date_operation or datetime.now()
             with self.db.get_cursor() as cursor:
                 # Vérifier la période
@@ -21421,7 +21386,7 @@ class MouvementCaissePOS(BaseRepository):
                 """, (periode_id, user_id))
                 if not cursor.fetchone():
                     return False, "Période non trouvée ou fermée"
-                # ✅ Enregistrer le retrait avec la date réelle (plus NOW())
+                # Enregistrer le retrait avec la date réelle (plus NOW())
                 cursor.execute("""
                     INSERT INTO pos_retraits (periode_travail_id, montant_retrait, date_retrait, description)
                     VALUES (%s, %s, %s, %s)
@@ -21436,7 +21401,7 @@ class MouvementCaissePOS(BaseRepository):
                         montant=montant,
                         description=f"Retrait caisse période {periode_id}",
                         user_id=user_id,
-                        date_transaction=date_op,  # ✅ Date historique
+                        date_transaction=date_op,
                         validate_balance=False,
                         receipt_id=None
                     )
@@ -21453,10 +21418,10 @@ class MouvementCaissePOS(BaseRepository):
         """
         Enregistre un dépôt en caisse (ex: fond de caisse).
         Si compte_bancaire_id fourni, crée une transaction de retrait du compte.
-        ✅ NOUVEAU : date_operation permet d'importer des données historiques.
+         date_operation permet d'importer des données historiques.
         """
         try:
-            # ✅ Si aucune date fournie, on prend la date actuelle
+            # Si aucune date fournie, on prend la date actuelle
             date_op = date_operation or datetime.now()   
             with self.db.get_cursor() as cursor:
                 cursor.execute("""
@@ -21466,7 +21431,7 @@ class MouvementCaissePOS(BaseRepository):
                 if not cursor.fetchone():
                     return False, "Période non trouvée ou fermée"
                 
-                # ✅ Enregistrer le dépôt avec la date réelle (plus NOW())
+                # Enregistrer le dépôt avec la date réelle (plus NOW())
                 cursor.execute("""
                     INSERT INTO pos_depots (periode_travail_id, montant_depot, date_depot, description)
                     VALUES (%s, %s, %s, %s)
@@ -21480,7 +21445,7 @@ class MouvementCaissePOS(BaseRepository):
                         montant=montant,
                         description=f"Dépôt caisse période {periode_id}",
                         user_id=user_id,
-                        date_transaction=date_op,  # ✅ Date historique
+                        date_transaction=date_op,
                         validate_balance=True,
                         receipt_id=None
                     )
