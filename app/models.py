@@ -3333,13 +3333,24 @@ class TransactionFinanciere(BaseRepository):
                 solde_possible = Decimal(str(res_sp['solde_possible'])) if res_sp and 'solde_possible' in res_sp else Decimal('0')
             # Trouver la transaction précédente pour calculer le solde_avant
             previous = self._get_previous_transaction_with_cursor(cursor, compte_type, compte_id, date_transaction)
-            # Calculer le solde_avant
+            
+            # Calculer le solde_avant en gérant les NULL de la colonne solde_apres
             if previous:
-                solde_avant = Decimal(str(previous[2]))
+                raw_solde = previous[2] # C'est la valeur de 'solde_apres' de la transaction précédente
+                
+                # Si la base de données renvoie NULL (None), on initialise à 0
+                if raw_solde is None:
+                    solde_avant = Decimal('0.00')
+                else:
+                    try:
+                        solde_avant = Decimal(str(raw_solde).strip())
+                    except InvalidOperation:
+                        # Sécurité au cas où la donnée serait corrompue (ex: chaîne vide)
+                        solde_avant = Decimal('0.00')
             else:
                 # Si aucune transaction précédente, utiliser le solde initial du compte
                 solde_initial = self._get_solde_initial_with_cursor(cursor, compte_type, compte_id)
-                solde_avant = solde_initial
+                solde_avant = solde_initial if solde_initial is not None else Decimal('0.00')
             # Pour les transactions de débit, vérifier le solde suffisant si demandé
             if validate_balance and type_transaction in ['retrait', 'transfert_sortant', 'transfert_externe', 'transfert_compte_vers_sous', 'transfert_sous_vers_compte']:
                 solde_limite = solde_possible if compte_type == 'compte_principal' else Decimal('0')
@@ -3921,7 +3932,15 @@ class TransactionFinanciere(BaseRepository):
                 # Formatage des résultats
                 for transaction in transactions:
                     transaction['montant'] = Decimal(str(transaction['montant']))#transaction['montant'] = float(transaction['montant'])
-                    transaction['solde_apres'] = Decimal(str(transaction['solde_apres']))#transaction['date_transaction'] = transaction['date_transaction'].isoformat()
+                    raw_solde = transaction.get('solde_apres')
+                    if raw_solde is None or str(raw_solde).strip() in ('', 'None', 'NULL'):
+                        transaction['solde_apres'] = Decimal('0.00')
+                    else:
+                        try:
+                            transaction['solde_apres'] = Decimal(str(raw_solde).strip())
+                        except InvalidOperation:
+                            # Fallback au cas où la donnée en base serait corrompue (ex: texte)
+                            transaction['solde_apres'] = Decimal('0.00')
                 return transactions
         except MySQLError as e:
             logger.error(f"Erreur récupération historique: {e}")
