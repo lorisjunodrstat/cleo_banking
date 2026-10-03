@@ -3382,7 +3382,7 @@ class TransactionFinanciere(BaseRepository):
                     solde_avant = Decimal('0.00')
                 else:
                     try:
-                        solde_avant = safe_decimal(raw_solde).strip()
+                        solde_avant = safe_decimal(raw_solde)
                     except InvalidOperation:
                         # Sécurité au cas où la donnée serait corrompue (ex: chaîne vide)
                         solde_avant = Decimal('0.00')
@@ -3976,7 +3976,7 @@ class TransactionFinanciere(BaseRepository):
                         transaction['solde_apres'] = Decimal('0.00')
                     else:
                         try:
-                            transaction['solde_apres'] = safe_decimal(raw_solde).strip()
+                            transaction['solde_apres'] = safe_decimal(raw_solde)
                         except InvalidOperation:
                             # Fallback au cas où la donnée en base serait corrompue (ex: texte)
                             transaction['solde_apres'] = Decimal('0.00')
