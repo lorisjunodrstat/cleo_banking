@@ -46,13 +46,40 @@ logger = logging.getLogger(__name__)
 def safe_decimal(value, default='0.00'):
     """
     Convertit une valeur en Decimal de manière sécurisée.
-    Gère les NULL, chaînes vides, et valeurs invalides.
+    Gère les NULL, chaînes vides, valeurs invalides, et types numériques.
+    
+    Args:
+        value: La valeur à convertir (peut être None, str, int, float, Decimal)
+        default: Valeur par défaut si la conversion échoue (défaut: '0.00')
+    
+    Returns:
+        Decimal: La valeur convertie ou la valeur par défaut
     """
-    if value is None or str(value).strip() in ('', 'None', 'NULL'):
+    # Cas 1 : Déjà un Decimal, pas besoin de conversion
+    if isinstance(value, Decimal):
+        return value
+    
+    # Cas 2 : Types numériques natifs (int, float)
+    if isinstance(value, (int, float)):
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, ValueError, TypeError):
+            return Decimal(default)
+    
+    # Cas 3 : None ou chaînes problématiques
+    if value is None:
         return Decimal(default)
+    
+    str_value = str(value).strip()
+    if str_value in ('', 'None', 'NULL', 'null', 'none'):
+        return Decimal(default)
+    
+    # Cas 4 : Tentative de conversion
     try:
-        return Decimal(str(value).strip())
-    except InvalidOperation:
+        return Decimal(str_value)
+    except (InvalidOperation, ValueError, TypeError):
+        # Optionnel : logger pour débogage
+        # logger.warning(f"Conversion Decimal échouée pour valeur: {repr(value)}, utilisation de {default}")
         return Decimal(default)
 
 class Utilisateur(UserMixin):
