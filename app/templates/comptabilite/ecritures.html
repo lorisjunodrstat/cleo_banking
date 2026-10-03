@@ -158,23 +158,46 @@
     .statut-rejetee    { background-color: #ffebee !important; color: #c62828; }
     .statut-supprimee  { background-color: #e0e0e0 !important; color: #6c757d; text-decoration: line-through; }
     .statut-archivee   { background-color: #e3f2fd !important; color: #1565c0; }
+       /* === LÉGENDE DES STATUTS - Version renforcée === */
     .legend-dot {
-        display: inline-block;
-        width: 14px;       /* Légèrement plus grand pour une meilleure visibilité */
-        height: 14px;
-        border-radius: 4px;
-        margin-right: 6px;
-        vertical-align: middle;
-        border: 1px solid rgba(0, 0, 0, 0.1); /* Bordure subtile pour le contraste */
+        display: inline-block !important;
+        width: 16px !important;
+        height: 16px !important;
+        border-radius: 4px !important;
+        margin-right: 8px !important;
+        vertical-align: middle !important;
+        flex-shrink: 0 !important;
     }
     
-    /* Couleurs spécifiques pour chaque point de la légende */
-    .legend-dot-pending { background-color: #fff9c4; }
-    .legend-dot-rejetee { background-color: #ffebee; border-color: #ffcdd2; }
-    .legend-dot-validee { background-color: #ffffff; border: 1px solid #ccc; }
-    .legend-dot-supprimee { background-color: #e0e0e0; }
-    .legend-dot-archivee { background-color: #e3f2fd; border-color: #bbdefb; }
+    /* Couleurs spécifiques avec haute spécificité */
+    .legend-dot.legend-dot-pending { 
+        background-color: #fff3cd !important; 
+        border: 2px solid #ffc107 !important;
+    }
+    .legend-dot.legend-dot-rejetee { 
+        background-color: #f8d7da !important; 
+        border: 2px solid #dc3545 !important;
+    }
+    .legend-dot.legend-dot-validee { 
+        background-color: #d1e7dd !important; 
+        border: 2px solid #198754 !important;
+    }
+    .legend-dot.legend-dot-supprimee { 
+        background-color: #e2e3e5 !important; 
+        border: 2px solid #6c757d !important;
+    }
+    .legend-dot.legend-dot-archivee { 
+        background-color: #cff4fc !important; 
+        border: 2px solid #0dcaf0 !important;
+    }
 
+    /* Style pour les conteneurs de la légende */
+    .legend-item {
+        display: inline-flex !important;
+        align-items: center !important;
+        margin-right: 1rem !important;
+        font-size: 0.875rem !important;
+    }
     /* Tes classes pour les lignes du tableau (à conserver) */
     .statut-pending    { background-color: #fff9c4 !important; }
     .statut-validee    { background-color: #ffffff !important; color: #000000; }
@@ -566,24 +589,29 @@
     <!-- TABLEAU DES ÉCRITURES -->
     <!-- ============================================ -->
     <!-- Légende-->
-     <div class="mb-3 px-2">
-        <small class="me-3 d-inline-flex align-items-center">
-            <span class="legend-dot legend-dot-pending"></span> En attente
-        </small>
-        <small class="me-3 d-inline-flex align-items-center">
-            <span class="legend-dot legend-dot-rejetee"></span> Rejetée
-        </small>
-        <small class="me-3 d-inline-flex align-items-center">
-            <span class="legend-dot legend-dot-validee"></span> Validée
-        </small>
-        <small class="me-3 d-inline-flex align-items-center">
-            <span class="legend-dot legend-dot-supprimee"></span> Supprimée
-        </small>
-        <small class="me-3 d-inline-flex align-items-center">
-            <span class="legend-dot legend-dot-archivee"></span> Archivée
-        </small>
+         <!-- Légende des statuts -->
+    <div class="mb-3 px-2 py-2 bg-white rounded border">
+        <span class="legend-item">
+            <span class="legend-dot legend-dot-pending"></span>
+            <span>En attente</span>
+        </span>
+        <span class="legend-item">
+            <span class="legend-dot legend-dot-rejetee"></span>
+            <span>Rejetée</span>
+        </span>
+        <span class="legend-item">
+            <span class="legend-dot legend-dot-validee"></span>
+            <span>Validée</span>
+        </span>
+        <span class="legend-item">
+            <span class="legend-dot legend-dot-supprimee"></span>
+            <span>Supprimée</span>
+        </span>
+        <span class="legend-item">
+            <span class="legend-dot legend-dot-archivee"></span>
+            <span>Archivée</span>
+        </span>
     </div>
-    
     <div class="card table-card">
         <!-- ✅ EN-TÊTE CORRIGÉ : Flexible, responsive et bien aligné -->
         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 py-2">
