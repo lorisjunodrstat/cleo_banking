@@ -43,6 +43,18 @@ import secrets
 #    return check_password_hash(self.mot_de_passe, password)
 logger = logging.getLogger(__name__)
 
+def safe_decimal(value, default='0.00'):
+    """
+    Convertit une valeur en Decimal de manière sécurisée.
+    Gère les NULL, chaînes vides, et valeurs invalides.
+    """
+    if value is None or str(value).strip() in ('', 'None', 'NULL'):
+        return Decimal(default)
+    try:
+        return Decimal(str(value).strip())
+    except InvalidOperation:
+        return Decimal(default)
+
 class Utilisateur(UserMixin):
     def __init__(self, id, nom=None, prenom=None, email=None, mot_de_passe=None, created_at=None):
         self.id = id
@@ -1819,7 +1831,7 @@ class ComptePrincipal(BaseRepository):
                 cursor.execute(query, (compte_id, compte_id))
                 result = cursor.fetchone()
                 if result and 'solde_total' in result:
-                    return Decimal(str(result['solde_total']))
+                    return safe_decimal(result['solde_total'])
                 else:
                     return Decimal('0')
         except MySQLError as e:
@@ -1834,7 +1846,7 @@ class ComptePrincipal(BaseRepository):
             with self.db.get_cursor() as cursor:
                 cursor.execute("SELECT solde FROM comptes_principaux WHERE id = %s", (compte_id,))
                 result = cursor.fetchone()
-                solde = Decimal(str(result[0])) if result and result[0] else Decimal('0')
+                solde = safe_decimal(result[0]) if result and result[0] else Decimal('0')
                 query = """
                 SELECT SUM(CASE
                     WHEN type_ecriture = 'recette' THEN montant
@@ -1850,7 +1862,7 @@ class ComptePrincipal(BaseRepository):
                     params.append(date_jusqua)
                 cursor.execute(query, tuple(params))
                 result = cursor.fetchone()
-                ajustement = Decimal(str(result[0])) if result and result[0] else Decimal('0')
+                ajustement = safe_decimal(result[0]) if result and result[0] else Decimal('0')
                 # Suppression des fermetures de connexion/curseur inutiles
                 return solde + ajustement
         except Error as e:
@@ -1935,13 +1947,13 @@ class ComptePrincipalRapport(BaseRepository):
             """, (compte_id, debut_periode))
             result = cursor.fetchone()
             if result:
-                return Decimal(str(result['solde_apres']))
+                return safe_decimal(result['solde_apres'])
             else:
                 # Aucune transaction → solde initial du compte
                 cursor.execute("SELECT solde_initial FROM comptes_principaux WHERE id = %s AND utilisateur_id = %s",
                                (compte_id, user_id))
                 result = cursor.fetchone()
-                return Decimal(str(result['solde_initial'])) if result else Decimal('0')
+                return safe_decimal(result['solde_initial']) if result else Decimal('0')
 
     def generer_rapport_periode(self, compte_id: int, user_id: int,
                                 periode: str = 'mensuel',
@@ -2221,7 +2233,7 @@ class SousCompte(BaseRepository):
                 # Vérifier si le sous-compte a un solde
                 cursor.execute("SELECT solde FROM sous_comptes WHERE id = %s", (sous_compte_id,))
                 result = cursor.fetchone()
-                if result and Decimal(str(result['solde'])) > 0:
+                if result and safe_decimal(result['solde']) > 0:
                     logger.warning(f"Impossible de supprimer le sous-compte {sous_compte_id} car son solde n'est pas nul.")
                     return False
                 # Soft delete
@@ -2281,8 +2293,8 @@ class TransactionFinanciere(BaseRepository):
                     logger.warning(f"Aucun solde trouvé pour {compte_type} ID {compte_id}")
                     return False, Decimal('0')
 
-                solde_actuel = Decimal(str(result['solde']))
-                solde_possible = Decimal(str(result['solde_possible'])) if compte_type == 'compte_principal' and 'solde_possible' in result else Decimal('0')
+                solde_actuel = safe_decimal(result['solde'])
+                solde_possible = Dsafe_decimal(result['solde_possible']) if compte_type == 'compte_principal' and 'solde_possible' in result else Decimal('0')
 
                 solde_projete = solde_actuel - montant
                 solde_suffisant = solde_projete >= solde_possible
@@ -2338,7 +2350,7 @@ class TransactionFinanciere(BaseRepository):
                     cursor.execute("SELECT solde_initial FROM sous_comptes WHERE id = %s", (compte_id,))
 
                 result = cursor.fetchone()
-                return Decimal(str(result['solde_initial'])) if result and 'solde_initial' in result else Decimal('0')
+                return safe_decimal(result['solde_initial']) if result and 'solde_initial' in result else Decimal('0')
         except Error as e:
             logger.error(f"Erreur récupération solde initial: {e}")
             return Decimal('0')
@@ -2355,7 +2367,7 @@ class TransactionFinanciere(BaseRepository):
                     cursor.execute("SELECT solde_possible FROM sous_comptes WHERE id = %s", (compte_id,))
 
                 result = cursor.fetchone()
-                return Decimal(str(result['solde_possible'])) if result and 'solde_possible' in result else Decimal('0')
+                return safe_decimal(result['solde_possible']) if result and 'solde_possible' in result else Decimal('0')
         except Error as e:
             logger.error(f"Erreur récupération solde possible: {e}")
             return Decimal('0')
@@ -2391,7 +2403,7 @@ class TransactionFinanciere(BaseRepository):
         solde_courant = solde_apres_insere
         dernier_solde = None
         for transaction in subsequent_transactions:
-            montant = Decimal(str(transaction['montant']))
+            montant = safe_decimal(transaction['montant'])
             t_type = transaction['type_transaction']
             # 3. Déterminer dynamiquement si le mouvement est un crédit (+) ou un débit (-) pour ce compte
             est_credit = False
@@ -2432,7 +2444,7 @@ class TransactionFinanciere(BaseRepository):
                 previous = self._get_previous_transaction(compte_type, compte_id, date_transaction)
                 # Calculer le solde_avant
                 if previous:
-                    solde_avant = Decimal(str(previous['solde_apres']))
+                    solde_avant = safe_decimal(previous['solde_apres'])
                 else:
                     solde_initial = self._get_solde_initial(compte_type, compte_id)
                     solde_avant = solde_initial
@@ -2440,7 +2452,7 @@ class TransactionFinanciere(BaseRepository):
                     cursor.execute("SELECT COALESCE(solde_possible, 0) AS solde_possible FROM comptes_principaux WHERE id = %s", (compte_id,))
                     result = cursor.fetchone()
                     if result:
-                        solde_possible = Decimal(str(result['solde_possible']))
+                        solde_possible = safe_decimal(result['solde_possible'])
                 # Pour les transactions de débit, vérifier le solde suffisant si demandé
                 if validate_balance and type_transaction in ['retrait', 'transfert_sortant', 'transfert_externe']:
                     solde_limite = solde_possible if compte_type == 'compte_principal' else Decimal('0')
@@ -2512,12 +2524,12 @@ class TransactionFinanciere(BaseRepository):
                 previous = self._get_previous_transaction(compte_type, compte_id, 
                                                         premiere_transaction['date_transaction'])
                 if previous:
-                    solde_courant = Decimal(str(previous['solde_apres']))
+                    solde_courant = safe_decimal(previous['solde_apres'])
                 else:
                     solde_initial = self._get_solde_initial(compte_type, compte_id)
                     solde_courant = solde_initial
                 for transaction in transactions:
-                    montant = Decimal(str(transaction['montant']))
+                    montant = safe_decimal(transaction['montant'])
                     if transaction['type_transaction'] in ['depot', 'transfert_entrant', 'recredit_annulation']:
                         solde_courant += montant
                     elif transaction['type_transaction'] in ['retrait', 'transfert_sortant', 'transfert_externe']:
@@ -2557,12 +2569,12 @@ class TransactionFinanciere(BaseRepository):
             premiere_transaction = transactions[0]
             previous = self._get_previous_transaction_with_cursor(cursor, compte_type, compte_id, premiere_transaction['date_transaction'])
             if previous:
-                solde_courant = Decimal(str(previous[2]))  # previous[2] = solde_apres
+                solde_courant = safe_decimal(previous[2])  # previous[2] = solde_apres
             else:
                 solde_initial = self._get_solde_initial_with_cursor(cursor, compte_type, compte_id)
                 solde_courant = solde_initial
             for transaction in transactions:
-                montant = Decimal(str(transaction['montant']))
+                montant = safe_decimal(transaction['montant'])
                 if transaction['type_transaction'] in ['depot', 'transfert_entrant', 'recredit_annulation', 'transfert_sous_vers_compte']:
                     solde_courant += montant
                 elif transaction['type_transaction'] in ['retrait', 'transfert_sortant', 'transfert_externe', 'transfert_compte_vers_sous']:
@@ -2661,7 +2673,7 @@ class TransactionFinanciere(BaseRepository):
                 est_transfert = type_tx in ['transfert_entrant', 'transfert_sortant']
                 compte_type = 'compte_principal' if transaction['compte_principal_id'] else 'sous_compte'
                 compte_id = transaction['compte_principal_id'] or transaction['sous_compte_id']
-                ancien_montant = Decimal(str(transaction['montant']))
+                ancien_montant = safe_decimal(transaction['montant'])
                 ancienne_date = transaction['date_transaction']
                 #ancien_type = transaction['type_transaction'] # On garde l'ancien type pour la logique
                 # Préparer les champs à mettre à jour
@@ -2875,7 +2887,7 @@ class TransactionFinanciere(BaseRepository):
                 transactions = cursor.fetchall()
                 # Mettre à jour le solde_apres de chaque transaction
                 for tx in transactions:
-                    montant = Decimal(str(tx['montant']))
+                    montant = safe_decimal(tx['montant'])
                     if tx['type_transaction'] in ['depot', 'transfert_entrant', 'recredit_annulation', 'transfert_sous_vers_compte']:
                         solde_courant += montant
                     elif tx['type_transaction'] in ['retrait', 'transfert_sortant', 'transfert_externe', 'transfert_compte_vers_sous']:
@@ -2957,8 +2969,8 @@ class TransactionFinanciere(BaseRepository):
                 transactions = cursor.fetchall()
                 # Convertir les montants en Decimal pour une manipulation plus précise
                 for transaction in transactions:
-                    transaction['montant'] = Decimal(str(transaction['montant']))
-                    transaction['solde_apres'] = Decimal(str(transaction['solde_apres']))
+                    transaction['montant'] = safe_decimal(transaction['montant'])
+                    transaction['solde_apres'] = safe_decimal(transaction['solde_apres'])
                 return transactions
         except MySQLError as e:
             logger.exception(f"Erreur récupération transactions par compte: {e}")
@@ -3074,9 +3086,9 @@ class TransactionFinanciere(BaseRepository):
                 # Convertir les montants en Decimal (optionnel mais cohérent avec le reste)
                 for tx in transactions:
                     if 'montant' in tx and tx['montant'] is not None:
-                        tx['montant'] = Decimal(str(tx['montant']))
+                        tx['montant'] = safe_decimal(tx['montant'])
                     if 'solde_apres' in tx and tx['solde_apres'] is not None:
-                        tx['solde_apres'] = Decimal(str(tx['solde_apres']))
+                        tx['solde_apres'] = safe_decimal(tx['solde_apres'])
                 return list(transactions), total
         except MySQLError as e:
             logger.exception(f"Erreur dans get_all_user_transactions: {e}", exc_info=True)
@@ -3163,8 +3175,8 @@ class TransactionFinanciere(BaseRepository):
                 # Compte non trouvé
                 return False, Decimal('0')
             # Assurer la précision décimale en convertissant le résultat de la requête
-            solde_actuel = Decimal(str(result['solde']))
-            solde_limite = Decimal(str(result['solde_possible'])) if 'solde_possible' in result else Decimal('0')
+            solde_actuel = safe_decimal(result['solde'])
+            solde_limite = safe_decimal(result['solde_possible']) if 'solde_possible' in result else Decimal('0')
             return (solde_actuel - montant) >= solde_limite, solde_actuel
         except MySQLError as e:
             logger.exception(f"Erreur lors de la validation du solde: {e}")
@@ -3292,11 +3304,11 @@ class TransactionFinanciere(BaseRepository):
             if compte_type == 'compte_principal':
                 cursor.execute("SELECT solde FROM comptes_principaux WHERE id = %s", (compte_id,))
                 result = cursor.fetchone()
-                return Decimal(str(result['solde'])) if result and 'solde' in result else Decimal('0')
+                return safe_decimal(result['solde']) if result and 'solde' in result else Decimal('0')
             elif compte_type == 'sous_compte':
                 cursor.execute("SELECT solde FROM sous_comptes WHERE id = %s", (compte_id,))
                 result = cursor.fetchone()
-                return Decimal(str(result['solde'])) if result and 'solde' in result else Decimal('0')
+                return safe_decimal(result['solde']) if result and 'solde' in result else Decimal('0')
             else:
                 return Decimal('0')
         except MySQLError as e:
@@ -3330,7 +3342,7 @@ class TransactionFinanciere(BaseRepository):
             if compte_type == 'compte_principal':
                 cursor.execute("SELECT COALESCE(solde_possible, 0) AS solde_possible FROM comptes_principaux WHERE id = %s", (compte_id,))
                 res_sp = cursor.fetchone()
-                solde_possible = Decimal(str(res_sp['solde_possible'])) if res_sp and 'solde_possible' in res_sp else Decimal('0')
+                solde_possible = safe_decimal(res_sp['solde_possible']) if res_sp and 'solde_possible' in res_sp else Decimal('0')
             # Trouver la transaction précédente pour calculer le solde_avant
             previous = self._get_previous_transaction_with_cursor(cursor, compte_type, compte_id, date_transaction)
             
@@ -3343,7 +3355,7 @@ class TransactionFinanciere(BaseRepository):
                     solde_avant = Decimal('0.00')
                 else:
                     try:
-                        solde_avant = Decimal(str(raw_solde).strip())
+                        solde_avant = safe_decimal(raw_solde).strip()
                     except InvalidOperation:
                         # Sécurité au cas où la donnée serait corrompue (ex: chaîne vide)
                         solde_avant = Decimal('0.00')
@@ -3461,7 +3473,7 @@ class TransactionFinanciere(BaseRepository):
             else:
                 cursor.execute("SELECT solde_initial FROM sous_comptes WHERE id = %s", (compte_id,))
             result = cursor.fetchone()
-            return Decimal(str(result['solde_initial'])) if result and 'solde_initial' in result else Decimal('0')
+            return safe_decimal(result['solde_initial']) if result and 'solde_initial' in result else Decimal('0')
         except MySQLError as e:
             logger.error(f"Erreur lors de la récupération du solde initial: {e}")
             #return Decimal('0')
@@ -3510,7 +3522,7 @@ class TransactionFinanciere(BaseRepository):
         solde_courant = solde_apres_insere
         dernier_solde = None
         for transaction in subsequent_transactions:
-            montant_val = Decimal(str(transaction['montant']))
+            montant_val = safe_decimal(transaction['montant'])
             type_transaction_val = transaction['type_transaction']
             # Gestion de tous les types de transactions
             if type_transaction_val in ['depot', 'transfert_entrant', 'recredit_annulation', 'transfert_sous_vers_compte']:
@@ -3658,8 +3670,8 @@ class TransactionFinanciere(BaseRepository):
                 result = cursor.fetchone()
                 if not result:
                     return False, "Compte non trouvé"
-                solde_compte = Decimal(str(result['solde']))
-                solde_possible = Decimal(str(result['solde_possible']))
+                solde_compte = safe_decimal(result['solde'])
+                solde_possible = safe_decimal(result['solde_possible'])
                 if solde_compte - montant < solde_possible:
                     return False, "Solde insuffisant sur le compte"
                 # Générer référence et description
@@ -3732,7 +3744,7 @@ class TransactionFinanciere(BaseRepository):
                 result = cursor.fetchone()
                 if not result:
                     return False, "Sous-compte non trouvé"
-                solde_sous_compte = Decimal(str(result['solde']))
+                solde_sous_compte = safe_decimal(result['solde'])
                 if solde_sous_compte < montant:
                     return False, "Solde insuffisant sur le sous-compte"
                 # Générer référence et description
@@ -3931,13 +3943,13 @@ class TransactionFinanciere(BaseRepository):
                 transactions = cursor.fetchall()
                 # Formatage des résultats
                 for transaction in transactions:
-                    transaction['montant'] = Decimal(str(transaction['montant']))#transaction['montant'] = float(transaction['montant'])
+                    transaction['montant'] = safe_decimal(transaction['montant'])
                     raw_solde = transaction.get('solde_apres')
                     if raw_solde is None or str(raw_solde).strip() in ('', 'None', 'NULL'):
                         transaction['solde_apres'] = Decimal('0.00')
                     else:
                         try:
-                            transaction['solde_apres'] = Decimal(str(raw_solde).strip())
+                            transaction['solde_apres'] = safe_decimal(raw_solde).strip()
                         except InvalidOperation:
                             # Fallback au cas où la donnée en base serait corrompue (ex: texte)
                             transaction['solde_apres'] = Decimal('0.00')
@@ -4037,7 +4049,7 @@ class TransactionFinanciere(BaseRepository):
                     compte_type = 'sous_compte'
                     compte_id = transfert['sous_compte_id']
                 # Recréditer le compte source
-                montant = Decimal(str(transfert['montant']))
+                montant = safe_decimal(transfert['montant'])
                 # Utiliser la méthode d'insertion pour créer une transaction de recrédit
                 success, message, _ = self._inserer_transaction_with_cursor(
                     cursor, compte_type, compte_id, 'recredit_annulation', montant,
@@ -4068,7 +4080,7 @@ class TransactionFinanciere(BaseRepository):
                 if not row:
                     logger.warning(f"Compte inexistant: compte={compte_id}")
                     return []
-                solde_initial = Decimal(str(row['solde_initial'] or '0.00'))
+                solde_initial = safe_decimal(row['solde_initial'] or '0.00')
                 # 2. Préparation des dates
                 debut_dt = datetime.strptime(date_debut, '%Y-%m-%d').date()
                 fin_dt = datetime.strptime(date_fin, '%Y-%m-%d').date() # On travaille avec des objets date simples
@@ -4098,7 +4110,7 @@ class TransactionFinanciere(BaseRepository):
                     return []
                 # --- 4. Logique de Remplissage des Jours Manquants (Report de Solde) ---
                 # Map des soldes de fin de journée pour un accès rapide
-                soldes_fin_journee = {t['date_transaction'].date(): Decimal(str(t['solde_apres'])) for t in transactions_par_jour}
+                soldes_fin_journee = {t['date_transaction'].date(): safe_decimal(t['solde_apres']) for t in transactions_par_jour}
                 # Déterminer le solde APRES la dernière transaction AVANT date_debut
                 # C'est nécessaire pour initialiser le report sur date_debut si aucune transaction n'a eu lieu ce jour-là
                 cursor.execute("""
@@ -4106,7 +4118,7 @@ class TransactionFinanciere(BaseRepository):
                     WHERE compte_principal_id = %s AND date_transaction < %s
                     ORDER BY date_transaction DESC, id DESC LIMIT 1
                 """, (compte_id, date_debut))
-                solde_initial_report = Decimal(str(cursor.fetchone()['solde_apres'])) if cursor.rowcount else solde_initial
+                solde_initial_report = safe_decimal(cursor.fetchone()['solde_apres']) if cursor.rowcount else solde_initial
                 jours_complets = []
                 current_solde = solde_initial_report
                 current_date = debut_dt
@@ -4165,7 +4177,7 @@ class TransactionFinanciere(BaseRepository):
                 if not transactions_par_jour:
                     return []
                 # --- 3. Logique de Remplissage des Jours Manquants (Report de Solde) ---
-                soldes_fin_journee = {t['date_transaction'].date(): Decimal(str(t['solde_apres'])) for t in transactions_par_jour}
+                soldes_fin_journee = {t['date_transaction'].date(): safe_decimal(t['solde_apres']) for t in transactions_par_jour}
                 # Déterminer le solde APRES la dernière transaction AVANT date_debut
                 cursor.execute("""
                     SELECT solde_apres FROM transactions
@@ -4173,7 +4185,7 @@ class TransactionFinanciere(BaseRepository):
                     ORDER BY date_transaction DESC, id DESC LIMIT 1
                 """, (sous_compte_id, date_debut_str))
                 # Dans un sous-compte, on part souvent de 0.0 si aucune transaction passée n'est trouvée.
-                solde_initial_report = Decimal(str(cursor.fetchone()['solde_apres'])) if cursor.rowcount else Decimal('0.00')
+                solde_initial_report = safe_decimal(cursor.fetchone()['solde_apres']) if cursor.rowcount else Decimal('0.00')
                 jours_complets = []
                 current_solde = solde_initial_report
                 current_date = date_debut_dt
@@ -4253,9 +4265,9 @@ class TransactionFinanciere(BaseRepository):
                 cursor.execute(query, (receipt_id, user_id, user_id))
                 transactions = cursor.fetchall()
                 for tx in transactions:
-                    tx['montant'] = Decimal(str(tx['montant']))
+                    tx['montant'] = safe_decimal(tx['montant'])
                     if tx['solde_apres'] is not None:
-                        tx['solde_apres'] = Decimal(str(tx['solde_apres']))
+                        tx['solde_apres'] = safe_decimal(tx['solde_apres'])
                 return transactions
         except MySQLError as e:
             logger.exception(f"Erreur récupération transactions pour reçu {receipt_id}: {e}")
@@ -4276,7 +4288,7 @@ class TransactionFinanciere(BaseRepository):
                         WHERE sc.id = %s AND cp.utilisateur_id = %s
                     """, (compte_id, user_id))
                 result = cursor.fetchone()
-                return Decimal(str(result['solde'])) if result and 'solde' in result else Decimal('0')
+                return safe_decimal(result['solde']) if result and 'solde' in result else Decimal('0')
         except MySQLError as e:
             logger.error(f"Erreur récupération solde courant: {e}")
             return Decimal('0')
@@ -4291,7 +4303,7 @@ class TransactionFinanciere(BaseRepository):
                 result = cursor.fetchone()
                 if not result:
                     return Decimal('0')
-                solde_total = Decimal(str(result['solde']))
+                solde_total = safe_decimal(result['solde'])
                 # Ajouter les soldes des sous-comptes
                 cursor.execute("""
                     SELECT solde FROM sous_comptes
@@ -4299,7 +4311,7 @@ class TransactionFinanciere(BaseRepository):
                 """, (compte_principal_id,))
                 sous_comptes = cursor.fetchall()
                 for sc in sous_comptes:
-                    solde_total += Decimal(str(sc['solde']))
+                    solde_total += safe_decimal(sc['solde'])
                 return solde_total
         except MySQLError as e:
             logger.error(f"Erreur calcul solde total: {e}")
@@ -4353,7 +4365,7 @@ class TransactionFinanciere(BaseRepository):
                 result = {}
                 for row in rows:
                     type_tx = row['type_transaction']
-                    montant = Decimal(str(row['total'] or '0'))
+                    montant = safe_decimal(row['total'] or '0')
 
                     # Inclure dans la catégorie correspondante
                     cat = mapping_categories.get(type_tx, 'Autres')
@@ -4401,7 +4413,7 @@ class TransactionFinanciere(BaseRepository):
                 result = {}
                 for row in rows:
                     type_tx = row['type_transaction']
-                    montant = Decimal(str(row['total'] or '0'))
+                    montant = safe_decimal(row['total'] or '0')
                     cat = mapping_categories.get(type_tx, 'Autres')
                     result[cat] = result.get(cat, Decimal('0')) + montant
                 return result
@@ -4446,7 +4458,7 @@ class TransactionFinanciere(BaseRepository):
                 result = {}
                 for row in rows:
                     type_tx = row['type_transaction']
-                    montant = Decimal(str(row['total'] or '0'))
+                    montant = safe_decimal(row['total'] or '0')
                     cat = mapping_categories.get(type_tx, 'Autres')
                     result[cat] = result.get(cat, Decimal('0')) + montant
                 return result
@@ -4898,7 +4910,7 @@ class TransactionFinanciere(BaseRepository):
                     # 1. Récupérer le solde initial
                     cursor.execute("SELECT solde_initial FROM comptes_principaux WHERE id = %s", (compte_id,))
                     row = cursor.fetchone()
-                    solde_initial = Decimal(str(row['solde_initial'])) if row and row['solde_initial'] is not None else Decimal('0')
+                    solde_initial = safe_decimal(row['solde_initial']) if row and row['solde_initial'] is not None else Decimal('0')
                     # 2. Récupérer TOUTES les transactions du compte dans la période
                     cursor.execute("""
                         SELECT date_transaction, montant, type_transaction
@@ -4921,7 +4933,7 @@ class TransactionFinanciere(BaseRepository):
                     # 4. Parcourir les transactions
                     for tx in txns:
                         tx_date = tx['date_transaction'].date()
-                        montant = Decimal(str(tx['montant']))
+                        montant = safe_decimal(tx['montant'])
                         tx_type = tx['type_transaction']
                         # Classifier la transaction
                         if tx_type in ['depot', 'transfert_entrant', 'recredit_annulation', 'transfert_sous_vers_compte']:
@@ -5770,7 +5782,7 @@ class TransactionFinanciere(BaseRepository):
                 result = cursor.fetchone()
                 if result and result['solde_apres'] is not None:
                     # Retourner le solde après la dernière transaction avant la période
-                    return Decimal(str(result['solde_apres']))
+                    return safe_decimal(result['solde_apres'])
                 else:
                     # Aucune transaction avant la période, retourner le solde initial du compte
                     cursor.execute(
@@ -5779,7 +5791,7 @@ class TransactionFinanciere(BaseRepository):
                     )
                     initial_result = cursor.fetchone()
                     if initial_result and initial_result['solde_initial'] is not None:
-                        return Decimal(str(initial_result['solde_initial']))
+                        return safe_decimal(initial_result['solde_initial'])
                     else:
                         # Si le solde_initial n'est pas non plus défini, retourner 0
                         return Decimal('0')
@@ -5833,7 +5845,7 @@ class TransactionFinanciere(BaseRepository):
                 if not comptes:
                     logger.warning("⚠️ Aucun compte trouvé")
                     return {'dates': [], 'series': {}, 'donnees_brutes': {}}
-                compte_map = {c['id']: {'nom': c['nom_compte'], 'solde_initial': Decimal(str(c['solde_initial'] or 0))} for c in comptes}
+                compte_map = {c['id']: {'nom': c['nom_compte'], 'solde_initial': safe_decimal(c['solde_initial'] or 0)} for c in comptes}
                 # 2. Convertir date_fin en datetime 23:59:59
                 date_fin_datetime = datetime.combine(date_fin, datetime.max.time())
                 # 3. Récupérer toutes les transactions
@@ -5871,7 +5883,7 @@ class TransactionFinanciere(BaseRepository):
                         """, (cid, date_debut))
                         res = cursor.fetchone()
                         if res and res['solde_apres'] is not None:
-                            soldes_courants[cid] = Decimal(str(res['solde_apres']))
+                            soldes_courants[cid] = safe_decimal(res['solde_apres'])
                         else:
                             soldes_courants[cid] = info['solde_initial']
                     else:
@@ -5881,7 +5893,7 @@ class TransactionFinanciere(BaseRepository):
                 for tx in transactions:
                     dt = tx['date_transaction'].date() if hasattr(tx['date_transaction'], 'date') else tx['date_transaction']
                     cid = tx['compte_principal_id']
-                    montant = Decimal(str(tx['montant']))
+                    montant = safe_decimal(tx['montant'])
                     type_tx = tx['type_transaction']
                     if type_tx in ['depot', 'transfert_entrant', 'recredit_annulation', 'transfert_sous_vers_compte']:
                         tx_par_date[dt][cid]['entrees'] += montant
@@ -6407,7 +6419,7 @@ class StatistiquesBancaires(BaseRepository):
             nb_comptes = len(comptes)
             noms_banques = set(compte['nom_banque'] for compte in comptes)
             nb_banques = len(noms_banques)
-            solde_total_principal = sum(Decimal(str(compte['solde'])) for compte in comptes)
+            solde_total_principal = sum(safe_decimal(compte['solde']) for compte in comptes)
             # Récupérer et calculer les totaux des sous-comptes
             sous_compte_model = SousCompte(self.db)
             nb_sous_comptes = 0
@@ -6416,8 +6428,8 @@ class StatistiquesBancaires(BaseRepository):
             for compte in comptes:
                 sous_comptes = sous_compte_model.get_by_compte_principal_id(compte['id'])
                 nb_sous_comptes += len(sous_comptes)
-                epargne_totale += sum(Decimal(str(sc['solde'])) for sc in sous_comptes)
-                objectifs_totaux += sum(Decimal(str(sc['objectif_montant'] or '0')) for sc in sous_comptes)
+                epargne_totale += sum(safe_decimal(sc['solde']) for sc in sous_comptes)
+                objectifs_totaux += sum(safe_decimal(sc['objectif_montant'] or '0') for sc in sous_comptes)
             # Calculer le patrimoine total
             patrimoine_total = solde_total_principal + epargne_totale
             # Récupérer les transactions du mois en utilisant TransactionFinanciere
@@ -6455,8 +6467,8 @@ class StatistiquesBancaires(BaseRepository):
                 cursor.execute(query, (user_id, statut))
                 stats_ecritures = cursor.fetchone()
             nb_ecritures_mois = stats_ecritures['nb_ecritures_mois'] or 0
-            total_depenses = Decimal(str(stats_ecritures['total_depenses'] or '0'))
-            total_recettes = Decimal(str(stats_ecritures['total_recettes'] or '0'))
+            total_depenses = safe_decimal(stats_ecritures['total_depenses'] or '0')
+            total_recettes = safe_decimal(stats_ecritures['total_recettes'] or '0')
             solde_mois = total_recettes - total_depenses
             # Calculer la progression de l'épargne
             progression_epargne = Decimal('0')
@@ -6515,11 +6527,11 @@ class StatistiquesBancaires(BaseRepository):
                         'montant_total': Decimal('0'),
                         'nb_comptes': 0
                     }
-                repartition[banque_nom]['montant_total'] += Decimal(str(compte['solde']))
+                repartition[banque_nom]['montant_total'] += safe_decimal(compte['solde'])
                 repartition[banque_nom]['nb_comptes'] += 1
                 sous_comptes = sous_compte_model.get_by_compte_principal_id(compte['id'])
                 for sous_compte in sous_comptes:
-                    repartition[banque_nom]['montant_total'] += Decimal(str(sous_compte['solde']))
+                    repartition[banque_nom]['montant_total'] += safe_decimal(sous_compte['solde'])
             result = list(repartition.values())
             result.sort(key=lambda x: x['montant_total'], reverse=True)
             return result
@@ -7634,7 +7646,7 @@ class EcritureComptable(BaseRepository):
             if val is None or val == '' or str(val).lower() == 'none':
                 return Decimal(default)
             try:
-                return Decimal(str(val))
+                return safe_decimal(val)
             except (InvalidOperation, ValueError):
                 return Decimal(default)
         for regle in regles:
@@ -9446,7 +9458,7 @@ class EcritureComptable(BaseRepository):
                 WHERE transaction_id = %s AND utilisateur_id = %s
             """, (transaction_id, user_id))
             row = cursor.fetchone()
-            return Decimal(str(row['total'])) if row and row['total'] else Decimal('0')
+            return safe_decimal(row['total']) if row and row['total'] else Decimal('0')
 
     def unlink_from_transaction(self, ecriture_id: int, user_id: int) -> bool:
         """
@@ -9521,7 +9533,7 @@ class EcritureComptable(BaseRepository):
                     AND type_ecriture_comptable = 'principale'
                 """, (transaction_id, user_id))
                 result = cursor.fetchone()
-                total_actuel = Decimal(str(result['total'])) if result and result['total'] else Decimal('0')      
+                total_actuel = safe_decimal(result['total']) if result and result['total'] else Decimal('0')      
                 # Calculer le total des écritures à lier (en excluant celles déjà liées)
                 placeholders = ','.join(['%s'] * len(ecritures_a_lier))
                 cursor.execute(f"""
@@ -9532,10 +9544,10 @@ class EcritureComptable(BaseRepository):
                     AND type_ecriture_comptable = 'principale'
                 """, ecritures_a_lier + [transaction_id])
                 result = cursor.fetchone()
-                total_a_ajouter = Decimal(str(result['total'])) if result and result['total'] else Decimal('0')
+                total_a_ajouter = safe_decimal(result['total']) if result and result['total'] else Decimal('0')
                 
                 nouveau_total = total_actuel + total_a_ajouter
-                montant_transaction = Decimal(str(transaction['montant']))
+                montant_transaction = safe_decimal(transaction['montant'])
                 if nouveau_total > montant_transaction:
                     logger.warning(
                         f"Total des écritures ({nouveau_total:.2f}) dépasse le montant de la transaction ({montant_transaction:.2f})"
@@ -10012,9 +10024,9 @@ class RapprochementBancaire(BaseRepository):
         """
         # --- Validation métier : brut = net + commission ---
         try:
-            brut = Decimal(str(data['montant_brut']))
-            commission = Decimal(str(data['montant_commission']))
-            net = Decimal(str(data['montant_net']))
+            brut = safe_decimal(data['montant_brut'])
+            commission = safe_decimal(data['montant_commission'])
+            net = safe_decimal(data['montant_net'])
         except (KeyError, InvalidOperation):
             logger.error("RapprochementBancaire.create : montants invalides ou manquants")
             return None
@@ -10105,9 +10117,9 @@ class RapprochementBancaire(BaseRepository):
                         WHERE id = %s
                     """, (rapprochement_id,))
                     current = cursor.fetchone()
-                    brut = Decimal(str(data.get('montant_brut', current['montant_brut'])))
-                    commission = Decimal(str(data.get('montant_commission', current['montant_commission'])))
-                    net = Decimal(str(data.get('montant_net', current['montant_net'])))
+                    brut = safe_decimal(data.get('montant_brut', current['montant_brut']))
+                    commission = safe_decimal(data.get('montant_commission', current['montant_commission']))
+                    net = safe_decimal(data.get('montant_net', current['montant_net']))
                     if abs(brut - (net + commission)) > Decimal('0.01'):
                         logger.warning("Déséquilibre brut/net/commission, mise à jour refusée")
                         return False
@@ -10387,9 +10399,9 @@ class RapprochementBancaire(BaseRepository):
                 return False, "Rapprochement introuvable"
             if r['statut'] != 'brouillon':
                 return False, f"Rapprochement en statut '{r['statut']}', validation impossible"
-            brut = Decimal(str(r['montant_brut']))
-            commission = Decimal(str(r['montant_commission']))
-            net = Decimal(str(r['montant_net']))
+            brut = safe_decimal(r['montant_brut'])
+            commission = safe_decimal(r['montant_commission'])
+            net = safe_decimal(r['montant_net'])
             if abs(brut - (net + commission)) > Decimal('0.01'):
                 return False, "Déséquilibre brut/net/commission"
             # 2. Récupérer les écritures non rapprochées de la période
@@ -10404,7 +10416,7 @@ class RapprochementBancaire(BaseRepository):
             """, (utilisateur_id, r['compte_attente_id'],
                   r['date_debut'], r['date_fin']))
             ecritures_vente = cur.fetchall()
-            total_vente = sum(Decimal(str(e['montant'])) for e in ecritures_vente)
+            total_vente = sum(safe_decimal(e['montant']) for e in ecritures_vente)
             if total_vente + Decimal('0.01') < brut:
                 return False, (
                     f"Total des ventes carte ({total_vente}) "
@@ -10519,7 +10531,7 @@ class RapprochementBancaire(BaseRepository):
                       AND statut = 'validée'
                 """, (utilisateur_id, compte_attente_id, date_bilan))
                 row = cursor.fetchone()
-                return Decimal(str(row['solde'] or 0))
+                return safe_decimal(row['solde'] or 0)
         except MySQLError as e:
             logger.exception("Erreur get_solde_creance")
             return Decimal('0')
@@ -12603,7 +12615,7 @@ class CotisationContrat(BaseRepository):
                 return Decimal('0')
             if isinstance(val, Decimal):
                 return val
-            return Decimal(str(val))
+            return safe_decimal(val)
         base = to_decimal(base_montant)
         taux = to_decimal(taux_fallback)
         if bareme_cotisation_model.has_bareme(type_cotisation_id):
@@ -12937,7 +12949,7 @@ class IndemniteContrat(BaseRepository):
                 return Decimal('0')
             if isinstance(val, Decimal):
                 return val
-            return Decimal(str(val))
+            return safe_decimal(val)
         base = to_decimal(base_montant)
         taux = to_decimal(taux_fallback)
         if bareme_indemnite_model.has_bareme(type_indemnite_id):
@@ -13015,7 +13027,7 @@ class IndemniteContrat(BaseRepository):
                 return Decimal('0')
             if isinstance(val, Decimal):
                 return val
-            return Decimal(str(val))
+            return safe_decimal(val)
         try:
             with self.db.get_cursor(dictionary=True) as cursor:
                 # Étape 1 : récupérer toutes les indemnités définies pour l'année
@@ -14658,7 +14670,7 @@ class Salaire(BaseRepository):
                     return Decimal('0')
                 if isinstance(val, Decimal):
                     return val
-                return Decimal(str(val))
+                return safe_decimal(val)
             # Conversion en float pour les fonctions qui ne supportent pas Decimal
             def to_float(val):
                 if isinstance(val, Decimal):
@@ -17841,9 +17853,9 @@ class DiscountPOS(BaseRepository):
                     return Decimal('0')
                 
                 if discount['type_reduction'] == 'percentage':
-                    return (montant_brut * Decimal(str(discount['valeur'])) / Decimal('100')).quantize(Decimal('0.01'))
+                    return (montant_brut * safe_decimal(discount['valeur']) / Decimal('100')).quantize(Decimal('0.01'))
                 else:
-                    return Decimal(str(discount['valeur']))
+                    return safe_decimal(discount['valeur'])
         except MySQLError as e:
             logger.error(f"Erreur calcul réduction: {e}")
             return Decimal('0')
@@ -19064,11 +19076,11 @@ class ReceiptPOS(BaseRepository):
                     # Mise à jour du stock
                     cursor.execute("UPDATE pos_articles SET stock = stock - %s WHERE id = %s",
                                    (qte, item['article_id']))
-                    cout_marchandises += Decimal(str(article['cout_unitaire'] or 0)) * qte
+                    cout_marchandises += safe_decimal(article['cout_unitaire'] or 0) * qte
                     if 'tva_breakdown' in item and item['tva_breakdown']:
                         for breakdown in item['tva_breakdown']:
-                            montant_ttc_comp = Decimal(str(breakdown['montant_ttc'])) * qte
-                            taux_taxe_comp = Decimal(str(breakdown['taux']))
+                            montant_ttc_comp = safe_decimalbreakdown['montant_ttc']) * qte
+                            taux_taxe_comp = safe_decimal(breakdown['taux'])
                             if taux_taxe_comp > Decimal('0'):
                                 diviseur = Decimal('1') + (taux_taxe_comp / Decimal('100'))
                                 ligne_ht = (montant_ttc_comp / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
@@ -19091,12 +19103,12 @@ class ReceiptPOS(BaseRepository):
                             })
                     else:
                         # FALLBACK : un seul taux de TVA
-                        prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
+                        prix_ttc = safe_decimal(item.get('prix_unitaire', article['prix_unitaire']))
                         total_ligne_ttc = prix_ttc * qte
                         taxe = self._get_taxe_active(cursor, item['article_id'])
                         taux_taxe = Decimal('0')
                         if taxe:
-                            taux_taxe = Decimal(str(taxe['taux']))
+                            taux_taxe = safe_decimal(taxe['taux'])
                         if taux_taxe > Decimal('0'):
                             diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
                             ligne_ht_brut = (total_ligne_ttc / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
@@ -19123,9 +19135,9 @@ class ReceiptPOS(BaseRepository):
                     if discount:
                         total_ttc_global = sum(i['total_ligne_ttc'] for i in items_data)
                         if discount['type_reduction'] == 'percentage':
-                            reduction_ttc = total_ttc_global * (Decimal(str(discount['valeur'])) / Decimal('100'))
+                            reduction_ttc = total_ttc_global * (safe_decimal(discount['valeur']) / Decimal('100'))
                         else:
-                            reduction_ttc = Decimal(str(discount['valeur']))
+                            reduction_ttc = safe_decimal(discount['valeur'])
                 total_ttc_global = sum(i['total_ligne_ttc'] for i in items_data)
                 reduction_ratio = Decimal('0')
                 if total_ttc_global > Decimal('0'):
@@ -19149,7 +19161,7 @@ class ReceiptPOS(BaseRepository):
                     total_taxes += ligne_taxe
                     reduction_ht_total += ligne_reduction_ht
                 # 4. TOTAUX GLOBAUX
-                tips = Decimal(str(data.get('tips', 0)))
+                tips = safe_decimal(data.get('tips', 0))
                 total_collecte = ventes_nettes_ht + total_taxes + tips
                 marge_brute = ventes_nettes_ht - cout_marchandises
                 recu_numero = f"V-{datetime.now().strftime('%Y%m%d%H%M%S')}-{user_id}"
@@ -19195,7 +19207,7 @@ class ReceiptPOS(BaseRepository):
                 nb_paiements = 0
                 primary_transaction_id = None
                 for payment in data.get('payments', []):
-                    montant_pay = Decimal(str(payment.get('montant', 0)))
+                    montant_pay = safe_decimal(payment.get('montant', 0))
                     if montant_pay <= 0:
                         continue
                     mode_paiement_id = payment['mode_paiement_id']
@@ -19313,13 +19325,13 @@ class ReceiptPOS(BaseRepository):
                         return False, f"Article {item['article_id']} introuvable", None
                     nom_article_final = str(article['nom_article'])
                     modificateurs = str(item.get('modificateurs', '')).strip()
-                    prix_ttc = Decimal(str(item.get('prix_unitaire', article['prix_unitaire'])))
+                    prix_ttc = safe_decimal(item.get('prix_unitaire', article['prix_unitaire']))
                     qte = int(item.get('quantite', 1))
                     total_ligne_ttc = prix_ttc * qte
                     taxe = self._get_taxe_active(cursor, item['article_id'])
                     taux_taxe = Decimal('0')
                     if taxe:
-                        taux_taxe = Decimal(str(taxe['taux']))
+                        taux_taxe = safe_decimal(taxe['taux'])
                     if taux_taxe > Decimal('0'):
                         diviseur = Decimal('1') + (taux_taxe / Decimal('100'))
                         ligne_ht = (total_ligne_ttc / diviseur).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
@@ -19349,9 +19361,9 @@ class ReceiptPOS(BaseRepository):
                     if discount:
                         total_ttc_global = sum(i['total_ligne_ttc'] for i in items_data)
                         if discount['type_reduction'] == 'percentage':
-                            reduction_ttc = total_ttc_global * (Decimal(str(discount['valeur'])) / Decimal('100'))
+                            reduction_ttc = total_ttc_global * (safe_decimal(discount['valeur']) / Decimal('100'))
                         else:
-                            reduction_ttc = Decimal(str(discount['valeur']))
+                            reduction_ttc = safe_decimal(discount['valeur'])
                         if total_taxes > 0 and ventes_brutes_ht > 0:
                             taux_moyen = (total_taxes / ventes_brutes_ht) * 100
                             reduction_ht = reduction_ttc / (Decimal('1') + taux_moyen / Decimal('100'))
@@ -19584,7 +19596,7 @@ class ReceiptPOS(BaseRepository):
                         compte_type='compte_principal',
                         compte_id=receipt['compte_bancaire_id'],
                         type_transaction='retrait',
-                        montant=Decimal(str(receipt['total_collecte'])),
+                        montant=safe_decimal(receipt['total_collecte']),
                         description=f"Annulation vente {receipt['recu_numero']} - {raison}",
                         user_id=user_id,
                         date_transaction=datetime.now(),
@@ -20895,7 +20907,7 @@ class POSComptabilisation(BaseRepository):
                             logger.error(f"❌ Erreur parsing receipt_ids: {receipt_ids_str} - {e}")
                             receipt_ids = []
                         if receipt_ids:
-                            montant_par_recu = Decimal(str(total_ttc_global)) / len(receipt_ids)
+                            montant_par_recu = safe_decimal(total_ttc_global) / len(receipt_ids)
                             for receipt_id in receipt_ids:
                                 cursor.execute("""
                                     SELECT id FROM transactions 
@@ -21027,18 +21039,18 @@ class PeriodeTravailPOS(BaseRepository):
                 periode = cursor.fetchone()
                 if not periode:
                     return False, "Période non trouvée ou déjà fermée"
-                montant_fin_reel = Decimal(str(data.get('montant_fin_reel', 0)))
-                montant_debut_reel = Decimal(str(periode['montant_debut_reel']))
+                montant_fin_reel = safe_decimal(data.get('montant_fin_reel', 0))
+                montant_debut_reel = safe_decimal(periode['montant_debut_reel'])
                 cursor.execute("""
                     SELECT COALESCE(SUM(montant_retrait), 0) as total_retraits
                     FROM pos_retraits WHERE periode_travail_id = %s
                 """, (periode_id,))
-                total_retraits = Decimal(str(cursor.fetchone()['total_retraits']))
+                total_retraits = safe_decimal(cursor.fetchone()['total_retraits'])
                 cursor.execute("""
                     SELECT COALESCE(SUM(montant_depot), 0) as total_depots
                     FROM pos_depots WHERE periode_travail_id = %s
                 """, (periode_id,))
-                total_depots = Decimal(str(cursor.fetchone()['total_depots']))
+                total_depots = safe_decimal(cursor.fetchone()['total_depots'])
                 # plus seulement par date — sinon on additionne les espèces de TOUS les
                 # PDV actifs pendant la même plage horaire.
                 cursor.execute("""
@@ -21053,7 +21065,7 @@ class PeriodeTravailPOS(BaseRepository):
                     AND r.status != 'Annulé'
                     AND (mp.nom LIKE '%%spè%%' OR mp.nom LIKE '%%spe%%' OR mp.nom LIKE '%%cash%%' OR mp.nom LIKE '%%liquide%%')
                 """, (user_id, periode['date_debut'], periode['magasin'], periode['nom_pdv']))
-                net_especes = Decimal(str(cursor.fetchone()['net_especes']))
+                net_especes = safe_decimal(cursor.fetchone()['net_especes'])
                 attendu = montant_debut_reel + net_especes + total_depots - total_retraits
                 difference = montant_fin_reel - attendu
                 cursor.execute("""
