@@ -194,6 +194,20 @@
             </a>
         </div>
     </div>
+    <form method="POST" action="{{ url_for('banking.liste_ecritures') }}" id="form-actions-masse" style="display:none;">
+        <input type="hidden" name="compte_id" value="{{ compte_selectionne or '' }}">
+        <input type="hidden" name="date_from" value="{{ date_from or '' }}">
+        <input type="hidden" name="date_to" value="{{ date_to or '' }}">
+        <input type="hidden" name="id_contact" value="{{ contact_selectionne or '' }}">
+        <input type="hidden" name="categorie_id" value="{{ categorie_id or '' }}">
+        <input type="hidden" name="statut" value="{{ statut_selectionne or 'tous' }}">
+        <input type="hidden" name="type_ecriture" value="{{ type_ecriture_selectionne or 'tous' }}">
+        <input type="hidden" name="type_ecriture_comptable" value="{{ type_ecriture_comptable_selectionne or 'tous' }}">
+        <input type="hidden" name="date_created_from" value="{{ date_created_from or '' }}">
+        <input type="hidden" name="date_created_to" value="{{ date_created_to or '' }}">
+        <input type="hidden" name="page" value="{{ page }}">
+        <input type="hidden" name="per_page" value="{{ per_page }}">
+    </form>
 
     <!-- ============================================ -->
     <!-- RÉSUMÉ DES FILTRES ACTIFS (avec tous les paramètres) -->
@@ -543,6 +557,29 @@
     <div class="card table-card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0">Historique des écritures</h5>
+            <div class="d-flex gap-2 align-items-center">
+                <!-- Barre d'actions groupées simplifiée -->
+                <div class="input-group input-group-sm" style="width: auto;">
+                    <select name="action" id="action_masse" class="form-select" style="max-width: 160px;" form="form-actions-masse" required>
+                        <option value="" disabled selected>Actions groupées...</option>
+                        <option value="update_statut">Changer le statut</option>
+                    </select>
+                    
+                    <select name="nouveau_statut" id="nouveau_statut_select" class="form-select" style="max-width: 150px;" form="form-actions-masse" required>
+                        <option value="" disabled selected>Nouveau statut...</option>
+                        <option value="validée">✅ Validée</option>
+                        <option value="pending">⏳ En attente</option>
+                    </select>
+
+                    <button type="submit" class="btn btn-primary" id="btn-action-masse" disabled form="form-actions-masse">
+                        <i class="bi bi-check-lg"></i> Appliquer
+                    </button>
+                </div>
+
+                <span class="text-muted small">
+                    <span id="selected-count">0</span> sélectionnée(s)
+                </span>
+            </div>
             <div class="d-flex gap-2">
                 <span class="text-muted">
                     {{ ecritures|length }} écriture(s) trouvée(s)
@@ -554,6 +591,9 @@
                 <table class="table table-hover">
                     <thead class="table-light">
                         <tr>
+                            <th class="checkbox-column" style="width: 40px;">
+                                    <input type="checkbox" id="select-all" class="form-check-input" form="form-actions-masse" title="Tout sélectionner">
+                                </th>
                             <th>ID</th>
                             <th>Date</th>
                             <th>Compte</th>
@@ -572,6 +612,9 @@
                         {% for ecriture in ecritures %}
                         <tr
                             class="{% if ecriture.type_ecriture == 'recette' %}table-success{% else %}table-danger{% endif %}">
+                            <td class="checkbox-column">
+                                    <input type="checkbox" name="ecriture_ids[]" value="{{ ecriture.id }}" class="form-check-input ecriture-checkbox" form="form-actions-masse">
+                                </td>
                             <td>{{ ecriture.id }}</td>
                             <td class="
                                 {% if ecriture.statut == 'pending' %}statut-pending
@@ -784,7 +827,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="10" class="text-center py-5">
+                            <td colspan="13" class="text-center py-5">
                                 <div class="text-center">
                                     <i class="bi bi-file-earmark-text fs-1 text-muted"></i>
                                     <h5 class="text-muted mt-2">Aucune écriture trouvée</h5>
@@ -1030,51 +1073,123 @@
 
 {% endblock %}
 
+
 {% block scripts %}
 {{ super() }}
 <script>
-    // ✅ Intercepter les soumissions de formulaire d'archivage pour afficher le modal d'impact
-    document.addEventListener('DOMContentLoaded', function () {
-        document.querySelectorAll('form.impact-form').forEach(function (form) {
-            form.addEventListener('submit', async function (e) {
-                e.preventDefault();
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // =========================================================================
+    // 1. GESTION DES ACTIONS GROUPÉES (Sélection et UI)
+    // =========================================================================
+    const selectAll = document.getElementById('select-all');
+    const checkboxes = document.querySelectorAll('.ecriture-checkbox');
+    const selectedCount = document.getElementById('selected-count');
+    const btnActionMasse = document.getElementById('btn-action-masse');
+    const actionMasse = document.getElementById('action_masse');
+    const nouveauStatutSelect = document.getElementById('nouveau_statut_select');
 
-                const formData = new FormData(form);
-                const url = form.getAttribute('data-impact-url');
+    // Fonction pour mettre à jour l'état de la sélection
+    function updateSelectionState() {
+        const checkedCount = document.querySelectorAll('.ecriture-checkbox:checked').length;
+        
+        // Mise à jour du compteur
+        if (selectedCount) {
+            selectedCount.textContent = checkedCount;
+        }
+        
+        // Activation/Désactivation du bouton d'action
+        if (btnActionMasse) {
+            btnActionMasse.disabled = checkedCount === 0;
+        }
+        
+        // Gestion de la case "Tout sélectionner" (cochée ou état indéterminé)
+        if (selectAll) {
+            selectAll.checked = checkedCount === checkboxes.length && checkboxes.length > 0;
+            selectAll.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
+        }
+    }
 
-                try {
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        body: formData,
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    });
-
-                    if (response.ok) {
-                        const html = await response.text();
-                        const container = document.getElementById('modalImpactContainer');
-                        container.innerHTML = html;
-
-                        // Activer les scripts contenus dans le HTML retourné
-                        container.querySelectorAll('script').forEach(function (oldScript) {
-                            const newScript = document.createElement('script');
-                            Array.from(oldScript.attributes).forEach(attr => {
-                                newScript.setAttribute(attr.name, attr.value);
-                            });
-                            newScript.textContent = oldScript.textContent;
-                            oldScript.parentNode.replaceChild(newScript, oldScript);
-                        });
-                    } else {
-                        console.error('Erreur lors du chargement du modal d\'impact');
-                        alert('Une erreur est survenue. Veuillez réessayer.');
-                    }
-                } catch (error) {
-                    console.error('Erreur:', error);
-                    alert('Erreur de communication avec le serveur.');
-                }
+    // Écouteur pour la case "Tout sélectionner"
+    if (selectAll) {
+        selectAll.addEventListener('change', function() {
+            checkboxes.forEach(cb => { 
+                cb.checked = this.checked; 
             });
+            updateSelectionState();
+        });
+    }
+
+    // Écouteurs pour chaque case individuelle
+    checkboxes.forEach(cb => {
+        cb.addEventListener('change', updateSelectionState);
+    });
+
+    // Affichage conditionnel du sélecteur de statut
+    if (actionMasse && nouveauStatutSelect) {
+        actionMasse.addEventListener('change', function() {
+            if (this.value === 'update_statut') {
+                nouveauStatutSelect.classList.remove('d-none');
+                nouveauStatutSelect.setAttribute('required', 'required');
+            } else {
+                nouveauStatutSelect.classList.add('d-none');
+                nouveauStatutSelect.removeAttribute('required');
+                nouveauStatutSelect.value = ""; // Réinitialiser la valeur si on change d'action
+            }
+        });
+    }
+
+    // Initialiser l'état au chargement de la page (au cas où le navigateur garde les cases cochées)
+    updateSelectionState();
+    if (actionMasse) {
+        // Déclencher manuellement l'événement pour mettre la bonne visibilité au chargement
+        actionMasse.dispatchEvent(new Event('change'));
+    }
+
+
+    // =========================================================================
+    // 2. GESTION DU MODAL D'IMPACT INDIVIDUEL (Ton code existant)
+    // =========================================================================
+    document.querySelectorAll('form.impact-form').forEach(function (form) {
+        form.addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const formData = new FormData(form);
+            const url = form.getAttribute('data-impact-url');
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+
+                if (response.ok) {
+                    const html = await response.text();
+                    const container = document.getElementById('modalImpactContainer');
+                    container.innerHTML = html;
+
+                    // Activer les scripts contenus dans le HTML retourné (indispensable pour les modals Bootstrap)
+                    container.querySelectorAll('script').forEach(function (oldScript) {
+                        const newScript = document.createElement('script');
+                        Array.from(oldScript.attributes).forEach(attr => {
+                            newScript.setAttribute(attr.name, attr.value);
+                        });
+                        newScript.textContent = oldScript.textContent;
+                        oldScript.parentNode.replaceChild(newScript, oldScript);
+                    });
+                } else {
+                    console.error('Erreur lors du chargement du modal d\'impact');
+                    alert('Une erreur est survenue. Veuillez réessayer.');
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                alert('Erreur de communication avec le serveur.');
+            }
         });
     });
+});
 </script>
 {% endblock %}

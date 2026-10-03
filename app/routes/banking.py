@@ -3660,9 +3660,49 @@ def link_contact_to_compte(contact_id):
 ### Partie Ecritures comptables
 ##########################################
 
-@bp.route('/comptabilite/ecritures')
+@bp.route('/comptabilite/ecritures', methods=['GET', 'POST'])
 @login_required
 def liste_ecritures():
+    if request.method == 'POST':
+        action = request.form.get('action')
+        ecritures_ids = request.form.getlist('ecritures_ids[]')
+        if not ecriture_ids:
+            flash("Aucune écriture sélectionnée", "warning")
+            return redirect(request.referrer or url_for('banking.liste_ecritures'))
+        success_count = 0
+        if action == 'update_statut':
+            nouveau_statut = request.form.get('nouveau_statut')
+            valid_statuts = ['pending', 'validée']
+            if nouveau_statut in valid_statuts:
+                success_count = 0
+                error_count = 0
+                for eid in ecritures_ids:
+                    try:
+                        g.models.ecriture_comptable_model.update_statut(
+                            ecriture_id = int(eid), 
+                            user_id=current_user.id,
+                            statut=nouveau_statut)
+                        if success:
+                            success_count += 1
+                        else:
+                            error_count += 1
+                    except ValueError:
+                        error_count += 1
+                    except MySQLError:
+                        logger.exception(f"Erreur DB lors du changement de statut en masse pour écriture ID {eid}")
+                        error_count += 1
+                    except Exception as e:
+                        logger.exception(f"Erreur inattendue lors du changement de statut en masse pour écriture ID {eid}")
+                        error_count += 1
+                if success_count > 0:
+                    flash(f"{success_count} écriture(s) mise(s) à jour avec le statut '{nouveau_statut}'", "success")
+                if error_count > 0:
+                    flash(f"{error_count} erreur(s) sont survennues lors du traitement", "danger")
+            else:
+                flash("Action non autorisée, "warning")
+                return redirect(request.referrer or url_for('banking.liste_ecritures'))
+        return redirect(request.referrer or url_for('banking.liste_ecritures'))
+    
     """Affiche la liste des écritures comptables avec filtrage avancé"""
     # Récupération des paramètres de filtrage
     compte_id = request.args.get('compte_id')
@@ -4412,6 +4452,31 @@ def api_associer_categorie():
         logging.error(f"Erreur association catégorie: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@bp.app_template_filter('datetimeformat')
+def datetimeformat(value, format='%d.%m.%Y'):
+    """Filtre pour formater les dates dans les templates"""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        # Si c'est une chaîne, la convertir en datetime
+        value = datetime.strptime(value, '%Y-%m-%d')
+    return value.strftime(format)
+
+
+@bp.app_template_filter('month_french')
+def month_french_filter(value):
+    """Convertit le nom du mois en français"""
+    if isinstance(value, str):
+        value = datetime.strptime(value, '%Y-%m')
+    months_fr = {
+        'January': 'JANVIER', 'February': 'FÉVRIER', 'March': 'MARS',
+        'April': 'AVRIL', 'May': 'MAI', 'June': 'JUIN',
+        'July': 'JUILLET', 'August': 'AOÛT', 'September': 'SEPTEMBRE',
+        'October': 'OCTOBRE', 'November': 'NOVEMBRE', 'December': 'DÉCEMBRE'
+    }
+    month_english = value.strftime('%B')
+    return months_fr.get(month_english, month_english.upper())
+
 
 
 ##########################################
@@ -4772,31 +4837,6 @@ def creer_ecriture_automatique(transaction_id):
                            # OU simplement redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
                            # mais cela peut conserver des anciens paramètres GET si le referrer est la page filtrée.
                            # La méthode ci-dessus avec request.form est plus fiable pour conserver les filtres actuels.
-
-@bp.app_template_filter('datetimeformat')
-def datetimeformat(value, format='%d.%m.%Y'):
-    """Filtre pour formater les dates dans les templates"""
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        # Si c'est une chaîne, la convertir en datetime
-        value = datetime.strptime(value, '%Y-%m-%d')
-    return value.strftime(format)
-
-
-@bp.app_template_filter('month_french')
-def month_french_filter(value):
-    """Convertit le nom du mois en français"""
-    if isinstance(value, str):
-        value = datetime.strptime(value, '%Y-%m')
-    months_fr = {
-        'January': 'JANVIER', 'February': 'FÉVRIER', 'March': 'MARS',
-        'April': 'AVRIL', 'May': 'MAI', 'June': 'JUIN',
-        'July': 'JUILLET', 'August': 'AOÛT', 'September': 'SEPTEMBRE',
-        'October': 'OCTOBRE', 'November': 'NOVEMBRE', 'December': 'DÉCEMBRE'
-    }
-    month_english = value.strftime('%B')
-    return months_fr.get(month_english, month_english.upper())
 
 
 @bp.route('/comptabilite/ecritures/nouvelle', methods=['GET', 'POST'])
