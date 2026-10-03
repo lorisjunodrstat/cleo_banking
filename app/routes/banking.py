@@ -3665,44 +3665,57 @@ def link_contact_to_compte(contact_id):
 @login_required
 def liste_ecritures():
     if request.method == 'POST':
+        # On définit les variables ici, elles sont donc bien liées au bloc POST
         action = request.form.get('action')
-        ecritures_ids = request.form.getlist('ecritures_ids[]')
+        ecriture_ids = request.form.getlist('ecriture_ids[]')
+        
+        # La vérification est FAITE À L'INTÉRIEUR du bloc POST
         if not ecriture_ids:
             flash("Aucune écriture sélectionnée", "warning")
             return redirect(request.referrer or url_for('banking.liste_ecritures'))
-        success_count = 0
+            
         if action == 'update_statut':
             nouveau_statut = request.form.get('nouveau_statut')
             valid_statuts = ['pending', 'validée']
-            if nouveau_statut in valid_statuts:
-                success_count = 0
-                error_count = 0
-                for eid in ecritures_ids:
-                    try:
-                        success = g.models.ecriture_comptable_model.update_statut(
-                            ecriture_id = int(eid), 
-                            user_id=current_user.id,
-                            statut=nouveau_statut)
-                        if success:
-                            success_count += 1
-                        else:
-                            error_count += 1
-                    except ValueError:
-                        error_count += 1
-                    except MySQLError:
-                        logger.exception(f"Erreur DB lors du changement de statut en masse pour écriture ID {eid}")
-                        error_count += 1
-                    except Exception as e:
-                        logger.exception(f"Erreur inattendue lors du changement de statut en masse pour écriture ID {eid}")
-                        error_count += 1
-                if success_count > 0:
-                    flash(f"{success_count} écriture(s) mise(s) à jour avec le statut '{nouveau_statut}'", "success")
-                if error_count > 0:
-                    flash(f"{error_count} erreur(s) sont survennues lors du traitement", "danger")
-            else:
-                flash("Action non autorisée", "warning")
+            
+            if nouveau_statut not in valid_statuts:
+                flash("Statut invalide pour une action groupée.", "danger")
                 return redirect(request.referrer or url_for('banking.liste_ecritures'))
-        return redirect(request.referrer or url_for('banking.liste_ecritures'))
+                
+            success_count = 0
+            error_count = 0
+            
+            for eid in ecriture_ids:
+                try:
+                    eid_int = int(eid)
+                    success = g.models.ecriture_comptable_model.update_statut(
+                        ecriture_id=eid_int, 
+                        user_id=current_user.id, 
+                        statut=nouveau_statut
+                    )
+                    if success:
+                        success_count += 1
+                    else:
+                        error_count += 1
+                except ValueError:
+                    error_count += 1
+                except MySQLError as e:
+                    logger.exception(f"Erreur DB lors du changement de statut en masse pour l'écriture ID {eid}")
+                    error_count += 1
+                except Exception as e:
+                    logger.exception(f"Erreur inattendue lors du changement de statut en masse pour l'écriture ID {eid}")
+                    error_count += 1
+            
+            if success_count > 0:
+                flash(f"{success_count} écriture(s) passée(s) en statut '{nouveau_statut}' avec succès.", "success")
+            if error_count > 0:
+                flash(f"{error_count} erreur(s) sont survenues lors du traitement.", "danger")
+                
+            return redirect(request.referrer or url_for('banking.liste_ecritures'))
+        else:
+            flash("Action non autorisée.", "warning")
+            return redirect(request.referrer or url_for('banking.liste_ecritures'))
+
     
     """Affiche la liste des écritures comptables avec filtrage avancé"""
     # Récupération des paramètres de filtrage
@@ -3763,9 +3776,9 @@ def liste_ecritures():
     total_pages = (total_ecritures + per_page - 1) // per_page if total_ecritures > 0 else 1
     # Précharger les écritures secondaires EN UNE SEULE REQUÊTE
     # Au lieu de faire N requêtes SQL dans le template (problème N+1)
-    ecriture_ids = [e['id'] for e in ecritures if e.get('type_ecriture_comptable') == 'principale']
+    ecriture_ids_list = [e['id'] for e in ecritures if e.get('type_ecriture_comptable') == 'principale']
     secondaires_map = g.models.ecriture_comptable_model.get_ecritures_complementaires_batch(
-        ecriture_ids, current_user.id
+        ecriture_ids_list, current_user.id
     )
     # Récupérer les données supplémentaires
     comptes = g.models.compte_model.get_by_user_id(current_user.id)
