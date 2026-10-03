@@ -159,13 +159,28 @@
     .statut-supprimee  { background-color: #e0e0e0 !important; color: #6c757d; text-decoration: line-through; }
     .statut-archivee   { background-color: #e3f2fd !important; color: #1565c0; }
     .legend-dot {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    border-radius: 3px;
-    margin-right: 4px;
-    vertical-align: middle;
-}
+        display: inline-block;
+        width: 14px;       /* Légèrement plus grand pour une meilleure visibilité */
+        height: 14px;
+        border-radius: 4px;
+        margin-right: 6px;
+        vertical-align: middle;
+        border: 1px solid rgba(0, 0, 0, 0.1); /* Bordure subtile pour le contraste */
+    }
+    
+    /* Couleurs spécifiques pour chaque point de la légende */
+    .legend-dot-pending { background-color: #fff9c4; }
+    .legend-dot-rejetee { background-color: #ffebee; border-color: #ffcdd2; }
+    .legend-dot-validee { background-color: #ffffff; border: 1px solid #ccc; }
+    .legend-dot-supprimee { background-color: #e0e0e0; }
+    .legend-dot-archivee { background-color: #e3f2fd; border-color: #bbdefb; }
+
+    /* Tes classes pour les lignes du tableau (à conserver) */
+    .statut-pending    { background-color: #fff9c4 !important; }
+    .statut-validee    { background-color: #ffffff !important; color: #000000; }
+    .statut-rejetee    { background-color: #ffebee !important; color: #c62828; }
+    .statut-supprimee  { background-color: #e0e0e0 !important; color: #6c757d; text-decoration: line-through; }
+    .statut-archivee   { background-color: #e3f2fd !important; color: #1565c0; }
     /* Responsive */
     @media (max-width: 1400px) {
         .table-responsive {
@@ -551,12 +566,22 @@
     <!-- TABLEAU DES ÉCRITURES -->
     <!-- ============================================ -->
     <!-- Légende-->
-    <div class="mb-2">
-        <small class="me-3"><span class="legend-dot" style="background:#fff9c4;"></span> En attente</small>
-        <small class="me-3"><span class="legend-dot" style="background:#ffebee;"></span> Rejetée</small>
-        <small class="me-3"><span class="legend-dot" style="background:#ffffff;border:1px solid #ccc;"></span> Validée</small>
-        <small class="me-3"><span class="legend-dot" style="background:#e0e0e0;"></span> Supprimée</small>
-        <small class="me-3"><span class="legend-dot" style="background:#e3f2fd;"></span> Archivée</small>
+     <div class="mb-3 px-2">
+        <small class="me-3 d-inline-flex align-items-center">
+            <span class="legend-dot legend-dot-pending"></span> En attente
+        </small>
+        <small class="me-3 d-inline-flex align-items-center">
+            <span class="legend-dot legend-dot-rejetee"></span> Rejetée
+        </small>
+        <small class="me-3 d-inline-flex align-items-center">
+            <span class="legend-dot legend-dot-validee"></span> Validée
+        </small>
+        <small class="me-3 d-inline-flex align-items-center">
+            <span class="legend-dot legend-dot-supprimee"></span> Supprimée
+        </small>
+        <small class="me-3 d-inline-flex align-items-center">
+            <span class="legend-dot legend-dot-archivee"></span> Archivée
+        </small>
     </div>
     
     <div class="card table-card">
