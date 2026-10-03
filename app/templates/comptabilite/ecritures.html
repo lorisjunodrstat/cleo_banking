@@ -159,45 +159,83 @@
     .statut-supprimee  { background-color: #e0e0e0 !important; color: #6c757d; text-decoration: line-through; }
     .statut-archivee   { background-color: #e3f2fd !important; color: #1565c0; }
        /* === LÉGENDE DES STATUTS - Version renforcée === */
-    .legend-dot {
-        display: inline-block !important;
-        width: 16px !important;
-        height: 16px !important;
-        border-radius: 4px !important;
-        margin-right: 8px !important;
-        vertical-align: middle !important;
-        flex-shrink: 0 !important;
-    }
-    
-    /* Couleurs spécifiques avec haute spécificité */
-    .legend-dot.legend-dot-pending { 
-        background-color: #fff3cd !important; 
-        border: 2px solid #ffc107 !important;
-    }
-    .legend-dot.legend-dot-rejetee { 
-        background-color: #f8d7da !important; 
-        border: 2px solid #dc3545 !important;
-    }
-    .legend-dot.legend-dot-validee { 
-        background-color: #d1e7dd !important; 
-        border: 2px solid #198754 !important;
-    }
-    .legend-dot.legend-dot-supprimee { 
-        background-color: #e2e3e5 !important; 
-        border: 2px solid #6c757d !important;
-    }
-    .legend-dot.legend-dot-archivee { 
-        background-color: #cff4fc !important; 
-        border: 2px solid #0dcaf0 !important;
-    }
+ /* Utilisation de la haute spécificité pour passer outre .table-success / .table-danger */
+table.table > tbody > tr > td.statut-pending {
+    background-color: #fff9c4 !important;
+    color: #856404 !important;
+}
 
-    /* Style pour les conteneurs de la légende */
-    .legend-item {
-        display: inline-flex !important;
-        align-items: center !important;
-        margin-right: 1rem !important;
-        font-size: 0.875rem !important;
-    }
+table.table > tbody > tr > td.statut-validee {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+}
+
+table.table > tbody > tr > td.statut-rejetee {
+    background-color: #ffebee !important;
+    color: #c62828 !important;
+}
+
+table.table > tbody > tr > td.statut-supprimee {
+    background-color: #e0e0e0 !important;
+    color: #6c757d !important;
+    text-decoration: line-through;
+}
+
+table.table > tbody > tr > td.statut-archivee {
+    background-color: #e3f2fd !important;
+    color: #1565c0 !important;
+}
+
+/* Force la sous-balise .text-muted (heure) à hériter de la couleur parent */
+table.table > tbody > tr > td[class*="statut-"] .text-muted {
+    color: inherit !important;
+    opacity: 0.85;
+}
+
+
+/* =========================================================
+   2. LÉGENDE DES STATUTS (Sélecteurs renforcés)
+   ========================================================= */
+
+.legend-item {
+    display: inline-flex !important;
+    align-items: center !important;
+    margin-right: 1.25rem !important;
+    font-size: 0.875rem !important;
+    color: #212529 !important; /* Empeche Bootstrap d'assombrir le texte */
+}
+
+.legend-dot {
+    display: inline-block !important;
+    width: 14px !important;
+    height: 14px !important;
+    border-radius: 50% !important; /* Forme de pastille ronde */
+    margin-right: 6px !important;
+    flex-shrink: 0 !important;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1); /* Legere bordure de finition */
+}
+
+/* Couleurs des pastilles de la légende */
+.legend-dot.legend-dot-pending { 
+    background-color: #fff9c4 !important; 
+    border: 1px solid #fbc02d !important;
+}
+.legend-dot.legend-dot-validee { 
+    background-color: #ffffff !important; 
+    border: 1px solid #b0bec5 !important;
+}
+.legend-dot.legend-dot-rejetee { 
+    background-color: #ffebee !important; 
+    border: 1px solid #ef5350 !important;
+}
+.legend-dot.legend-dot-supprimee { 
+    background-color: #e0e0e0 !important; 
+    border: 1px solid #9e9e9e !important;
+}
+.legend-dot.legend-dot-archivee { 
+    background-color: #e3f2fd !important; 
+    border: 1px solid #42a5f5 !important;
+}
     /* Tes classes pour les lignes du tableau (à conserver) */
     .statut-pending    { background-color: #fff9c4 !important; }
     .statut-validee    { background-color: #ffffff !important; color: #000000; }
@@ -677,18 +715,12 @@
                                 <input type="checkbox" name="ecriture_ids[]" value="{{ ecriture.id }}" class="form-check-input ecriture-checkbox" form="form-actions-masse">
                             </td>
                             <td>{{ ecriture.id }}</td>
-                            <td class="
-                                {% if ecriture.statut == 'pending' %}statut-pending
-                                {% elif ecriture.statut == 'supprimee' %}statut-supprimee
-                                {% elif ecriture.statut == 'validée' %}statut-validee
-                                {% elif ecriture.statut == 'rejetée' %}statut-rejetee
-                                {% elif ecriture.statut == 'archivée' %}statut-archivee
-                                {% endif %}">
+                            <td class="{% if ecriture.statut == 'pending' %}statut-pending{% elif ecriture.statut == 'supprimee' or ecriture.statut == 'supprimée' %}statut-supprimee{% elif ecriture.statut == 'validée' or ecriture.statut == 'validee' %}statut-validee{% elif ecriture.statut == 'rejetée' or ecriture.statut == 'rejetee' %}statut-rejetee{% elif ecriture.statut == 'archivée' or ecriture.statut == 'archivee' %}statut-archivee{% endif %}">
                                 <strong>{{ ecriture.date_ecriture.strftime('%d.%m.%Y') }}</strong>
                                 <br>
                                 <small class="text-muted">{{ ecriture.date_ecriture.strftime('%H:%M') }}</small>
                                 <br>
-                                <small>Crée le {{ ecriture.created_at }}</small>
+                                <small>Créé le {{ ecriture.created_at }}</small>
                             </td>
                             <td>
                                 <span class="badge bg-secondary">{{ ecriture.compte_bancaire_nom }}</span>
