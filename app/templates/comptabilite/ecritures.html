@@ -547,6 +547,10 @@
     <!-- TABLEAU DES ÉCRITURES -->
     <!-- ============================================ -->
     <!-- Légende-->
+    <!-- ============================================ -->
+    <!-- TABLEAU DES ÉCRITURES -->
+    <!-- ============================================ -->
+    <!-- Légende-->
     <div class="mb-2">
         <small class="me-3"><span class="legend-dot" style="background:#fff9c4;"></span> En attente</small>
         <small class="me-3"><span class="legend-dot" style="background:#ffebee;"></span> Rejetée</small>
@@ -554,46 +558,51 @@
         <small class="me-3"><span class="legend-dot" style="background:#e0e0e0;"></span> Supprimée</small>
         <small class="me-3"><span class="legend-dot" style="background:#e3f2fd;"></span> Archivée</small>
     </div>
+    
     <div class="card table-card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Historique des écritures</h5>
-            <div class="d-flex gap-2 align-items-center">
-                <!-- Barre d'actions groupées simplifiée -->
+        <!-- ✅ EN-TÊTE CORRIGÉ : Flexible, responsive et bien aligné -->
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 py-2">
+            
+            <!-- Partie Gauche : Titre et Compteur global -->
+            <div class="d-flex align-items-center gap-2">
+                <h5 class="mb-0">Historique des écritures</h5>
+                <span class="badge bg-secondary rounded-pill">{{ ecritures|length }} écriture(s)</span>
+            </div>
+            
+            <!-- Partie Droite : Actions groupées -->
+            <div class="d-flex align-items-center gap-2">
+                <span class="text-muted small me-1 d-none d-sm-inline">
+                    <span id="selected-count" class="fw-bold text-primary">0</span> sélectionnée(s)
+                </span>
+                
                 <div class="input-group input-group-sm" style="width: auto;">
-                    <select name="action" id="action_masse" class="form-select" style="max-width: 160px;" form="form-actions-masse" required>
+                    <select name="action" id="action_masse" class="form-select" style="min-width: 160px;" form="form-actions-masse" required>
                         <option value="" disabled selected>Actions groupées...</option>
                         <option value="update_statut">Changer le statut</option>
                     </select>
                     
-                    <select name="nouveau_statut" id="nouveau_statut_select" class="form-select" style="max-width: 150px;" form="form-actions-masse" required>
+                    <!-- ✅ Ajout de 'd-none' par défaut pour éviter tout saut de mise en page au chargement -->
+                    <select name="nouveau_statut" id="nouveau_statut_select" class="form-select d-none" style="min-width: 150px;" form="form-actions-masse">
                         <option value="" disabled selected>Nouveau statut...</option>
                         <option value="validée">✅ Validée</option>
                         <option value="pending">⏳ En attente</option>
                     </select>
 
-                    <button type="submit" class="btn btn-primary" id="btn-action-masse" disabled form="form-actions-masse">
-                        <i class="bi bi-check-lg"></i> Appliquer
+                    <button type="submit" class="btn btn-primary" id="btn-action-masse" disabled form="form-actions-masse" title="Appliquer l'action">
+                        <i class="bi bi-check-lg"></i> <span class="d-none d-md-inline">Appliquer</span>
                     </button>
                 </div>
-
-                <span class="text-muted small">
-                    <span id="selected-count">0</span> sélectionnée(s)
-                </span>
-            </div>
-            <div class="d-flex gap-2">
-                <span class="text-muted">
-                    {{ ecritures|length }} écriture(s) trouvée(s)
-                </span>
             </div>
         </div>
-        <div class="card-body">
+
+        <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover">
+                <table class="table table-hover mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th class="checkbox-column" style="width: 40px;">
-                                    <input type="checkbox" id="select-all" class="form-check-input" form="form-actions-masse" title="Tout sélectionner">
-                                </th>
+                            <th class="checkbox-column text-center" style="width: 50px;">
+                                <input type="checkbox" id="select-all" class="form-check-input" form="form-actions-masse" title="Tout sélectionner">
+                            </th>
                             <th>ID</th>
                             <th>Date</th>
                             <th>Compte</th>
@@ -602,19 +611,18 @@
                             <th>Description</th>
                             <th>Contact</th>
                             <th class="text-end">Montant</th>
-                            <th>Fichier</th>
-                            <th>Statut</th>
+                            <th class="text-center">Fichier</th>
+                            <th class="text-center">Statut</th>
                             <th>Liaison</th>
                             <th class="text-center">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for ecriture in ecritures %}
-                        <tr
-                            class="{% if ecriture.type_ecriture == 'recette' %}table-success{% else %}table-danger{% endif %}">
-                            <td class="checkbox-column">
-                                    <input type="checkbox" name="ecriture_ids[]" value="{{ ecriture.id }}" class="form-check-input ecriture-checkbox" form="form-actions-masse">
-                                </td>
+                        <tr class="{% if ecriture.type_ecriture == 'recette' %}table-success{% else %}table-danger{% endif %}">
+                            <td class="checkbox-column text-center">
+                                <input type="checkbox" name="ecriture_ids[]" value="{{ ecriture.id }}" class="form-check-input ecriture-checkbox" form="form-actions-masse">
+                            </td>
                             <td>{{ ecriture.id }}</td>
                             <td class="
                                 {% if ecriture.statut == 'pending' %}statut-pending
@@ -645,7 +653,6 @@
                                     {{ ecriture.categorie_nom }}
                                 </div>
 
-                                <!-- ✅ CORRECTION N+1 : Utilisation du dictionnaire préchargé -->
                                 {% if ecriture.type_ecriture_comptable == 'principale' %}
                                 {% set secondaires = secondaires_map.get(ecriture.id, []) %}
                                 {% if secondaires %}
@@ -663,8 +670,7 @@
                                 {{ ecriture.description }}
                                 <div class="transaction-details mt-1">
                                     Type:
-                                    <span
-                                        class="badge {% if ecriture.type_ecriture == 'recette' %}bg-success{% else %}bg-danger{% endif %}">
+                                    <span class="badge {% if ecriture.type_ecriture == 'recette' %}bg-success{% else %}bg-danger{% endif %}">
                                         {{ ecriture.type_ecriture|upper }}
                                     </span>
                                     {% if ecriture.type_ecriture_comptable %}
@@ -678,8 +684,7 @@
                                 {% if ecriture.tva_taux and ecriture.tva_taux > 0 %}
                                 <div class="transaction-details mt-1">
                                     HT: {{ "%.2f"|format(ecriture.montant_htva) }} CHF |
-                                    TVA: {{ "%.2f"|format(ecriture.tva_montant) }} CHF ({{
-                                    "%.1f"|format(ecriture.tva_taux) }}%)
+                                    TVA: {{ "%.2f"|format(ecriture.tva_montant) }} CHF ({{ "%.1f"|format(ecriture.tva_taux) }}%)
                                 </div>
                                 {% endif %}
                             </td>
@@ -693,8 +698,7 @@
                                 {% endif %}
                             </td>
                             <td class="text-end">
-                                <div
-                                    class="fw-bold {% if ecriture.type_ecriture == 'recette' %}amount-positive{% else %}amount-negative{% endif %}">
+                                <div class="fw-bold {% if ecriture.type_ecriture == 'recette' %}amount-positive{% else %}amount-negative{% endif %}">
                                     {{ "%.2f"|format(ecriture.montant) }} {{ ecriture.devise }}
                                 </div>
                             </td>
@@ -702,7 +706,7 @@
                             <!-- Colonne Fichier -->
                             <td class="text-center">
                                 {% if ecriture.nom_fichier %}
-                                <div class="d-flex flex-column gap-1">
+                                <div class="d-flex flex-column gap-1 align-items-center">
                                     <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal"
                                         data-bs-target="#modalFichier{{ ecriture.id }}" title="Visualiser">
                                         <i class="bi bi-file-earmark-text"></i>
@@ -727,8 +731,7 @@
                                     {% elif ecriture.statut == 'rejetée' %}status-rejetée
                                     {% elif ecriture.statut == 'supprimee' %}status-supprimee
                                     {% else %}status-pending{% endif %}" data-bs-toggle="modal"
-                                    data-bs-target="#modalStatut{{ ecriture.id }}" {% if ecriture.statut=='supprimee'
-                                    %}disabled{% endif %}>
+                                    data-bs-target="#modalStatut{{ ecriture.id }}" {% if ecriture.statut=='supprimee' %}disabled{% endif %}>
                                     {{ ecriture.statut|title }}
                                 </button>
                             </td>
@@ -754,7 +757,7 @@
                                     </a>
                                     <form action="{{ url_for('banking.unlink_ecriture', ecriture_id=ecriture.id) }}"
                                         method="post" class="d-inline">
-                                        <button type="submit" class="btn btn-sm btn-outline-warning btn-sm"
+                                        <button type="submit" class="btn btn-sm btn-outline-warning"
                                             title="Délier cette écriture">
                                             <i class="bi bi-unlink"></i>
                                         </button>
@@ -774,7 +777,7 @@
                                             categorie_id=request.args.get('categorie_id'),
                                             type_ecriture=request.args.get('type_ecriture'),
                                             type_ecriture_comptable=request.args.get('type_ecriture_comptable')) }}"
-                                        class="btn btn-sm btn-outline-primary btn-sm" title="Lier à une transaction">
+                                        class="btn btn-sm btn-outline-primary" title="Lier à une transaction">
                                         <i class="bi bi-link"></i> Lier
                                     </a>
                                 </div>
@@ -784,13 +787,11 @@
                             <!-- Actions -->
                             <td class="action-cell text-center">
                                 <div class="action-buttons justify-content-center">
-                                    <!-- Édition -->
                                     <a href="{{ url_for('banking.edit_ecriture', ecriture_id=ecriture.id) }}"
                                         class="btn btn-sm btn-outline-primary" title="Modifier">
                                         <i class="bi bi-pencil"></i>
                                     </a>
 
-                                    <!-- Archivage avec analyse d'impact -->
                                     <form action="{{ url_for('banking.delete_ecriture', ecriture_id=ecriture.id) }}"
                                         method="post" class="d-inline impact-form"
                                         data-impact-url="{{ url_for('banking.delete_ecriture', ecriture_id=ecriture.id) }}">
@@ -801,24 +802,22 @@
                                         </button>
                                     </form>
 
-                                    <!-- ✅ NOUVEAU : Suppression du groupe complet -->
                                     {% if ecriture.groupe_ecriture_id %}
                                         <form action="{{ url_for('banking.delete_groupe_ecritures', groupe_id=ecriture.groupe_ecriture_id) }}"
                                             method="post" class="d-inline">
                                             <button type="submit" class="btn btn-sm btn-outline-dark"
-                                                title="Supprimer TOUTES les écritures du groupe (vente complète)"
-                                                onclick="return confirm('⚠️ Suppression du groupe :\n\n{{ ecriture.groupe_ecriture_id }}\n\nToutes les écritures liées (trésorerie, vente, TVA, frais) seront supprimées.\n\nContinuer ?')">
+                                                title="Supprimer TOUTES les écritures du groupe"
+                                                onclick="return confirm('⚠️ Suppression du groupe :\n\n{{ ecriture.groupe_ecriture_id }}\n\nContinuer ?')">
                                                 <i class="bi bi-trash3"></i>
                                             </button>
                                         </form>
                                     {% endif %}
 
-                                    <!-- Suppression définitive (hard delete) -->
                                     <form action="{{ url_for('banking.hard_delete_ecriture', ecriture_id=ecriture.id) }}"
                                         method="post" class="d-inline">
                                         <button type="submit" class="btn btn-sm btn-outline-danger"
                                             title="Supprimer définitivement"
-                                            onclick="return confirm('⚠️ ATTENTION : Suppression DÉFINITIVE !\n\nCette action est IRRÉVERSIBLE.\nÊtes-vous absolument sûr ?')">
+                                            onclick="return confirm('⚠️ ATTENTION : Suppression DÉFINITIVE !\n\nÊtes-vous absolument sûr ?')">
                                             <i class="bi bi-trash-fill"></i>
                                         </button>
                                     </form>
@@ -831,8 +830,7 @@
                                 <div class="text-center">
                                     <i class="bi bi-file-earmark-text fs-1 text-muted"></i>
                                     <h5 class="text-muted mt-2">Aucune écriture trouvée</h5>
-                                    <p class="text-muted">Aucune écriture comptable ne correspond à vos critères de
-                                        recherche.</p>
+                                    <p class="text-muted">Aucune écriture comptable ne correspond à vos critères de recherche.</p>
                                     <a href="{{ url_for('banking.nouvelle_ecriture') }}" class="btn btn-primary">
                                         <i class="bi bi-plus-circle"></i> Créer une nouvelle écriture
                                     </a>
