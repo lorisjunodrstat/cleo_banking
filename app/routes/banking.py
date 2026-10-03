@@ -1,5 +1,6 @@
 from typing import List, Dict, Optional, Tuple, TypedDict, Any
 import logging
+from pymysql import Error, MySQLError
 from types import SimpleNamespace
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, current_app, g, session, abort, send_file, Response, url_for, _app_ctx_stack
 from urllib.parse import urlencode
@@ -3678,7 +3679,7 @@ def liste_ecritures():
                 error_count = 0
                 for eid in ecritures_ids:
                     try:
-                        g.models.ecriture_comptable_model.update_statut(
+                        success = g.models.ecriture_comptable_model.update_statut(
                             ecriture_id = int(eid), 
                             user_id=current_user.id,
                             statut=nouveau_statut)
@@ -3699,7 +3700,7 @@ def liste_ecritures():
                 if error_count > 0:
                     flash(f"{error_count} erreur(s) sont survennues lors du traitement", "danger")
             else:
-                flash("Action non autorisée, "warning")
+                flash("Action non autorisée", "warning")
                 return redirect(request.referrer or url_for('banking.liste_ecritures'))
         return redirect(request.referrer or url_for('banking.liste_ecritures'))
     
