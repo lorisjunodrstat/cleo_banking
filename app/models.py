@@ -3171,7 +3171,7 @@ class TransactionFinanciere(BaseRepository):
             #return False, Decimal('0')
             raise
 
-# ===== TRANSFERTS INTERNES =====
+    # ===== TRANSFERTS INTERNES =====
 
     def _get_solde_compte(self, compte_type: str, compte_id: int) -> Decimal:
         """
@@ -3443,9 +3443,7 @@ class TransactionFinanciere(BaseRepository):
             raise
 
     def _get_solde_initial_with_cursor(self, cursor, compte_type: str, compte_id: int) -> Decimal:
-        """
-        Récupère le solde initial d'un compte en utilisant un curseur existant.
-        """
+        """ Récupère le solde initial d'un compte en utilisant un curseur existant."""
         try:
             if compte_type == 'compte_principal':
                 cursor.execute("SELECT solde_initial FROM comptes_principaux WHERE id = %s", (compte_id,))
@@ -4107,7 +4105,6 @@ class TransactionFinanciere(BaseRepository):
         except MySQLError as e:
             logger.exception(f"Erreur récupération évolution soldes compte: {e}")
             return []
-
 
     def get_evolution_soldes_quotidiens_sous_compte(self, sous_compte_id: int, user_id: int, nb_jours: int = 30) -> List[Dict]:
         """
@@ -4849,7 +4846,6 @@ class TransactionFinanciere(BaseRepository):
                 GROUP BY t.id
                 HAVING COUNT(e.id) = 0
                 """
-                
                 # Enveloppe la requête ci-dessus dans une sous-requête pour faire le COUNT et SUM global
                 full_query = f"""
                 SELECT 
@@ -4857,17 +4853,14 @@ class TransactionFinanciere(BaseRepository):
                     COALESCE(SUM(sub.total_montant), 0) as total_montant
                 FROM ({query}) AS sub
                 """
-                
                 cursor.execute(full_query, (user_id, statut_comptable))
                 result = cursor.fetchone()
-                
                 if result:
                     return {
                         'total_len': result.get('total_len', 0),
                         'total_montant': float(result.get('total_montant', 0))
                     }
                 return {'total_len': 0, 'total_montant': 0.0}
-
         except MySQLError as e:
             logger.exception(f"Erreur lors du calcul des totaux à comptabiliser: {e}")
             return {'total_len': 0, 'total_montant': 0.0}
@@ -5046,34 +5039,27 @@ class TransactionFinanciere(BaseRepository):
         """
         Génère un graphique SVG comparant l'évolution des soldes de deux comptes.
         """
-
-
         # Récupérer les soldes quotidiens pour chaque compte et type
         soldes_1 = self._get_daily_balances(compte_id_1, date_debut, date_fin, type_1)
         soldes_2 = self._get_daily_balances(compte_id_2, date_debut, date_fin, type_2)
-
         # Trier les dates pour l'axe Y (axe des ordonnées)
         toutes_dates = sorted(set(soldes_1.keys()) | set(soldes_2.keys()))
         if not toutes_dates:
             return "<svg width='800' height='400'><text x='10' y='20'>Aucune donnée pour les dates sélectionnées.</text></svg>"
-
         # Déterminer les valeurs max pour l'échelle de l'axe X
         all_values = list(soldes_1.values()) + list(soldes_2.values())
         if not all_values:
              return "<svg width='800' height='400'><text x='10' y='20'>Aucune donnée pour les dates sélectionnées.</text></svg>"
         max_val = max(abs(v) for v in all_values)
         if max_val == 0: max_val = 1 # Éviter la division par zéro
-
         # Dimensions du graphique
         largeur_svg, hauteur_svg = 800, 400
         marge_gauche, marge_droite = 50, 50
         marge_haut, marge_bas = 30, 30
         largeur_graph = largeur_svg - marge_gauche - marge_droite
         hauteur_graph = hauteur_svg - marge_haut - marge_bas
-
         # Echelle pour les valeurs (axe X)
         echelle_x = largeur_graph / (2 * max_val) # 2 * max_val pour couvrir -max à +max
-
         # Echelle pour les dates (axe Y)
         # On inverse l'axe Y : la date la plus ancienne (0) est en bas, la plus récente (len-1) en haut
         nb_dates = len(toutes_dates)
@@ -5081,50 +5067,38 @@ class TransactionFinanciere(BaseRepository):
             pas_y = 0
         else:
             pas_y = hauteur_graph / (nb_dates - 1) if nb_dates > 1 else hauteur_graph
-
         # Générer le SVG
         svg_content = f'<svg width="{largeur_svg}" height="{hauteur_svg}" xmlns="http://www.w3.org/2000/svg">\n'
-
         # Ligne centrale (valeur 0)
         x_zero = marge_gauche + largeur_graph / 2
         svg_content += f'<line x1="{x_zero}" y1="{marge_haut}" x2="{x_zero}" y2="{marge_haut + hauteur_graph}" stroke="#000" stroke-dasharray="4" />\n'
-
         # Dessiner les points pour chaque date
         for i, dt in enumerate(toutes_dates):
             y_pos = marge_haut + hauteur_graph - (i * pas_y) # Inverser l'axe Y
-
             # Valeurs pour les deux comptes à cette date
             val_1 = soldes_1.get(dt, Decimal('0'))
             val_2 = soldes_2.get(dt, Decimal('0'))
-
             # Calculer les positions X
             x_1 = marge_gauche + (largeur_graph / 2) + float(val_1) * echelle_x
             x_2 = marge_gauche + (largeur_graph / 2) + float(val_2) * echelle_x
-
             # Choisir la couleur en fonction du type
             color_1 = couleur_1_recette if type_1 == 'recette' else couleur_1_depense
             color_2 = couleur_2_recette if type_2 == 'recette' else couleur_2_depense
-
             # Dessiner les points
             svg_content += f'<circle cx="{x_1}" cy="{y_pos}" r="3" fill="{color_1}" />\n'
             svg_content += f'<circle cx="{x_2}" cy="{y_pos}" r="3" fill="{color_2}" />\n'
-
             # Optionnel : Lier les points des deux comptes pour la même date
             svg_content += f'<line x1="{x_1}" y1="{y_pos}" x2="{x_2}" y2="{y_pos}" stroke="#ccc" stroke-dasharray="2" />\n'
-
         # Ajouter les labels des dates sur l'axe Y
         for i, dt in enumerate(toutes_dates):
             y_pos = marge_haut + hauteur_graph - (i * pas_y)
             svg_content += f'<text x="{marge_gauche - 10}" y="{y_pos + 4}" text-anchor="end" font-size="10">{dt.strftime("%d.%m")}</text>\n'
-
         # Ajouter une légende simple
         svg_content += f'<rect x="{largeur_svg - 120}" y="{10}" width="10" height="10" fill="{color_1}" />\n'
         svg_content += f'<text x="{largeur_svg - 105}" y="20" font-size="12">Compte 1</text>\n'
         svg_content += f'<rect x="{largeur_svg - 120}" y="{25}" width="10" height="10" fill="{color_2}" />\n'
         svg_content += f'<text x="{largeur_svg - 105}" y="35" font-size="12">Compte 2</text>\n'
-
         svg_content += '</svg>'
-
         return svg_content
 
     def old_compare_comptes_soldes_barres(self, compte_id_1: int, compte_id_2: int,
@@ -5456,12 +5430,10 @@ class TransactionFinanciere(BaseRepository):
         """
         if not donnees:
             return "<svg width='800' height='400'><text x='10' y='20'>Aucune donnée disponible.</text></svg>"
-
         # Trouver le montant maximum pour l'échelle
         max_montant = max(row['total_montant'] for row in donnees)
         if max_montant == 0:
             max_montant = 1
-
         # Paramètres du graphique
         largeur_svg = 800
         hauteur_svg = max(400, len(donnees) * 40)  # Hauteur dynamique
@@ -5471,25 +5443,20 @@ class TransactionFinanciere(BaseRepository):
         marge_bas = 30
         largeur_graph = largeur_svg - marge_gauche - marge_droite
         hauteur_graph = hauteur_svg - marge_haut - marge_bas
-
         # Hauteur d'une barre
         hauteur_barre = hauteur_graph / len(donnees) * 0.8
         espacement = hauteur_graph / len(donnees) * 0.2
-
         svg_content = f'<svg width="{largeur_svg}" height="{hauteur_svg}" xmlns="http://www.w3.org/2000/svg">\n'
-
         # Dessiner les barres
         for i, row in enumerate(donnees):
             y_pos = marge_haut + i * (hauteur_barre + espacement)
             largeur = (row['total_montant'] / max_montant) * largeur_graph
-
             # Barre
             svg_content += f'<rect x="{marge_gauche}" y="{y_pos}" width="{largeur}" height="{hauteur_barre}" fill="{couleur_barre}" />\n'
             # Label du montant (à droite de la barre)
             svg_content += f'<text x="{marge_gauche + largeur + 10}" y="{y_pos + hauteur_barre/2 + 4}" font-size="12" dominant-baseline="middle">{row["total_montant"]:,.2f}</text>\n'
             # Label du nom du compte (à gauche de la barre)
             svg_content += f'<text x="{marge_gauche - 10}" y="{y_pos + hauteur_barre/2 + 4}" font-size="12" dominant-baseline="middle" text-anchor="end">{row["nom_compte"]}</text>\n'
-
         svg_content += '</svg>'
         return svg_content
 
@@ -5582,11 +5549,9 @@ class TransactionFinanciere(BaseRepository):
         """
         if not donnees_brutes:
             return {}
-
         # Trier par date
         donnees_triees = sorted(donnees_brutes, key=lambda x: x['date_transaction'])
         dates_uniques = sorted(set(d['date_transaction'] for d in donnees_triees))
-
         if cumuler:
             # Mode cumulé : une seule série
             serie_cumulee = []
@@ -5609,7 +5574,6 @@ class TransactionFinanciere(BaseRepository):
                 # Trouver l'index de la date
                 idx = dates_uniques.index(d['date_transaction'])
                 series[nom_compte][idx] += d['montant']
-
             return {
                 'dates': dates_uniques,
                 'series': series
@@ -5622,17 +5586,14 @@ class TransactionFinanciere(BaseRepository):
         """
         if not donnees_structurees or not donnees_structurees.get('series') or not donnees_structurees.get('dates'):
             return "<svg width='800' height='400'><text x='10' y='20'>Aucune donnée disponible.</text></svg>"
-
         dates = donnees_structurees['dates']
         series = donnees_structurees['series']
         n_series = len(series)
-
         # Gérer les couleurs
         default_colors = ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac"]
         if couleurs is None or len(couleurs) < n_series:
             couleurs = (couleurs or []) + default_colors[len(couleurs or []):]
         couleurs = couleurs[:n_series]
-
         # Paramètres du graphique
         largeur_svg = 800
         hauteur_svg = 400
@@ -5642,18 +5603,14 @@ class TransactionFinanciere(BaseRepository):
         marge_bas = 60
         largeur_graph = largeur_svg - marge_gauche - marge_droite
         hauteur_graph = hauteur_svg - marge_haut - marge_bas
-
         # Trouver le max global pour l'échelle Y
         max_montant = max(max(vals) for vals in series.values()) if series else 1
         if max_montant == 0:
             max_montant = 1
-
         svg = f'<svg width="{largeur_svg}" height="{hauteur_svg}" xmlns="http://www.w3.org/2000/svg">\n'
-
         # === AXES PRINCIPAUX ===
         svg += f'<line x1="{marge_gauche}" y1="{marge_haut}" x2="{marge_gauche}" y2="{marge_haut + hauteur_graph}" stroke="black" stroke-width="2" />\n'
         svg += f'<line x1="{marge_gauche}" y1="{marge_haut + hauteur_graph}" x2="{largeur_svg - marge_droite}" y2="{marge_haut + hauteur_graph}" stroke="black" stroke-width="2" />\n'
-
         # === QUADRILLAGE ET GRADUATIONS (Y) ===
         pas = self._trouver_pas_gravitation(max_montant)
         current_val = pas
@@ -5665,7 +5622,6 @@ class TransactionFinanciere(BaseRepository):
                 # Label de graduation
                 svg += f'<text x="{marge_gauche - 10}" y="{y_pos + 4}" text-anchor="end" font-size="10">{int(current_val)}</text>\n'
             current_val += pas
-
         # === TRACER LES SÉRIES ===
         for idx, (nom_serie, valeurs) in enumerate(series.items()):
             couleur = couleurs[idx]
@@ -5676,10 +5632,8 @@ class TransactionFinanciere(BaseRepository):
                 points.append(f"{x},{y}")
                 # On peut dessiner des points ici aussi
                 svg += f'<circle cx="{x}" cy="{y}" r="2" fill="{couleur}" />\n'
-
             if len(points) > 1:
                 svg += f'<polyline points="{" ".join(points)}" fill="none" stroke="{couleur}" stroke-width="2" />\n'
-
         # === LABELS DES DATES (X) ===
         for i, dt in enumerate(dates):
             if i % max(1, len(dates)//10) == 0:
@@ -5694,7 +5648,6 @@ class TransactionFinanciere(BaseRepository):
                 # Tronquer le nom de la série si trop long
                 nom_affiche = nom_serie[:15] + "..." if len(nom_serie) > 15 else nom_serie
                 svg += f'<text x="{largeur_svg - 100}" y="{y_leg + 8}" font-size="12">{nom_affiche}</text>\n'
-
         svg += '</svg>'
         return svg
 
@@ -5710,12 +5663,10 @@ class TransactionFinanciere(BaseRepository):
         series = donnees_structurees['series']
         n_series = len(series)
         n_dates = len(dates)
-
         default_colors = ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac"]
         if couleurs is None or len(couleurs) < n_series:
             couleurs = (couleurs or []) + default_colors[len(couleurs or []):]
         couleurs = couleurs[:n_series]
-
         largeur_svg = 800
         hauteur_svg = 400
         marge_gauche = 60
@@ -5724,17 +5675,13 @@ class TransactionFinanciere(BaseRepository):
         marge_bas = 60
         largeur_graph = largeur_svg - marge_gauche - marge_droite
         hauteur_graph = hauteur_svg - marge_haut - marge_bas
-
         max_montant = max(max(vals) for vals in series.values()) if series else 1
         if max_montant == 0:
             max_montant = 1
-
         svg = f'<svg width="{largeur_svg}" height="{hauteur_svg}" xmlns="http://www.w3.org/2000/svg">\n'
-
         # === AXES PRINCIPAUX ===
         svg += f'<line x1="{marge_gauche}" y1="{marge_haut}" x2="{marge_gauche}" y2="{marge_haut + hauteur_graph}" stroke="black" stroke-width="2" />\n'
         svg += f'<line x1="{marge_gauche}" y1="{marge_haut + hauteur_graph}" x2="{largeur_svg - marge_droite}" y2="{marge_haut + hauteur_graph}" stroke="black" stroke-width="2" />\n'
-
         # === QUADRILLAGE ET GRADUATIONS (Y) ===
         pas = self._trouver_pas_gravitation(max_montant)
         current_val = pas
@@ -5744,7 +5691,6 @@ class TransactionFinanciere(BaseRepository):
                 svg += f'<line x1="{marge_gauche}" y1="{y_pos}" x2="{largeur_svg - marge_droite}" y2="{y_pos}" stroke="#ddd" stroke-width="0.5" />\n'
                 svg += f'<text x="{marge_gauche - 10}" y="{y_pos + 4}" text-anchor="end" font-size="10">{int(current_val)}</text>\n'
             current_val += pas
-
         # === DESSINER LES BARRES (Groupées par date) ===
         if n_dates <= 1:
             largeur_groupe = largeur_graph * 0.5
@@ -5752,20 +5698,16 @@ class TransactionFinanciere(BaseRepository):
         else:
             largeur_groupe = largeur_graph / n_dates * 0.9
             espacement = largeur_graph / n_dates - largeur_groupe
-
         for i, dt in enumerate(dates):
             x_groupe = marge_gauche + i * (largeur_groupe + espacement)
             # Largeur d'une barre unitaire dans le groupe
             largeur_barre_unitaire = largeur_groupe / n_series if n_series > 0 else largeur_groupe
-
             for j, (nom_serie, valeurs) in enumerate(series.items()):
                 montant = valeurs[i] if i < len(valeurs) else 0 # Protection si la série est plus courte
                 hauteur = (montant / max_montant) * hauteur_graph
                 y = marge_haut + hauteur_graph - hauteur
                 x = x_groupe + j * largeur_barre_unitaire
-
                 svg += f'<rect x="{x}" y="{y}" width="{largeur_barre_unitaire}" height="{hauteur}" fill="{couleurs[j]}" />\n'
-
         # === LABELS DES DATES (X) ===
         for i, dt in enumerate(dates):
             if i % max(1, n_dates//10) == 0:
@@ -5779,7 +5721,6 @@ class TransactionFinanciere(BaseRepository):
                 svg += f'<rect x="{largeur_svg - 120}" y="{y_leg}" width="15" height="10" fill="{couleurs[idx]}" />\n'
                 nom_affiche = nom_serie[:15] + "..." if len(nom_serie) > 15 else nom_serie
                 svg += f'<text x="{largeur_svg - 100}" y="{y_leg + 8}" font-size="12">{nom_affiche}</text>\n'
-
         svg += '</svg>'
         return svg
 
@@ -5826,6 +5767,7 @@ class TransactionFinanciere(BaseRepository):
         except MySQLError as e:
             logger.exception(f"Erreur dans _get_solde_avant_periode (compte {compte_id}, date {debut_periode}): {e}")
             return Decimal('0')
+    
     def update_statut_comptable(self, transaction_id: int, user_id: int, statut_comptable: str) -> Tuple[bool, str]:
         """Met à jour le statut comptable d'une transaction"""
         try:
@@ -5973,24 +5915,19 @@ class TransactionFinanciere(BaseRepository):
         """
         if not donnees_structurees or not donnees_structurees.get('series') or not donnees_structurees.get('dates'):
             return "<svg width='800' height='400'><text x='10' y='20'>Aucune donnée disponible.</text></svg>"
-        
         dates = donnees_structurees['dates']
         series = donnees_structurees['series']
-        
         # Filtrer la série Total si demandé
         if not afficher_total and 'Total' in series:
             series = {k: v for k, v in series.items() if k != 'Total'}
-        
         n_series = len(series)
         if n_series == 0:
             return "<svg width='800' height='400'><text x='10' y='20'>Aucune série à afficher.</text></svg>"
-        
         # Couleurs
         default_colors = ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac"]
         if couleurs is None or len(couleurs) < n_series:
             couleurs = (couleurs or []) + default_colors[len(couleurs or []):]
         couleurs = couleurs[:n_series]
-        
         # Paramètres du graphique
         largeur_svg = 900
         hauteur_svg = 500
@@ -6000,52 +5937,40 @@ class TransactionFinanciere(BaseRepository):
         marge_bas = 70
         largeur_graph = largeur_svg - marge_gauche - marge_droite
         hauteur_graph = hauteur_svg - marge_haut - marge_bas
-        
         # Trouver min et max pour l'échelle Y
         all_values = []
         for vals in series.values():
             all_values.extend(vals)
-        
         if not all_values:
             return "<svg width='800' height='400'><text x='10' y='20'>Aucune donnée disponible.</text></svg>"
-        
         max_val = max(all_values)
         min_val = min(all_values)
-        
         # S'assurer que 0 est inclus dans l'échelle
         if max_val < 0:
             max_val = 0
         if min_val > 0:
             min_val = 0
-        
         # Ajouter un peu de marge
         range_val = max_val - min_val
         if range_val == 0:
             range_val = 1
             max_val = 1
-        
         y_padding = range_val * 0.1
         max_val += y_padding
         min_val -= y_padding
         range_val = max_val - min_val
-        
         # Position de l'axe 0
         y_zero = marge_haut + hauteur_graph - ((0 - min_val) / range_val) * hauteur_graph
-        
         svg = f'<svg width="{largeur_svg}" height="{hauteur_svg}" xmlns="http://www.w3.org/2000/svg">\n'
         svg += '<style>text { font-family: Arial, sans-serif; }</style>\n'
-        
         # === AXES PRINCIPAUX ===
         svg += f'<line x1="{marge_gauche}" y1="{marge_haut}" x2="{marge_gauche}" y2="{marge_haut + hauteur_graph}" stroke="black" stroke-width="2" />\n'
         svg += f'<line x1="{marge_gauche}" y1="{marge_haut + hauteur_graph}" x2="{largeur_svg - marge_droite}" y2="{marge_haut + hauteur_graph}" stroke="black" stroke-width="2" />\n'
-        
         # === LIGNE DE ZÉRO (plus épaisse si dans le graphique) ===
         if min_val < 0 < max_val:
             svg += f'<line x1="{marge_gauche}" y1="{y_zero}" x2="{largeur_svg - marge_droite}" y2="{y_zero}" stroke="#666" stroke-width="1.5" stroke-dasharray="4,2" />\n'
-        
         # === QUADRILLAGE ET GRADUATIONS (Y) ===
         pas = self._trouver_pas_gravitation(max(abs(max_val), abs(min_val)))
-        
         # Graduations positives
         current_val = pas
         while current_val <= max_val:
@@ -6054,7 +5979,6 @@ class TransactionFinanciere(BaseRepository):
                 svg += f'<line x1="{marge_gauche}" y1="{y_pos}" x2="{largeur_svg - marge_droite}" y2="{y_pos}" stroke="#ddd" stroke-width="0.5" />\n'
                 svg += f'<text x="{marge_gauche - 10}" y="{y_pos + 4}" text-anchor="end" font-size="10">{current_val:.0f}</text>\n'
             current_val += pas
-        
         # Graduations négatives
         current_val = -pas
         while current_val >= min_val:
@@ -6063,25 +5987,20 @@ class TransactionFinanciere(BaseRepository):
                 svg += f'<line x1="{marge_gauche}" y1="{y_pos}" x2="{largeur_svg - marge_droite}" y2="{y_pos}" stroke="#ddd" stroke-width="0.5" />\n'
                 svg += f'<text x="{marge_gauche - 10}" y="{y_pos + 4}" text-anchor="end" font-size="10">{current_val:.0f}</text>\n'
             current_val -= pas
-        
         # Label 0
         svg += f'<text x="{marge_gauche - 10}" y="{y_zero + 4}" text-anchor="end" font-size="10" font-weight="bold">0</text>\n'
-        
         # === TRACER LES SÉRIES ===
         if mode == 'solde':
             # Mode LIGNES pour les soldes
             for idx, (nom_serie, valeurs) in enumerate(series.items()):
                 couleur = couleurs[idx]
                 points = []
-                
                 for i, montant in enumerate(valeurs):
                     x = marge_gauche + (i / (len(dates) - 1 if len(dates) > 1 else 1)) * largeur_graph
                     y = marge_haut + hauteur_graph - ((montant - min_val) / range_val) * hauteur_graph
                     points.append(f"{x},{y}")
-                    
                     # Points
                     svg += f'<circle cx="{x}" cy="{y}" r="2" fill="{couleur}" />\n'
-                
                 if len(points) > 1:
                     svg += f'<polyline points="{" ".join(points)}" fill="none" stroke="{couleur}" stroke-width="2" />\n'
         else:
@@ -6091,27 +6010,20 @@ class TransactionFinanciere(BaseRepository):
                 largeur_groupe = largeur_graph * 0.5
             else:
                 largeur_groupe = largeur_graph / n_dates * 0.8
-            
             largeur_barre = largeur_groupe / n_series if n_series > 0 else largeur_groupe
-            
             for i, dt in enumerate(dates):
                 x_groupe = marge_gauche + (i / (n_dates - 1 if n_dates > 1 else 1)) * largeur_graph - largeur_groupe / 2
-                
                 for j, (nom_serie, valeurs) in enumerate(series.items()):
                     montant = valeurs[i] if i < len(valeurs) else 0
                     couleur = couleurs[j]
-                    
                     # Calcul de la hauteur et position
                     hauteur = abs(montant) / range_val * hauteur_graph
                     x = x_groupe + j * largeur_barre
-                    
                     if montant >= 0:
                         y = y_zero - hauteur
                     else:
                         y = y_zero
-                    
                     svg += f'<rect x="{x}" y="{y}" width="{largeur_barre * 0.9}" height="{hauteur}" fill="{couleur}" opacity="0.8" />\n'
-        
         # === LABELS DES DATES (X) ===
         pas_label = max(1, len(dates) // 15)
         for i, dt in enumerate(dates):
@@ -6120,7 +6032,6 @@ class TransactionFinanciere(BaseRepository):
                 dt_obj = datetime.strptime(dt, '%Y-%m-%d')
                 dt_str = dt_obj.strftime("%d.%m")
                 svg += f'<text x="{x}" y="{marge_haut + hauteur_graph + 20}" text-anchor="middle" font-size="9" transform="rotate(-45, {x}, {marge_haut + hauteur_graph + 20})">{dt_str}</text>\n'
-        
         # === LÉGENDE ===
         y_leg_start = marge_haut
         for idx, nom_serie in enumerate(series.keys()):
@@ -6128,7 +6039,6 @@ class TransactionFinanciere(BaseRepository):
             svg += f'<rect x="{largeur_svg - marge_droite + 10}" y="{y_leg}" width="15" height="10" fill="{couleurs[idx]}" />\n'
             nom_affiche = nom_serie[:20] + "..." if len(nom_serie) > 20 else nom_serie
             svg += f'<text x="{largeur_svg - marge_droite + 30}" y="{y_leg + 8}" font-size="11">{nom_affiche}</text>\n'
-        
         svg += '</svg>'
         return svg
 

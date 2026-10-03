@@ -1,5 +1,7 @@
 from typing import List, Dict, Optional, Tuple, TypedDict, Any
 import logging
+from mysql.connector import Error as MySQLError
+import logging
 from pymysql import Error, MySQLError
 from types import SimpleNamespace
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, current_app, g, session, abort, send_file, Response, url_for, _app_ctx_stack
@@ -4497,10 +4499,50 @@ def month_french_filter(value):
 #### ecritures comptables automatiques
 ##########################################
 
-@bp.route('/comptabilite/transactions-sans-ecritures')
+logger = logging.getLogger(__name__)
+
+@bp.route('/comptabilite/transactions-sans-ecritures', methods=['GET', 'POST'])
 @login_required
 def transactions_sans_ecritures():
-    """Affiche la liste des transactions sans écritures comptables filtrées par compte"""
+    """Affiche la liste des transactions sans écritures comptables et gère les actions groupées"""
+    # ==========================================
+    # GESTION DES ACTIONS GROUPÉES (POST)
+    # ==========================================
+    if request.method == 'POST':
+        action = request.form.get('action')
+        transaction_ids = request.form.getlist('transaction_ids[]')
+        if action == 'update_statut_comptable' and transaction_ids:
+            nouveau_statut = request.form.get('nouveau_statut')
+            valid_statuts = ['a_comptabiliser', 'comptabilise', 'ne_pas_comptabiliser']
+            if nouveau_statut in valid_statuts:
+                success_count = 0
+                error_count = 0 
+                for tid in transaction_ids:
+                    try:
+                        # Appel de ta méthode existante qui retourne (bool, str)
+                        success, msg = g.models.transaction_financiere_model.update_statut_comptable(
+                            transaction_id=int(tid),
+                            user_id=current_user.id,
+                            statut_comptable=nouveau_statut
+                        )
+                        if success:
+                            success_count += 1
+                        else:
+                            error_count += 1
+                    except Exception as e:
+                        logger.exception(f"Erreur lors de la mise à jour du statut pour la transaction {tid}")
+                        error_count += 1
+                if success_count > 0:
+                    flash(f"{success_count} transaction(s) mise(s) à jour avec le statut '{nouveau_statut}'.", "success")
+                if error_count > 0:
+                    flash(f"{error_count} erreur(s) sont survenues lors de la mise à jour.", "danger")
+            else:
+                flash("Statut comptable invalide.", "danger")
+            # On redirige vers la même page en conservant les filtres
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+    # ==========================================
+    # GESTION DE L'AFFICHAGE (GET)
+    # ==========================================
     # Récupération des paramètres de filtrage
     compte_id = request.args.get('compte_id', type=int)
     date_from = request.args.get('date_from')
@@ -4519,6 +4561,7 @@ def transactions_sans_ecritures():
     compte_dest_all_list = g.models.compte_model.get_all_accounts(current_user.id)
     # Récupérer les transactions sans écritures
     transactions = []
+    comptes_destinataires = []
     if compte_id:
         transactions = g.models.transaction_financiere_model.get_transactions_sans_ecritures_par_compte(
             compte_id=compte_id,
@@ -4532,15 +4575,13 @@ def transactions_sans_ecritures():
         for tx in transactions:
             dest_id = tx.get('compte_destination_id')
             if dest_id and dest_id not in comptes_destinataires_dict:
-                comptes_destinataires_dict[dest_id] = tx.get('compte_destination_nom')
+                comptes_destinataires_dict[dest_id] = tx.get('compte_destination_nom')   
         comptes_destinataires = [
             {'id': dest_id, 'nom_compte': nom}
             for dest_id, nom in comptes_destinataires_dict.items()
         ]
         if compte_dest:
             transactions = [tx for tx in transactions if tx.get('compte_destination_id') == compte_dest]
-    else:
-        comptes_destinataires = []
     # Pour chaque transaction, récupérer le contact lié au compte
     transactions_avec_contacts = []
     for transaction in transactions:
@@ -4550,23 +4591,21 @@ def transactions_sans_ecritures():
                 transaction['compte_principal_id'], 
                 current_user.id
             )
-        # Ajouter le contact_lie à la transaction
         transaction_dict = dict(transaction)
         transaction_dict['contact_lie'] = contact_lie
-        transactions_avec_contacts.append(transaction_dict)
+        transactions_avec_contacts.append(transaction_dict) 
     totaux = g.models.transaction_financiere_model.get_totaux_a_comptabiliser(current_user.id, statut_comptable)
     total_a_comptabiliser = totaux['total_montant']
     total_a_comptabiliser_len = totaux['total_len']
     # Récupérer les catégories et celles avec complémentaires
     categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
-    categories_avec_complementaires = g.models.categorie_comptable_model.get_categories_avec_complementaires(current_user.id)
-    # Créer un set des IDs de catégories qui ont des écritures secondaires
+    categories_avec_complementaires = g.models.categorie_comptable_model.get_categories_avec_complementaires(current_user.id) 
     categories_avec_complementaires_ids = set()
     for cat in categories_avec_complementaires:
         if cat.get('categorie_complementaire_id'):
-            categories_avec_complementaires_ids.add(cat['id'])
+            categories_avec_complementaires_ids.add(cat['id'])       
     contacts = g.models.contact_model.get_all(current_user.id)
-    taux_disponibles=g.models.taux_tva_model.get_taux_for_select() 
+    taux_disponibles = g.models.taux_tva_model.get_taux_for_select() 
     return render_template('comptabilite/transactions_sans_ecritures.html',
         transactions=transactions_avec_contacts,
         comptes=comptes,
@@ -4586,7 +4625,6 @@ def transactions_sans_ecritures():
         compte_dest_all_selectionne=compte_dest_all_id,
         compte_dest_all_list=compte_dest_all_list
     )
-
 
 
 
