@@ -19106,7 +19106,7 @@ class ReceiptPOS(BaseRepository):
                     cout_marchandises += safe_decimal(article['cout_unitaire'] or 0) * qte
                     if 'tva_breakdown' in item and item['tva_breakdown']:
                         for breakdown in item['tva_breakdown']:
-                            montant_ttc_comp = safe_decimalbreakdown['montant_ttc']) * qte
+                            montant_ttc_comp = safe_decimal(tva_breakdown['montant_ttc']) * qte
                             taux_taxe_comp = safe_decimal(breakdown['taux'])
                             if taux_taxe_comp > Decimal('0'):
                                 diviseur = Decimal('1') + (taux_taxe_comp / Decimal('100'))
