@@ -20609,7 +20609,7 @@ class POSComptabilisation(BaseRepository):
                             pm.id as mode_paiement_id,
                             pm.nom as mode_paiement_nom,
                             -- 🎯 RÉSOLUTION DU COMPTE BANCAIRE (Mode de paiement OU Fallback PDV)
-                            COALESCE(pm.compte_bancaire_id, sub.compte_bancaire_pdv) as compte_bancaire_id,
+                            COALESCE(pm.compte_bancaire_id, MAX(sub.compte_bancaire_pdv)) as compte_bancaire_id,
                             cb.nom_compte as compte_bancaire_nom,
                             pm.compte_tresorerie_id,
                             ctres.numero as compte_tresorerie_numero,
@@ -20657,19 +20657,17 @@ class POSComptabilisation(BaseRepository):
                         JOIN pos_payments p ON sub.receipt_id = p.receipt_id
                         JOIN pos_modes_paiement pm ON p.mode_paiement_id = pm.id
                         LEFT JOIN categories_comptables cvente ON sub.compte_vente_id = cvente.id
-                        LEFT JOIN comptes_principaux cb ON cb.id = COALESCE(pm.compte_bancaire_id, sub.compte_bancaire_pdv)
+                        LEFT JOIN comptes_principaux cb ON cb.id = pm.compte_bancaire_id
                         LEFT JOIN categories_comptables ctres ON ctres.id = pm.compte_tresorerie_id
                         GROUP BY 
                             DATE_FORMAT(sub.date, '%%Y-%%m-%%d'), 
-                            pm.id, pm.nom, pm.compte_bancaire_id, sub.compte_bancaire_pdv, pm.compte_tresorerie_id,
+                            pm.id, pm.nom, pm.compte_bancaire_id, pm.compte_tresorerie_id,
                             ctres.numero, ctres.nom, cb.nom_compte,
                             pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe,
+                            sub.type_taxe_id, sub.type_taxe_nom,
                             sub.compte_vente_id,
-                            sub.taux_tva
                         ORDER BY date_jour DESC, pm.nom, sub.type_taxe_nom
-                    """#GROUP BY  DATE_FORMAT(sub.date, '%%Y-%%m-%%d'), pm.id, pm.nom, pm.compte_bancaire_id, sub.compte_bancaire_pdv, pm.compte_tresorerie_id, 
-                    #ctres.numero, ctres.nom, cb.nom_compte,  pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe,  sub.type_taxe_id, sub.type_taxe_nom, 
-                    # sub.compte_vente_id
+                    """
                     params = [compte_defaut] + params_base + [compte_defaut]
                     cursor.execute(query, params)
                     return cursor.fetchall()
