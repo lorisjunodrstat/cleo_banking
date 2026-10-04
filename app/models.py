@@ -21014,7 +21014,7 @@ class POSComptabilisation(BaseRepository):
                         ref_tresorerie = f"JOURNAL-{date_ecriture}-TRESO-{mode_id}"
                         # 🛡️ VÉRIFICATION D'IDEMPOTENCE : Cette écriture de trésorerie existe-t-elle déjà ?
                         is_tresorerie_passif = self.categorie_comptable_model.is_compte_passif(
-                            id_compte_tresorerie, cursor=cursor
+                            id_compte_tresorerie, user_id, cursor=cursor
                         )
                         type_ecriture_tresorerie = 'depense' if is_tresorerie_passif else 'recette'
                         
