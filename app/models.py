@@ -7104,7 +7104,8 @@ class CategorieComptable(BaseRepository):
                 if not fields:
                     return False
                 # Ajouter l'ID pour la clause WHERE
-                values.append([categorie_id, utilisateur_id])
+                values.append(categorie_id)
+                values.append(utilisateur_id)
                 query = f"""
                     UPDATE categories_comptables
                     SET {', '.join(fields)}
