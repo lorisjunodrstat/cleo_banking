@@ -893,7 +893,7 @@ table.table > tbody > tr > td[class*="statut-"] .text-muted {
                                         <i class="bi bi-pencil"></i>
                                     </a>
 
-                                    <form action="{{ url_for('banking.delete_ecriture ', ecriture_id=ecriture.id) }}"
+                                    <form action="{{ url_for('banking.delete_ecriture', ecriture_id=ecriture.id) }}"
                                         method="post" class="d-inline impact-form"
                                         data-impact-url="{{ url_for('banking.delete_ecriture', ecriture_id=ecriture.id) }}">
                                         <input type="hidden" name="action" value="confirmer_impact">
