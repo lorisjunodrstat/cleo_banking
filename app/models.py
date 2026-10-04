@@ -8088,6 +8088,165 @@ class EcritureComptable(BaseRepository):
             logger.error(f"Erreur suppression avec impact: {e}", exc_info=True)
             return False, f"Erreur: {str(e)}"
         
+    def supprimer_ecritures_par_date(self, user_id: int, date_ecriture: str, 
+                                  raison: str = None) -> Tuple[bool, str]:
+        """
+        Supprime TOUTES les écritures POS d'une date donnée et réinitialise
+        TOUS les receipts POS de cette date.
+        
+        Ne supprime QUE les écritures POS (groupe_ecriture_id LIKE 'POS-%').
+        Les autres écritures (achats, loyer, etc.) ne sont PAS touchées.
+        
+        Args:
+            user_id: ID de l'utilisateur
+            date_ecriture: Date au format 'YYYY-MM-DD'
+            raison: Raison de la suppression (optionnel)
+        
+        Returns:
+            Tuple[bool, str]: (succès, message)
+        """
+        try:
+            with self.db.get_cursor(dictionary=True) as cursor:
+                # ============================================================
+                # 1. Récupérer toutes les écritures POS de la date
+                # ============================================================
+                cursor.execute("""
+                    SELECT e.id, e.transaction_id, e.groupe_ecriture_id,
+                        e.categorie_id, e.montant, e.description, 
+                        e.type_ecriture, e.type_ecriture_comptable,
+                        c.numero AS categorie_numero, c.nom AS categorie_nom
+                    FROM ecritures_comptables e
+                    LEFT JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.utilisateur_id = %s
+                    AND e.date_ecriture = %s
+                    AND e.groupe_ecriture_id LIKE 'POS-%%'
+                    AND e.statut != 'supprimee'
+                """, (user_id, date_ecriture))
+                ecritures = cursor.fetchall()
+                
+                if not ecritures:
+                    return False, f"Aucune écriture POS trouvée pour le {date_ecriture}"
+                
+                logger.info(f"📋 {len(ecritures)} écriture(s) POS trouvée(s) pour le {date_ecriture}")
+                
+                # ============================================================
+                # 2. Collecter les transactions impactées
+                # ============================================================
+                transactions_impactees = set()
+                for e in ecritures:
+                    if e['transaction_id']:
+                        transactions_impactees.add(e['transaction_id'])
+                
+                logger.info(f"🔗 {len(transactions_impactees)} transaction(s) impactée(s)")
+                
+                # ============================================================
+                # 3. Délier toutes les écritures des transactions
+                # ============================================================
+                if transactions_impactees:
+                    tx_placeholders = ','.join(['%s'] * len(transactions_impactees))
+                    cursor.execute(f"""
+                        UPDATE ecritures_comptables
+                        SET transaction_id = NULL
+                        WHERE transaction_id IN ({tx_placeholders})
+                        AND utilisateur_id = %s
+                    """, list(transactions_impactees) + [user_id])
+                    logger.info(f"🔓 {cursor.rowcount} écriture(s) déliée(s) des transactions")
+                
+                # ============================================================
+                # 4. Soft delete de TOUTES les écritures POS de la date
+                # ============================================================
+                cursor.execute("""
+                    UPDATE ecritures_comptables
+                    SET statut = 'supprimee',
+                        date_suppression = NOW()
+                    WHERE utilisateur_id = %s
+                    AND date_ecriture = %s
+                    AND groupe_ecriture_id LIKE 'POS-%%'
+                    AND statut != 'supprimee'
+                """, (user_id, date_ecriture))
+                nb_ecritures = cursor.rowcount
+                logger.info(f"🗑️ {nb_ecritures} écriture(s) POS marquée(s) comme supprimée(s)")
+                
+                # ============================================================
+                # 5. Supprimer les transactions orphelines
+                # ============================================================
+                nb_tx_supprimees = 0
+                for tx_id in transactions_impactees:
+                    cursor.execute("""
+                        SELECT COUNT(*) AS nb
+                        FROM ecritures_comptables
+                        WHERE transaction_id = %s AND statut != 'supprimee'
+                    """, (tx_id,))
+                    if cursor.fetchone()['nb'] == 0:
+                        cursor.execute("""
+                            DELETE FROM transactions
+                            WHERE id = %s AND utilisateur_id = %s
+                        """, (tx_id, user_id))
+                        if cursor.rowcount > 0:
+                            nb_tx_supprimees += 1
+                logger.info(f"🗑️ {nb_tx_supprimees} transaction(s) orpheline(s) supprimée(s)")
+                
+                # ============================================================
+                # 6. Réinitialiser TOUS les receipts POS de la date
+                # ============================================================
+                cursor.execute("""
+                    UPDATE pos_receipts
+                    SET comptabilise = FALSE,
+                        etat_comptable = 'non_comptabilise',
+                        date_comptabilisation = NULL,
+                        transaction_id = NULL
+                    WHERE utilisateur_id = %s
+                    AND DATE(date) = %s
+                """, (user_id, date_ecriture))
+                nb_receipts = cursor.rowcount
+                logger.info(f"🔄 {nb_receipts} receipt(s) réinitialisé(s) pour le {date_ecriture}")
+                
+                # ============================================================
+                # 7. Enregistrer dans l'historique
+                # ============================================================
+                try:
+                    for e in ecritures:
+                        cursor.execute("""
+                            INSERT INTO ecritures_historique_suppressions (
+                                ecriture_id, utilisateur_id, receipt_id, transaction_id,
+                                categorie_numero, categorie_nom, montant, description,
+                                type_ecriture, type_ecriture_comptable,
+                                etait_liee_transaction, nombre_secondaires,
+                                raison
+                            ) VALUES (
+                                %s, %s, %s, %s,
+                                %s, %s, %s, %s,
+                                %s, %s,
+                                %s, %s,
+                                %s
+                            )
+                        """, (
+                            e['id'], user_id, None, e['transaction_id'],
+                            e['categorie_numero'], e['categorie_nom'],
+                            e['montant'], e['description'],
+                            e['type_ecriture'], e['type_ecriture_comptable'],
+                            1 if e['transaction_id'] else 0, 0,
+                            raison or f'Suppression des écritures POS du {date_ecriture}'
+                        ))
+                    logger.info(f"📝 Historique enregistré pour {len(ecritures)} écriture(s)")
+                except Exception as e_hist:
+                    logger.warning(f"⚠️ Impossible d'enregistrer l'historique: {e_hist}")
+                
+                # ============================================================
+                # 8. Retour
+                # ============================================================
+                msg = f"{nb_ecritures} écriture(s) POS supprimée(s) pour le {date_ecriture}"
+                if nb_tx_supprimees:
+                    msg += f", {nb_tx_supprimees} transaction(s) supprimée(s)"
+                msg += f", {nb_receipts} reçu(s) réinitialisé(s)"
+                
+                logger.info(f"✅ {msg}")
+                return True, msg
+                
+        except MySQLError as e:
+            logger.error(f"Erreur suppression écritures par date: {e}", exc_info=True)
+            return False, f"Erreur: {str(e)}"
+    
     def get_solde_tva_par_periode(self, user_id: int, date_debut: str, date_fin: str) -> Dict:
         """Calcule le solde TVA pour une période donnée"""
         try:

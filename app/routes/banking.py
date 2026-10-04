@@ -5731,6 +5731,35 @@ def delete_groupe_ecritures(groupe_id):
         flash(f"Erreur lors de la suppression du groupe: {str(e)}", "error")
     return redirect(request.referrer or url_for('banking.liste_ecritures'))
 
+
+@bp.route('/comptabilite/ecritures/date/<string:date_ecriture>/delete', methods=['POST'])
+@login_required
+def delete_ecritures_par_date(date_ecriture):
+    """
+    Supprime TOUTES les écritures POS d'une date et réinitialise TOUS les receipts POS.
+    """
+    try:
+        raison = request.form.get(
+            'raison', 
+            f'Suppression des écritures POS du {date_ecriture}'
+        )
+        
+        success, message = g.models.ecriture_comptable_model.supprimer_ecritures_par_date(
+            user_id=current_user.id,
+            date_ecriture=date_ecriture,
+            raison=raison
+        )
+        
+        if success:
+            flash(f"✅ {message}", "success")
+        else:
+            flash(f"❌ {message}", "error")
+            
+    except Exception as e:
+        logger.error(f"Erreur suppression écritures par date {date_ecriture}: {e}", exc_info=True)
+        flash(f"Erreur lors de la suppression: {str(e)}", "error")
+    
+    return redirect(request.referrer or url_for('banking.liste_ecritures')) 
 # Route pour la suppression définitive (hard delete)
 @bp.route('/comptabilite/ecritures/<int:ecriture_id>/delete/hard', methods=['POST'])
 @login_required
