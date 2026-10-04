@@ -20664,10 +20664,12 @@ class POSComptabilisation(BaseRepository):
                             pm.id, pm.nom, pm.compte_bancaire_id, sub.compte_bancaire_pdv, pm.compte_tresorerie_id,
                             ctres.numero, ctres.nom, cb.nom_compte,
                             pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe,
-                            sub.type_taxe_id, sub.type_taxe_nom,
-                            sub.compte_vente_id
+                            sub.compte_vente_id,
+                            sub.taux_tva
                         ORDER BY date_jour DESC, pm.nom, sub.type_taxe_nom
-                    """
+                    """#GROUP BY  DATE_FORMAT(sub.date, '%%Y-%%m-%%d'), pm.id, pm.nom, pm.compte_bancaire_id, sub.compte_bancaire_pdv, pm.compte_tresorerie_id, 
+                    #ctres.numero, ctres.nom, cb.nom_compte,  pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe,  sub.type_taxe_id, sub.type_taxe_nom, 
+                    # sub.compte_vente_id
                     params = [compte_defaut] + params_base + [compte_defaut]
                     cursor.execute(query, params)
                     return cursor.fetchall()
