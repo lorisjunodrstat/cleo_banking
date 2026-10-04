@@ -4667,7 +4667,7 @@ def nouvelle_ecriture_from_selected_versement():
     try:
         for tx_id in transaction_ids:
             try:
-                tx = g.models.transaction_financiere_model.get_by_id(int(tx_id))
+                tx = g.models.transaction_financiere_model.get_transaction_by_id(int(tx_id))
                 if not tx:
                     error_count += 1
                     continue
