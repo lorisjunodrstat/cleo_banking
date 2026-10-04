@@ -5694,57 +5694,6 @@ def delete_ecriture(ecriture_id):
     flash("Action invalide.", "error")
     return redirect(request.referrer or url_for('banking.liste_ecritures'))
 
-def supprimer_avec_impact(self, ecriture_id: int, user_id: int, 
-                          delier_transaction: bool = False,
-                          supprimer_cascade: bool = False) -> Tuple[bool, str]:
-    """Supprime une écriture en gérant ses dépendances."""
-    try:
-        with self.db.get_cursor() as cursor:
-            # Vérifier l'existence
-            cursor.execute("""
-                SELECT id, transaction_id, type_ecriture_comptable, statut
-                FROM ecritures_comptables
-                WHERE id = %s AND utilisateur_id = %s
-            """, (ecriture_id, user_id))
-            ecriture = cursor.fetchone()
-            if not ecriture:
-                return False, "Écriture introuvable."
-            # Si liée à une transaction et qu'on ne veut pas délier → refus
-            if ecriture['transaction_id'] and not delier_transaction:
-                return False, ("Cette écriture est liée à une transaction. "
-                              "Veuillez choisir de la délier ou annuler.")
-            # Délier la transaction si demandé
-            if ecriture['transaction_id'] and delier_transaction:
-                cursor.execute("""
-                    UPDATE ecritures_comptables 
-                    SET transaction_id = NULL 
-                    WHERE id = %s
-                """, (ecriture_id,))
-            # Cascade des secondaires
-            nb_secondaires = 0
-            if (ecriture['type_ecriture_comptable'] == 'principale' 
-                and supprimer_cascade):
-                cursor.execute("""
-                    UPDATE ecritures_comptables 
-                    SET statut = 'supprimee', date_suppression = NOW()
-                    WHERE ecriture_principale_id = %s 
-                      AND utilisateur_id = %s
-                      AND statut != 'supprimee'
-                """, (ecriture_id, user_id))
-                nb_secondaires = cursor.rowcount
-            # Soft delete de l'écriture principale
-            cursor.execute("""
-                UPDATE ecritures_comptables 
-                SET statut = 'supprimee', date_suppression = NOW()
-                WHERE id = %s AND utilisateur_id = %s
-            """, (ecriture_id, user_id))
-            message = "Écriture archivée avec succès."
-            if nb_secondaires > 0:
-                message += f" {nb_secondaires} écriture(s) secondaire(s) également archivée(s)."
-            return True, message
-    except Exception as e:
-        logger.error(f"Erreur suppression avec impact: {e}", exc_info=True)
-        return False, f"Erreur technique: {str(e)}"
 
 
 @bp.route('/comptabilite/ecritures/groupe/<string:groupe_id>/delete', methods=['POST'])
