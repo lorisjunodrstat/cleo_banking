@@ -7389,6 +7389,34 @@ class CategorieComptable(BaseRepository):
             logger.exception(f"Erreur is_compte_passif")
             return False
         
+    def get_type_compte(self, categorie_id: int, cursor=None) -> Optional[str]:
+        """
+        Retourne le type de compte (Actif, Passif, Charge, Revenus).
+        Args:
+            categorie_id: ID de la catégorie comptable
+            cursor: Curseur optionnel (pour réutiliser une transaction)
+        Returns:
+            str: Type de compte, ou None si introuvable
+        """
+        def _do_query(cur):
+            cur.execute("""
+                SELECT type_compte 
+                FROM categories_comptables 
+                WHERE id = %s
+            """, (categorie_id,))
+            res = cur.fetchone()
+            if not res:
+                return None
+            return res.get('type_compte')
+        if cursor is not None:
+            return _do_query(cursor)
+        try:
+            with self.db.get_cursor(dictionary=True) as new_cursor:
+                return _do_query(new_cursor)
+        except MySQLError as e:
+            logger.exception(f"Erreur get_type_compte pour catégorie {categorie_id}")
+            return None
+
 class EcritureComptable(BaseRepository):
     __slots__ = ["categorie_comptable_model"]
     def __init__(self, db):

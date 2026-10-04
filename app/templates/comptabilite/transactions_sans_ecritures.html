@@ -249,8 +249,11 @@
 
         <!-- Bouton qui ouvre le modal de config groupée -->
         <div class="d-grid gap-2 col-6 mx-auto mt-3">
-            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalConfigGroupee">
+            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalConfigGroupee">
                 <i class="bi bi-layers"></i> Créer les écritures pour la sélection
+            </button>
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalVersementGroupe">
+                <i class="bi bi-arrow-left-right"></i> Créer 2 écritures par transaction (versements)
             </button>
         </div>
     </form>
@@ -332,6 +335,127 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
                     <button type="submit" class="btn btn-primary">
                         <i class="bi bi-save"></i> Créer les écritures
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de configuration groupée pour VERSEMENTS (2 écritures) -->
+<div class="modal fade" id="modalVersementGroupe" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-arrow-left-right"></i>
+                    Configuration pour versements (2 écritures par transaction)
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('banking.nouvelle_ecriture_from_selected_versement') }}" id="formVersementGroupe">
+                {% if compte_selectionne %}<input type="hidden" name="compte_id" value="{{ compte_selectionne }}">{% endif %}
+                {% if date_from %}<input type="hidden" name="date_from" value="{{ date_from }}">{% endif %}
+                {% if date_to %}<input type="hidden" name="date_to" value="{{ date_to }}">{% endif %}
+                {% if statut_comptable_selectionne %}<input type="hidden" name="statut_comptable" value="{{ statut_comptable_selectionne }}">{% endif %}
+
+                <div id="hiddenTransactionIdsVersement"></div>
+
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        <strong id="nbTransactionsSelectionneesVersement">0</strong> transaction(s) sélectionnée(s).
+                        <br>
+                        <strong>Deux écritures</strong> seront créées pour chaque transaction :
+                        une au <strong>débit</strong> (compte source) et une au <strong>crédit</strong> (compte de contrepartie).
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card mb-3">
+                                <div class="card-header bg-success text-white">
+                                    <i class="bi bi-arrow-down-circle"></i> Écriture 1 (Débit)
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="categorie_debit" class="form-label">Compte de débit *</label>
+                                        <select id="categorie_debit" name="categorie_debit_id" class="form-select" required>
+                                            <option value="">Choisir un compte...</option>
+                                            {% for categorie in categories %}
+                                            <option value="{{ categorie.id }}">{{ categorie.numero }} - {{ categorie.nom }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <div class="form-text">
+                                            Ex : 1020 Banque Postfinance
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="card mb-3">
+                                <div class="card-header bg-danger text-white">
+                                    <i class="bi bi-arrow-up-circle"></i> Écriture 2 (Crédit)
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="categorie_credit" class="form-label">Compte de crédit *</label>
+                                        <select id="categorie_credit" name="categorie_credit_id" class="form-select" required>
+                                            <option value="">Choisir un compte...</option>
+                                            {% for categorie in categories %}
+                                            <option value="{{ categorie.id }}">{{ categorie.numero }} - {{ categorie.nom }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <div class="form-text">
+                                            Ex : 1140 Concardis en attente
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="contact_versement" class="form-label">Contact</label>
+                                <select id="contact_versement" name="contact_id" class="form-select">
+                                    <option value="">Aucun contact</option>
+                                    {% for contact in contacts %}
+                                    <option value="{{ contact.id_contact }}">
+                                        {{ contact.nom }} {% if contact.email %}({{ contact.email }}){% endif %}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="description_versement" class="form-label">Description personnalisée</label>
+                                <input type="text" id="description_versement" name="description" class="form-control"
+                                       placeholder="Ex : Versement Concardis - Novembre 2022">
+                                <div class="form-text">Laissez vide pour utiliser la description de la transaction.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <i class="bi bi-lightbulb"></i>
+                        <strong>Résumé :</strong> Pour chaque transaction sélectionnée, le système créera :
+                        <ul class="mb-0 mt-2">
+                            <li><strong>Débit</strong> sur le compte choisi (écriture 1)</li>
+                            <li><strong>Crédit</strong> sur le compte choisi (écriture 2)</li>
+                        </ul>
+                        <br>
+                        <strong>Les deux écritures seront liées par un même groupe.</strong>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Créer les écritures (2 par transaction)
                     </button>
                 </div>
             </form>
@@ -660,6 +784,45 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+// =========================================================================
+// 3. GESTION DU MODAL DE VERSEMENT GROUPÉ (2 écritures par transaction)
+// =========================================================================
+    const modalVersement = document.getElementById('modalVersementGroupe');
+    if (modalVersement) {
+        modalVersement.addEventListener('show.bs.modal', function() {
+            const checked = document.querySelectorAll('.tx-checkbox:checked');
+            const container = document.getElementById('hiddenTransactionIdsVersement');
+            container.innerHTML = '';
+            checked.forEach(cb => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'transaction_ids[]';
+                input.value = cb.value;
+                container.appendChild(input);
+            });
+            document.getElementById('nbTransactionsSelectionneesVersement').textContent = checked.length;
+        });
+
+        document.getElementById('formVersementGroupe').addEventListener('submit', function(e) {
+            const hidden = document.querySelectorAll('#hiddenTransactionIdsVersement input[name="transaction_ids[]"]');
+            if (hidden.length === 0) {
+                e.preventDefault();
+                alert('Veuillez sélectionner au moins une transaction dans le tableau');
+            }
+        });
+    }
+
+    const btnOpenModalVersement = document.querySelector('button[data-bs-target="#modalVersementGroupe"]');
+    if (btnOpenModalVersement) {
+        btnOpenModalVersement.addEventListener('click', function(e) {
+            const checked = document.querySelectorAll('.tx-checkbox:checked');
+            if (checked.length === 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                alert('Veuillez sélectionner au moins une transaction');
+            }
+        });
+    }
     const btnOpenModal = document.querySelector('button[data-bs-target="#modalConfigGroupee"]');
     if (btnOpenModal) {
         btnOpenModal.addEventListener('click', function(e) {

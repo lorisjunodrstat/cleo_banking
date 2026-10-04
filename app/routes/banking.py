@@ -4627,6 +4627,131 @@ def transactions_sans_ecritures():
     )
 
 
+@bp.route('/comptabilite/nouvelle-ecriture-versement', methods=['POST'])
+@login_required
+def nouvelle_ecriture_from_selected_versement():
+    """
+    Crée 2 écritures par transaction sélectionnée :
+    - 1 débit sur le compte source
+    - 1 crédit sur le compte de contrepartie
+    """
+    transaction_ids = request.form.getlist('transaction_ids[]')
+    categorie_debit_id = request.form.get('categorie_debit_id', type=int)
+    categorie_credit_id = request.form.get('categorie_credit_id', type=int)
+    contact_id = request.form.get('contact_id', type=int)
+    description_personnalisee = request.form.get('description', '').strip()
+    if not transaction_ids:
+        flash("Aucune transaction sélectionnée", "warning")
+        return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+    if not categorie_debit_id or not categorie_credit_id:
+        flash("Veuillez sélectionner les deux catégories comptables", "danger")
+        return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+    success_count = 0
+    error_count = 0
+    type_debit = g.models.categorie_comptable_model.get_type_compte(categorie_debit_id)
+    type_credit = g.models.categorie_comptable_model.get_type_compte(categorie_credit_id)
+    # Pour un DÉBIT :
+    #   - Actif/Charge → recette (débit)
+    #   - Passif/Revenus → depense (débit)
+    if type_debit in ('Actif', 'Charge'):
+        type_ecriture_debit = 'recette'
+    else:
+        type_ecriture_debit = 'depense'
+    # Pour un CRÉDIT :
+    #   - Actif/Charge → depense (crédit)
+    #   - Passif/Revenus → recette (crédit)
+    if type_credit in ('Actif', 'Charge'):
+        type_ecriture_credit = 'depense'
+    else:
+        type_ecriture_credit = 'recette'
+    try:
+        for tx_id in transaction_ids:
+            try:
+                tx = g.models.transaction_financiere_model.get_by_id(int(tx_id))
+                if not tx:
+                    error_count += 1
+                    continue
+                # Groupe commun pour les 2 écritures
+                groupe_id = f"VERS-{tx['id']}-{tx['date_transaction']}"
+                
+                # Description
+                if description_personnalisee:
+                    description = description_personnalisee
+                else:
+                    description = tx.get('description', '')[:200]
+                # --- Écriture 1 : DÉBIT ---
+                data_debit = {
+                    'date_ecriture': tx['date_transaction'],
+                    'compte_bancaire_id': tx['compte_principal_id'],
+                    'categorie_id': categorie_debit_id,
+                    'montant': tx['montant'],
+                    'montant_htva': tx['montant'],
+                    'devise': 'CHF',
+                    'description': description,
+                    'reference': tx.get('reference', ''),
+                    'groupe_ecriture_id': groupe_id,
+                    'type_ecriture': type_ecriture_debit,  # Débit sur un compte Actif
+                    'tva_taux': 0,
+                    'tva_montant': 0,
+                    'utilisateur_id': current_user.id,
+                    'statut': 'pending',
+                    'id_contact': contact_id,
+                    'type_ecriture_comptable': 'principale'
+                }
+                ecriture_debit_id = g.models.ecriture_comptable_model.create(
+                    data_debit, return_id=True
+                )
+                if not ecriture_debit_id:
+                    error_count += 1
+                    continue
+                # --- Écriture 2 : CRÉDIT ---
+                data_credit = {
+                    'date_ecriture': tx['date_transaction'],
+                    'compte_bancaire_id': tx['compte_principal_id'],
+                    'categorie_id': categorie_credit_id,
+                    'montant': tx['montant'],
+                    'montant_htva': tx['montant'],
+                    'devise': 'CHF',
+                    'description': description,
+                    'reference': tx.get('reference', ''),
+                    'groupe_ecriture_id': groupe_id,
+                    'type_ecriture': type_ecriture_credit,  # Crédit sur un compte Actif
+                    'tva_taux': 0,
+                    'tva_montant': 0,
+                    'utilisateur_id': current_user.id,
+                    'statut': 'pending',
+                    'id_contact': contact_id,
+                    'type_ecriture_comptable': 'principale'
+                }
+                ecriture_credit_id = g.models.ecriture_comptable_model.create(
+                    data_credit, return_id=True
+                )
+                if not ecriture_credit_id:
+                    error_count += 1
+                    continue
+                # Lier les écritures à la transaction
+                g.models.ecriture_comptable_model.link_to_transaction(
+                    ecriture_id=ecriture_debit_id,
+                    transaction_id=tx['id'],
+                    user_id=current_user.id
+                )
+                g.models.ecriture_comptable_model.link_to_transaction(
+                    ecriture_id=ecriture_credit_id,
+                    transaction_id=tx['id'],
+                    user_id=current_user.id
+                )
+                success_count += 1
+            except Exception as e:
+                logger.exception(f"Erreur création écritures pour transaction {tx_id}")
+                error_count += 1
+        if success_count > 0:
+            flash(f"✅ {success_count} transaction(s) comptabilisée(s) ({success_count * 2} écritures créées)", "success")
+        if error_count > 0:
+            flash(f"❌ {error_count} erreur(s)", "danger")
+    except Exception as e:
+        logger.exception("Erreur globale création écritures versement")
+        flash(f"Erreur : {str(e)}", "danger")
+    return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
 
 @bp.route('/comptabilite/ecritures/nouvelle/from_selected', methods=['GET', 'POST'])
 @login_required
@@ -5880,10 +6005,26 @@ def liste_rapprochements():
 @login_required
 def nouveau_rapprochement():
     """Créer un nouveau rapprochement bancaire (brouillon)."""
+    # Récupérer tous les comptes
     categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
+    # Filtrer par type (large)
+    comptes_banque = [
+        c for c in categories 
+        if c['type_compte'] == 'Actif' 
+        and c['numero'].startswith('10')
+    ]
+    comptes_frais = [
+        c for c in categories 
+        if c['type_compte'] in ('Charge', 'Charges') 
+        and c['numero'].startswith('69')
+    ]
+    comptes_attente = [
+        c for c in categories 
+        if c['type_compte'] == 'Actif' 
+        and c['numero'].startswith('114')
+    ]
     if request.method == 'POST':
         try:
-            # Récupération des IDs de comptes depuis le formulaire
             data = {
                 'utilisateur_id': current_user.id,
                 'prestataire': request.form['prestataire'],
@@ -5911,6 +6052,9 @@ def nouveau_rapprochement():
         'comptabilite/edit_rapprochement.html',
         rapprochement=None,
         categories=categories,
+        comptes_banque=comptes_banque,
+        comptes_frais=comptes_frais,
+        comptes_attente=comptes_attente,
     )
 
 @bp.route('/comptabilite/rapprochements/<int:rapprochement_id>')

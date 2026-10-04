@@ -20,30 +20,27 @@
       <div class="col-md-4">
         <label>Compte banque (débit)</label>
         <select name="compte_banque_id" class="form-select" required>
-          {% for c in categories %}
-            {% if c.type_compte == 'Actif' %}
+          <option value="">Sélectionner un compte banque...</option>
+          {% for c in comptes_banque %}
             <option value="{{ c.id }}">{{ c.numero }} — {{ c.nom }}</option>
-            {% endif %}
           {% endfor %}
         </select>
       </div>
       <div class="col-md-4">
         <label>Compte frais (débit)</label>
         <select name="compte_frais_id" class="form-select" required>
-          {% for c in categories %}
-            {% if c.type_compte in ('Charge','Charges') %}
+          <option value="">Sélectionner un compte frais...</option>
+          {% for c in comptes_frais %}
             <option value="{{ c.id }}">{{ c.numero }} — {{ c.nom }}</option>
-            {% endif %}
           {% endfor %}
         </select>
       </div>
       <div class="col-md-4">
         <label>Compte attente (crédit)</label>
         <select name="compte_attente_id" class="form-select" required>
-          {% for c in categories %}
-            {% if c.type_compte == 'Actif' %}
+          <option value="">Sélectionner un compte attente...</option>
+          {% for c in comptes_attente %}
             <option value="{{ c.id }}">{{ c.numero }} — {{ c.nom }}</option>
-            {% endif %}
           {% endfor %}
         </select>
       </div>
