@@ -7010,12 +7010,12 @@ class CategorieComptable(BaseRepository):
                     else:
                         logger.warning(f"Aucun plan comptable trouvé pour l'utilisateur {data['utilisateur_id']}")
             return new_id
-    except IntegrityError:
-        logger.warning(f"numero déjà utilisé : {numero}")
-        return None
-    except MySQLError as e:
-        logger.exception(f"Erreur lors de la création de la catégorie comptable")
-        return None
+        except IntegrityError:
+            logger.warning(f"numero déjà utilisé : {numero}")
+            return None
+        except MySQLError as e:
+            logger.exception(f"Erreur lors de la création de la catégorie comptable")
+            return None
 
     def modifier_plan(self, plan_id: int, data: Dict, utilisateur_id: int) -> bool:
         """Met à jour un plan comptable"""
