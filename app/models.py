@@ -6990,27 +6990,26 @@ class CategorieComptable(BaseRepository):
                 new_id = cursor.lastrowid
                 if data.get('plan_id'):
                 # Si le plan_id est fourni explicitement
-                cursor.execute("""
-                    INSERT INTO plan_categorie (plan_id, categorie_id)
-                    VALUES (%s, %s)
-                """, (data['plan_id'], new_id))
-            else:
-                # Sinon, récupérer le plan de l'utilisateur
-                cursor.execute("""
-                    SELECT id FROM plans_comptables
-                    WHERE utilisateur_id = %s
-                    LIMIT 1
-                """, (data['utilisateur_id'],))
-                plan = cursor.fetchone()
-                if plan:
                     cursor.execute("""
                         INSERT INTO plan_categorie (plan_id, categorie_id)
                         VALUES (%s, %s)
-                    """, (plan['id'], new_id))
+                    """, (data['plan_id'], new_id))
                 else:
-                    logger.warning(f"Aucun plan comptable trouvé pour l'utilisateur {data['utilisateur_id']}")
-
-        return new_id
+                    # Sinon, récupérer le plan de l'utilisateur
+                    cursor.execute("""
+                        SELECT id FROM plans_comptables
+                        WHERE utilisateur_id = %s
+                        LIMIT 1
+                    """, (data['utilisateur_id'],))
+                    plan = cursor.fetchone()
+                    if plan:
+                        cursor.execute("""
+                            INSERT INTO plan_categorie (plan_id, categorie_id)
+                            VALUES (%s, %s)
+                        """, (plan['id'], new_id))
+                    else:
+                        logger.warning(f"Aucun plan comptable trouvé pour l'utilisateur {data['utilisateur_id']}")
+            return new_id
     except IntegrityError:
         logger.warning(f"numero déjà utilisé : {numero}")
         return None
