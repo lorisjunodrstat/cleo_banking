@@ -3370,7 +3370,7 @@ def nouvelle_categorie():
 @login_required
 def edit_categorie(categorie_id):
     """Modifie une catégorie comptable existante"""
-    categorie = g.models.categorie_comptable_model.get_by_id(categorie_id)
+    categorie = g.models.categorie_comptable_model.get_by_id(categorie_id, current_user.id)
     all_plan = g.models.plan_comptable_model.get_all_plans(current_user.id)
     if not categorie:
         flash('Catégorie introuvable', 'danger')
