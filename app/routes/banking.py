@@ -3395,7 +3395,7 @@ def edit_categorie(categorie_id):
                 data['numero'] = nouveau_numero
             plan_id = request.form.get('plan_ids', type=int)
             # Mettre à jour la catégorie
-            if g.models.categorie_comptable_model.update(categorie_id, data):
+            if g.models.categorie_comptable_model.update(categorie_id, data, current_user.id):
                 #  Mettre à jour la relation plan_categorie
                 if plan_id:
                     # Supprimer l'ancienne relation
