@@ -6232,6 +6232,8 @@ def api_creer_valider_rapprochement():
     except Exception as e:
         logger.exception("Erreur API créer+valider rapprochement")
         return jsonify({'success': False, 'message': str(e)}), 500
+
+
 ##########################################
 ## Route pour la création des plans comptables
 ##########################################
