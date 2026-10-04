@@ -20665,7 +20665,7 @@ class POSComptabilisation(BaseRepository):
                             ctres.numero, ctres.nom, cb.nom_compte,
                             pm.compte_frais_service_id, pm.frais_pourcentage, pm.frais_fixe,
                             sub.type_taxe_id, sub.type_taxe_nom,
-                            sub.compte_vente_id,
+                            sub.compte_vente_id
                         ORDER BY date_jour DESC, pm.nom, sub.type_taxe_nom
                     """
                     params = [compte_defaut] + params_base + [compte_defaut]
