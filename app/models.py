@@ -664,6 +664,7 @@ class DatabaseManager:
                         -- 🔄 Statut étendu pour supporter le soft delete
                         statut ENUM('pending', 'validée', 'rejetée', 'supprimée') DEFAULT 'pending',
                         date_validation DATETIME NULL,
+                        date_suppression DATETIME NULL,
                         
                         -- ⏱️ Audit
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -21012,6 +21013,11 @@ class POSComptabilisation(BaseRepository):
                         montant_tresorerie_net = round(total_mode_ttc - montant_frais, 2)
                         ref_tresorerie = f"JOURNAL-{date_ecriture}-TRESO-{mode_id}"
                         # 🛡️ VÉRIFICATION D'IDEMPOTENCE : Cette écriture de trésorerie existe-t-elle déjà ?
+                        is_tresorerie_passif = self.categorie_comptable_model.is_compte_passif(
+                            id_compte_tresorerie, cursor=cursor
+                        )
+                        type_ecriture_tresorerie = 'depense' if is_tresorerie_passif else 'recette'
+                        
                         cursor.execute("""
                             SELECT id FROM ecritures_comptables 
                             WHERE reference = %s AND utilisateur_id = %s AND statut = 'validée'
@@ -21029,7 +21035,7 @@ class POSComptabilisation(BaseRepository):
                                 'description': f"Encaissement POS {mode_nom}",
                                 'reference': ref_tresorerie,
                                 'groupe_ecriture_id': groupe_id,
-                                'type_ecriture': 'recette',
+                                'type_ecriture': type_ecriture_tresorerie,
                                 'tva_taux': 0,
                                 'tva_montant': 0,
                                 'utilisateur_id': user_id,
