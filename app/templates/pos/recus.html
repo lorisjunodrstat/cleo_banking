@@ -69,6 +69,23 @@
             <div class="col-md-2">
                 <input type="date" name="date_to" class="form-control" value="{{ date_to }}" title="Date de fin">
             </div>
+            
+            <div class="col-md-2">
+                <select name="recus_type" class="form-control" title="Type">
+                    <!-- Option par défaut (envoie "" si choisie) -->
+                    <option value="" {% if not recus_type_selectionne %}selected{% endif %}>
+                        Tous les types
+                    </option>
+
+                    <!-- Boucle sur la liste de chaînes -->
+                    {% for t in recus_type_list %}
+                    <option value="{{ t }}" {% if recus_type_selectionne == t %}selected{% endif %}>
+                        {{ t }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endfor %}
             <div class="col-md-2">
                 <select name="pdv" class="form-control" title="PDV">
                     <option value="">Tous les PDV</option>

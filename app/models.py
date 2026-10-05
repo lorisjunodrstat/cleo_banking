@@ -18948,7 +18948,7 @@ class ReceiptPOS(BaseRepository):
         return cursor.fetchall()
 
     def get_all(self, user_id: int, magasin_id: int = None, search: str = None, 
-                payment: str = None, date_from: str = None, date_to: str = None, 
+                payment: str = None, date_from: str = None, date_to: str = None, recus_type = None,
                 employee: str = None, pdv: str = None, limit: int = 100, offset: int = 0) -> List[Dict]:
         """
         Récupère tous les reçus avec filtres avancés côté SQL.
@@ -19003,6 +19003,8 @@ class ReceiptPOS(BaseRepository):
                 if date_to:
                     query += " AND DATE(r.date) <= %s"
                     params.append(date_to)
+                if recus_type; 
+                    query += " AND receipt_type = %s"
                 if payment:
                     query += " AND LOWER(mp.nom) LIKE %s"
                     params.append(f"%{payment.lower()}%")

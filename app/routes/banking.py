@@ -11984,8 +11984,10 @@ def pos_receipts_list():
     payment_filter = request.args.get('payment', '').strip()
     date_from = request.args.get('date_from', '').strip()
     date_to = request.args.get('date_to', '').strip()
+    recus_type = (request.args.get("recus_type") or "").strip()
     employee = request.args.get('employee', '').strip()
     pdv = request.args.get('pdv', '').strip()
+    recus_type_list = ['Remboursement', 'Vente']
     # Liste filtrée
     receipts = g.models.receipt_pos_model.get_all(
         user_id=current_user.id,
@@ -11994,13 +11996,18 @@ def pos_receipts_list():
         payment=payment_filter or None,
         date_from=date_from or None,
         date_to=date_to or None,
+        recus_type=recus_type or None,
         employee=employee or None,
         pdv=pdv or None,
         limit=10000
     )
     # Construire receipts_data (format attendu par le template : rd.r + rd.payment_str)
     receipts_data = []
+    total_revenue_ht = 0
+    total_taxes = 0
     for r in receipts:
+        total_taxes += float(r.get("taxes") or 0)
+        total_revenue_ht += float(r.get("ventes_nettes") or 0)
         methods = g.models.receipt_pos_model.get_payment_methods(r['id'])
         receipts_data.append({
             'r': r,
@@ -12016,11 +12023,6 @@ def pos_receipts_list():
         date_to=date_to or None,
         employee=employee or None
     )
-    total_revenue_ht = 0
-    total_taxes = 0
-    for r in receipts:
-        total_taxes += float(r.get('taxes') or 0)
-        total_revenue_ht += float(r.get('ventes_nettes') or 0)
     # Pagination manuelle
     per_page = current_app.config.get('PER_PAGE', 20)
     total = len(receipts_data)
@@ -12048,6 +12050,7 @@ def pos_receipts_list():
         date_from=date_from,
         date_to=date_to,
         employee=employee,
+        recus_type_selectionne=recus_type,
         pdv=pdv, 
         total_receipts=stats['total_receipts'],
         total_revenue=stats['total_revenue'],
@@ -12058,7 +12061,8 @@ def pos_receipts_list():
         refunds_count=stats['refunds_count'],
         periode_ouverte=g.models.periode_travail_pos_model.get_ouverte(current_user.id),
         total_revenue_ht=total_revenue_ht,
-        total_taxes=total_taxes
+        total_taxes=total_taxes,
+        recus_type_list=recus_type_list
     )
 
 @bp.route('/pos/receipts/<int:receipt_id>')
