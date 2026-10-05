@@ -435,8 +435,9 @@
                                 <label for="tva_taux" class="form-label">Taux de TVA</label>
                                 <select id="tva_taux" name="tva_taux" class="form-select">
                                     <option value="0">0% (Hors TVA)</option>
-                                    <option value="2.5">2.5%</option>
-                                    <option value="7.7">7.7%</option>
+                                    {% for taux in taux_disponibles %}
+                                        <option value="{{ taux.taux }}">{{ taux.label }}</option>
+                                    {% endfor %}
                                 </select>
                                 <div class="form-text">Pour les dépenses avec TVA</div>
                             </div>
