@@ -4649,6 +4649,11 @@ def nouvelle_ecriture_from_selected_versement():
     type_debit = g.models.categorie_comptable_model.get_type_compte(categorie_debit_id)
     type_credit = g.models.categorie_comptable_model.get_type_compte(categorie_credit_id)
     taux_disponibles = g.models.taux_tva_model.get_taux_for_select()
+    tva_taux = request.form.get('tva_taux', type=float, default=0)
+    if not tva_taux:
+        flash("Aucune TVA sélectionnée", "warning")
+        return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+
     # Pour un DÉBIT :
     #   - Actif/Charge → recette (débit)
     #   - Passif/Revenus → depense (débit)
