@@ -20850,9 +20850,9 @@ class POSComptabilisation(BaseRepository):
                             cvente.numero as compte_vente_numero,
                             cvente.nom as compte_vente_nom,
                             COUNT(DISTINCT sub.receipt_id) as nb_tickets,
-                            SUM(sub.total_ht * (p.montant / NULLIF(sub.total_collecte, 0))) as total_ht,
-                            SUM(sub.total_tva * (p.montant / NULLIF(sub.total_collecte, 0))) as total_tva,
-                            SUM((sub.total_ht + sub.total_tva) * (p.montant / NULLIF(sub.total_collecte, 0))) as total_ttc_global,
+                            SUM(sub.total_ht_signe * (p.montant / NULLIF(sub.total_collecte, 0))) as total_ht,
+                            SUM(sub.total_tva_signe * (p.montant / NULLIF(sub.total_collecte, 0))) as total_tva,
+                            SUM((sub.total_ht_signe + sub.total_tva_signe) * (p.montant / NULLIF(sub.total_collecte, 0))) as total_ttc_global,
                             MAX(sub.has_transaction_bancaire) as has_transaction_bancaire,
                             GROUP_CONCAT(DISTINCT sub.receipt_id) as receipt_ids
                         FROM (
@@ -20865,8 +20865,16 @@ class POSComptabilisation(BaseRepository):
                                 pat.type_taxe_id,
                                 typ.nom as type_taxe_nom,
                                 COALESCE(mct.compte_vente_id, %s) as compte_vente_id,
-                                SUM(ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100))) as total_ht,
-                                SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100)))) as total_tva,
+                                CASE 
+                                    WHEN r.receipt_type = 'Remboursement' 
+                                    THEN -SUM(ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100)))
+                                    ELSE SUM(ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100)))
+                                END as total_ht_signe,
+                                CASE 
+                                    WHEN r.receipt_type = 'Remboursement' 
+                                    THEN -SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100))))
+                                    ELSE SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100))))
+                                END as total_tva_signe,
                                 CASE WHEN EXISTS (
                                     SELECT 1 FROM transactions t_banc 
                                     WHERE t_banc.receipt_id = r.id 
@@ -20879,7 +20887,7 @@ class POSComptabilisation(BaseRepository):
                             LEFT JOIN pos_compta_mapping_tva mct ON pat.type_taxe_id = mct.type_taxe_id AND mct.utilisateur_id = r.utilisateur_id
                             LEFT JOIN pos_points_de_vente pdv ON pdv.nom_pdv = r.pdv
                             """ + where_base + """
-                            GROUP BY r.id, r.date, r.total_collecte, r.pdv, pdv.compte_bancaire_id, pat.type_taxe_id, typ.nom, COALESCE(mct.compte_vente_id, %s)
+                            GROUP BY r.id, r.date, r.total_collecte, r.pdv, r.receipt_type, pdv.compte_bancaire_id, pat.type_taxe_id, typ.nom, COALESCE(mct.compte_vente_id, %s)
                         ) sub
                         JOIN pos_payments p ON sub.receipt_id = p.receipt_id
                         JOIN pos_modes_paiement pm ON p.mode_paiement_id = pm.id
@@ -20917,9 +20925,9 @@ class POSComptabilisation(BaseRepository):
                             sub.compte_vente_id,
                             cvente.numero as compte_vente_numero,
                             cvente.nom as compte_vente_nom,
-                            SUM(sub.total_ht * (p.montant / NULLIF(sub.total_collecte, 0))) as total_ht,
-                            SUM(sub.total_tva * (p.montant / NULLIF(sub.total_collecte, 0))) as total_tva,
-                            SUM((sub.total_ht + sub.total_tva) * (p.montant / NULLIF(sub.total_collecte, 0))) as total_ttc_global,
+                            SUM(sub.total_ht_signe * (p.montant / NULLIF(sub.total_collecte, 0))) as total_ht,
+                            SUM(sub.total_tva_signe * (p.montant / NULLIF(sub.total_collecte, 0))) as total_tva,
+                            SUM((sub.total_ht_signe + sub.total_tva_signe) * (p.montant / NULLIF(sub.total_collecte, 0))) as total_ttc_global,
                             sub.has_transaction_bancaire,
                             sub.receipt_id
                         FROM (
@@ -20931,8 +20939,16 @@ class POSComptabilisation(BaseRepository):
                                 r.pdv,
                                 pdv.compte_bancaire_id as compte_bancaire_pdv,
                                 COALESCE(mct.compte_vente_id, %s) as compte_vente_id,
-                                SUM(ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100))) as total_ht,
-                                SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100)))) as total_tva,
+                                CASE 
+                                    WHEN r.receipt_type = 'Remboursement' 
+                                    THEN -SUM(ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100)))
+                                    ELSE SUM(ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100)))
+                                END as total_ht_signe,
+                                CASE 
+                                    WHEN r.receipt_type = 'Remboursement' 
+                                    THEN -SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100))))
+                                    ELSE SUM(ri.total_ligne - (ri.total_ligne / (1 + (COALESCE(ri.taux_taxe_applique, 0) / 100))))
+                                END as total_tva_signe,
                                 CASE WHEN EXISTS (
                                     SELECT 1 FROM transactions t_banc 
                                     WHERE t_banc.receipt_id = r.id 
@@ -20944,7 +20960,7 @@ class POSComptabilisation(BaseRepository):
                             LEFT JOIN pos_compta_mapping_tva mct ON pat.type_taxe_id = mct.type_taxe_id AND mct.utilisateur_id = r.utilisateur_id
                             LEFT JOIN pos_points_de_vente pdv ON pdv.nom_pdv = r.pdv
                             """ + where_base + """
-                            GROUP BY r.id, r.recu_numero, r.date, r.total_collecte, r.pdv, pdv.compte_bancaire_id, COALESCE(mct.compte_vente_id, %s)
+                            GROUP BY r.id, r.recu_numero, r.date, r.total_collecte, r.pdv, r.receipt_type, pdv.compte_bancaire_id, COALESCE(mct.compte_vente_id, %s)
                         ) sub
                         JOIN pos_payments p ON sub.receipt_id = p.receipt_id
                         JOIN pos_modes_paiement pm ON p.mode_paiement_id = pm.id
@@ -20965,7 +20981,7 @@ class POSComptabilisation(BaseRepository):
         except MySQLError as e:
             logger.exception(f"Erreur récupération données à comptabiliser: {e}", exc_info=True)
             return []
-    
+        
     @staticmethod
     def _parse_date_ecriture(raw):
         """Convertit une valeur date en objet date."""
