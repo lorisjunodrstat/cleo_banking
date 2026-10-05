@@ -18999,6 +18999,7 @@ class ReceiptPOS(BaseRepository):
                     params.append(date_to)
                 if recus_type: 
                     query += " AND receipt_type = %s"
+                    params.append(recus_type)
                 if payment:
                     query += " AND LOWER(mp.nom) LIKE %s"
                     params.append(f"%{payment.lower()}%")
