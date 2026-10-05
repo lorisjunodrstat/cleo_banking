@@ -12185,6 +12185,7 @@ class Rapport(BaseRepository):
         except Exception as e:
             logger.exception(f"Erreur génération balance générale: {e}")
             return {'erreur': str(e)}
+    
     # ============================================
     # 6. JOURNAL GÉNÉRAL (Chronologique)
     # ============================================

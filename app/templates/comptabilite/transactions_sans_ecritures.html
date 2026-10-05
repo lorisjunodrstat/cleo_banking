@@ -417,7 +417,7 @@
                     </div>
 
                     <div class="row">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="mb-3">
                                 <label for="contact_versement" class="form-label">Contact</label>
                                 <select id="contact_versement" name="contact_id" class="form-select">
@@ -430,12 +430,23 @@
                                 </select>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="tva_taux" class="form-label">Taux de TVA</label>
+                                <select id="tva_taux" name="tva_taux" class="form-select">
+                                    <option value="0">0% (Hors TVA)</option>
+                                    <option value="2.5">2.5%</option>
+                                    <option value="7.7">7.7%</option>
+                                </select>
+                                <div class="form-text">Pour les dépenses avec TVA</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
                             <div class="mb-3">
                                 <label for="description_versement" class="form-label">Description personnalisée</label>
                                 <input type="text" id="description_versement" name="description" class="form-control"
                                        placeholder="Ex : Versement Concardis - Novembre 2022">
-                                <div class="form-text">Laissez vide pour utiliser la description de la transaction.</div>
+                                <div class="form-text">Laissez vide pour utiliser la description.</div>
                             </div>
                         </div>
                     </div>

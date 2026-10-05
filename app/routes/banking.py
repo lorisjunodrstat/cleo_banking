@@ -4677,20 +4677,27 @@ def nouvelle_ecriture_from_selected_versement():
                     description = description_personnalisee
                 else:
                     description = tx.get('description', '')[:200]
+                montant_ttc = float(tx['montant'])
+                if tva_taux and tva_taux > 0:
+                    montant_ht = round(montant_ttc / (1 + (tva_taux / 100)), 2)
+                    montant_tva = round(montant_ttc - montant_ht, 2)
+                else:
+                    montant_ht = montant_ttc
+                    montant_tva = 0
                 # --- Écriture 1 : DÉBIT ---
                 data_debit = {
                     'date_ecriture': tx['date_transaction'],
                     'compte_bancaire_id': tx['compte_principal_id'],
                     'categorie_id': categorie_debit_id,
-                    'montant': tx['montant'],
-                    'montant_htva': tx['montant'],
+                    'montant': montant_ht,
+                    'montant_htva': montant_ht,
                     'devise': 'CHF',
                     'description': description,
                     'reference': tx.get('reference', ''),
                     'groupe_ecriture_id': groupe_id,
-                    'type_ecriture': type_ecriture_debit,  # Débit sur un compte Actif
-                    'tva_taux': 0,
-                    'tva_montant': 0,
+                    'type_ecriture': type_ecriture_debit,
+                    'tva_taux': tva_taux,
+                    'tva_montant': montant_tva,
                     'utilisateur_id': current_user.id,
                     'statut': 'pending',
                     'id_contact': contact_id,
@@ -4707,13 +4714,13 @@ def nouvelle_ecriture_from_selected_versement():
                     'date_ecriture': tx['date_transaction'],
                     'compte_bancaire_id': tx['compte_principal_id'],
                     'categorie_id': categorie_credit_id,
-                    'montant': tx['montant'],
-                    'montant_htva': tx['montant'],
+                    'montant': montant_ttc,
+                    'montant_htva': montant_ttc,
                     'devise': 'CHF',
                     'description': description,
                     'reference': tx.get('reference', ''),
                     'groupe_ecriture_id': groupe_id,
-                    'type_ecriture': type_ecriture_credit,  # Crédit sur un compte Actif
+                    'type_ecriture': type_ecriture_credit,
                     'tva_taux': 0,
                     'tva_montant': 0,
                     'utilisateur_id': current_user.id,
@@ -4727,6 +4734,7 @@ def nouvelle_ecriture_from_selected_versement():
                 if not ecriture_credit_id:
                     error_count += 1
                     continue
+                
                 # Lier les écritures à la transaction
                 g.models.ecriture_comptable_model.link_to_transaction(
                     ecriture_id=ecriture_debit_id,
