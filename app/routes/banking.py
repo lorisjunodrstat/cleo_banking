@@ -4654,10 +4654,6 @@ def nouvelle_ecriture_from_selected_versement():
         tva_taux = float(tva_taux_raw) if tva_taux_raw else 0.0
     except (ValueError, TypeError):
         tva_taux = 0.0
-    if not tva_taux:
-        flash("Aucune TVA sélectionnée", "warning")
-        return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
-
     # Pour un DÉBIT :
     #   - Actif/Charge → recette (débit)
     #   - Passif/Revenus → depense (débit)
