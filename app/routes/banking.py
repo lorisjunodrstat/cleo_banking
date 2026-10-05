@@ -4913,118 +4913,133 @@ def update_statut_comptable(transaction_id):
 @bp.route('/comptabilite/creer_ecriture_automatique/<int:transaction_id>', methods=['POST'])
 @login_required
 def creer_ecriture_automatique(transaction_id):
-    """Crée une écriture comptable simple pour une transaction avec statut 'pending'"""
+    """Crée 2 écritures (débit + crédit) pour une transaction."""
     try:
-        # Récupérer la transaction avec vérification de propriété
         transaction = g.models.transaction_financiere_model.get_transaction_with_ecritures_total(
             transaction_id, current_user.id
         )
         if not transaction:
             flash("Transaction non trouvée ou non autorisée", "error")
-            # PRÉSERVER LES FILTRES
-            compte_id = request.form.get('compte_id', type=int)
-            date_from = request.form.get('date_from')
-            date_to = request.form.get('date_to')
-            statut_comptable = request.form.get('statut_comptable')
-            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
-                                   compte_id=compte_id,
-                                   date_from=date_from,
-                                   date_to=date_to,
-                                   statut_comptable=statut_comptable))
-        categorie_id = request.form.get('categorie_id', type=int)
-        # RÉCUPÉRER LE TAUX DE TVA
-        taux_tva_form = request.form.get('tva_taux', '0.0')
-        taux_tva = Decimal(str(taux_tva_form)) if taux_tva_form else Decimal('0')
-        if not categorie_id:
-            flash("Veuillez sélectionner une catégorie comptable", "error")
-            # PRÉSERVER LES FILTRES
-            compte_id = request.form.get('compte_id', type=int)
-            date_from = request.form.get('date_from')
-            date_to = request.form.get('date_to')
-            statut_comptable = request.form.get('statut_comptable')
-            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
-                                   compte_id=compte_id,
-                                   date_from=date_from,
-                                   date_to=date_to,
-                                   statut_comptable=statut_comptable))
-        # MODIFICATION : Récupérer le contact depuis le formulaire OU le contact lié au compte
-        contact_id_form = request.form.get('contact_id', type=int)
-        id_contact = None
-        # Priorité au contact sélectionné dans le formulaire
-        if contact_id_form:
-            id_contact = contact_id_form
-        # Sinon, chercher le contact lié au compte
-        elif transaction.get('compte_principal_id'):
-            contact_lie = g.models.contact_compte_model.get_contact_by_compte(
-                transaction['compte_principal_id'],
-                current_user.id
-            )
-            if contact_lie:
-                id_contact = contact_lie['contact_id']
-        # Déterminer le type d'écriture
-        type_ecriture = 'depense' if transaction['type_transaction'] in ['retrait', 'transfert_sortant', 'transfert_externe'] else 'recette'
-        # ALCUL DU MONTANT HTVA CÔTÉ SERVEUR
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+        
+        categorie_debit_id = request.form.get('categorie_debit_id', type=int)
+        categorie_credit_id = request.form.get('categorie_credit_id', type=int)
+        contact_id = request.form.get('contact_id', type=int) or None
+        taux_tva_str = request.form.get('tva_taux', '0.0')
+        taux_tva = Decimal(str(taux_tva_str)) if taux_tva_str else Decimal('0')
+        
+        if not categorie_debit_id or not categorie_credit_id:
+            flash("Veuillez sélectionner les deux catégories comptables", "error")
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+        
+        # Calcul HT/TVA
         montant_ttc = Decimal(str(transaction['montant']))
         if taux_tva > 0:
-            montant_htva_calcule = montant_ttc / (1 + taux_tva / Decimal('100'))
+            montant_htva = montant_ttc / (1 + taux_tva / Decimal('100'))
+            montant_tva = montant_ttc - montant_htva
         else:
-            montant_htva_calcule = montant_ttc # Si pas de TVA, HTVA = TTC
-        # Créer l'écriture comptable
-        ecriture_data = {
+            montant_htva = montant_ttc
+            montant_tva = Decimal('0')
+        
+        # Groupe commun
+        groupe_id = f"TX-{transaction_id}"
+        
+        # Déterminer le type d'écriture pour le débit
+        type_debit = g.models.categorie_comptable_model.get_type_compte(categorie_debit_id)
+        type_credit = g.models.categorie_comptable_model.get_type_compte(categorie_credit_id)
+        
+        if type_debit == 'Actif':
+            type_ecriture_debit = 'recette'
+        else:
+            type_ecriture_debit = 'depense'
+        
+        if type_credit == 'Actif':
+            type_ecriture_credit = 'depense'
+        else:
+            type_ecriture_credit = 'recette'
+        
+        # --- Écriture 1 : DÉBIT ---
+        data_debit = {
             'date_ecriture': transaction['date_transaction'],
             'compte_bancaire_id': transaction['compte_principal_id'],
-            'categorie_id': categorie_id,
-            'montant': montant_ttc,
-            'montant_htva': montant_htva_calcule,
-            'devise': 'CHF',
+            'categorie_id': categorie_debit_id,
+            'montant': montant_htva,
+            'montant_htva': montant_htva,
             'description': transaction['description'],
-            'type_ecriture': type_ecriture,
-            'tva_taux': taux_tva, 
-            'tva_montant': montant_ttc - montant_htva_calcule if taux_tva > 0 else Decimal('0'),
+            'id_contact': contact_id,
+            'reference': transaction.get('reference') or '',
+            'type_ecriture': type_ecriture_debit,
+            'tva_taux': taux_tva,
+            'tva_montant': montant_tva,
             'utilisateur_id': current_user.id,
-            'statut': 'pending',  # Statut en attente
-            #'transaction_id': transaction_id,
-            'id_contact': id_contact 
+            'statut': 'pending',
+            'devise': 'CHF',
+            'groupe_ecriture_id': groupe_id,
+            'type_ecriture_comptable': 'principale'
         }
-        ecriture_id = g.models.ecriture_comptable_model.create(ecriture_data, return_id=True)
-        if ecriture_id:
-            # Lier l'écriture à la transaction
-            g.models.ecriture_comptable_model.link_ecriture_to_transaction(
-                ecriture_id, transaction_id, current_user.id
-            )
-            # Marquer la transaction comme comptabilisée
-            g.models.transaction_financiere_model.update_statut_comptable(
-                transaction_id, current_user.id, 'comptabilise'
-            )
-            # Message de confirmation avec info contact
-            message = "Écriture créée avec succès avec statut 'En attente'"
-            if id_contact:
-                contact_info = g.models.contact_model.get_by_id(id_contact, current_user.id)
-                if contact_info:
-                    message += f" - Contact: {contact_info['nom']}"
-            # AJOUTER INFO TVA AU MESSAGE
-            if taux_tva > 0:
-                 message += f" - TVA {taux_tva}% appliquée ({ecriture_data['tva_montant']} CHF)"
-            flash(message, "success")
-        else:
-            flash("Erreur lors de la création de l'écriture", "error")
+        ecriture_debit_id = g.models.ecriture_comptable_model.create(data_debit, return_id=True)
+        
+        if not ecriture_debit_id:
+            flash("Erreur lors de la création de l'écriture de débit", "error")
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+        
+        # --- Écriture 2 : CRÉDIT ---
+        data_credit = {
+            'date_ecriture': transaction['date_transaction'],
+            'compte_bancaire_id': transaction['compte_principal_id'],
+            'categorie_id': categorie_credit_id,
+            'montant': montant_ttc,
+            'montant_htva': montant_ttc,
+            'description': transaction['description'],
+            'id_contact': contact_id,
+            'reference': transaction.get('reference') or '',
+            'type_ecriture': type_ecriture_credit,
+            'tva_taux': 0,
+            'tva_montant': 0,
+            'utilisateur_id': current_user.id,
+            'statut': 'pending',
+            'devise': 'CHF',
+            'groupe_ecriture_id': groupe_id,
+            'type_ecriture_comptable': 'principale'
+        }
+        ecriture_credit_id = g.models.ecriture_comptable_model.create(data_credit, return_id=True)
+        
+        if not ecriture_credit_id:
+            flash("Erreur lors de la création de l'écriture de crédit", "error")
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+        
+        # Lier les écritures à la transaction
+        g.models.ecriture_comptable_model.link_ecriture_to_transaction(
+            ecriture_debit_id, transaction_id, current_user.id
+        )
+        g.models.ecriture_comptable_model.link_ecriture_to_transaction(
+            ecriture_credit_id, transaction_id, current_user.id
+        )
+        
+        # Marquer la transaction comme comptabilisée
+        g.models.transaction_financiere_model.update_statut_comptable(
+            transaction_id, current_user.id, 'comptabilise'
+        )
+        
+        # Compter les secondaires
+        secondaires_debit = g.models.ecriture_comptable_model.get_ecritures_complementaires(
+            ecriture_debit_id, current_user.id
+        )
+        secondaires_credit = g.models.ecriture_comptable_model.get_ecritures_complementaires(
+            ecriture_credit_id, current_user.id
+        )
+        nb_secondaires = len(secondaires_debit) + len(secondaires_credit)
+        
+        msg = "2 écritures créées avec succès (débit + crédit)"
+        if nb_secondaires > 0:
+            msg += f" ({nb_secondaires} secondaire(s))"
+        flash(msg, "success")
+    
     except Exception as e:
         logging.error(f"Erreur création écriture automatique: {e}")
         flash(f"Erreur lors de la création de l'écriture: {str(e)}", "error")
-    # PRÉSERVER LES FILTRES
-    compte_id = request.form.get('compte_id', type=int)
-    date_from = request.form.get('date_from')
-    date_to = request.form.get('date_to')
-    statut_comptable = request.form.get('statut_comptable')
-    return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
-                           compte_id=compte_id,
-                           date_from=date_from,
-                           date_to=date_to,
-                           statut_comptable=statut_comptable))
-                           # OU simplement redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
-                           # mais cela peut conserver des anciens paramètres GET si le referrer est la page filtrée.
-                           # La méthode ci-dessus avec request.form est plus fiable pour conserver les filtres actuels.
-
+    
+    return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
 
 @bp.route('/comptabilite/ecritures/nouvelle', methods=['GET', 'POST'])
 @login_required
@@ -5249,163 +5264,187 @@ def nouvelle_ecriture_multiple():
 @bp.route('/comptabilite/creer_ecritures_multiple_auto/<int:transaction_id>', methods=['POST'])
 @login_required
 def creer_ecritures_multiple_auto(transaction_id):
-    """Crée plusieurs écritures comptables pour une transaction avec statut 'pending'"""
+    """Crée N écritures de débit + M écritures de crédit."""
     try:
-        # Récupérer la transaction avec vérification de propriété
         transaction = g.models.transaction_financiere_model.get_transaction_with_ecritures_total(
             transaction_id, current_user.id
         )
         if not transaction:
             flash("Transaction non trouvée ou non autorisée", "error")
-            # RÉSERVER LES FILTRES
-            compte_id = request.form.get('compte_id', type=int)
-            date_from = request.form.get('date_from')
-            date_to = request.form.get('date_to')
-            statut_comptable = request.form.get('statut_comptable')
-            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
-                                   compte_id=compte_id,
-                                   date_from=date_from,
-                                   date_to=date_to,
-                                   statut_comptable=statut_comptable))
-
-        # Vérifier si la transaction a déjà des écritures
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+        
         if transaction.get('nb_ecritures', 0) > 0:
             flash("Cette transaction a déjà des écritures associées", "warning")
-            # PRÉSERVER LES FILTRES
-            compte_id = request.form.get('compte_id', type=int)
-            date_from = request.form.get('date_from')
-            date_to = request.form.get('date_to')
-            statut_comptable = request.form.get('statut_comptable')
-            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
-                                   compte_id=compte_id,
-                                   date_from=date_from,
-                                   date_to=date_to,
-                                   statut_comptable=statut_comptable))
-        categories_ids = request.form.getlist('categorie_id[]')
-        montants = request.form.getlist('montant[]')
-        # RÉCUPÉRER LES TAUX DE TVA POUR CHAQUE LIGNE
-        tva_taux_list = request.form.getlist('tva_taux[]')
-        descriptions = request.form.getlist('description[]')
-        if len(categories_ids) != len(montants):
-            flash("Le nombre de catégories et de montants doit correspondre", "error")
-            # PRÉSERVER LES FILTRES
-            compte_id = request.form.get('compte_id', type=int)
-            date_from = request.form.get('date_from')
-            date_to = request.form.get('date_to')
-            statut_comptable = request.form.get('statut_comptable')
-            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
-                                   compte_id=compte_id,
-                                   date_from=date_from,
-                                   date_to=date_to,
-                                   statut_comptable=statut_comptable))
-        total_montants = sum(Decimal(str(m)) for m in montants)
-        if total_montants != Decimal(str(transaction['montant'])):
-            flash("La somme des montants ne correspond pas au montant de la transaction", "error")
-            # PRÉSERVER LES FILTRES
-            compte_id = request.form.get('compte_id', type=int)
-            date_from = request.form.get('date_from')
-            date_to = request.form.get('date_to')
-            statut_comptable = request.form.get('statut_comptable')
-            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
-                                   compte_id=compte_id,
-                                   date_from=date_from,
-                                   date_to=date_to,
-                                   statut_comptable=statut_comptable))
-        TYPE_TRANSACTION_SORTIE = ('retrait', 'transfert_sortant')
-        type_tx = (transaction.get('type_transaction') or '').lower()
-        type_ecriture_ligne = 'depense' if type_tx in TYPE_TRANSACTION_SORTIE else 'recette'
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+        
+        # --- Récupérer les DÉBITS ---
+        categories_debit_ids = request.form.getlist('categorie_debit_id[]')
+        montants_debit = request.form.getlist('montant_debit[]')
+        tva_taux_debit = request.form.getlist('tva_taux_debit[]')
+        descriptions_debit = request.form.getlist('description_debit[]')
+        
+        # --- Récupérer les CRÉDITS ---
+        categories_credit_ids = request.form.getlist('categorie_credit_id[]')
+        montants_credit = request.form.getlist('montant_credit[]')
+        
+        contact_id = request.form.get('contact_id', type=int) or None
+        
+        # --- Vérifier que les deux listes sont cohérentes ---
+        if len(categories_credit_ids) != len(montants_credit):
+            flash("Le nombre de comptes de crédit et de montants doit correspondre", "error")
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+        
+        # --- Filtrer les lignes vides ---
+        debits_valides = []
+        for i in range(len(categories_debit_ids)):
+            if categories_debit_ids[i] and montants_debit[i]:
+                debits_valides.append({
+                    'cat_id': int(categories_debit_ids[i]),
+                    'montant': Decimal(str(montants_debit[i])),
+                    'tva_taux': Decimal(str(tva_taux_debit[i])) if i < len(tva_taux_debit) and tva_taux_debit[i] else Decimal('0'),
+                    'description': descriptions_debit[i] if i < len(descriptions_debit) and descriptions_debit[i] else transaction['description']
+                })
+        
+        credits_valides = []
+        for i in range(len(categories_credit_ids)):
+            if categories_credit_ids[i] and montants_credit[i]:
+                credits_valides.append({
+                    'cat_id': int(categories_credit_ids[i]),
+                    'montant': Decimal(str(montants_credit[i]))
+                })
+        
+        if not debits_valides:
+            flash("Aucun débit valide", "error")
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+        
+        if not credits_valides:
+            flash("Aucun crédit valide", "error")
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+        
+        # --- Vérifier que somme(débits) = somme(crédits) ---
+        total_debit = sum(d['montant'] for d in debits_valides)
+        total_credit = sum(c['montant'] for c in credits_valides)
+        
+        if total_debit != total_credit:
+            flash(f"Somme des débits ({total_debit}) ≠ somme des crédits ({total_credit})", "error")
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+        
+        montant_ttc_total = Decimal(str(transaction['montant']))
+        if total_debit != montant_ttc_total:
+            flash(f"Somme des débits ({total_debit}) ≠ montant transaction ({montant_ttc_total})", "error")
+            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
+        
+        groupe_id = f"TX-{transaction_id}"
         success_count = 0
-        # 🔧 CHANGEMENT : compteur dédié aux écritures secondaires
         secondary_count = 0
-        id_contact = request.form.get('contact_id', type=int) or None
-        # Fallback : contact lié au compte principal
-        if not id_contact:
-            contact_lie = g.models.contact_compte_model.get_contact_by_compte(
-                transaction['compte_principal_id'], current_user.id
-            )
-            if contact_lie:
-                id_contact = contact_lie['contact_id']
-        for i in range(len(categories_ids)):
+        
+        # --- Créer les DÉBITS ---
+        for d in debits_valides:
             try:
-                if not categories_ids[i] or not montants[i]:
-                    flash(f"Écriture {i+1}: Tous les champs obligatoires doivent être remplis", "warning")
-                    continue
-                montant_ttc = Decimal(str(montants[i]))
-                # RÉCUPÉRER LE TAUX DE TVA POUR CETTE LIGNE
-                taux_tva_str = tva_taux_list[i] if i < len(tva_taux_list) else '0.0'
-                taux_tva = Decimal(str(taux_tva_str)) if taux_tva_str else Decimal('0')
-                # CALCUL DU MONTANT HTVA CÔTÉ SERVEUR POUR CETTE LIGNE
+                montant_ttc = d['montant']
+                taux_tva = d['tva_taux']
+                
                 if taux_tva > 0:
-                    montant_htva_calcule = montant_ttc / (1 + taux_tva / Decimal('100'))
+                    montant_htva = montant_ttc / (1 + taux_tva / Decimal('100'))
+                    montant_tva = montant_ttc - montant_htva
                 else:
-                    montant_htva_calcule = montant_ttc  # Si pas de TVA, HTVA = TTC
-                data = {
+                    montant_htva = montant_ttc
+                    montant_tva = Decimal('0')
+                
+                type_debit = g.models.categorie_comptable_model.get_type_compte(d['cat_id'])
+                
+                if type_debit == 'Actif':
+                    type_ecriture_debit = 'recette'
+                else:
+                    type_ecriture_debit = 'depense'
+                
+                data_debit = {
                     'date_ecriture': transaction['date_transaction'],
                     'compte_bancaire_id': transaction['compte_principal_id'],
-                    'categorie_id': int(categories_ids[i]),
-                    'montant': montant_ttc,
-                    'montant_htva': montant_htva_calcule,
-                    'description': descriptions[i] if i < len(descriptions) and descriptions[i] else transaction['description'],
-                    'id_contact': id_contact,
+                    'categorie_id': d['cat_id'],
+                    'montant': montant_htva,
+                    'montant_htva': montant_htva,
+                    'description': d['description'],
+                    'id_contact': contact_id,
                     'reference': transaction.get('reference') or '',
-                    'type_ecriture': type_ecriture_ligne,
+                    'type_ecriture': type_ecriture_debit,
                     'tva_taux': taux_tva,
-                    'tva_montant': montant_ttc - montant_htva_calcule if taux_tva > 0 else Decimal('0'),
+                    'tva_montant': montant_tva,
                     'utilisateur_id': current_user.id,
                     'statut': 'pending',
                     'devise': 'CHF',
+                    'groupe_ecriture_id': groupe_id,
                     'type_ecriture_comptable': 'principale'
                 }
-                # 🔧 CHANGEMENT 1 : passer categorie_comptable_model + return_id=True
-                #     → les secondaires (TVA, règles en cascade) sont créées par create()
-                #     → on récupère l'ID de la principale pour la lier à la transaction
-                ecriture_id = g.models.ecriture_comptable_model.create(
-                    data,
-                    return_id=True
-                )
+                
+                ecriture_id = g.models.ecriture_comptable_model.create(data_debit, return_id=True)
                 if ecriture_id:
                     g.models.ecriture_comptable_model.link_ecriture_to_transaction(
                         ecriture_id, transaction_id, current_user.id
                     )
                     success_count += 1
-                    # 🔧 CHANGEMENT 3 : compter les secondaires pour le message utilisateur
                     secondaires = g.models.ecriture_comptable_model.get_ecritures_complementaires(
                         ecriture_id, current_user.id
                     )
                     secondary_count += len(secondaires)
-                else:
-                    flash(f"Erreur lors de la création de l'écriture {i+1}", "error")
             except Exception as e:
-                logging.error(f"Erreur création écritures multiples (ligne {i+1}): {e}")
-                flash(f"Erreur lors de la création de l'écriture {i+1}: {str(e)}", "error")
+                logging.error(f"Erreur création écriture débit: {e}")
+        
+        # --- Créer les CRÉDITS ---
+        for c in credits_valides:
+            try:
+                type_credit = g.models.categorie_comptable_model.get_type_compte(c['cat_id'])
+                
+                if type_credit == 'Actif':
+                    type_ecriture_credit = 'depense'
+                else:
+                    type_ecriture_credit = 'recette'
+                
+                data_credit = {
+                    'date_ecriture': transaction['date_transaction'],
+                    'compte_bancaire_id': transaction['compte_principal_id'],
+                    'categorie_id': c['cat_id'],
+                    'montant': c['montant'],
+                    'montant_htva': c['montant'],
+                    'description': transaction['description'],
+                    'id_contact': contact_id,
+                    'reference': transaction.get('reference') or '',
+                    'type_ecriture': type_ecriture_credit,
+                    'tva_taux': 0,
+                    'tva_montant': 0,
+                    'utilisateur_id': current_user.id,
+                    'statut': 'pending',
+                    'devise': 'CHF',
+                    'groupe_ecriture_id': groupe_id,
+                    'type_ecriture_comptable': 'principale'
+                }
+                
+                ecriture_id = g.models.ecriture_comptable_model.create(data_credit, return_id=True)
+                if ecriture_id:
+                    g.models.ecriture_comptable_model.link_ecriture_to_transaction(
+                        ecriture_id, transaction_id, current_user.id
+                    )
+                    success_count += 1
+            except Exception as e:
+                logging.error(f"Erreur création écriture crédit: {e}")
+        
+        # --- Marquer la transaction comme comptabilisée ---
         if success_count > 0:
-            # 🔧 CHANGEMENT 4 : mentionner les secondaires dans le message de succès
-            # Marquer la transaction comme comptabilisée
             g.models.transaction_financiere_model.update_statut_comptable(
                 transaction_id, current_user.id, 'comptabilise'
             )
-            msg = f"{success_count} écriture(s) créée(s) avec succès avec statut 'En attente'"
+            msg = f"{success_count} écriture(s) créée(s) avec succès"
             if secondary_count > 0:
-                msg += f" ({secondary_count} écriture(s) secondaire(s) créée(s))"
+                msg += f" ({secondary_count} secondaire(s))"
             flash(msg, "success")
         else:
             flash("Aucune écriture n'a pu être créée", "error")
-
+    
     except Exception as e:
         logging.error(f"Erreur création écritures multiples: {e}")
-        flash(f"Erreur lors de la création des écritures: {str(e)}", "error")
-
-    # PRÉSERVER LES FILTRES
-    compte_id = request.form.get('compte_id', type=int)
-    date_from = request.form.get('date_from')
-    date_to = request.form.get('date_to')
-    statut_comptable = request.form.get('statut_comptable')
-    return redirect(request.referrer or url_for('banking.transactions_sans_ecritures',
-                           compte_id=compte_id,
-                           date_from=date_from,
-                           date_to=date_to,
-                           statut_comptable=statut_comptable))
-
+        flash(f"Erreur: {str(e)}", "error")
+    
+    return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
 
 @bp.route('/comptabilite/ecritures/<int:ecriture_id>/secondaires')
 @login_required
