@@ -7549,7 +7549,7 @@ class EcritureComptable(BaseRepository):
             query = """
             SELECT DISTINCT
                 cc.categorie_complementaire_id,
-                cc.type_ecriture_complementaire,,
+                cc.type_ecriture_complementaire,
                 cc.nom as categorie_nom,
                 cc.numero as categorie_numero,
                 cc_comp.nom as categorie_complementaire_nom,
