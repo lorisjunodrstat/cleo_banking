@@ -655,6 +655,7 @@ class DatabaseManager:
                         tva_taux DECIMAL(5,2) DEFAULT 0.00,
                         tva_montant DECIMAL(15,2) DEFAULT 0.00,
                         utilisateur_id INT NOT NULL,
+                        rapprochement_id INT NULL,
                         
                         -- 📎 Champs pour les fichiers joints
                         fichier_path VARCHAR(255) NULL COMMENT 'Chemin relatif ou absolu vers le fichier',
@@ -681,6 +682,7 @@ class DatabaseManager:
                         FOREIGN KEY (id_contact) REFERENCES contacts(id_contact) ON DELETE SET NULL,
                         FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
                         FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
+                        FOREIGN KEY (rapprochement_id) REFERENCES rapprochements_bancaires(id) ON DELETE SET NULL,
                         FOREIGN KEY (ecriture_principale_id) REFERENCES ecritures_comptables(id) ON DELETE CASCADE,
                         
                         -- ⚡ Index
@@ -760,15 +762,6 @@ class DatabaseManager:
                         UNIQUE KEY uq_user_prestataire_ref (utilisateur_id, prestataire, reference_releve),
                         FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """)
-
-                # 2. Ajouter la colonne à ecritures_comptables
-                cursor.execute("""
-                    ALTER TABLE ecritures_comptables
-                        ADD COLUMN rapprochement_id INT NULL,
-                        ADD INDEX idx_rapprochement (rapprochement_id),
-                        ADD CONSTRAINT fk_ecriture_rapprochement
-                            FOREIGN KEY (rapprochement_id) REFERENCES rapprochements_bancaires(id) ON DELETE SET NULL
                 """)
 
                 cursor.execute("""
