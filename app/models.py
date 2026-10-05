@@ -7644,13 +7644,9 @@ class EcritureComptable(BaseRepository):
             return montant_principal * (taux / 100)
 
     def _get_secondary_type(self, type_principal: str, type_complement: str) -> str:
-        if type_complement == 'tva':
-            # La TVA suit le sens comptable de l'opération principale :
-            # - Vente ('recette') -> Crédit du Produit + Crédit du Passif (TVA due)
-            # - Achat ('depense') -> Débit de la Charge + Débit de l'Actif (TVA déductible)
-            return type_principal
+        if type_complement in ('recette', 'depense'):
+            return type_complement
         else:
-            # Pour les autres compléments, on garde la même logique par défaut
             return type_principal
 
     def _create_secondary_ecriture(self, cursor, ecriture_principale_id: int, data: Dict, comp_cat: Dict, montant_secondaire: float):
