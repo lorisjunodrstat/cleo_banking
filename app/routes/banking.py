@@ -4554,7 +4554,6 @@ def transactions_sans_ecritures():
         {'value': 'comptabilise', 'label': 'Comptabilisé'},
         {'value': 'ne_pas_comptabiliser', 'label': 'Ne pas comptabiliser'}
     ]
-    taux_disponibles = g.models.taux_tva_model.get_taux_for_select()
     # Récupérer les comptes de l'utilisateur
     comptes = g.models.compte_model.get_by_user_id(current_user.id)
     compte_dest_all_list = g.models.compte_model.get_all_accounts(current_user.id)
@@ -4623,7 +4622,6 @@ def transactions_sans_ecritures():
         comptes_destinataires=comptes_destinataires,
         compte_dest_all_selectionne=compte_dest_all_id,
         compte_dest_all_list=compte_dest_all_list,
-        taux_disponibles=taux_disponibles,
     )
 
 
