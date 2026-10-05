@@ -21021,7 +21021,7 @@ class POSComptabilisation(BaseRepository):
                     mode_id = item.get('mode_paiement_id')
                     receipt_ids_str = item.get('receipt_ids')
                     
-                    # 🆕 Parser les receipt_ids EN DÉBUT de boucle
+                    # Parser les receipt_ids EN DÉBUT de boucle
                     receipt_ids = []
                     if receipt_ids_str:
                         try:
@@ -21034,7 +21034,7 @@ class POSComptabilisation(BaseRepository):
                             logger.error(f"❌ Erreur parsing receipt_ids: {receipt_ids_str} - {e}")
                             receipt_ids = []
                     
-                    # 🔧 Clé par (date, mode) : regroupe tous les receipts d'un même mode
+                    # Clé par (date, mode) : regroupe tous les receipts d'un même mode
                     unique_mode_key = f"{date_ecriture}_{mode_id}"
                     groupe_id = f"POS-{date_ecriture}-{mode_id}-{receipt_ids_str}"
                     
@@ -21125,14 +21125,6 @@ class POSComptabilisation(BaseRepository):
 
                             nb_ecritures += 1
                             logger.info(f"✅ Trésorerie : {montant_tresorerie_net} CHF net (id={ecriture_id})")
-
-                            for receipt_id in receipt_ids:
-                                cursor.execute("""
-                                    INSERT IGNORE INTO receipt_ecritures 
-                                    (receipt_id, ecriture_id, utilisateur_id)
-                                    VALUES (%s, %s, %s)
-                                """, (receipt_id, ecriture_id, user_id))
-                            logger.info(f"🔗 Écriture {ecriture_id} liée à {len(receipt_ids)} receipt(s)")
                         
                         # B. Frais de service
                         if montant_frais > 0.01:
@@ -21173,14 +21165,6 @@ class POSComptabilisation(BaseRepository):
 
                                 nb_ecritures += 1
                                 logger.info(f"✅ Frais : {montant_frais} CHF (id={ecriture_id})")
-
-                                for receipt_id in receipt_ids:
-                                    cursor.execute("""
-                                        INSERT IGNORE INTO receipt_ecritures 
-                                        (receipt_id, ecriture_id, utilisateur_id)
-                                        VALUES (%s, %s, %s)
-                                    """, (receipt_id, ecriture_id, user_id))
-                                logger.info(f"🔗 Écriture {ecriture_id} liée à {len(receipt_ids)} receipt(s)")
                         
                         processed_modes.add(unique_mode_key)
                     
@@ -21222,14 +21206,6 @@ class POSComptabilisation(BaseRepository):
 
                         nb_ecritures += 1
                         logger.info(f"✅ Vente : Catégorie {id_compte_vente} (id={ecriture_id})")
-
-                        for receipt_id in receipt_ids:
-                            cursor.execute("""
-                                INSERT IGNORE INTO receipt_ecritures 
-                                (receipt_id, ecriture_id, utilisateur_id)
-                                VALUES (%s, %s, %s)
-                            """, (receipt_id, ecriture_id, user_id))
-                        logger.info(f"🔗 Écriture {ecriture_id} liée à {len(receipt_ids)} receipt(s)")
                     
                     # ============================================================
                     # ÉTAPE 3 : TRANSACTIONS BANCAIRES
@@ -21268,6 +21244,62 @@ class POSComptabilisation(BaseRepository):
                                     logger.info(f"🔗 Reçu {receipt_id} → transaction {tx_id}")
                                 else:
                                     logger.error(f"❌ Échec transaction reçu {receipt_id}: {msg}")
+                
+                # ============================================================
+                # ÉTAPE 3.5 : Lier TOUTES les écritures du groupe aux receipts
+                # ============================================================
+                logger.info(f"🔗 ÉTAPE 3.5 : Liaison des écritures aux receipts")
+                
+                # Récupérer tous les groupes créés dans cette comptabilisation
+                groupes_crees = set()
+                for item in items_a_comptabiliser:
+                    receipt_ids_str = item.get('receipt_ids')
+                    date_ecriture = POSComptabilisation._parse_date_ecriture(
+                        item.get('date_jour') or item.get('date')
+                    )
+                    mode_id = item.get('mode_paiement_id')
+                    if receipt_ids_str and mode_id:
+                        groupe_id = f"POS-{date_ecriture}-{mode_id}-{receipt_ids_str}"
+                        groupes_crees.add(groupe_id)
+                
+                # Pour chaque groupe, lier TOUTES les écritures aux receipts
+                for groupe_id in groupes_crees:
+                    # Extraire les receipt_ids du groupe
+                    # Format : POS-YYYY-MM-DD-mode_id-receipt_ids
+                    parties = groupe_id.split('-', 4)
+                    if len(parties) != 5:
+                        continue
+                    
+                    receipt_ids_str_groupe = parties[4]
+                    receipt_ids_groupe = [
+                        int(rid.strip())
+                        for rid in receipt_ids_str_groupe.split(',')
+                        if rid.strip().isdigit()
+                    ]
+                    
+                    if not receipt_ids_groupe:
+                        continue
+                    
+                    # Récupérer toutes les écritures VALIDES du groupe
+                    cursor.execute("""
+                        SELECT id FROM ecritures_comptables
+                        WHERE groupe_ecriture_id = %s
+                        AND utilisateur_id = %s
+                        AND statut = 'validée'
+                    """, (groupe_id, user_id))
+                    
+                    ecritures_du_groupe = [row['id'] for row in cursor.fetchall()]
+                    
+                    # Lier chaque écriture à chaque receipt
+                    for ecriture_id in ecritures_du_groupe:
+                        for receipt_id in receipt_ids_groupe:
+                            cursor.execute("""
+                                INSERT IGNORE INTO receipt_ecritures 
+                                (receipt_id, ecriture_id, utilisateur_id)
+                                VALUES (%s, %s, %s)
+                            """, (receipt_id, ecriture_id, user_id))
+                    
+                    logger.info(f"🔗 Groupe {groupe_id} : {len(ecritures_du_groupe)} écritures liées à {len(receipt_ids_groupe)} receipt(s)")
                 
                 # ============================================================
                 # ÉTAPE 4 : Marquer les reçus comme comptabilisés
@@ -21347,7 +21379,7 @@ class POSComptabilisation(BaseRepository):
         except MySQLError as e:
             logger.exception(f"❌ Comptabilisation annulée, rollback")
             return False, f"Erreur: {str(e)}"
-
+    
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
             """Récupère le compte de vente de classe 3 par défaut (3000)"""
             try:
