@@ -3318,7 +3318,6 @@ def nouvelle_categorie():
             numero      = request.form['numero'].strip()
             nom         = request.form['nom'].strip()
             type_compte = request.form['type_compte']
-
             # --- Champs optionnels (avec conversion sûre en int) ---
             groupe   = request.form.get('groupe', '').strip()
             cat_comp = request.form.get('categorie_complementaire', '').strip()
@@ -3353,7 +3352,6 @@ def nouvelle_categorie():
             flash(f'Valeur invalide : {e}', 'danger')
         except Exception as e:
             flash(f'Erreur lors de la création : {str(e)}', 'danger')
-
     categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
     types_compte = ['Actif', 'Passif', 'Charge', 'Revenus', 'Groupe']
     types_tva = ['', 'taux_plein', 'taux_reduit', 'taux_zero', 'exonere']

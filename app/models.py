@@ -1420,6 +1420,27 @@ class DatabaseManager:
                     INDEX idx_receipt (receipt_id)
                 );""")
 
+                cursor.execute("""
+                CREATE TABLE receipt_ecritures (
+                    id INT(11) NOT NULL AUTO_INCREMENT,
+                    receipt_id INT(11) NOT NULL,
+                    ecriture_id INT(11) NOT NULL,
+                    utilisateur_id INT(11) NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (id),
+                    UNIQUE KEY uk_receipt_ecriture (receipt_id, ecriture_id),
+                    KEY idx_receipt_id (receipt_id),
+                    KEY idx_ecriture_id (ecriture_id),
+                    KEY idx_utilisateur_id (utilisateur_id),
+                    CONSTRAINT fk_receipt_ecritures_receipt 
+                        FOREIGN KEY (receipt_id) REFERENCES pos_receipts(id) ON DELETE CASCADE,
+                    CONSTRAINT fk_receipt_ecritures_ecriture 
+                        FOREIGN KEY (ecriture_id) REFERENCES ecritures_comptables(id) ON DELETE CASCADE,
+                    CONSTRAINT fk_receipt_ecritures_utilisateur 
+                        FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+                """)
+
                 # ========================================================================
                 # TABLES PÉRIODES DE TRAVAIL (Ouverture/fermeture de caisse)
                 # ========================================================================
@@ -20787,7 +20808,7 @@ class POSComptabilisation(BaseRepository):
                 where_base = """
                     WHERE r.utilisateur_id = %s  
                     AND (COALESCE(r.comptabilise, 0) = 0 
-                        OR COALESCE(r.etat_comptable, 'non_comptabilise') = 'non_comptabilise')
+                    AND COALESCE(r.etat_comptable, 'non_comptabilise') = 'non_comptabilise')
                     AND r.status = 'Fermé'
                     AND r.receipt_type IN ('Vente', 'Remboursement')
                 """
@@ -20818,7 +20839,6 @@ class POSComptabilisation(BaseRepository):
                             DATE_FORMAT(sub.date, '%%Y-%%m-%%d') as date_jour,
                             pm.id as mode_paiement_id,
                             pm.nom as mode_paiement_nom,
-                            -- 🎯 RÉSOLUTION DU COMPTE BANCAIRE (Mode de paiement OU Fallback PDV)
                             COALESCE(pm.compte_bancaire_id, MAX(sub.compte_bancaire_pdv)) as compte_bancaire_id,
                             cb.nom_compte as compte_bancaire_nom,
                             pm.compte_tresorerie_id,
@@ -20948,7 +20968,7 @@ class POSComptabilisation(BaseRepository):
         except MySQLError as e:
             logger.exception(f"Erreur récupération données à comptabiliser: {e}", exc_info=True)
             return []
-        
+    
     @staticmethod
     def _parse_date_ecriture(raw):
         """Convertit une valeur date en objet date."""
@@ -20968,6 +20988,7 @@ class POSComptabilisation(BaseRepository):
     def comptabiliser_selection(self, user_id: int, items_a_comptabiliser: List[Dict]) -> Tuple[bool, str]:
         try:
             logger.info(f"📊 Début comptabilisation de {len(items_a_comptabiliser)} éléments")
+            
             # ============================================================
             # PRÉCALCUL : total TTC par (date, mode_paiement)
             # ============================================================
@@ -20983,15 +21004,15 @@ class POSComptabilisation(BaseRepository):
                 except (ValueError, TypeError, KeyError) as _e:
                     logger.warning(f"Précalcul ignoré pour un item: {_e}")
                     continue
+            
             logger.info(f"🔧 Précalcul totaux par (date, mode): {dict(mode_totaux)}")
-            # 🔧 UN SEUL try/except, EXTERNE au with.
-            # Si une exception remonte (RuntimeError), elle traverse le with,
-            # get_cursor fait son rollback(), puis elle est catchée ici.
+            
             with self.db.get_cursor(dictionary=True) as cursor:
                 nb_ecritures = 0
                 nb_transactions = 0
                 nb_sautés = 0
                 processed_modes = set()
+                
                 for idx, item in enumerate(items_a_comptabiliser):
                     date_ecriture = POSComptabilisation._parse_date_ecriture(
                         item.get('date_jour') or item.get('date')
@@ -20999,9 +21020,24 @@ class POSComptabilisation(BaseRepository):
                     mode_nom = item.get('mode_paiement_nom', 'Inconnu')
                     mode_id = item.get('mode_paiement_id')
                     receipt_ids_str = item.get('receipt_ids')
+                    
+                    # 🆕 Parser les receipt_ids EN DÉBUT de boucle
+                    receipt_ids = []
+                    if receipt_ids_str:
+                        try:
+                            receipt_ids = [
+                                int(rid.strip()) 
+                                for rid in str(receipt_ids_str).split(',') 
+                                if rid.strip().isdigit()
+                            ]
+                        except (ValueError, TypeError, AttributeError) as e:
+                            logger.error(f"❌ Erreur parsing receipt_ids: {receipt_ids_str} - {e}")
+                            receipt_ids = []
+                    
                     # 🔧 Clé par (date, mode) : regroupe tous les receipts d'un même mode
                     unique_mode_key = f"{date_ecriture}_{mode_id}"
                     groupe_id = f"POS-{date_ecriture}-{mode_id}-{receipt_ids_str}"
+                    
                     # ============================================================
                     # ÉTAPE 1 : Récupération des comptes et montants
                     # ============================================================
@@ -21011,9 +21047,11 @@ class POSComptabilisation(BaseRepository):
                     total_ht = float(item.get('total_ht', 0))
                     total_tva = float(item.get('total_tva', 0))
                     total_ttc_global = float(item.get('total_ttc_global', 0))
+                    
                     logger.info(f"🔍 Item {idx}: mode={mode_nom}, cb={id_compte_bancaire_reel}, "
                                 f"ct={id_compte_tresorerie}, cv={id_compte_vente}, "
                                 f"ht={total_ht}, tva={total_tva}, ttc={total_ttc_global}, groupe={groupe_id}")
+                    
                     if not id_compte_bancaire_reel:
                         logger.warning(f"⚠️ SAUTÉ : Mode '{mode_nom}' sans compte bancaire.")
                         nb_sautés += 1
@@ -21026,10 +21064,13 @@ class POSComptabilisation(BaseRepository):
                         logger.warning(f"⚠️ SAUTÉ : Pas de compte de vente mappé.")
                         nb_sautés += 1
                         continue
+                    
                     is_credit = self.categorie_comptable_model.is_compte_passif(id_compte_vente, cursor=cursor)
+                    
                     # ============================================================
-                    # ÉTAPE 2 : ÉCRITURES COMPTABLES (AVEC VÉRIFICATION D'IDEMPOTENCE)
+                    # ÉTAPE 2 : ÉCRITURES COMPTABLES
                     # ============================================================
+                    
                     # A. TRÉSORERIE + FRAIS (une seule fois par (date, mode))
                     if unique_mode_key not in processed_modes:
                         total_mode_ttc = round(mode_totaux[unique_mode_key], 2)
@@ -21041,7 +21082,8 @@ class POSComptabilisation(BaseRepository):
                             montant_frais = round(montant_frais, 2)
                         montant_tresorerie_net = round(total_mode_ttc - montant_frais, 2)
                         ref_tresorerie = f"JOURNAL-{date_ecriture}-TRESO-{mode_id}"
-                        # 🛡️ VÉRIFICATION D'IDEMPOTENCE : Cette écriture de trésorerie existe-t-elle déjà ?
+                        
+                        # Vérification d'idempotence
                         is_tresorerie_passif = self.categorie_comptable_model.is_compte_passif(
                             id_compte_tresorerie, user_id, cursor=cursor
                         )
@@ -21051,6 +21093,7 @@ class POSComptabilisation(BaseRepository):
                             SELECT id FROM ecritures_comptables 
                             WHERE reference = %s AND utilisateur_id = %s AND statut = 'validée'
                         """, (ref_tresorerie, user_id))
+                        
                         if cursor.fetchone():
                             logger.warning(f"⚠️ Écriture Trésorerie {ref_tresorerie} DÉJÀ EXISTANTE. Ignorée (Idempotence).")
                         else:
@@ -21071,17 +21114,34 @@ class POSComptabilisation(BaseRepository):
                                 'statut': 'validée',
                                 'type_ecriture_comptable': 'principale'
                             }
-                            if not self.ecriture_comptable_model.create(data_tresorerie, cursor=cursor):
+                            ecriture_id = self.ecriture_comptable_model.create(
+                                data_tresorerie, 
+                                cursor=cursor, 
+                                return_id=True
+                            )
+
+                            if not ecriture_id:
                                 raise RuntimeError(f"Échec création écriture Trésorerie (item {idx})")
+
                             nb_ecritures += 1
-                            logger.info(f"✅ Trésorerie : {montant_tresorerie_net} CHF net")
-                        # B. Frais de service (avec idempotence)
+                            logger.info(f"✅ Trésorerie : {montant_tresorerie_net} CHF net (id={ecriture_id})")
+
+                            for receipt_id in receipt_ids:
+                                cursor.execute("""
+                                    INSERT IGNORE INTO receipt_ecritures 
+                                    (receipt_id, ecriture_id, utilisateur_id)
+                                    VALUES (%s, %s, %s)
+                                """, (receipt_id, ecriture_id, user_id))
+                            logger.info(f"🔗 Écriture {ecriture_id} liée à {len(receipt_ids)} receipt(s)")
+                        
+                        # B. Frais de service
                         if montant_frais > 0.01:
                             ref_frais = f"JOURNAL-{date_ecriture}-FRAIS-{mode_id}"
                             cursor.execute("""
                                 SELECT id FROM ecritures_comptables 
                                 WHERE reference = %s AND utilisateur_id = %s AND statut = 'validée'
-                            """, (ref_frais, user_id))           
+                            """, (ref_frais, user_id))
+                            
                             if cursor.fetchone():
                                 logger.warning(f"⚠️ Écriture Frais {ref_frais} DÉJÀ EXISTANTE. Ignorée.")
                             else:
@@ -21102,17 +21162,35 @@ class POSComptabilisation(BaseRepository):
                                     'statut': 'validée',
                                     'type_ecriture_comptable': 'principale'
                                 }
-                                if not self.ecriture_comptable_model.create(data_frais, cursor=cursor):
+                                ecriture_id = self.ecriture_comptable_model.create(
+                                    data_frais, 
+                                    cursor=cursor, 
+                                    return_id=True
+                                )
+
+                                if not ecriture_id:
                                     raise RuntimeError(f"Échec création écriture Frais (item {idx})")
+
                                 nb_ecritures += 1
-                                logger.info(f"✅ Frais : {montant_frais} CHF")
+                                logger.info(f"✅ Frais : {montant_frais} CHF (id={ecriture_id})")
+
+                                for receipt_id in receipt_ids:
+                                    cursor.execute("""
+                                        INSERT IGNORE INTO receipt_ecritures 
+                                        (receipt_id, ecriture_id, utilisateur_id)
+                                        VALUES (%s, %s, %s)
+                                    """, (receipt_id, ecriture_id, user_id))
+                                logger.info(f"🔗 Écriture {ecriture_id} liée à {len(receipt_ids)} receipt(s)")
+                        
                         processed_modes.add(unique_mode_key)
-                    # C. VENTE / PASSIF (avec idempotence)
+                    
+                    # C. VENTE / PASSIF
                     ref_vente = f"JOURNAL-{date_ecriture}-VENTE-{mode_id}-{item.get('type_taxe_id')}"
                     cursor.execute("""
                         SELECT id FROM ecritures_comptables 
                         WHERE reference = %s AND utilisateur_id = %s AND statut = 'validée'
                     """, (ref_vente, user_id))
+                    
                     if cursor.fetchone():
                         logger.warning(f"⚠️ Écriture Vente {ref_vente} DÉJÀ EXISTANTE. Ignorée.")
                     else:
@@ -21133,81 +21211,143 @@ class POSComptabilisation(BaseRepository):
                             'statut': 'validée',
                             'type_ecriture_comptable': 'principale'
                         }
-                        if not self.ecriture_comptable_model.create(data_vente, cursor=cursor):
+                        ecriture_id = self.ecriture_comptable_model.create(
+                            data_vente, 
+                            cursor=cursor, 
+                            return_id=True
+                        )
+
+                        if not ecriture_id:
                             raise RuntimeError(f"Échec création écriture Vente (item {idx})")
+
                         nb_ecritures += 1
-                        logger.info(f"✅ Vente : Catégorie {id_compte_vente}")
+                        logger.info(f"✅ Vente : Catégorie {id_compte_vente} (id={ecriture_id})")
+
+                        for receipt_id in receipt_ids:
+                            cursor.execute("""
+                                INSERT IGNORE INTO receipt_ecritures 
+                                (receipt_id, ecriture_id, utilisateur_id)
+                                VALUES (%s, %s, %s)
+                            """, (receipt_id, ecriture_id, user_id))
+                        logger.info(f"🔗 Écriture {ecriture_id} liée à {len(receipt_ids)} receipt(s)")
+                    
                     # ============================================================
                     # ÉTAPE 3 : TRANSACTIONS BANCAIRES
                     # ============================================================
-                    if receipt_ids_str and total_ttc_global > 0:
-                        try:
-                            receipt_ids = [
-                                int(rid.strip()) for rid in str(receipt_ids_str).split(',') if rid.strip().isdigit()
-                            ]
-                        except (ValueError, TypeError, AttributeError) as e:
-                            logger.error(f"❌ Erreur parsing receipt_ids: {receipt_ids_str} - {e}")
-                            receipt_ids = []
-                        if receipt_ids:
-                            montant_par_recu = safe_decimal(total_ttc_global) / len(receipt_ids)
-                            for receipt_id in receipt_ids:
-                                cursor.execute("""
-                                    SELECT id FROM transactions 
-                                    WHERE receipt_id = %s AND compte_principal_id = %s AND utilisateur_id = %s
-                                """, (receipt_id, id_compte_bancaire_reel, user_id))
-                                existing_tx = cursor.fetchone()
-                                if existing_tx:
-                                    logger.info(f"ℹ️ Transaction existante pour reçu {receipt_id}: ID={existing_tx['id']}")
+                    if receipt_ids and total_ttc_global > 0:
+                        montant_par_recu = safe_decimal(total_ttc_global) / len(receipt_ids)
+                        for receipt_id in receipt_ids:
+                            cursor.execute("""
+                                SELECT id FROM transactions 
+                                WHERE receipt_id = %s AND compte_principal_id = %s AND utilisateur_id = %s
+                            """, (receipt_id, id_compte_bancaire_reel, user_id))
+                            existing_tx = cursor.fetchone()
+                            
+                            if existing_tx:
+                                logger.info(f"ℹ️ Transaction existante pour reçu {receipt_id}: ID={existing_tx['id']}")
+                            else:
+                                success, msg, tx_id = self.transaction_financiere_model._inserer_transaction_with_cursor(
+                                    cursor=cursor,
+                                    compte_type='compte_principal',
+                                    compte_id=id_compte_bancaire_reel,
+                                    type_transaction='depot',
+                                    montant=montant_par_recu,
+                                    description=f"Vente POS - Reçu #{receipt_id} - {mode_nom}",
+                                    user_id=user_id,
+                                    date_transaction=datetime.combine(date_ecriture, datetime.min.time()),
+                                    validate_balance=False,
+                                    receipt_id=receipt_id
+                                )
+                                if success:
+                                    nb_transactions += 1
+                                    cursor.execute("""
+                                        UPDATE pos_receipts 
+                                        SET transaction_id = %s, compte_bancaire_id = %s
+                                        WHERE id = %s
+                                    """, (tx_id, id_compte_bancaire_reel, receipt_id))
+                                    logger.info(f"🔗 Reçu {receipt_id} → transaction {tx_id}")
                                 else:
-                                    success, msg, tx_id = self.transaction_financiere_model._inserer_transaction_with_cursor(
-                                        cursor=cursor,
-                                        compte_type='compte_principal',
-                                        compte_id=id_compte_bancaire_reel,
-                                        type_transaction='depot',
-                                        montant=montant_par_recu,
-                                        description=f"Vente POS - Reçu #{receipt_id} - {mode_nom}",
-                                        user_id=user_id,
-                                        date_transaction=datetime.combine(date_ecriture, datetime.min.time()),
-                                        validate_balance=False,
-                                        receipt_id=receipt_id
-                                    )
-                                    if success:
-                                        nb_transactions += 1
-                                        cursor.execute("""
-                                            UPDATE pos_receipts 
-                                            SET transaction_id = %s, compte_bancaire_id = %s
-                                            WHERE id = %s
-                                        """, (tx_id, id_compte_bancaire_reel, receipt_id))
-                                        logger.info(f"🔗 Reçu {receipt_id} → transaction {tx_id}")
-                                    else:
-                                        logger.error(f"❌ Échec transaction reçu {receipt_id}: {msg}")
+                                    logger.error(f"❌ Échec transaction reçu {receipt_id}: {msg}")
+                
                 # ============================================================
                 # ÉTAPE 4 : Marquer les reçus comme comptabilisés
+                # UNIQUEMENT si les écritures VALIDES existent ET sont équilibrées
                 # ============================================================
-                if nb_ecritures > 0:
-                    tous_receipt_ids = set()
-                    for item in items_a_comptabiliser:
-                        r_ids = item.get('receipt_ids')
-                        if r_ids:
-                            for rid in str(r_ids).split(','):
-                                if rid.strip().isdigit():
-                                    tous_receipt_ids.add(int(rid.strip()))
-                    if tous_receipt_ids:
-                        placeholders = ','.join(['%s'] * len(tous_receipt_ids))
+                tous_receipt_ids = set()
+                for item in items_a_comptabiliser:
+                    r_ids = item.get('receipt_ids')
+                    if r_ids:
+                        for rid in str(r_ids).split(','):
+                            if rid.strip().isdigit():
+                                tous_receipt_ids.add(int(rid.strip()))
+                
+                if tous_receipt_ids:
+                    placeholders = ','.join(['%s'] * len(tous_receipt_ids))
+                    
+                    cursor.execute(f"""
+                        SELECT 
+                            r.id AS receipt_id,
+                            r.total_collecte,
+                            COUNT(DISTINCT e.id) AS nb_ecritures,
+                            SUM(CASE 
+                                WHEN c.type_compte IN ('Actif', 'Charge') AND e.type_ecriture = 'recette' THEN e.montant
+                                WHEN c.type_compte IN ('Passif', 'Revenus') AND e.type_ecriture = 'depense' THEN e.montant
+                                ELSE 0 
+                            END) AS total_debit,
+                            SUM(CASE 
+                                WHEN c.type_compte IN ('Actif', 'Charge') AND e.type_ecriture = 'depense' THEN e.montant
+                                WHEN c.type_compte IN ('Passif', 'Revenus') AND e.type_ecriture = 'recette' THEN e.montant
+                                ELSE 0 
+                            END) AS total_credit
+                        FROM pos_receipts r
+                        LEFT JOIN receipt_ecritures re ON re.receipt_id = r.id
+                        LEFT JOIN ecritures_comptables e 
+                            ON e.id = re.ecriture_id
+                            AND e.utilisateur_id = %s
+                            AND e.statut = 'validée'
+                        LEFT JOIN categories_comptables c ON e.categorie_id = c.id
+                        WHERE r.id IN ({placeholders})
+                        GROUP BY r.id, r.total_collecte
+                    """, [user_id] + list(tous_receipt_ids))
+                    
+                    receipts_valides = set()
+                    receipts_invalides = []
+                    
+                    for row in cursor.fetchall():
+                        receipt_id = row['receipt_id']
+                        nb_ecr = row['nb_ecritures']
+                        total_debit = float(row['total_debit'] or 0)
+                        total_credit = float(row['total_credit'] or 0)
+                        
+                        if nb_ecr == 0:
+                            receipts_invalides.append((receipt_id, "Aucune écriture valide"))
+                        elif abs(total_debit - total_credit) > 0.01:
+                            receipts_invalides.append((receipt_id, f"Déséquilibre: débit={total_debit}, crédit={total_credit}"))
+                        else:
+                            receipts_valides.add(receipt_id)
+                    
+                    if receipts_valides:
+                        placeholders_ok = ','.join(['%s'] * len(receipts_valides))
                         cursor.execute(f"""
                             UPDATE pos_receipts 
-                            SET comptabilise = TRUE, etat_comptable = 'comptabilise', date_comptabilisation = NOW()
-                            WHERE id IN ({placeholders})
-                        """, list(tous_receipt_ids))
-                        logger.info(f"✅ {len(tous_receipt_ids)} reçus marqués comptabilisés")
+                            SET comptabilise = TRUE, 
+                                etat_comptable = 'comptabilise', 
+                                date_comptabilisation = NOW()
+                            WHERE id IN ({placeholders_ok})
+                        """, list(receipts_valides))
+                        logger.info(f"✅ {len(receipts_valides)} reçus marqués comptabilisés")
+                    
+                    if receipts_invalides:
+                        for receipt_id, raison in receipts_invalides:
+                            logger.warning(f"⚠️ Receipt {receipt_id} NON marqué : {raison}")
+                
                 logger.info(f"✅ Résumé : Écritures={nb_ecritures}, Transactions={nb_transactions}, Sautées={nb_sautés}")
                 return True, f"{nb_ecritures} écriture(s) et {nb_transactions} transaction(s) générée(s)"
-        # 🔧 UN SEUL except, EN DEHORS du with
-        # L'exception a traversé le with → get_cursor() a fait rollback() → on la catch ici
+        
         except MySQLError as e:
             logger.exception(f"❌ Comptabilisation annulée, rollback")
             return False, f"Erreur: {str(e)}"
-        
+
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
             """Récupère le compte de vente de classe 3 par défaut (3000)"""
             try:
