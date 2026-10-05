@@ -7549,7 +7549,7 @@ class EcritureComptable(BaseRepository):
             query = """
             SELECT DISTINCT
                 cc.categorie_complementaire_id,
-                cc.type_tva,
+                cc.type_ecriture_complementaire,,
                 cc.nom as categorie_nom,
                 cc.numero as categorie_numero,
                 cc_comp.nom as categorie_complementaire_nom,
@@ -7568,7 +7568,7 @@ class EcritureComptable(BaseRepository):
 
             if result:
                 categorie_complementaire_id = result['categorie_complementaire_id']
-                type_tva_config = result['type_tva']  # 'recette' ou 'depense' lu du plan comptable
+                type_tva_config = result['type_ecriture_complementaire']  # 'recette' ou 'depense' lu du plan comptable
                 categorie_nom = result['categorie_nom']
                 categorie_numero = result['categorie_numero']
                 categorie_complementaire_nom = result.get('categorie_complementaire_nom', 'N/A')
