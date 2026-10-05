@@ -19004,7 +19004,7 @@ class ReceiptPOS(BaseRepository):
                 if date_to:
                     query += " AND DATE(r.date) <= %s"
                     params.append(date_to)
-                if recus_type; 
+                if recus_type: 
                     query += " AND receipt_type = %s"
                 if payment:
                     query += " AND LOWER(mp.nom) LIKE %s"
