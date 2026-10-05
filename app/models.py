@@ -21059,7 +21059,7 @@ class POSComptabilisation(BaseRepository):
                     unique_mode_key = f"{date_ecriture}_{mode_id}"
                     groupe_id = f"POS-{date_ecriture}-{mode_id}-{receipt_ids_str}"
                     
-                    # 🆕 Groupe GLOBAL du mode (tous les receipts du même jour+mode)
+                    # Groupe GLOBAL du mode (tous les receipts du même jour+mode)
                     tous_receipt_ids_mode = sorted(mode_receipt_ids.get(unique_mode_key, set()))
                     tous_receipt_ids_mode_str = ','.join(str(rid) for rid in tous_receipt_ids_mode)
                     groupe_id_global = f"POS-{date_ecriture}-{mode_id}-{tous_receipt_ids_mode_str}"
@@ -21133,7 +21133,7 @@ class POSComptabilisation(BaseRepository):
                                 'devise': 'CHF',
                                 'description': f"Encaissement POS {mode_nom}",
                                 'reference': ref_tresorerie,
-                                'groupe_ecriture_id': groupe_id_global,  # 🆕 Groupe GLOBAL
+                                'groupe_ecriture_id': groupe_id_global,
                                 'type_ecriture': type_ecriture_tresorerie,
                                 'tva_taux': 0,
                                 'tva_montant': 0,
@@ -21173,7 +21173,7 @@ class POSComptabilisation(BaseRepository):
                                     'devise': 'CHF',
                                     'description': f"Frais de service - {mode_nom}",
                                     'reference': ref_frais,
-                                    'groupe_ecriture_id': groupe_id_global,  # 🆕 Groupe GLOBAL
+                                    'groupe_ecriture_id': groupe_id_global,
                                     'type_ecriture': 'depense',
                                     'tva_taux': 0,
                                     'tva_montant': 0,
@@ -21214,7 +21214,7 @@ class POSComptabilisation(BaseRepository):
                             'devise': 'CHF',
                             'description': f"Ventes POS {item.get('type_taxe_nom')} - {mode_nom}",
                             'reference': ref_vente,
-                            'groupe_ecriture_id': groupe_id_global,  # 🆕 Groupe GLOBAL
+                            'groupe_ecriture_id': groupe_id_global,
                             'type_ecriture': 'recette',
                             'tva_taux': round((total_tva / total_ht * 100), 2) if total_ht > 0 else 0,
                             'tva_montant': total_tva,
@@ -21238,8 +21238,24 @@ class POSComptabilisation(BaseRepository):
                     # ÉTAPE 3 : TRANSACTIONS BANCAIRES
                     # ============================================================
                     if receipt_ids and total_ttc_global > 0:
-                        montant_par_recu = safe_decimal(total_ttc_global) / len(receipt_ids)
                         for receipt_id in receipt_ids:
+                            # 🆕 Récupérer le total_collecte DU receipt
+                            cursor.execute("""
+                                SELECT total_collecte FROM pos_receipts 
+                                WHERE id = %s AND utilisateur_id = %s
+                            """, (receipt_id, user_id))
+                            row_recu = cursor.fetchone()
+                            
+                            if not row_recu or not row_recu['total_collecte']:
+                                logger.warning(f"⚠️ Receipt {receipt_id} sans total_collecte")
+                                continue
+                            
+                            montant_recu = safe_decimal(row_recu['total_collecte'])
+                            
+                            if montant_recu <= 0:
+                                logger.warning(f"⚠️ Receipt {receipt_id} avec total_collecte <= 0")
+                                continue
+                            
                             cursor.execute("""
                                 SELECT id FROM transactions 
                                 WHERE receipt_id = %s AND compte_principal_id = %s AND utilisateur_id = %s
@@ -21248,13 +21264,18 @@ class POSComptabilisation(BaseRepository):
                             
                             if existing_tx:
                                 logger.info(f"ℹ️ Transaction existante pour reçu {receipt_id}: ID={existing_tx['id']}")
+                                cursor.execute("""
+                                    UPDATE pos_receipts 
+                                    SET transaction_id = %s, compte_bancaire_id = %s
+                                    WHERE id = %s
+                                """, (existing_tx['id'], id_compte_bancaire_reel, receipt_id))
                             else:
                                 success, msg, tx_id = self.transaction_financiere_model._inserer_transaction_with_cursor(
                                     cursor=cursor,
                                     compte_type='compte_principal',
                                     compte_id=id_compte_bancaire_reel,
                                     type_transaction='depot',
-                                    montant=montant_par_recu,
+                                    montant=montant_recu,
                                     description=f"Vente POS - Reçu #{receipt_id} - {mode_nom}",
                                     user_id=user_id,
                                     date_transaction=datetime.combine(date_ecriture, datetime.min.time()),
@@ -21268,7 +21289,7 @@ class POSComptabilisation(BaseRepository):
                                         SET transaction_id = %s, compte_bancaire_id = %s
                                         WHERE id = %s
                                     """, (tx_id, id_compte_bancaire_reel, receipt_id))
-                                    logger.info(f"🔗 Reçu {receipt_id} → transaction {tx_id}")
+                                    logger.info(f"🔗 Reçu {receipt_id} → transaction {tx_id} (montant: {montant_recu})")
                                 else:
                                     logger.error(f"❌ Échec transaction reçu {receipt_id}: {msg}")
                 
@@ -21277,7 +21298,6 @@ class POSComptabilisation(BaseRepository):
                 # ============================================================
                 logger.info(f"🔗 ÉTAPE 3.5 : Liaison des écritures aux receipts")
                 
-                # Récupérer tous les groupes GLOBAUX créés dans cette comptabilisation
                 groupes_globaux_crees = set()
                 for item in items_a_comptabiliser:
                     receipt_ids_str = item.get('receipt_ids')
@@ -21292,15 +21312,11 @@ class POSComptabilisation(BaseRepository):
                         groupe_id_global = f"POS-{date_ecriture}-{mode_id}-{tous_receipt_ids_mode_str}"
                         groupes_globaux_crees.add(groupe_id_global)
                 
-                # Pour chaque groupe GLOBAL, lier TOUTES les écritures aux receipts
                 for groupe_id in groupes_globaux_crees:
-                    # Format : POS-YYYY-MM-DD-mode_id-receipt_ids
-                    # split('-', 4) donne : ['POS', 'YYYY', 'MM', 'DD', 'mode_id-receipt_ids']
                     parties = groupe_id.split('-', 4)
                     if len(parties) != 5:
                         continue
                     
-                    # Partie 5 : 'mode_id-receipt_ids'
                     partie_finale = parties[4]
                     if '-' not in partie_finale:
                         continue
@@ -21319,7 +21335,6 @@ class POSComptabilisation(BaseRepository):
                     if not receipt_ids_groupe:
                         continue
                     
-                    # Récupérer toutes les écritures VALIDES du groupe
                     cursor.execute("""
                         SELECT id FROM ecritures_comptables
                         WHERE groupe_ecriture_id = %s
@@ -21332,7 +21347,6 @@ class POSComptabilisation(BaseRepository):
                     if not ecritures_du_groupe:
                         continue
                     
-                    # Lier chaque écriture à chaque receipt
                     for ecriture_id in ecritures_du_groupe:
                         for receipt_id in receipt_ids_groupe:
                             cursor.execute("""
@@ -21403,8 +21417,7 @@ class POSComptabilisation(BaseRepository):
         
         except MySQLError as e:
             logger.exception(f"❌ Comptabilisation annulée, rollback")
-            return False, f"Erreur: {str(e)}"
-            
+            return False, f"Erreur: {str(e)}"   
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
             """Récupère le compte de vente de classe 3 par défaut (3000)"""
             try:
