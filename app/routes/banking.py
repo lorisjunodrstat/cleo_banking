@@ -4657,14 +4657,12 @@ def nouvelle_ecriture_from_selected_versement():
     # Pour un DÉBIT :
     #   - Actif/Charge → recette (débit)
     #   - Passif/Revenus → depense (débit)
-    if type_debit in ('Actif', 'Charge'):
+    if type_debit == 'Actif':
         type_ecriture_debit = 'recette'
     else:
         type_ecriture_debit = 'depense'
     # Pour un CRÉDIT :
-    #   - Actif/Charge → depense (crédit)
-    #   - Passif/Revenus → recette (crédit)
-    if type_credit in ('Actif', 'Charge'):
+    if type_credit == 'Actif':
         type_ecriture_credit = 'depense'
     else:
         type_ecriture_credit = 'recette'
