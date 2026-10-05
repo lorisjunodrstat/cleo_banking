@@ -738,36 +738,37 @@ class DatabaseManager:
                 );""")
                 
                 cursor.execute("""
-                CREATE TABLE IF NOT EXISTS rapprochements_bancaires (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    utilisateur_id INT NOT NULL,
-                    prestataire VARCHAR(50) NOT NULL,
-                    compte_banque_id INT NOT NULL,
-                    compte_frais_id INT NOT NULL,
-                    compte_attente_id INT NOT NULL,
-                    date_debut DATE NOT NULL,
-                    date_fin DATE NOT NULL,
-                    date_versement DATE NOT NULL,
-                    montant_brut DECIMAL(10,2) NOT NULL,
-                    montant_commission DECIMAL(10,2) NOT NULL,
-                    montant_net DECIMAL(10,2) NOT NULL,
-                    reference_releve VARCHAR(100),
-                    ecriture_groupee_id VARCHAR(100),
-                    statut ENUM('brouillon','valide','annule') DEFAULT 'brouillon',
-                    raison_annulation TEXT,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    UNIQUE KEY uq_user_prestataire_ref (utilisateur_id, prestataire, reference_releve),
-                    FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                    CREATE TABLE IF NOT EXISTS rapprochements_bancaires (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        utilisateur_id INT NOT NULL,
+                        prestataire VARCHAR(50) NOT NULL,
+                        compte_banque_id INT NOT NULL,
+                        compte_frais_id INT NOT NULL,
+                        compte_attente_id INT NOT NULL,
+                        date_debut DATE NOT NULL,
+                        date_fin DATE NOT NULL,
+                        date_versement DATE NOT NULL,
+                        montant_brut DECIMAL(10,2) NOT NULL,
+                        montant_commission DECIMAL(10,2) NOT NULL,
+                        montant_net DECIMAL(10,2) NOT NULL,
+                        reference_releve VARCHAR(100),
+                        ecriture_groupee_id VARCHAR(100),
+                        statut ENUM('brouillon','valide','annule') DEFAULT 'brouillon',
+                        raison_annulation TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        UNIQUE KEY uq_user_prestataire_ref (utilisateur_id, prestataire, reference_releve),
+                        FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                """)
 
-                -- Lien optionnel entre écritures et rapprochement
-                ALTER TABLE ecritures_comptables
-                    ADD COLUMN rapprochement_id INT NULL,
-                    ADD INDEX idx_rapprochement (rapprochement_id),
-                    ADD CONSTRAINT fk_ecriture_rapprochement
-                        FOREIGN KEY (rapprochement_id) REFERENCES rapprochements_bancaires(id) ON DELETE SET NULL;
-                                
+                # 2. Ajouter la colonne à ecritures_comptables
+                cursor.execute("""
+                    ALTER TABLE ecritures_comptables
+                        ADD COLUMN rapprochement_id INT NULL,
+                        ADD INDEX idx_rapprochement (rapprochement_id),
+                        ADD CONSTRAINT fk_ecriture_rapprochement
+                            FOREIGN KEY (rapprochement_id) REFERENCES rapprochements_bancaires(id) ON DELETE SET NULL
                 """)
 
                 cursor.execute("""
