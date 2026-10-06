@@ -5361,8 +5361,8 @@ def creer_ecritures_multiple_auto(transaction_id):
             return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
 
         montant_ttc_total = Decimal(str(transaction['montant']))
-        if total_debit != montant_ttc_total:
-            flash(f"Somme des débits ({total_debit}) ≠ montant transaction ({montant_ttc_total})", "error")
+        if total_debit > montant_ttc_total:
+            flash(f"Somme des débits ({total_debit}) > montant transaction ({montant_ttc_total})", "error")
             return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
 
         groupe_id = f"TX-{transaction_id}"
