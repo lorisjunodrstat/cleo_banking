@@ -5261,6 +5261,24 @@ def nouvelle_ecriture_multiple():
             ]
         )
 
+import re
+
+def _parse_lignes(request_form, prefixe, champs):
+    """
+    Parse les champs indexés type 'montant_debit[0]' et retourne une liste ordonnée.
+    champs = ['categorie_debit_id', 'montant_debit', 'tva_taux_debit', 'description_debit']
+    """
+    lignes = {}
+    for key, value in request_form.items():
+        for champ in champs:
+            m = re.match(rf'^{champ}\[(\d+)\]$', key)
+            if m:
+                idx = int(m.group(1))
+                lignes.setdefault(idx, {})[champ] = value
+                break
+    return [lignes[k] for k in sorted(lignes.keys())]
+
+
 @bp.route('/comptabilite/creer_ecritures_multiple_auto/<int:transaction_id>', methods=['POST'])
 @login_required
 def creer_ecritures_multiple_auto(transaction_id):
@@ -5272,92 +5290,101 @@ def creer_ecritures_multiple_auto(transaction_id):
         if not transaction:
             flash("Transaction non trouvée ou non autorisée", "error")
             return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
-        
+
         if transaction.get('nb_ecritures', 0) > 0:
             flash("Cette transaction a déjà des écritures associées", "warning")
             return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
-        
-        # --- Récupérer les DÉBITS ---
-        categories_debit_ids = request.form.getlist('categorie_debit_id[]')
-        montants_debit = request.form.getlist('montant_debit[]')
-        tva_taux_debit = request.form.getlist('tva_taux_debit[]')
-        descriptions_debit = request.form.getlist('description_debit[]')
-        
-        # --- Récupérer les CRÉDITS ---
-        categories_credit_ids = request.form.getlist('categorie_credit_id[]')
-        montants_credit = request.form.getlist('montant_credit[]')
-        
+
         contact_id = request.form.get('contact_id', type=int) or None
-        
-        # --- Vérifier que les deux listes sont cohérentes ---
-        if len(categories_credit_ids) != len(montants_credit):
-            flash("Le nombre de comptes de crédit et de montants doit correspondre", "error")
-            return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
-        
-        # --- Filtrer les lignes vides ---
+
+        # --- Parser les DÉBITS ---
+        lignes_debit = _parse_lignes(request.form, 'debit', [
+            'categorie_debit_id', 'montant_debit', 'tva_taux_debit', 'description_debit'
+        ])
+
         debits_valides = []
-        for i in range(len(categories_debit_ids)):
-            if categories_debit_ids[i] and montants_debit[i]:
-                debits_valides.append({
-                    'cat_id': int(categories_debit_ids[i]),
-                    'montant': Decimal(str(montants_debit[i])),
-                    'tva_taux': Decimal(str(tva_taux_debit[i])) if i < len(tva_taux_debit) and tva_taux_debit[i] else Decimal('0'),
-                    'description': descriptions_debit[i] if i < len(descriptions_debit) and descriptions_debit[i] else transaction['description']
-                })
-        
+        for ligne in lignes_debit:
+            cat_id = ligne.get('categorie_debit_id')
+            montant = ligne.get('montant_debit')
+            if not cat_id or not montant:
+                continue
+            try:
+                montant_dec = Decimal(str(montant))
+            except Exception:
+                continue
+            if montant_dec <= 0:
+                continue
+            tva = ligne.get('tva_taux_debit') or '0'
+            debits_valides.append({
+                'cat_id': int(cat_id),
+                'montant': montant_dec,
+                'tva_taux': Decimal(str(tva)),
+                'description': ligne.get('description_debit') or transaction['description']
+            })
+
+        # --- Parser les CRÉDITS ---
+        lignes_credit = _parse_lignes(request.form, 'credit', [
+            'categorie_credit_id', 'montant_credit'
+        ])
+
         credits_valides = []
-        for i in range(len(categories_credit_ids)):
-            if categories_credit_ids[i] and montants_credit[i]:
-                credits_valides.append({
-                    'cat_id': int(categories_credit_ids[i]),
-                    'montant': Decimal(str(montants_credit[i]))
-                })
-        
+        for ligne in lignes_credit:
+            cat_id = ligne.get('categorie_credit_id')
+            montant = ligne.get('montant_credit')
+            if not cat_id or not montant:
+                continue
+            try:
+                montant_dec = Decimal(str(montant))
+            except Exception:
+                continue
+            if montant_dec <= 0:
+                continue
+            credits_valides.append({
+                'cat_id': int(cat_id),
+                'montant': montant_dec
+            })
+
         if not debits_valides:
             flash("Aucun débit valide", "error")
             return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
-        
+
         if not credits_valides:
             flash("Aucun crédit valide", "error")
             return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
-        
-        # --- Vérifier que somme(débits) = somme(crédits) ---
+
+        # --- Vérifier équilibre ---
         total_debit = sum(d['montant'] for d in debits_valides)
         total_credit = sum(c['montant'] for c in credits_valides)
-        
+
         if total_debit != total_credit:
             flash(f"Somme des débits ({total_debit}) ≠ somme des crédits ({total_credit})", "error")
             return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
-        
+
         montant_ttc_total = Decimal(str(transaction['montant']))
         if total_debit != montant_ttc_total:
             flash(f"Somme des débits ({total_debit}) ≠ montant transaction ({montant_ttc_total})", "error")
             return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
-        
+
         groupe_id = f"TX-{transaction_id}"
         success_count = 0
         secondary_count = 0
-        
+
         # --- Créer les DÉBITS ---
         for d in debits_valides:
             try:
                 montant_ttc = d['montant']
                 taux_tva = d['tva_taux']
-                
+
                 if taux_tva > 0:
                     montant_htva = montant_ttc / (1 + taux_tva / Decimal('100'))
                     montant_tva = montant_ttc - montant_htva
                 else:
                     montant_htva = montant_ttc
                     montant_tva = Decimal('0')
-                
+
                 type_debit = g.models.categorie_comptable_model.get_type_compte(d['cat_id'])
-                
-                if type_debit == 'Actif':
-                    type_ecriture_debit = 'recette'
-                else:
-                    type_ecriture_debit = 'depense'
-                
+                type_ecriture_debit = 'recette' if type_debit == 'Actif' else 'depense'
+
                 data_debit = {
                     'date_ecriture': transaction['date_transaction'],
                     'compte_bancaire_id': transaction['compte_principal_id'],
@@ -5376,7 +5403,7 @@ def creer_ecritures_multiple_auto(transaction_id):
                     'groupe_ecriture_id': groupe_id,
                     'type_ecriture_comptable': 'principale'
                 }
-                
+
                 ecriture_id = g.models.ecriture_comptable_model.create(data_debit, return_id=True)
                 if ecriture_id:
                     g.models.ecriture_comptable_model.link_ecriture_to_transaction(
@@ -5389,17 +5416,13 @@ def creer_ecritures_multiple_auto(transaction_id):
                     secondary_count += len(secondaires)
             except Exception as e:
                 logging.error(f"Erreur création écriture débit: {e}")
-        
+
         # --- Créer les CRÉDITS ---
         for c in credits_valides:
             try:
                 type_credit = g.models.categorie_comptable_model.get_type_compte(c['cat_id'])
-                
-                if type_credit == 'Actif':
-                    type_ecriture_credit = 'depense'
-                else:
-                    type_ecriture_credit = 'recette'
-                
+                type_ecriture_credit = 'depense' if type_credit == 'Actif' else 'recette'
+
                 data_credit = {
                     'date_ecriture': transaction['date_transaction'],
                     'compte_bancaire_id': transaction['compte_principal_id'],
@@ -5418,7 +5441,7 @@ def creer_ecritures_multiple_auto(transaction_id):
                     'groupe_ecriture_id': groupe_id,
                     'type_ecriture_comptable': 'principale'
                 }
-                
+
                 ecriture_id = g.models.ecriture_comptable_model.create(data_credit, return_id=True)
                 if ecriture_id:
                     g.models.ecriture_comptable_model.link_ecriture_to_transaction(
@@ -5427,7 +5450,7 @@ def creer_ecritures_multiple_auto(transaction_id):
                     success_count += 1
             except Exception as e:
                 logging.error(f"Erreur création écriture crédit: {e}")
-        
+
         # --- Marquer la transaction comme comptabilisée ---
         if success_count > 0:
             g.models.transaction_financiere_model.update_statut_comptable(
@@ -5439,11 +5462,11 @@ def creer_ecritures_multiple_auto(transaction_id):
             flash(msg, "success")
         else:
             flash("Aucune écriture n'a pu être créée", "error")
-    
+
     except Exception as e:
         logging.error(f"Erreur création écritures multiples: {e}")
         flash(f"Erreur: {str(e)}", "error")
-    
+
     return redirect(request.referrer or url_for('banking.transactions_sans_ecritures'))
 
 @bp.route('/comptabilite/ecritures/<int:ecriture_id>/secondaires')

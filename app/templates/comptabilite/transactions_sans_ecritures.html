@@ -595,6 +595,7 @@
 </div>
 
 <!-- Modal Écritures Multiples -->
+<!-- Modal Écritures Multiples -->
 <div class="modal fade" id="modalEcrituresMultiples{{ transaction.id }}" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -616,6 +617,7 @@
                         complémentaires, des écritures secondaires seront créées automatiquement pour chaque écriture principale.
                     </div>
 
+                    <!-- ===================== TRANSACTION ORIGINALE ===================== -->
                     <div class="card mb-4">
                         <div class="card-header bg-light">
                             <h6 class="mb-0">Transaction originale</h6>
@@ -661,17 +663,18 @@
                         </div>
                     </div>
 
-                    <div class="card">
-                        <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                            <h6 class="mb-0">Écritures comptables (maximum 3)</h6>
+                    <!-- ===================== DÉBITS ===================== -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-arrow-down-circle"></i> Débits (charges / sorties)</span>
                             <span class="badge bg-info">Écritures secondaires automatiques</span>
                         </div>
                         <div class="card-body">
                             {% for i in range(3) %}
                             <div class="row g-3 mb-3 p-3 border rounded {% if i > 0 %}bg-light{% endif %}">
                                 <div class="col-md-5">
-                                    <label class="form-label">Catégorie comptable</label>
-                                    <select name="categorie_id[]" class="form-select">
+                                    <label class="form-label">Catégorie comptable {% if i == 0 %}*{% endif %}</label>
+                                    <select name="categorie_debit_id[{{ i }}]" class="form-select" {% if i == 0 %}required{% endif %}>
                                         <option value="">Choisir une catégorie...</option>
                                         {% for categorie in categories %}
                                         <option value="{{ categorie.id }}"
@@ -690,12 +693,13 @@
                                     {% endif %}
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label">Montant (CHF)</label>
-                                    <input type="number" step="0.01" class="form-control" name="montant[]" {% if i==0 %}value="{{ "%.2f"|format(transaction.montant) }}"{% endif %}>
+                                    <label class="form-label">Montant (CHF) {% if i == 0 %}*{% endif %}</label>
+                                    <input type="number" step="0.01" class="form-control" name="montant_debit[{{ i }}]"
+                                        {% if i == 0 %}value="{{ "%.2f"|format(transaction.montant) }}"{% endif %}>
                                 </div>
                                 <div class="col-md-2">
                                     <label class="form-label">Taux TVA</label>
-                                    <select name="tva_taux[]" class="form-select form-select-sm">
+                                    <select name="tva_taux_debit[{{ i }}]" class="form-select form-select-sm">
                                         <option value="0">0%</option>
                                         {% for taux in taux_disponibles %}
                                             <option value="{{ taux.taux }}">
@@ -706,30 +710,31 @@
                                 </div>
                                 <div class="col-md-2">
                                     <label class="form-label">Description</label>
-                                    <input type="text" class="form-control" name="description[]"
+                                    <input type="text" class="form-control" name="description_debit[{{ i }}]"
                                         value="{% if i == 0 %}{{ transaction.description }}{% else %}{{ transaction.description }} - Partie {{ i+1 }}{% endif %}">
                                 </div>
                             </div>
                             {% endfor %}
 
-                            <div class="alert alert-warning mt-3">
+                            <div class="alert alert-warning mt-3 mb-0">
                                 <i class="bi bi-exclamation-triangle"></i>
-                                <strong>Important:</strong> La somme des montants doit être égale à {{ "%.2f"|format(transaction.montant) }} CHF
+                                <strong>Important :</strong> la somme des montants de débit doit être égale à
+                                {{ "%.2f"|format(transaction.montant) }} CHF, et égale à la somme des crédits.
                             </div>
                         </div>
                     </div>
-                    <!-- Section CRÉDITS -->
-                    <!-- Section CRÉDITS (multiples) -->
+
+                    <!-- ===================== CRÉDITS ===================== -->
                     <div class="card mb-4">
                         <div class="card-header bg-danger text-white">
-                            <i class="bi bi-arrow-up-circle"></i> Crédits (paiements)
+                            <i class="bi bi-arrow-up-circle"></i> Crédits (paiements / contreparties)
                         </div>
                         <div class="card-body">
                             {% for i in range(2) %}
                             <div class="row g-3 mb-3 p-3 border rounded {% if i > 0 %}bg-light{% endif %}">
                                 <div class="col-md-6">
                                     <label class="form-label">Compte de crédit {% if i == 0 %}*{% endif %}</label>
-                                    <select name="categorie_credit_id[]" class="form-select" {% if i == 0 %}required{% endif %}>
+                                    <select name="categorie_credit_id[{{ i }}]" class="form-select" {% if i == 0 %}required{% endif %}>
                                         <option value="">Choisir un compte...</option>
                                         {% for categorie in categories %}
                                         <option value="{{ categorie.id }}">{{ categorie.numero }} - {{ categorie.nom }}</option>
@@ -739,7 +744,7 @@
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Montant (CHF) {% if i == 0 %}*{% endif %}</label>
-                                    <input type="number" step="0.01" class="form-control" name="montant_credit[]" 
+                                    <input type="number" step="0.01" class="form-control" name="montant_credit[{{ i }}]"
                                         {% if i == 0 %}value="{{ "%.2f"|format(transaction.montant) }}"{% endif %}>
                                 </div>
                             </div>
