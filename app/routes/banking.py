@@ -252,7 +252,7 @@ def edit_banque(banque_id):
             print(f'Banque modifiée: {nom} ({code_banque}) avec les données suivantes : {pays}, {couleur}, {site_web}, {logo_url}')
             return redirect(url_for('banking.liste_banques'))
         else:
-            flash("Erreur lors de la modification.", "danger"
+            flash("Erreur lors de la modification.", "danger")
     return render_template('banking/edit.html', banque=banque)
 
 @bp.route('/banques/<int:banque_id>/delete', methods=['POST'])
