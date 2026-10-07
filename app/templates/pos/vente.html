@@ -1404,22 +1404,22 @@ async function resumeDbTicket(id){
 
     // ✅ DÉTECTION : Est-ce un mode de paiement de type "Crédit" ?
     // On vérifie le nom ou un éventuel flag 'est_credit' envoyé par le backend
-    const isCredit = mode.est_credit || 
-                     mode.nom.toLowerCase().includes('bon cadeau') || 
-                     mode.nom.toLowerCase().includes('abonnement') || 
-                     mode.nom.toLowerCase().includes('crédit');
+    //const isCredit = mode.est_credit || 
+    //                 mode.nom.toLowerCase().includes('bon cadeau') || 
+    //                 mode.nom.toLowerCase().includes('abonnement') || 
+    //                 mode.nom.toLowerCase().includes('crédit');
 
-    if (isCredit) {
-        // Afficher la section de saisie du code
-        $('giftCardSection').style.display = 'block';
-        $('giftCardCodeInput').value = '';
-        $('currentGiftCardId').value = '';
-        $('giftCardStatus').textContent = 'Veuillez saisir le code avant d\'ajouter ce paiement.';
-        $('giftCardCodeInput').focus();
-        
-        // On ne l'ajoute pas encore au tableau payments, on attend que l'utilisateur associe le code
-        return; 
-    }
+    //if (isCredit) {
+    //    // Afficher la section de saisie du code
+    //    $('giftCardSection').style.display = 'block';
+    //    $('giftCardCodeInput').value = '';
+    //    $('currentGiftCardId').value = '';
+    //    $('giftCardStatus').textContent = 'Veuillez saisir le code avant d\'ajouter ce paiement.';
+    //    $('giftCardCodeInput').focus();
+    //    
+    //    // On ne l'ajoute pas encore au tableau payments, on attend que l'utilisateur associe le code
+    //    return; 
+    //}
 
     // Pour les modes normaux (Espèces, Carte, etc.)
     if (payments.some(p => p.mode_paiement_id === modeId)) return;
