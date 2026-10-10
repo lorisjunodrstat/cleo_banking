@@ -2386,12 +2386,14 @@ class TransactionFinanciere(BaseRepository):
     def _get_solde_initial(self, compte_type: str, compte_id: int) -> Decimal:
         """Récupère le solde initial d'un compte"""
         logger.debug(f"Récupération du solde initial pour {compte_type} ID {compte_id}")
+
         try:
             with self.db.get_cursor() as cursor:
                 if compte_type == 'compte_principal':
                     cursor.execute("SELECT solde_initial FROM comptes_principaux WHERE id = %s", (compte_id,))
                 else:
                     cursor.execute("SELECT solde_initial FROM sous_comptes WHERE id = %s", (compte_id,))
+
                 result = cursor.fetchone()
                 return safe_decimal(result['solde_initial']) if result and 'solde_initial' in result else Decimal('0')
         except Error as e:
@@ -2401,12 +2403,14 @@ class TransactionFinanciere(BaseRepository):
     def _get_solde_possible(self, compte_type: str, compte_id: int) -> Decimal:
         """Récupère le solde possible d'un compte"""
         logger.debug(f"Récupération du solde possible pour {compte_type} ID {compte_id}")
+
         try:
             with self.db.get_cursor() as cursor:
                 if compte_type == 'compte_principal':
                     cursor.execute("SELECT solde_possible FROM comptes_principaux WHERE id = %s", (compte_id,))
                 else:
                     cursor.execute("SELECT solde_possible FROM sous_comptes WHERE id = %s", (compte_id,))
+
                 result = cursor.fetchone()
                 return safe_decimal(result['solde_possible']) if result and 'solde_possible' in result else Decimal('0')
         except Error as e:
@@ -2692,6 +2696,7 @@ class TransactionFinanciere(BaseRepository):
     def _trouver_contrepartie_transfert(self, cursor, transaction: dict) -> Tuple[Optional[dict], Optional[str]]:
         """
         Retrouve la transaction opposée d'un transfert interne.
+
         Stratégie (par ordre de fiabilité) :
         1. Colonne `transfert_id` (nouveaux transferts).
         2. Colonne `reference` (si les deux moitiés la partagent).
@@ -2705,6 +2710,7 @@ class TransactionFinanciere(BaseRepository):
         if type_tx not in ('transfert_entrant', 'transfert_sortant'):
             return None, "Transaction non transférable"
         type_oppose = 'transfert_entrant' if type_tx == 'transfert_sortant' else 'transfert_sortant'
+
         # --- Tentative 1 : transfert_id ---
         transfert_id = transaction.get('transfert_id')
         if transfert_id:
@@ -2784,10 +2790,10 @@ class TransactionFinanciere(BaseRepository):
         return min(to_dt(ancienne_date), to_dt(nouvelle_date))
 
     def modifier_transaction(self, transaction_id: int, user_id: int,
-                         nouveau_montant: Decimal,
-                         nouvelle_description: str,
-                         nouvelle_date: datetime,
-                         nouvelle_reference: str) -> Tuple[bool, str]:
+                        nouveau_montant: Decimal,
+                        nouvelle_description: str,
+                        nouvelle_date: datetime,
+                        nouvelle_reference: str ) -> Tuple[bool, str]:
         """Modifie une transaction existante et recalcule les soldes suivants si le montant ou la date change"""
         try:
             with self.db.get_cursor() as cursor:
@@ -2807,126 +2813,98 @@ class TransactionFinanciere(BaseRepository):
                 transaction = cursor.fetchone()
                 if not transaction:
                     return False, "Transaction non trouvée"
-
+                #if transaction['owner_user_id'] != user_id:
+                #    return False, "Non autorisé à modifier cette transaction"
                 type_tx = transaction['type_transaction']
                 est_transfert = type_tx in ['transfert_entrant', 'transfert_sortant']
                 compte_type = 'compte_principal' if transaction['compte_principal_id'] else 'sous_compte'
                 compte_id = transaction['compte_principal_id'] or transaction['sous_compte_id']
                 ancien_montant = safe_decimal(transaction['montant'])
                 ancienne_date = transaction['date_transaction']
-
-                # --- Préparer les champs à mettre à jour ---
+                #ancien_type = transaction['type_transaction'] # On garde l'ancien type pour la logique
+                # Préparer les champs à mettre à jour
                 update_fields = []
                 update_params = []
-
+                # Vérifier et ajouter le montant
                 if nouveau_montant is not None and nouveau_montant != ancien_montant and nouveau_montant >= 0:
                     update_fields.append("montant = %s")
                     update_params.append(float(nouveau_montant))
-
+                # Vérifier et ajouter la description
                 if nouvelle_description is not None and nouvelle_description != transaction.get('description', ''):
                     update_fields.append("description = %s")
                     update_params.append(nouvelle_description)
-
+                # Vérifier et ajouter la date
                 if nouvelle_date is not None and nouvelle_date != ancienne_date:
                     if nouvelle_date > datetime.now() + timedelta(days=365):
                         return False, "La date ne peut pas être dans le futur lointain"
                     update_fields.append("date_transaction = %s")
                     update_params.append(nouvelle_date)
-
+                # Vérifier et ajouter la référence
                 if nouvelle_reference is not None and nouvelle_reference != transaction.get('reference', ''):
                     update_fields.append("reference = %s")
                     update_params.append(nouvelle_reference)
-
+                # Si rien n'a changé, on ne fait rien
                 if not update_fields:
                     return True, "Aucune modification nécessaire"
-
-                # --- Mettre à jour la transaction principale ---
-                params_principale = list(update_params) + [transaction_id]
+                # Construire et exécuter la requête de mise à jour
+                update_params.append(transaction_id)
                 query = f"UPDATE transactions SET {', '.join(update_fields)} WHERE id = %s"
-                cursor.execute(query, params_principale)
-
-                # --- Si transfert, mettre à jour la contrepartie ---
-                contrepartie = None
-                if est_transfert:
-                    contrepartie, erreur = self._trouver_contrepartie_transfert(cursor, transaction)
-                    if erreur:
-                        logger.error(f"Transfert {transaction_id} : {erreur}")
-                        return False, erreur
-
-                    # Répercuter les modifications : montant, date, reference
-                    # (description non répercutée : elle est souvent inversée entre les deux moitiés)
-                    contrepartie_fields = []
-                    contrepartie_params = []
-
-                    if nouveau_montant is not None and nouveau_montant != ancien_montant and nouveau_montant >= 0:
-                        contrepartie_fields.append("montant = %s")
-                        contrepartie_params.append(float(nouveau_montant))
-
-                    if nouvelle_date is not None and nouvelle_date != ancienne_date:
-                        contrepartie_fields.append("date_transaction = %s")
-                        contrepartie_params.append(nouvelle_date)
-
-                    if nouvelle_reference is not None and nouvelle_reference != transaction.get('reference', ''):
-                        contrepartie_fields.append("reference = %s")
-                        contrepartie_params.append(nouvelle_reference)
-
-                    if contrepartie_fields:
-                        params_contrepartie = contrepartie_params + [contrepartie['id']]
-                        query_contrepartie = (
-                            f"UPDATE transactions SET {', '.join(contrepartie_fields)} WHERE id = %s"
-                        )
-                        cursor.execute(query_contrepartie, params_contrepartie)
-
-                # --- Déterminer si un recalcul est nécessaire ---
+                cursor.execute(query, update_params)
+                # Déterminer si un recalcul des soldes est nécessaire
                 recalcul_necessaire = (
                     (nouveau_montant is not None and nouveau_montant != ancien_montant) or
                     (nouvelle_date is not None and nouvelle_date != ancienne_date)
                 )
-
+                if est_transfert:
+                    reference_transfert = transaction.get('reference')
+                    if not reference_transfert:
+                        return False, "Transfert corrompu : référence manquante"
+                    cursor.execute("""
+                        SELECT id, type_transaction
+                        FROM transactions
+                        WHERE reference = %s AND id != %s
+                    """, (reference_transfert, transaction_id))
+                    autre_tx = cursor.fetchone()
+                    if not autre_tx:
+                        return False, "Transfert corrompu : transaction liée introuvable"
+                    update_params_autre = update_params[:-1]  # Même modifications sauf l'ID
+                    update_params_autre.append(autre_tx['id'])
+                    cursor.execute(query, update_params_autre)
                 if recalcul_necessaire:
-                    # Date de référence : la plus ancienne entre ancienne et nouvelle
+                    # Déterminer la date de référence pour le recalcul
+                    # Si la date a changé, on prend la plus ancienne pour être sûr de tout recalculer
                     if nouvelle_date is not None:
-                        ancienne_dt = (ancienne_date if isinstance(ancienne_date, datetime)
-                                    else datetime.combine(ancienne_date, datetime.min.time()))
-                        nouvelle_dt = (nouvelle_date if isinstance(nouvelle_date, datetime)
-                                    else datetime.combine(nouvelle_date, datetime.min.time()))
+                        ancienne_dt = ancienne_date if isinstance(ancienne_date, datetime) else datetime.combine(ancienne_date, datetime.min.time())
+                        nouvelle_dt = nouvelle_date if isinstance(nouvelle_date, datetime) else datetime.combine(nouvelle_date, datetime.min.time())
                         date_reference = min(ancienne_dt, nouvelle_dt)
                     else:
-                        date_reference = (ancienne_date if isinstance(ancienne_date, datetime)
-                                        else datetime.combine(ancienne_date, datetime.min.time()))
-
-                    # Recalcul sur le compte principal de la transaction modifiée
-                    success1 = self._recalculer_soldes_apres_date_with_cursor(
-                        cursor, compte_type, compte_id, date_reference
-                    )
+                        # Si seule le montant change, on garde l'ancienne date (qui est aussi la nouvelle)
+                        date_reference = ancienne_date if isinstance(ancienne_date, datetime) else datetime.combine(ancienne_date, datetime.min.time())
+                    #compte_type = 'compte_principal' if transaction['compte_principal_id'] else 'sous_compte'
+                    #compte_id = transaction['compte_principal_id'] or transaction['sous_compte_id']
+                    success1 = self._recalculer_soldes_apres_date_with_cursor(cursor, compte_type, compte_id, date_reference)
                     if not success1:
                         raise Exception("Erreur lors du recalcul des soldes des transactions suivantes")
                     else:
                         logger.info("Recalcul des soldes réussi de la transaction après modification")
-
-                    # Recalcul sur le compte de la contrepartie si transfert
-                    if est_transfert and contrepartie:
-                        autre_compte_type = ('compte_principal' if contrepartie['compte_principal_id']
-                                            else 'sous_compte')
-                        autre_compte_id = (contrepartie['compte_principal_id']
-                                        or contrepartie['sous_compte_id'])
-                        success2 = self._recalculer_soldes_apres_date_with_cursor(
-                            cursor, autre_compte_type, autre_compte_id, date_reference
-                        )
-                        if not success2:
-                            raise Exception(
-                                "Erreur lors du recalcul des soldes de l'autre transaction du transfert"
-                            )
-                        else:
-                            logger.info(
-                                "Recalcul des soldes réussi de l'autre transaction du transfert "
-                                "après modification"
-                            )
-
+                    if est_transfert and autre_tx:
+                        # Recalculer aussi pour l'autre transaction du transfert
+                        cursor.execute("""
+                            SELECT compte_principal_id, sous_compte_id
+                            FROM transactions WHERE id = %s
+                        """, (autre_tx['id'],))
+                        autre_details = cursor.fetchone()
+                        if autre_details:
+                            autre_compte_type = 'compte_principal' if autre_details['compte_principal_id'] else 'sous_compte'
+                            autre_compte_id = autre_details['compte_principal_id'] or autre_details['sous_compte_id']
+                            success2 = self._recalculer_soldes_apres_date_with_cursor(cursor, autre_compte_type, autre_compte_id, date_reference)
+                            if not success2:
+                                raise Exception("Erreur lors du recalcul des soldes de l'autre transaction du transfert")
+                            else:
+                                logger.info("Recalcul des soldes réussi de l'autre transaction du transfert après modification")
                 return True, "Transaction modifiée avec succès"
-
         except MySQLError as e:
-            logger.exception("Erreur modification transaction")
+            logger.exception(f"Erreur modification transaction")
             return False, f"Erreur lors de la modification: {str(e)}"
 
     def supprimer_transaction(self, transaction_id: int, user_id: int) -> Tuple[bool, str]:
@@ -2948,31 +2926,39 @@ class TransactionFinanciere(BaseRepository):
                 """, (transaction_id,))
                 transaction = cursor.fetchone()
                 if not transaction:
-                    logger.info(f'Transaction {transaction_id} non trouvée pour suppression')
                     return False, "Transaction non trouvée"
-
+                    logger.info(f'Transaction {transaction_id} non trouvée pour suppression')
+                #if transaction['owner_user_id'] != user_id:
+                #    logger.info(f'Utilisateur {user_id} non autorisé à supprimer cette transaction')
+                #    return False, "Non autorisé à supprimer cette transaction"
                 type_tx = transaction['type_transaction']
                 compte_type = 'compte_principal' if transaction['compte_principal_id'] else 'sous_compte'
                 compte_id = transaction['compte_principal_id'] or transaction['sous_compte_id']
                 date_transaction = transaction['date_transaction']
-
                 # === CAS SPÉCIAL : TRANSFERT INTERNE (entrant/sortant) ===
                 if type_tx in ['transfert_entrant', 'transfert_sortant']:
-                    # Appariement via transfert_id → reference → fallback montant/date
-                    contrepartie, erreur = self._trouver_contrepartie_transfert(cursor, transaction)
-                    if erreur:
-                        logger.error(f"Transfert {transaction_id} : {erreur}")
-                        return False, erreur
-
-                    # Identifier la transaction source (sortante) pour la vérification de propriété
-                    tx_source = transaction if type_tx == 'transfert_sortant' else contrepartie
+                    reference_transfert = transaction.get('reference')
+                    if not reference_transfert:
+                        logger.error(f"Transfert corrompu : référence manquante pour la transaction {transaction_id}")
+                        return False, "Transfert corrompu : référence manquante"
+                    # Récupérer les deux transactions liées
+                    cursor.execute("""
+                        SELECT id, type_transaction, compte_principal_id, sous_compte_id, date_transaction
+                        FROM transactions
+                        WHERE reference = %s
+                    """, (reference_transfert,))
+                    transactions_liees = cursor.fetchall()
+                    if len(transactions_liees) != 2:
+                        return False, f"Transfert invalide : {len(transactions_liees)} transactions trouvées"
+                    # Identifier la transaction source (sortante) pour vérifier la propriété
+                    tx_source = next((tx for tx in transactions_liees if tx['type_transaction'] == 'transfert_sortant'), None)
+                    if not tx_source:
+                        return False, "Transfert mal formé : transaction source manquante"
 
                     # Vérifier que l'utilisateur est propriétaire du compte source
                     if tx_source['compte_principal_id']:
-                        cursor.execute(
-                            "SELECT utilisateur_id FROM comptes_principaux WHERE id = %s",
-                            (tx_source['compte_principal_id'],)
-                        )
+                        cursor.execute("SELECT utilisateur_id FROM comptes_principaux WHERE id = %s",
+                                    (tx_source['compte_principal_id'],))
                     else:
                         cursor.execute("""
                             SELECT cp.utilisateur_id
@@ -2983,58 +2969,41 @@ class TransactionFinanciere(BaseRepository):
                     owner_row = cursor.fetchone()
                     if not owner_row or owner_row['utilisateur_id'] != user_id:
                         return False, "Non autorisé à annuler ce transfert"
-
                     # Supprimer les deux transactions
-                    cursor.execute(
-                        "DELETE FROM transactions WHERE id IN (%s, %s)",
-                        (transaction_id, contrepartie['id'])
-                    )
-                    logger.info(
-                        f"Transfert supprimé : tx={transaction_id} et contrepartie={contrepartie['id']}"
-                    )
-
+                    cursor.execute("DELETE FROM transactions WHERE reference = %s", (reference_transfert,))
                     # Recalculer les soldes pour chaque compte impliqué
-                    for tx in (transaction, contrepartie):
+                    for tx in transactions_liees:
                         tx_compte_type = 'compte_principal' if tx['compte_principal_id'] else 'sous_compte'
                         tx_compte_id = tx['compte_principal_id'] or tx['sous_compte_id']
                         tx_date = tx['date_transaction']
                         # On ne recalcule que si l'utilisateur est propriétaire (sécurité)
-                        if not self._verifier_appartenance_compte_with_cursor(
-                            cursor, tx_compte_type, tx_compte_id, user_id
-                        ):
+                        if not self._verifier_appartenance_compte_with_cursor(cursor, tx_compte_type, tx_compte_id, user_id):
                             continue
                         success = self._recalculer_soldes_apres_date_with_cursor(
                             cursor, tx_compte_type, tx_compte_id, tx_date
                         )
                         if not success:
-                            raise Exception(
-                                f"Échec du recalcul du solde pour le compte "
-                                f"{tx_compte_type} ID {tx_compte_id}"
-                            )
+                            raise Exception(f"Échec du recalcul du solde pour le compte {tx_compte_type} ID {tx_compte_id}")
                     return True, "Transfert annulé avec succès"
-
                 # === CAS NORMAL : transaction simple (dépôt, retrait, etc.) ===
                 else:
+                    # Supprimer la transaction unique
                     cursor.execute("DELETE FROM transactions WHERE id = %s", (transaction_id,))
-                    logger.info(f"Transaction {transaction_id} supprimée avec succès")
-
+                    logger.info(f"Demande de suppression de la Transaction {transaction_id} supprimée avec succès")
+                    cursor.execute("SELECT * FROM transactions WHERE id = %s", (transaction_id,))
+                    logger.info(f"Vérification post-suppression: {cursor.fetchone()} (devrait être None)")
                     # Recalculer les soldes à partir de la date de la transaction
                     success = self._recalculer_soldes_apres_date_with_cursor(
                         cursor, compte_type, compte_id, date_transaction
                     )
-                    logger.info(
-                        f"Recalcul des soldes après suppression de la transaction {transaction_id} "
-                        f"du compte {compte_id} en date du {date_transaction} "
-                        f"{'réussi' if success else 'échoué'}"
-                    )
+                    logger.info(f"Recalcul des soldes après suppression de la transaction {transaction_id} du compte {compte_id} en date du {date_transaction} {'réussi' if success else 'échoué'}")
                     if not success:
                         raise Exception("Erreur lors du recalcul des soldes")
                     return True, "Transaction supprimée avec succès"
-
         except MySQLError as e:
             logger.error(f"Erreur lors de la suppression de la transaction {transaction_id}")
             return False, f"Erreur lors de la suppression : {str(e)}"
-    
+
     def reparer_soldes_compte(self, compte_type: str, compte_id: int, user_id: int) -> Tuple[bool, str]:
         """
         Script de réparation : Recalcule TOUTES les transactions d'un compte depuis le solde initial.
@@ -3296,7 +3265,8 @@ class TransactionFinanciere(BaseRepository):
                     description, user_id, date_transaction, False,
                     compte_destination_id=compte_destination_id,
                     sous_compte_destination_id=sous_compte_destinatin_id,
-                    receipt_id=None)
+                    receipt_id=None
+                )
                 return success, message
         except MySQLError as e:
             logger.exception(f"Erreur création dépôt: {e}")
@@ -3507,48 +3477,40 @@ class TransactionFinanciere(BaseRepository):
         return sous_compte is not None and sous_compte['compte_principal_id'] == compte_principal_id
 
     def _inserer_transaction_with_cursor(self, cursor, compte_type: str, compte_id: int, type_transaction: str,
-                                         montant: Decimal, description: str, user_id: int,
-        date_transaction: datetime, validate_balance: bool = True,
-        reference_transfert: str = None,
-        compte_destination_id: int = None, sous_compte_destination_id: int = None,
-        receipt_id: int = None,
-        transfert_id: str = None) -> Tuple[bool, str, Optional[int]]:
+                    montant: Decimal, description: str, user_id: int,
+                    date_transaction: datetime, validate_balance: bool = True, reference_transfert: str = None,
+                    compte_destination_id: int = None, sous_compte_destination_id: int = None, receipt_id: int = None) -> Tuple[bool, str, Optional[int]]:
         """
         Insère une transaction dans la base de données et met à jour les soldes.
         """
         try:
             solde_possible = Decimal('0')
             if compte_type == 'compte_principal':
-                cursor.execute(
-                    "SELECT COALESCE(solde_possible, 0) AS solde_possible "
-                    "FROM comptes_principaux WHERE id = %s",
-                    (compte_id,))
+                cursor.execute("SELECT COALESCE(solde_possible, 0) AS solde_possible FROM comptes_principaux WHERE id = %s", (compte_id,))
                 res_sp = cursor.fetchone()
-                solde_possible = (safe_decimal(res_sp['solde_possible'])
-                                if res_sp and 'solde_possible' in res_sp
-                                else Decimal('0'))
+                solde_possible = safe_decimal(res_sp['solde_possible']) if res_sp and 'solde_possible' in res_sp else Decimal('0')
             # Trouver la transaction précédente pour calculer le solde_avant
-            previous = self._get_previous_transaction_with_cursor(
-                cursor, compte_type, compte_id, date_transaction
-            )
+            previous = self._get_previous_transaction_with_cursor(cursor, compte_type, compte_id, date_transaction)
+            
             # Calculer le solde_avant en gérant les NULL de la colonne solde_apres
             if previous:
-                raw_solde = previous[2]
+                raw_solde = previous[2] # C'est la valeur de 'solde_apres' de la transaction précédente
+                
+                # Si la base de données renvoie NULL (None), on initialise à 0
                 if raw_solde is None:
                     solde_avant = Decimal('0.00')
                 else:
                     try:
                         solde_avant = safe_decimal(raw_solde)
                     except InvalidOperation:
+                        # Sécurité au cas où la donnée serait corrompue (ex: chaîne vide)
                         solde_avant = Decimal('0.00')
             else:
+                # Si aucune transaction précédente, utiliser le solde initial du compte
                 solde_initial = self._get_solde_initial_with_cursor(cursor, compte_type, compte_id)
                 solde_avant = solde_initial if solde_initial is not None else Decimal('0.00')
             # Pour les transactions de débit, vérifier le solde suffisant si demandé
-            if validate_balance and type_transaction in [
-                'retrait', 'transfert_sortant', 'transfert_externe',
-                'transfert_compte_vers_sous', 'transfert_sous_vers_compte'
-            ]:
+            if validate_balance and type_transaction in ['retrait', 'transfert_sortant', 'transfert_externe', 'transfert_compte_vers_sous', 'transfert_sous_vers_compte']:
                 solde_limite = solde_possible if compte_type == 'compte_principal' else Decimal('0')
                 if solde_avant - montant < solde_limite:
                     return False, "Solde insuffisant", None
@@ -3558,15 +3520,17 @@ class TransactionFinanciere(BaseRepository):
             elif type_transaction in ['retrait', 'transfert_sortant', 'transfert_externe']:
                 solde_apres = solde_avant - montant
             elif type_transaction == 'transfert_compte_vers_sous':
+                # Ce type est utilisé pour le compte principal (débit) ET le sous-compte (crédit)
                 if compte_type == 'compte_principal':
-                    solde_apres = solde_avant - montant
-                else:
-                    solde_apres = solde_avant + montant
+                    solde_apres = solde_avant - montant   # Débit sur le compte principal
+                else:  # compte_type == 'sous_compte'
+                    solde_apres = solde_avant + montant   # Crédit sur le sous-compte
             elif type_transaction == 'transfert_sous_vers_compte':
+                # Ce type est utilisé pour le sous-compte (débit) ET le compte principal (crédit)
                 if compte_type == 'sous_compte':
-                    solde_apres = solde_avant - montant
-                else:
-                    solde_apres = solde_avant + montant
+                    solde_apres = solde_avant - montant   # Débit sur le sous-compte
+                else:  # compte_type == 'compte_principal'
+                    solde_apres = solde_avant + montant   # Crédit sur le compte principal
             else:
                 return False, f"Type de transaction non reconnu: {type_transaction}", None
             if reference_transfert is None:
@@ -3576,39 +3540,42 @@ class TransactionFinanciere(BaseRepository):
             sous_compte_id = None
             compte_source_id = None
             sous_compte_source_id = None
+            # Pour les colonnes source
             if compte_type == 'compte_principal':
                 compte_principal_id = compte_id
                 compte_source_id = compte_id
-            else:
+            else:  # sous_compte
                 sous_compte_id = compte_id
                 sous_compte_source_id = compte_id
+            # Pour les colonnes destination - si non fournies, utiliser les mêmes que la source pour les dépôts
             if compte_destination_id is None and sous_compte_destination_id is None:
                 if type_transaction == 'depot':
+                    # Pour un dépôt, la destination est le même compte
                     if compte_type == 'compte_principal':
                         compte_destination_id = compte_id
                     else:
                         sous_compte_destination_id = compte_id
-            # Insérer la transaction — ajout de transfert_id
+            # Insérer la transaction avec toutes les colonnes
             query = """
             INSERT INTO transactions
             (compte_principal_id, sous_compte_id, type_transaction, montant, description,
             utilisateur_id, date_transaction, solde_apres, reference,
             compte_destination_id, sous_compte_destination_id,
-            compte_source_id, sous_compte_source_id, receipt_id, transfert_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            compte_source_id, sous_compte_source_id, receipt_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cursor.execute(query, (
                 compte_principal_id, sous_compte_id, type_transaction, float(montant),
                 description, user_id, date_transaction, float(solde_apres), reference_transfert,
                 compte_destination_id, sous_compte_destination_id,
-                compte_source_id, sous_compte_source_id, receipt_id,
-                transfert_id,   # ← None pour les non-transferts, valeur hex pour les transferts
+                compte_source_id, sous_compte_source_id, receipt_id
             ))
             transaction_id = cursor.lastrowid
             # Mettre à jour les transactions suivantes
             dernier_solde = self._update_subsequent_transactions_with_cursor(
-                cursor, compte_type, compte_id, date_transaction, transaction_id, solde_apres)
-            # Mettre à jour le solde final
+                cursor, compte_type, compte_id, date_transaction, transaction_id, solde_apres
+            )
+            # Mettre à jour le solde final du compte principal/sous-compte
             solde_final = dernier_solde if dernier_solde is not None else solde_apres
             if not self._mettre_a_jour_solde_with_cursor(cursor, compte_type, compte_id, solde_final):
                 return False, "Erreur lors de la mise à jour du solde", None
@@ -3769,7 +3736,6 @@ class TransactionFinanciere(BaseRepository):
             return False, "Les comptes source et destination doivent être différents"
         if date_transaction is None:
             date_transaction = datetime.now()
-        
         try:
             with self.db.get_cursor(dictionary=True, commit=True) as cursor:
             # Vérifier l'existence des comptes (pas l'appartenance)
@@ -3790,18 +3756,17 @@ class TransactionFinanciere(BaseRepository):
                 reference = f"TRF_{timestamp}_{source_type}_{source_id}_{dest_type}_{dest_id}"
                 # Créer la description complète
                 desc_complete = f"{description} (Réf: {reference})"
-                transfert_id = secrets.token_hex(16)
                 # 1. Transaction de DÉBIT sur le compte source
                 success, message, debit_tx_id = self._inserer_transaction_with_cursor(
                     cursor, source_type, source_id, 'transfert_sortant', montant,
-                    desc_complete, user_id, date_transaction, True, None,transfert_id=transfert_id,
+                    desc_complete, user_id, date_transaction, True, None
                 )
                 if not success:
                     return False, f"Erreur transaction débit: {message}"
                 # 2. Transaction de CRÉDIT sur le compte destination
                 success, message, credit_tx_id = self._inserer_transaction_with_cursor(
                     cursor, dest_type, dest_id, 'transfert_entrant', montant,
-                    desc_complete, user_id, date_transaction,  False, None, transfert_id=transfert_id,
+                    desc_complete, user_id, date_transaction,  False, None
                 )
                 if not success:
                     return False, f"Erreur transaction crédit: {message}"
@@ -3863,7 +3828,6 @@ class TransactionFinanciere(BaseRepository):
                 if date_transaction is None:
                     date_transaction = datetime.now()
                 # ⚠️ UTILISER _inserer_transaction_with_cursor pour DÉBIT sur le compte principal
-                transfert_id = secrets.token_hex(16)
                 success, message, debit_transaction_id = self._inserer_transaction_with_cursor(
                     cursor,
                     compte_type='compte_principal',
@@ -3875,8 +3839,7 @@ class TransactionFinanciere(BaseRepository):
                     date_transaction=date_transaction,
                     validate_balance=True,  # Vérifie le solde
                     reference_transfert=reference_transfert,
-                    receipt_id=None,
-                    transfert_id=transfert_id,
+                    receipt_id=None
                 )
                 if not success:
                     return False, f"Erreur débit compte principal: {message}"
@@ -3892,8 +3855,7 @@ class TransactionFinanciere(BaseRepository):
                     date_transaction=date_transaction,
                     validate_balance=False,  # Pas besoin de vérifier ici — on vient de débiter
                     reference_transfert=reference_transfert,
-                    receipt_id=None,
-                    transfert_id=transfert_id,
+                    receipt_id=None
                 )
                 if not success:
                     return False, f"Erreur crédit sous-compte: {message}"
@@ -3938,7 +3900,6 @@ class TransactionFinanciere(BaseRepository):
                 desc_complete = f"{description} (Réf: {reference})"
                 if date_transaction is None:
                     date_transaction = datetime.now()
-                transfert_id = secrets.token_hex(16)
                 # ⚠️ UTILISER _inserer_transaction_with_cursor pour DÉBIT sur le sous-compte
                 success, message, debit_transaction_id = self._inserer_transaction_with_cursor(
                     cursor,
@@ -3951,8 +3912,7 @@ class TransactionFinanciere(BaseRepository):
                     date_transaction=date_transaction,
                     validate_balance=True,
                     reference_transfert=reference_transfert,
-                    receipt_id=None,
-                    transfert_id=transfert_id,
+                    receipt_id=None
                 )
                 if not success:
                     return False, f"Erreur débit sous-compte: {message}"
@@ -3968,8 +3928,7 @@ class TransactionFinanciere(BaseRepository):
                     date_transaction=date_transaction,
                     validate_balance=False,
                     reference_transfert=reference_transfert,
-                    receipt_id=None,
-                    transfert_id=transfert_id,
+                    receipt_id=None
                 )
                 if not success:
                     return False, f"Erreur crédit compte principal: {message}"
@@ -4241,7 +4200,8 @@ class TransactionFinanciere(BaseRepository):
                 success, message, _ = self._inserer_transaction_with_cursor(
                     cursor, compte_type, compte_id, 'recredit_annulation', montant,
                     f"Annulation transfert externe vers {transfert['iban_dest']}",
-                    user_id, datetime.now(), False)
+                    user_id, datetime.now(), False
+                )
                 if not success:
                     return False, f"Erreur lors du recrédit: {message}"
                 # Marquer le transfert comme annulé
@@ -21141,6 +21101,7 @@ class POSComptabilisation(BaseRepository):
     def comptabiliser_selection(self, user_id: int, items_a_comptabiliser: List[Dict]) -> Tuple[bool, str]:
         try:
             logger.info(f"📊 Début comptabilisation de {len(items_a_comptabiliser)} éléments")
+            
             # ============================================================
             # PRÉCALCUL : total TTC par (date, mode_paiement)
             # ============================================================
@@ -21148,14 +21109,17 @@ class POSComptabilisation(BaseRepository):
             for _item in items_a_comptabiliser:
                 try:
                     _date = POSComptabilisation._parse_date_ecriture(
-                        _item.get('date_jour') or _item.get('date'))
+                        _item.get('date_jour') or _item.get('date')
+                    )
                     _mode_id = _item.get('mode_paiement_id')
                     _key = f"{_date}_{_mode_id}"
                     mode_totaux[_key] += float(_item.get('total_ttc_global', 0))
                 except (ValueError, TypeError, KeyError) as _e:
                     logger.warning(f"Précalcul ignoré pour un item: {_e}")
                     continue
+            
             logger.info(f"🔧 Précalcul totaux par (date, mode): {dict(mode_totaux)}")
+            
             # ============================================================
             # PRÉCALCUL : tous les receipt_ids par (date, mode_paiement)
             # ============================================================
@@ -21163,7 +21127,8 @@ class POSComptabilisation(BaseRepository):
             for _item in items_a_comptabiliser:
                 try:
                     _date = POSComptabilisation._parse_date_ecriture(
-                        _item.get('date_jour') or _item.get('date'))
+                        _item.get('date_jour') or _item.get('date')
+                    )
                     _mode_id = _item.get('mode_paiement_id')
                     _key = f"{_date}_{_mode_id}"
                     _r_ids_str = _item.get('receipt_ids')
@@ -21173,18 +21138,23 @@ class POSComptabilisation(BaseRepository):
                                 mode_receipt_ids[_key].add(int(rid.strip()))
                 except (ValueError, TypeError, KeyError):
                     continue
+            
             logger.info(f"🔧 Précalcul receipt_ids par (date, mode): { {k: sorted(v) for k, v in mode_receipt_ids.items()} }")
+            
             with self.db.get_cursor(dictionary=True) as cursor:
                 nb_ecritures = 0
                 nb_transactions = 0
                 nb_sautés = 0
                 processed_modes = set()
+                
                 for idx, item in enumerate(items_a_comptabiliser):
                     date_ecriture = POSComptabilisation._parse_date_ecriture(
-                        item.get('date_jour') or item.get('date'))
+                        item.get('date_jour') or item.get('date')
+                    )
                     mode_nom = item.get('mode_paiement_nom', 'Inconnu')
                     mode_id = item.get('mode_paiement_id')
                     receipt_ids_str = item.get('receipt_ids')
+                    
                     # Parser les receipt_ids de l'item
                     receipt_ids = []
                     if receipt_ids_str:
@@ -21197,13 +21167,16 @@ class POSComptabilisation(BaseRepository):
                         except (ValueError, TypeError, AttributeError) as e:
                             logger.error(f"❌ Erreur parsing receipt_ids: {receipt_ids_str} - {e}")
                             receipt_ids = []
+                    
                     # Clé par (date, mode)
                     unique_mode_key = f"{date_ecriture}_{mode_id}"
                     groupe_id = f"POS-{date_ecriture}-{mode_id}-{receipt_ids_str}"
+                    
                     # Groupe GLOBAL du mode (tous les receipts du même jour+mode)
                     tous_receipt_ids_mode = sorted(mode_receipt_ids.get(unique_mode_key, set()))
                     tous_receipt_ids_mode_str = ','.join(str(rid) for rid in tous_receipt_ids_mode)
                     groupe_id_global = f"POS-{date_ecriture}-{mode_id}-{tous_receipt_ids_mode_str}"
+                    
                     # ============================================================
                     # ÉTAPE 1 : Récupération des comptes et montants
                     # ============================================================
@@ -21213,10 +21186,12 @@ class POSComptabilisation(BaseRepository):
                     total_ht = float(item.get('total_ht', 0))
                     total_tva = float(item.get('total_tva', 0))
                     total_ttc_global = float(item.get('total_ttc_global', 0))
+                    
                     logger.info(f"🔍 Item {idx}: mode={mode_nom}, cb={id_compte_bancaire_reel}, "
                                 f"ct={id_compte_tresorerie}, cv={id_compte_vente}, "
                                 f"ht={total_ht}, tva={total_tva}, ttc={total_ttc_global}, groupe={groupe_id}, "
                                 f"groupe_global={groupe_id_global}")
+                    
                     if not id_compte_bancaire_reel:
                         logger.warning(f"⚠️ SAUTÉ : Mode '{mode_nom}' sans compte bancaire.")
                         nb_sautés += 1
@@ -21229,10 +21204,13 @@ class POSComptabilisation(BaseRepository):
                         logger.warning(f"⚠️ SAUTÉ : Pas de compte de vente mappé.")
                         nb_sautés += 1
                         continue
+                    
                     is_credit = self.categorie_comptable_model.is_compte_passif(id_compte_vente, cursor=cursor)
+                    
                     # ============================================================
                     # ÉTAPE 2 : ÉCRITURES COMPTABLES
                     # ============================================================
+                    
                     # A. TRÉSORERIE + FRAIS (une seule fois par (date, mode))
                     if unique_mode_key not in processed_modes:
                         total_mode_ttc = round(mode_totaux[unique_mode_key], 2)
@@ -21244,14 +21222,18 @@ class POSComptabilisation(BaseRepository):
                             montant_frais = round(montant_frais, 2)
                         montant_tresorerie_net = round(total_mode_ttc - montant_frais, 2)
                         ref_tresorerie = f"JOURNAL-{date_ecriture}-TRESO-{mode_id}"
+                        
                         # Vérification d'idempotence
                         is_tresorerie_passif = self.categorie_comptable_model.is_compte_passif(
-                            id_compte_tresorerie, user_id, cursor=cursor)
+                            id_compte_tresorerie, user_id, cursor=cursor
+                        )
                         type_ecriture_tresorerie = 'depense' if is_tresorerie_passif else 'recette'
+                        
                         cursor.execute("""
                             SELECT id FROM ecritures_comptables 
                             WHERE reference = %s AND utilisateur_id = %s AND statut = 'validée'
                         """, (ref_tresorerie, user_id))
+                        
                         if cursor.fetchone():
                             logger.warning(f"⚠️ Écriture Trésorerie {ref_tresorerie} DÉJÀ EXISTANTE. Ignorée (Idempotence).")
                         else:
@@ -21275,11 +21257,15 @@ class POSComptabilisation(BaseRepository):
                             ecriture_id = self.ecriture_comptable_model.create(
                                 data_tresorerie, 
                                 cursor=cursor, 
-                                return_id=True)
+                                return_id=True
+                            )
+
                             if not ecriture_id:
                                 raise RuntimeError(f"Échec création écriture Trésorerie (item {idx})")
+
                             nb_ecritures += 1
                             logger.info(f"✅ Trésorerie : {montant_tresorerie_net} CHF net (id={ecriture_id})")
+                        
                         # B. Frais de service
                         if montant_frais > 0.01:
                             ref_frais = f"JOURNAL-{date_ecriture}-FRAIS-{mode_id}"
@@ -21313,17 +21299,22 @@ class POSComptabilisation(BaseRepository):
                                     cursor=cursor, 
                                     return_id=True
                                 )
+
                                 if not ecriture_id:
                                     raise RuntimeError(f"Échec création écriture Frais (item {idx})")
+
                                 nb_ecritures += 1
                                 logger.info(f"✅ Frais : {montant_frais} CHF (id={ecriture_id})")
+                        
                         processed_modes.add(unique_mode_key)
+                    
                     # C. VENTE / PASSIF
                     ref_vente = f"JOURNAL-{date_ecriture}-VENTE-{mode_id}-{item.get('type_taxe_id')}"
                     cursor.execute("""
                         SELECT id FROM ecritures_comptables 
                         WHERE reference = %s AND utilisateur_id = %s AND statut = 'validée'
                     """, (ref_vente, user_id))
+                    
                     if cursor.fetchone():
                         logger.warning(f"⚠️ Écriture Vente {ref_vente} DÉJÀ EXISTANTE. Ignorée.")
                     else:
@@ -21347,11 +21338,15 @@ class POSComptabilisation(BaseRepository):
                         ecriture_id = self.ecriture_comptable_model.create(
                             data_vente, 
                             cursor=cursor, 
-                            return_id=True)
+                            return_id=True
+                        )
+
                         if not ecriture_id:
                             raise RuntimeError(f"Échec création écriture Vente (item {idx})")
+
                         nb_ecritures += 1
                         logger.info(f"✅ Vente : Catégorie {id_compte_vente} (id={ecriture_id})")
+                    
                     # ============================================================
                     # ÉTAPE 3 : TRANSACTIONS BANCAIRES
                     # ============================================================
@@ -21536,7 +21531,6 @@ class POSComptabilisation(BaseRepository):
         except MySQLError as e:
             logger.exception(f"❌ Comptabilisation annulée, rollback")
             return False, f"Erreur: {str(e)}"   
-    
     def _get_compte_vente_defaut(self, cursor, user_id: int) -> Optional[int]:
             """Récupère le compte de vente de classe 3 par défaut (3000)"""
             try:
@@ -21563,7 +21557,6 @@ class PeriodeTravailPOS(BaseRepository):
     Lien : utilisateur qui a ouvert la caisse.
     """
     __slots__ = ["transaction_financiere_model"]
-    
     def __init__(self, db):
         super().__init__(db)
         self.transaction_financiere_model = TransactionFinanciere(db)
@@ -21960,7 +21953,8 @@ class MouvementCaissePOS(BaseRepository):
                         user_id=user_id,
                         date_transaction=date_op,
                         validate_balance=True,
-                        receipt_id=None)
+                        receipt_id=None
+                    )
                     if not success:
                         return False, f"Dépôt enregistré mais erreur transaction: {msg}"
                 return True, "Dépôt enregistré"
