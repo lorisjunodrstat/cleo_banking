@@ -3796,6 +3796,311 @@ def export_ecritures():
         download_name=filename
     )
 
+@bp.route('/comptabilite/ecritures/evolution', methods=['GET'])
+@login_required
+def evolution_ecritures():
+    # ---- Période ----
+    periode_type = request.args.get('periode_type', 'mois')
+    date_reference_str = request.args.get('date_reference')
+    date_from_str = request.args.get('date_from')
+    date_to_str = request.args.get('date_to')
+    granularite = request.args.get('granularite', 'jour')
+    mode = request.args.get('mode', 'solde')
+
+    date_reference = None
+    if date_reference_str:
+        try:
+            date_reference = date.fromisoformat(date_reference_str)
+        except ValueError:
+            date_reference = None
+
+    try:
+        date_debut, date_fin = g.models.ecriture_comptable_model._resoudre_periode(
+            periode_type=periode_type,
+            date_from=date_from_str,
+            date_to=date_to_str,
+            date_reference=date_reference,
+        )
+    except ValueError as e:
+        flash(f"Période invalide : {e}", "warning")
+        date_debut = date.today().replace(day=1)
+        date_fin = date.today()
+
+    # ---- Filtres ----
+    compte_ids = request.args.getlist('compte_ids', type=int)
+    statut_filtre = request.args.getlist('statut')
+    type_ecriture = request.args.get('type_ecriture') or None
+    type_ecriture_comptable = request.args.get('type_ecriture_comptable') or None
+    categorie_ids = request.args.getlist('categorie_ids', type=int)
+
+    # ---- Options graphique ----
+    type_graphique = request.args.get('type_graphique', 'ligne')
+    afficher_total = request.args.get('afficher_total', '1') == '1'
+
+    # ---- Données + SVG ----
+    data = g.models.ecriture_comptable_model.get_evolution_ecritures_periode(
+        user_id=current_user.id,
+        compte_ids=compte_ids or None,
+        date_debut=date_debut,
+        date_fin=date_fin,
+        granularite=granularite,
+        statut_filtre=statut_filtre or None,
+        type_ecriture=type_ecriture,
+        type_ecriture_comptable=type_ecriture_comptable,
+        categorie_ids=categorie_ids or None,
+        mode=mode,
+        inclure_total=afficher_total,
+    )
+    svg = g.models.ecriture_comptable_model.generer_graphique_evolution_ecritures(
+        data,
+        type_graphique=type_graphique,
+        afficher_total=afficher_total,
+    )
+
+    # ---- Listes pour les sélecteurs ----
+    comptes = g.models.compte_model.get_by_user_id(current_user.id)
+    categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
+
+    # ---- Rendu ----
+    return render_template(
+        'comptabilite/evolution_ecritures.html',
+        svg=svg,
+        data=data,
+        comptes=comptes,
+        categories=categories,
+        periode_type=periode_type,
+        date_reference=date_reference_str,
+        date_from=date_from_str,
+        date_to=date_to_str,
+        date_debut=date_debut.isoformat(),
+        date_fin=date_fin.isoformat(),
+        granularite=granularite,
+        mode=mode,
+        compte_ids=compte_ids,
+        statut_filtre=statut_filtre,
+        type_ecriture=type_ecriture,
+        type_ecriture_comptable=type_ecriture_comptable,
+        categorie_ids=categorie_ids,
+        type_graphique=type_graphique,
+        afficher_total=afficher_total,
+        periodes_disponibles=[
+            {'value': 'jour',              'label': 'Jour'},
+            {'value': 'semaine',           'label': 'Cette semaine'},
+            {'value': 'semaine_precedente','label': 'Semaine précédente'},
+            {'value': 'mois',              'label': 'Ce mois'},
+            {'value': 'mois_precedent',    'label': 'Mois précédent'},
+            {'value': 'trimestre',         'label': 'Ce trimestre'},
+            {'value': 'annee',             'label': 'Cette année'},
+            {'value': 'annee_precedente',  'label': 'Année précédente'},
+            {'value': 'custom',            'label': 'Personnalisée'},
+        ],
+        granularites_disponibles=[
+            {'value': 'jour',      'label': 'Par jour'},
+            {'value': 'semaine',   'label': 'Par semaine'},
+            {'value': 'mois',      'label': 'Par mois'},
+            {'value': 'trimestre', 'label': 'Par trimestre'},
+            {'value': 'annee',     'label': 'Par année'},
+        ],
+        statuts_disponibles=[
+            {'value': 'pending',   'label': 'En attente'},
+            {'value': 'validée',   'label': 'Validées'},
+            {'value': 'rejetée',   'label': 'Rejetées'},
+            {'value': 'supprimee', 'label': 'Archivées'},
+        ],
+        types_ecriture_disponibles=[
+            {'value': '',        'label': 'Tous'},
+            {'value': 'recette', 'label': 'Recettes'},
+            {'value': 'depense', 'label': 'Dépenses'},
+        ],
+        types_ecriture_comptable_disponibles=[
+            {'value': '',              'label': 'Tous'},
+            {'value': 'principale',    'label': 'Principales'},
+            {'value': 'complementaire','label': 'Complémentaires'},
+        ],
+        types_graphique_disponibles=[
+            {'value': 'ligne', 'label': 'Lignes'},
+            {'value': 'aire',  'label': 'Aire'},
+            {'value': 'barre', 'label': 'Barres'},
+        ],
+        modes_disponibles=[
+            {'value': 'solde',   'label': 'Solde cumulé'},
+            {'value': 'entrees', 'label': 'Recettes'},
+            {'value': 'sorties', 'label': 'Dépenses'},
+        ],
+    )
+
+@bp.route('/comptabilite/ecritures/evolution', methods=['GET'])
+@login_required
+def evolution_ecritures():
+    """Vue graphique de l'évolution des écritures (par défaut : année en cours)."""
+
+    # ============================================================
+    # 1. Période
+    # ============================================================
+    periode_type = request.args.get('periode_type', 'annee')
+    date_reference_str = request.args.get('date_reference')
+    date_from_str = request.args.get('date_from')
+    date_to_str = request.args.get('date_to')
+
+    date_reference = None
+    if date_reference_str:
+        try:
+            date_reference = date.fromisoformat(date_reference_str)
+        except ValueError:
+            date_reference = None
+
+    try:
+        date_debut, date_fin = g.models.ecriture_comptable_model._resoudre_periode(
+            periode_type=periode_type,
+            date_from=date_from_str,
+            date_to=date_to_str,
+            date_reference=date_reference,
+        )
+    except ValueError as e:
+        flash(f"Période invalide : {e}", "warning")
+        # Fallback : année en cours
+        today = date.today()
+        date_debut, date_fin = date(today.year, 1, 1), date(today.year, 12, 31)
+
+    # ============================================================
+    # 2. Filtres (mêmes noms que liste_ecritures)
+    # ============================================================
+    compte_id = request.args.get('compte_id')
+    compte_ids = [int(compte_id)] if compte_id and compte_id.isdigit() else None
+    id_contact = request.args.get('id_contact')
+    categorie_id = request.args.get('categorie_id')
+    categorie_ids = [int(categorie_id)] if categorie_id and categorie_id.isdigit() else None
+    statut = request.args.get('statut', 'tous')
+    type_ecriture = request.args.get('type_ecriture', 'tous')
+    type_ecriture_comptable = request.args.get('type_ecriture_comptable', 'tous')
+
+    statut_filtre = None if statut in (None, '', 'tous') else [statut]
+    type_ecriture_filtre = None if type_ecriture in (None, '', 'tous') else type_ecriture
+    type_ecriture_comptable_filtre = (
+        None if type_ecriture_comptable in (None, '', 'tous')
+        else type_ecriture_comptable
+    )
+
+    # ============================================================
+    # 3. Options graphique
+    # ============================================================
+    granularite = request.args.get('granularite', 'mois')
+    mode = request.args.get('mode', 'solde')
+    type_graphique = request.args.get('type_graphique', 'ligne')
+    afficher_total = request.args.get('afficher_total', '1') == '1'
+
+    # ============================================================
+    # 4. Données
+    # ============================================================
+    data = g.models.ecriture_comptable_model.get_evolution_ecritures_periode(
+        user_id=current_user.id,
+        compte_ids=compte_ids,
+        date_debut=date_debut,
+        date_fin=date_fin,
+        granularite=granularite,
+        statut_filtre=statut_filtre,
+        type_ecriture=type_ecriture_filtre,
+        type_ecriture_comptable=type_ecriture_comptable_filtre,
+        categorie_ids=categorie_ids,
+        mode=mode,
+        inclure_total=afficher_total,
+    )
+
+    svg = g.models.ecriture_comptable_model.generer_graphique_evolution_ecritures(
+        data,
+        type_graphique=type_graphique,
+        afficher_total=afficher_total,
+    )
+
+    # ============================================================
+    # 5. Listes pour les sélecteurs (mêmes sources que liste_ecritures)
+    # ============================================================
+    comptes = g.models.compte_model.get_by_user_id(current_user.id)
+    contacts = g.models.contact_model.get_all(current_user.id)
+    categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
+
+    statuts_disponibles = [
+        {'value': 'tous',      'label': 'Tous les statuts'},
+        {'value': 'pending',   'label': 'En attente'},
+        {'value': 'validée',   'label': 'Validées'},
+        {'value': 'rejetée',   'label': 'Rejetées'},
+        {'value': 'supprimee', 'label': 'Archivées'},
+    ]
+    types_ecriture_disponibles = [
+        {'value': 'tous',    'label': 'Tous les types'},
+        {'value': 'recette', 'label': 'Recettes'},
+        {'value': 'depense', 'label': 'Dépenses'},
+    ]
+    types_ecriture_comptable_disponibles = [
+        {'value': 'tous',          'label': 'Tous les types'},
+        {'value': 'principale',    'label': 'Principales'},
+        {'value': 'complementaire','label': 'Complémentaires'},
+    ]
+
+    periodes_disponibles = [
+        {'value': 'jour',              'label': 'Jour'},
+        {'value': 'semaine',           'label': 'Cette semaine'},
+        {'value': 'semaine_precedente','label': 'Semaine précédente'},
+        {'value': 'mois',              'label': 'Ce mois'},
+        {'value': 'mois_precedent',    'label': 'Mois précédent'},
+        {'value': 'trimestre',         'label': 'Ce trimestre'},
+        {'value': 'annee',             'label': 'Cette année'},
+        {'value': 'annee_precedente',  'label': 'Année précédente'},
+        {'value': 'custom',            'label': 'Personnalisée'},
+    ]
+    granularites_disponibles = [
+        {'value': 'jour',      'label': 'Par jour'},
+        {'value': 'semaine',   'label': 'Par semaine'},
+        {'value': 'mois',      'label': 'Par mois'},
+        {'value': 'trimestre', 'label': 'Par trimestre'},
+        {'value': 'annee',     'label': 'Par année'},
+    ]
+    types_graphique_disponibles = [
+        {'value': 'ligne', 'label': 'Lignes'},
+        {'value': 'aire',  'label': 'Aire'},
+        {'value': 'barre', 'label': 'Barres'},
+    ]
+    modes_disponibles = [
+        {'value': 'solde',   'label': 'Solde cumulé'},
+        {'value': 'entrees', 'label': 'Recettes'},
+        {'value': 'sorties', 'label': 'Dépenses'},
+    ]
+
+    return render_template(
+        'comptabilite/evolution_ecritures.html',
+        svg=svg,
+        data=data,
+        comptes=comptes,
+        contacts=contacts,
+        categories=categories,
+        # Période
+        periode_type=periode_type,
+        date_reference=date_reference_str,
+        date_from=date_from_str,
+        date_to=date_to_str,
+        date_debut=date_debut.isoformat(),
+        date_fin=date_fin.isoformat(),
+        granularite=granularite,
+        mode=mode,
+        type_graphique=type_graphique,
+        afficher_total=afficher_total,
+        # Filtres (mêmes noms que liste_ecritures)
+        compte_selectionne=compte_id,
+        contact_selectionne=id_contact,
+        categorie_id=categorie_id,
+        statut_selectionne=statut,
+        type_ecriture_selectionne=type_ecriture,
+        type_ecriture_comptable_selectionne=type_ecriture_comptable,
+        # Options
+        periodes_disponibles=periodes_disponibles,
+        granularites_disponibles=granularites_disponibles,
+        types_graphique_disponibles=types_graphique_disponibles,
+        modes_disponibles=modes_disponibles,
+        statuts_disponibles=statuts_disponibles,
+        types_ecriture_disponibles=types_ecriture_disponibles,
+        types_ecriture_comptable_disponibles=types_ecriture_comptable_disponibles,
+    )
+
 @bp.route('/comptabilite/ecritures/by-contact/<int:contact_id>', methods=['GET'])
 @login_required
 def liste_ecritures_par_contact(contact_id):

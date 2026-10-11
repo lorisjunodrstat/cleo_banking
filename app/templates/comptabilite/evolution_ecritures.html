@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+
+{% block head_css %}
+<style>
+    .graphique-container {
+        background: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        overflow-x: auto;
+    }
+    .graphique-container svg {
+        display: block;
+        margin: 0 auto;
+    }
+    .filters-container {
+        background-color: #f8f9fa;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    .param-card {
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+    }
+    .param-card .card-header {
+        background-color: #f1f3f5;
+        font-weight: 600;
+    }
+    .detail-table th {
+        white-space: nowrap;
+        font-size: 0.8rem;
+    }
+    .detail-table td {
+        white-space: nowrap;
+        font-size: 0.85rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+
+    <!-- En-tête -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-graph-up"></i> Évolution des écritures</h2>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('banking.liste_ecritures') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Retour à la liste
+            </a>
+        </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- FILTRES (repris de liste_ecritures) -->
+    <!-- ============================================ -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Filtres</h5>
+        </div>
+        <div class="card-body">
+            <form method="get" class="row g-3">
+
+                <!-- Période -->
+                <div class="col-md-3">
+                    <label for="periode_type" class="form-label">Période</label>
+                    <select id="periode_type" name="periode_type" class="form-select">
+                        {% for p in periodes_disponibles %}
+                        <option value="{{ p.value }}" {% if periode_type == p.value %}selected{% endif %}>{{ p.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-3" id="bloc-date-reference">
+                    <label for="date_reference" class="form-label">Date de référence</label>
+                    <input type="date" id="date_reference" name="date_reference"
+                           class="form-control" value="{{ date_reference or '' }}">
+                </div>
+
+                <div class="col-md-3 bloc-custom" style="display:none;">
+                    <label for="date_from" class="form-label">Du</label>
+                    <input type="date" id="date_from" name="date_from" class="form-control" value="{{ date_from or '' }}">
+                </div>
+                <div class="col-md-3 bloc-custom" style="display:none;">
+                    <label for="date_to" class="form-label">Au</label>
+                    <input type="date" id="date_to" name="date_to" class="form-control" value="{{ date_to or '' }}">
+                </div>
+
+                <!-- Compte -->
+                <div class="col-md-3">
+                    <label for="compte_id" class="form-label">Compte bancaire</label>
+                    <select id="compte_id" name="compte_id" class="form-select">
+                        <option value="">Tous les comptes</option>
+                        {% for compte in comptes %}
+                        <option value="{{ compte.id }}" {% if compte.id == compte_selectionne|int %}selected{% endif %}>
+                            {{ compte.nom_compte }}{% if compte.nom_banque %} ({{ compte.nom_banque }}){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Contact -->
+                <div class="col-md-3">
+                    <label for="id_contact" class="form-label">Contact</label>
+                    <select id="id_contact" name="id_contact" class="form-select">
+                        <option value="">Tous les contacts</option>
+                        {% for contact in contacts | sort(attribute='nom') %}
+                        <option value="{{ contact.id_contact }}" {% if contact.id_contact == contact_selectionne|int %}selected{% endif %}>
+                            {{ contact.nom }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Catégorie -->
+                <div class="col-md-3">
+                    <label for="categorie_id" class="form-label">Catégorie</label>
+                    <select id="categorie_id" name="categorie_id" class="form-select">
+                        <option value="">Toutes les catégories</option>
+                        {% for categorie in categories | sort(attribute='numero') %}
+                        <option value="{{ categorie.id }}" {% if categorie.id == categorie_id|int %}selected{% endif %}>
+                            {{ categorie.numero }} - {{ categorie.nom }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Statut -->
+                <div class="col-md-3">
+                    <label for="statut" class="form-label">Statut</label>
+                    <select id="statut" name="statut" class="form-select">
+                        {% for s in statuts_disponibles %}
+                        <option value="{{ s.value }}" {% if s.value == statut_selectionne %}selected{% endif %}>{{ s.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Type écriture -->
+                <div class="col-md-3">
+                    <label for="type_ecriture" class="form-label">Type d'écriture</label>
+                    <select id="type_ecriture" name="type_ecriture" class="form-select">
+                        {% for t in types_ecriture_disponibles %}
+                        <option value="{{ t.value }}" {% if t.value == type_ecriture_selectionne %}selected{% endif %}>{{ t.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Type comptable -->
+                <div class="col-md-3">
+                    <label for="type_ecriture_comptable" class="form-label">Type comptable</label>
+                    <select id="type_ecriture_comptable" name="type_ecriture_comptable" class="form-select">
+                        {% for t in types_ecriture_comptable_disponibles %}
+                        <option value="{{ t.value }}" {% if t.value == type_ecriture_comptable_selectionne %}selected{% endif %}>{{ t.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Paramètres graphique -->
+                <div class="col-md-3">
+                    <label for="granularite" class="form-label">Granularité</label>
+                    <select id="granularite" name="granularite" class="form-select">
+                        {% for gr in granularites_disponibles %}
+                        <option value="{{ gr.value }}" {% if gr.value == granularite %}selected{% endif %}>{{ gr.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label for="mode" class="form-label">Mode</label>
+                    <select id="mode" name="mode" class="form-select">
+                        {% for m in modes_disponibles %}
+                        <option value="{{ m.value }}" {% if m.value == mode %}selected{% endif %}>{{ m.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label for="type_graphique" class="form-label">Type de graphique</label>
+                    <select id="type_graphique" name="type_graphique" class="form-select">
+                        {% for t in types_graphique_disponibles %}
+                        <option value="{{ t.value }}" {% if t.value == type_graphique %}selected{% endif %}>{{ t.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" id="afficher_total"
+                               name="afficher_total" value="1" {% if afficher_total %}checked{% endif %}>
+                        <label class="form-check-label" for="afficher_total">Afficher le total</label>
+                    </div>
+                </div>
+
+                <!-- Boutons -->
+                <div class="col-md-12">
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-search"></i> Afficher
+                        </button>
+                        <a href="{{ url_for('banking.evolution_ecritures') }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-x-circle"></i> Réinitialiser
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- EN-TÊTE RÉSUMÉ -->
+    <!-- ============================================ -->
+    <div class="alert alert-info d-flex flex-wrap justify-content-between align-items-center">
+        <div>
+            <i class="bi bi-calendar-range"></i>
+            Du <strong>{{ date_debut }}</strong> au <strong>{{ date_fin }}</strong>
+            &nbsp;|&nbsp;
+            Granularité : <strong>{{ granularite }}</strong>
+            &nbsp;|&nbsp;
+            Mode : <strong>{{ mode }}</strong>
+            &nbsp;|&nbsp;
+            Type : <strong>{{ type_graphique }}</strong>
+        </div>
+        {% if data and data.series %}
+        <div>
+            <span class="badge bg-primary">{{ data.series|length }} série(s)</span>
+            <span class="badge bg-secondary">{{ data.dates|length }} point(s)</span>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- ============================================ -->
+    <!-- GRAPHIQUE -->
+    <!-- ============================================ -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Graphique</h5>
+        </div>
+        <div class="card-body">
+            <div class="graphique-container">
+                {{ svg | safe }}
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- TABLEAU DÉTAILLÉ -->
+    <!-- ============================================ -->
+    {% if data and data.donnees_brutes %}
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Détail par période</h5>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse"
+                    data-bs-target="#detailTable">
+                <i class="bi bi-chevron-down"></i> Afficher / masquer
+            </button>
+        </div>
+        <div class="collapse show" id="detailTable">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped mb-0 detail-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Compte / période</th>
+                                {% for label in data.dates %}
+                                <th class="text-end">{{ label }}</th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for nom, valeurs in data.series.items() %}
+                            <tr>
+                                <td><strong>{{ nom }}</strong></td>
+                                {% for v in valeurs %}
+                                <td class="text-end">{{ '%.2f'|format(v) }}</td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle"></i> Aucune donnée à afficher pour cette période.
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+    // Afficher/masquer les champs date_from/date_to selon periode_type
+    document.addEventListener('DOMContentLoaded', function () {
+        const periodeType = document.getElementById('periode_type');
+        const blocCustom = document.querySelectorAll('.bloc-custom');
+        const blocDateRef = document.getElementById('bloc-date-reference');
+
+        function toggleCustom() {
+            const isCustom = periodeType.value === 'custom';
+            blocCustom.forEach(el => el.style.display = isCustom ? '' : 'none');
+            blocDateRef.style.display = isCustom ? 'none' : '';
+        }
+
+        if (periodeType) {
+            periodeType.addEventListener('change', toggleCustom);
+            toggleCustom();
+        }
+    });
+</script>
+{% endblock %}

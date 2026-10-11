@@ -7587,6 +7587,464 @@ class EcritureComptable(BaseRepository):
         """Fournit le dossier d'upload à la demande, sans effet de bord à l'initialisation"""
         return os.path.join(os.path.dirname(__file__), 'uploads', 'justificatifs')
 
+    @staticmethod
+    def _resoudre_periode(periode_type: str,
+                        date_from: str = None, date_to: str = None,
+                        date_reference: date = None) -> tuple:
+        """
+        Retourne (date_debut, date_fin) en objets date.
+        periode_type ∈ {'custom', 'jour', 'semaine', 'semaine_precedente',
+                        'mois', 'mois_precedent', 'trimestre',
+                        'annee', 'annee_precedente'}
+        """
+        if periode_type == 'custom':
+            if not date_from or not date_to:
+                raise ValueError("date_from et date_to requis pour periode_type='custom'")
+            return date.fromisoformat(date_from), date.fromisoformat(date_to)
+
+        ref = date_reference or date.today()
+
+        if periode_type == 'jour':
+            return ref, ref
+
+        if periode_type in ('semaine', 'semaine_precedente'):
+            base = ref if periode_type == 'semaine' else ref - timedelta(days=7)
+            debut = base - timedelta(days=base.weekday())
+            return debut, debut + timedelta(days=6)
+
+        if periode_type in ('mois', 'mois_precedent'):
+            if periode_type == 'mois_precedent':
+                ref = ref.replace(day=1) - timedelta(days=1)
+            debut = ref.replace(day=1)
+            fin = (debut.replace(year=debut.year + 1, month=1, day=1)
+                if debut.month == 12
+                else debut.replace(month=debut.month + 1, day=1)) - timedelta(days=1)
+            return debut, fin
+
+        if periode_type == 'trimestre':
+            q = (ref.month - 1) // 3
+            debut = date(ref.year, q * 3 + 1, 1)
+            fin = ((date(ref.year + 1, 1, 1) if q == 3 else date(ref.year, q * 3 + 4, 1))
+                - timedelta(days=1))
+            return debut, fin
+
+        if periode_type in ('annee', 'annee_precedente'):
+            annee = ref.year if periode_type == 'annee' else ref.year - 1
+            return date(annee, 1, 1), date(annee, 12, 31)
+
+        raise ValueError(f"periode_type inconnu : {periode_type}")
+
+
+    @staticmethod
+    def _generer_bornes_granularite(debut: date, fin: date, granularite: str) -> list:
+        """[(date_debut, date_fin, label), ...] entre debut et fin."""
+        bornes = []
+        current = debut
+        while current <= fin:
+            if granularite == 'jour':
+                sp_debut, sp_fin = current, current
+                label = current.strftime('%Y-%m-%d')
+                current += timedelta(days=1)
+            elif granularite == 'semaine':
+                sp_debut = current - timedelta(days=current.weekday())
+                sp_fin = min(sp_debut + timedelta(days=6), fin)
+                label = f"S{sp_debut.isocalendar()[1]:02d}-{sp_debut.year}"
+                current = sp_fin + timedelta(days=1)
+            elif granularite == 'mois':
+                sp_debut = current.replace(day=1)
+                sp_fin = ((sp_debut.replace(year=sp_debut.year + 1, month=1, day=1)
+                        if sp_debut.month == 12
+                        else sp_debut.replace(month=sp_debut.month + 1, day=1))
+                        - timedelta(days=1))
+                sp_fin = min(sp_fin, fin)
+                label = sp_debut.strftime('%Y-%m')
+                current = sp_fin + timedelta(days=1)
+            elif granularite == 'trimestre':
+                q = (current.month - 1) // 3
+                sp_debut = date(current.year, q * 3 + 1, 1)
+                sp_fin = ((date(current.year + 1, 1, 1) if q == 3
+                        else date(current.year, q * 3 + 4, 1)) - timedelta(days=1))
+                sp_fin = min(sp_fin, fin)
+                label = f"{current.year}-T{q+1}"
+                current = sp_fin + timedelta(days=1)
+            elif granularite == 'annee':
+                sp_debut = date(current.year, 1, 1)
+                sp_fin = min(date(current.year, 12, 31), fin)
+                label = str(current.year)
+                current = sp_fin + timedelta(days=1)
+            else:
+                raise ValueError(f"Granularité inconnue : {granularite}")
+
+            if not bornes:
+                sp_debut = debut
+            bornes.append((sp_debut, sp_fin, label))
+        return bornes
+
+    def get_evolution_ecritures_periode(
+        self,
+        user_id: int,
+        compte_ids: List[int] = None,
+        date_debut: date = None,
+        date_fin: date = None,
+        granularite: str = 'jour',
+        statut_filtre: List[str] = None,
+        type_ecriture: str = None,               # 'recette' | 'depense' | None
+        type_ecriture_comptable: str = None,     # 'principale' | 'complementaire' | None
+        categorie_ids: List[int] = None,
+        mode: str = 'solde',                     # 'solde' | 'entrees' | 'sorties'
+        inclure_total: bool = True,
+    ) -> Dict:
+        """
+        Retourne :
+        {
+            'dates': [...],
+            'series': { 'Compte A': [...], ... },
+            'donnees_brutes': { 'Compte A': { label: {...}, ... }, ... },
+            'meta': {...}
+        }
+        """
+        if not date_debut or not date_fin:
+            return {'dates': [], 'series': {}, 'donnees_brutes': {}, 'meta': {}}
+        try:
+            with self.db.get_cursor() as cursor:
+                # 1) Comptes à traiter
+                if not compte_ids:
+                    cursor.execute("""
+                        SELECT id, nom_compte, solde_initial
+                        FROM comptes_principaux
+                        WHERE utilisateur_id = %s
+                        ORDER BY nom_compte
+                    """, (user_id,))
+                else:
+                    ph = ','.join(['%s'] * len(compte_ids))
+                    cursor.execute(f"""
+                        SELECT id, nom_compte, solde_initial
+                        FROM comptes_principaux
+                        WHERE id IN ({ph}) AND utilisateur_id = %s
+                        ORDER BY nom_compte
+                    """, tuple(compte_ids) + (user_id,))
+                comptes = cursor.fetchall()
+                if not comptes:
+                    return {'dates': [], 'series': {}, 'donnees_brutes': {}, 'meta': {}}
+                compte_map = {
+                    c['id']: {
+                        'nom': c['nom_compte'],
+                        'solde_initial': safe_decimal(c['solde_initial'] or 0),
+                    } for c in comptes
+                }
+
+                # 2) Bornes des sous-périodes
+                bornes = self._generer_bornes_granularite(date_debut, date_fin, granularite)
+
+                # 3) Requête principale
+                ph_comptes = ','.join(['%s'] * len(compte_map.keys()))
+                query = f"""
+                    SELECT
+                        e.compte_bancaire_id, e.date_ecriture, e.montant,
+                        e.type_ecriture, e.statut, e.type_ecriture_comptable,
+                        e.categorie_id,
+                        c.numero      AS categorie_numero,
+                        c.nom         AS categorie_nom,
+                        c.type_compte AS categorie_type_compte
+                    FROM ecritures_comptables e
+                    LEFT JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.compte_bancaire_id IN ({ph_comptes})
+                    AND e.utilisateur_id = %s
+                    AND e.date_ecriture >= %s
+                    AND e.date_ecriture <= %s
+                """
+                params = list(compte_map.keys()) + [user_id, date_debut, date_fin]
+
+                if statut_filtre:
+                    ph = ','.join(['%s'] * len(statut_filtre))
+                    query += f" AND e.statut IN ({ph})"
+                    params.extend(statut_filtre)
+                if type_ecriture:
+                    query += " AND e.type_ecriture = %s"
+                    params.append(type_ecriture)
+                if type_ecriture_comptable:
+                    query += " AND e.type_ecriture_comptable = %s"
+                    params.append(type_ecriture_comptable)
+                if categorie_ids:
+                    ph = ','.join(['%s'] * len(categorie_ids))
+                    query += f" AND e.categorie_id IN ({ph})"
+                    params.extend(categorie_ids)
+
+                query += " ORDER BY e.date_ecriture ASC, e.id ASC"
+                cursor.execute(query, params)
+                ecritures = cursor.fetchall()
+
+                # 4) Solde de départ (mode solde)
+                soldes_courants = {}
+                for cid, info in compte_map.items():
+                    if mode == 'solde':
+                        cursor.execute("""
+                            SELECT
+                                COALESCE(SUM(CASE WHEN type_ecriture = 'recette' THEN montant ELSE 0 END), 0) AS recettes,
+                                COALESCE(SUM(CASE WHEN type_ecriture = 'depense' THEN montant ELSE 0 END), 0) AS depenses
+                            FROM ecritures_comptables
+                            WHERE compte_bancaire_id = %s
+                            AND utilisateur_id = %s
+                            AND date_ecriture < %s
+                        """, (cid, user_id, date_debut))
+                        row = cursor.fetchone()
+                        recettes = safe_decimal(row['recettes'] or 0)
+                        depenses = safe_decimal(row['depenses'] or 0)
+                        soldes_courants[cid] = info['solde_initial'] + recettes - depenses
+                    else:
+                        soldes_courants[cid] = Decimal('0')
+
+                # 5) Indexation des écritures par sous-période
+                def _index_sous_periode(d):
+                    for i, (sp_debut, sp_fin, _) in enumerate(bornes):
+                        if sp_debut <= d <= sp_fin:
+                            return i
+                    return -1
+
+                flux = [
+                    {cid: {'entrees': Decimal('0'), 'sorties': Decimal('0')}
+                    for cid in compte_map}
+                    for _ in bornes
+                ]
+                for ec in ecritures:
+                    dt = ec['date_ecriture']
+                    if not isinstance(dt, date):
+                        dt = dt.date()
+                    idx = _index_sous_periode(dt)
+                    if idx < 0:
+                        continue
+                    cid = ec['compte_bancaire_id']
+                    montant = safe_decimal(ec['montant'])
+                    if ec['type_ecriture'] == 'recette':
+                        flux[idx][cid]['entrees'] += montant
+                    elif ec['type_ecriture'] == 'depense':
+                        flux[idx][cid]['sorties'] += montant
+
+                # 6) Construction des séries
+                labels = [b[2] for b in bornes]
+                series = {info['nom']: [] for info in compte_map.values()}
+                if inclure_total:
+                    series['Total'] = []
+                donnees_brutes = {info['nom']: {} for info in compte_map.values()}
+
+                for i, (sp_debut, sp_fin, label) in enumerate(bornes):
+                    total_periode = Decimal('0')
+                    for cid, info in compte_map.items():
+                        nom = info['nom']
+                        f = flux[i][cid]
+                        if mode == 'solde':
+                            soldes_courants[cid] += f['entrees'] - f['sorties']
+                            valeur = soldes_courants[cid]
+                        elif mode == 'entrees':
+                            valeur = f['entrees']
+                        elif mode == 'sorties':
+                            valeur = f['sorties']
+                        else:
+                            valeur = Decimal('0')
+
+                        series[nom].append(float(valeur))
+                        donnees_brutes[nom][label] = {
+                            'entrees': float(f['entrees']),
+                            'sorties': float(f['sorties']),
+                            'net':     float(f['entrees'] - f['sorties']),
+                            'valeur':  float(valeur),
+                            'date_debut': sp_debut.isoformat(),
+                            'date_fin':   sp_fin.isoformat(),
+                        }
+                        total_periode += valeur
+                    if inclure_total:
+                        series['Total'].append(float(total_periode))
+
+                return {
+                    'dates': labels,
+                    'series': series,
+                    'donnees_brutes': donnees_brutes,
+                    'meta': {
+                        'granularite': granularite,
+                        'date_debut': date_debut.isoformat(),
+                        'date_fin': date_fin.isoformat(),
+                        'statut_filtre': statut_filtre or [],
+                        'type_ecriture': type_ecriture,
+                        'type_ecriture_comptable': type_ecriture_comptable,
+                        'categorie_ids': categorie_ids or [],
+                        'mode': mode,
+                    },
+                }
+        except MySQLError as e:
+            logger.exception(f"Erreur get_evolution_ecritures_periode : {e}")
+            return {'dates': [], 'series': {}, 'donnees_brutes': {}, 'meta': {}}
+
+
+    @staticmethod
+    def _pas_gravitation(max_val: float) -> int:
+        for seuil, pas in [(5000, 1000), (1000, 500), (500, 100),
+                        (100, 50), (50, 25), (20, 10), (10, 5)]:
+            if max_val >= seuil:
+                return pas
+        return 1
+
+    def generer_graphique_evolution_ecritures(
+        self,
+        donnees_structurees: Dict,
+        type_graphique: str = 'ligne',   # 'ligne' | 'aire' | 'barre'
+        couleurs: List[str] = None,
+        afficher_total: bool = True,
+        largeur: int = 1000,
+        hauteur: int = 500,
+    ) -> str:
+        if not donnees_structurees or not donnees_structurees.get('series') \
+                or not donnees_structurees.get('dates'):
+            return "<svg width='800' height='200'><text x='10' y='30'>Aucune donnée disponible.</text></svg>"
+
+        dates = donnees_structurees['dates']
+        series = dict(donnees_structurees['series'])
+        meta = donnees_structurees.get('meta', {})
+
+        if not afficher_total:
+            series.pop('Total', None)
+
+        n_series = len(series)
+        if n_series == 0:
+            return "<svg width='800' height='200'><text x='10' y='30'>Aucune série à afficher.</text></svg>"
+
+        default_colors = ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f",
+                        "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac"]
+        if couleurs is None or len(couleurs) < n_series:
+            couleurs = (couleurs or []) + default_colors[len(couleurs or []):]
+        couleurs = couleurs[:n_series]
+
+        marge_gauche, marge_droite = 90, 180
+        marge_haut, marge_bas = 60, 100
+        largeur_graph = largeur - marge_gauche - marge_droite
+        hauteur_graph = hauteur - marge_haut - marge_bas
+
+        toutes_valeurs = [v for vals in series.values() for v in vals]
+        if not toutes_valeurs:
+            return "<svg width='800' height='200'><text x='10' y='30'>Aucune donnée à tracer.</text></svg>"
+
+        max_val = max(toutes_valeurs)
+        min_val = min(toutes_valeurs)
+        if max_val < 0:
+            max_val = 0
+        if min_val > 0:
+            min_val = 0
+        range_val = max_val - min_val or 1
+        padding = range_val * 0.1
+        max_val += padding
+        min_val -= padding
+        range_val = max_val - min_val
+
+        y_zero = marge_haut + hauteur_graph - ((0 - min_val) / range_val) * hauteur_graph
+
+        def x_pos(i):
+            return (marge_gauche + largeur_graph / 2) if len(dates) <= 1 \
+                else marge_gauche + (i / (len(dates) - 1)) * largeur_graph
+
+        def y_pos(v):
+            return marge_haut + hauteur_graph - ((v - min_val) / range_val) * hauteur_graph
+
+        svg = [f'<svg width="{largeur}" height="{hauteur}" xmlns="http://www.w3.org/2000/svg">']
+        svg.append('<style>text { font-family: Arial, sans-serif; }</style>')
+
+        titre = (f"Évolution — {meta.get('date_debut', '')} → {meta.get('date_fin', '')} "
+                f"({meta.get('granularite', '')}, mode {meta.get('mode', '')})")
+        svg.append(f'<text x="{largeur/2}" y="25" text-anchor="middle" font-size="14" '
+                f'font-weight="bold">{titre}</text>')
+
+        svg.append(f'<line x1="{marge_gauche}" y1="{marge_haut}" x2="{marge_gauche}" '
+                f'y2="{marge_haut + hauteur_graph}" stroke="black" stroke-width="2" />')
+        svg.append(f'<line x1="{marge_gauche}" y1="{marge_haut + hauteur_graph}" '
+                f'x2="{largeur - marge_droite}" y2="{marge_haut + hauteur_graph}" '
+                f'stroke="black" stroke-width="2" />')
+
+        if min_val < 0 < max_val:
+            svg.append(f'<line x1="{marge_gauche}" y1="{y_zero}" '
+                    f'x2="{largeur - marge_droite}" y2="{y_zero}" '
+                    f'stroke="#666" stroke-dasharray="4,2" />')
+
+        pas = self._pas_gravitation(max(abs(max_val), abs(min_val)))
+        val = pas
+        while val <= max_val:
+            y = y_pos(val)
+            if y >= marge_haut:
+                svg.append(f'<line x1="{marge_gauche}" y1="{y}" '
+                        f'x2="{largeur - marge_droite}" y2="{y}" '
+                        f'stroke="#ddd" stroke-width="0.5" />')
+                svg.append(f'<text x="{marge_gauche - 10}" y="{y + 4}" '
+                        f'text-anchor="end" font-size="10">{val:.0f}</text>')
+            val += pas
+        val = -pas
+        while val >= min_val:
+            y = y_pos(val)
+            if y <= marge_haut + hauteur_graph:
+                svg.append(f'<line x1="{marge_gauche}" y1="{y}" '
+                        f'x2="{largeur - marge_droite}" y2="{y}" '
+                        f'stroke="#ddd" stroke-width="0.5" />')
+                svg.append(f'<text x="{marge_gauche - 10}" y="{y + 4}" '
+                        f'text-anchor="end" font-size="10">{val:.0f}</text>')
+            val -= pas
+
+        pas_label = max(1, len(dates) // 20)
+        for i, _ in enumerate(dates):
+            if i % pas_label == 0:
+                x = x_pos(i)
+                svg.append(f'<line x1="{x}" y1="{marge_haut}" x2="{x}" '
+                        f'y2="{marge_haut + hauteur_graph}" '
+                        f'stroke="#eee" stroke-width="0.5" />')
+
+        if type_graphique == 'ligne':
+            for idx, valeurs in enumerate(series.values()):
+                c = couleurs[idx]
+                pts = " ".join(f"{x_pos(i)},{y_pos(v)}" for i, v in enumerate(valeurs))
+                svg.append(f'<polyline points="{pts}" fill="none" stroke="{c}" stroke-width="2" />')
+                for i, v in enumerate(valeurs):
+                    svg.append(f'<circle cx="{x_pos(i)}" cy="{y_pos(v)}" r="2.5" fill="{c}" />')
+
+        elif type_graphique == 'aire':
+            for idx, valeurs in enumerate(series.values()):
+                c = couleurs[idx]
+                pts = [f"{x_pos(0)},{y_zero}"]
+                pts += [f"{x_pos(i)},{y_pos(v)}" for i, v in enumerate(valeurs)]
+                pts.append(f"{x_pos(len(valeurs) - 1)},{y_zero}")
+                svg.append(f'<polygon points="{" ".join(pts)}" fill="{c}" '
+                        f'fill-opacity="0.25" stroke="{c}" stroke-width="1.5" />')
+
+        elif type_graphique == 'barre':
+            n = len(dates)
+            largeur_slot = largeur_graph / max(1, n)
+            largeur_barre = largeur_slot * 0.8 / max(1, n_series)
+            for i in range(n):
+                x_slot = marge_gauche + i * largeur_slot + largeur_slot * 0.1
+                for j, valeurs in enumerate(series.values()):
+                    v = valeurs[i]
+                    x = x_slot + j * largeur_barre
+                    y = y_pos(v) if v >= 0 else y_zero
+                    h = abs(y_pos(v) - y_zero)
+                    svg.append(f'<rect x="{x}" y="{y}" width="{largeur_barre}" '
+                            f'height="{h}" fill="{couleurs[j]}" fill-opacity="0.85" />')
+        else:
+            return f"<svg width='800' height='200'><text x='10' y='30'>Type inconnu : {type_graphique}</text></svg>"
+
+        for i, d in enumerate(dates):
+            if i % pas_label == 0:
+                x = x_pos(i)
+                svg.append(
+                    f'<text x="{x}" y="{marge_haut + hauteur_graph + 20}" '
+                    f'text-anchor="end" font-size="9" '
+                    f'transform="rotate(-45, {x}, {marge_haut + hauteur_graph + 20})">{d}</text>'
+                )
+
+        for idx, nom in enumerate(series.keys()):
+            y = marge_haut + idx * 20
+            svg.append(f'<rect x="{largeur - marge_droite + 20}" y="{y}" '
+                    f'width="15" height="10" fill="{couleurs[idx]}" />')
+            nom_affiche = nom[:25] + "…" if len(nom) > 25 else nom
+            svg.append(f'<text x="{largeur - marge_droite + 40}" y="{y + 9}" '
+                    f'font-size="11">{nom_affiche}</text>')
+
+        svg.append('</svg>')
+        return "\n".join(svg)
+
     def ensure_upload_folder(self):
         """À appeler explicitement quand nécessaire (ex: dans une route)"""
         folder = self.upload_folder
