@@ -5807,9 +5807,15 @@ class TransactionFinanciere(BaseRepository):
         series = donnees_structurees['series']
         n_series = len(series)
         # Gérer les couleurs
-        default_colors = ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac"]
-        if couleurs is None or len(couleurs) < n_series:
-            couleurs = (couleurs or []) + default_colors[len(couleurs or []):]
+        default_colors = ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f",
+                  "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac"]
+
+        # S'assurer qu'on a AU MOINS n_series couleurs
+        couleurs = list(couleurs or [])
+        i = 0
+        while len(couleurs) < n_series:
+            couleurs.append(default_colors[i % len(default_colors)])
+            i += 1
         couleurs = couleurs[:n_series]
         # Paramètres du graphique
         largeur_svg = 800
