@@ -529,7 +529,7 @@ class DatabaseManager:
                     FOREIGN KEY (sous_compte_destination_id) REFERENCES sous_comptes(id),
                     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id),
                     INDEX idx_receipt_id (receipt_id),
-                    INDEX idx_transactions_transfert_id ON transactions (transfert_id)
+                    INDEX idx_transactions_transfert_id (transfert_id)
                 );""")
 
                 cursor.execute("""
