@@ -3800,11 +3800,9 @@ def export_ecritures():
 @bp.route('/comptabilite/ecritures/evolution', methods=['GET'])
 @login_required
 def evolution_ecritures():
-    """Vue graphique de l'évolution des écritures (par défaut : année en cours)."""
+    """Évolution des écritures par COMPTE COMPTABLE (catégorie)."""
 
-    # ============================================================
-    # 1. Période
-    # ============================================================
+    # ---- Période ----
     periode_type = request.args.get('periode_type', 'annee')
     date_reference_str = request.args.get('date_reference')
     date_from_str = request.args.get('date_from')
@@ -3829,36 +3827,22 @@ def evolution_ecritures():
         today = date.today()
         date_debut, date_fin = date(today.year, 1, 1), date(today.year, 12, 31)
 
-    # ============================================================
-    # 2. Listes pour les sélecteurs (nécessaires AVANT la logique comptes)
-    # ============================================================
-    comptes = g.models.compte_model.get_by_user_id(current_user.id)
+    # ---- Listes pour les sélecteurs ----
+    categories_comptables = g.models.categorie_comptable_model.get_all_categories(current_user.id)
     contacts = g.models.contact_model.get_all(current_user.id)
-    categories = g.models.categorie_comptable_model.get_all_categories(current_user.id)
 
-    # ============================================================
-    # 3. Filtres (mêmes noms que liste_ecritures)
-    # ============================================================
-    compte_id = request.args.get('compte_id')
+    # ---- Filtres ----
+    # Comptes comptables : multi-sélection
+    categorie_ids = request.args.getlist('categorie_ids', type=int)
+
+    # S'il n'y a qu'une seule catégorie, on la pré-sélectionne
+    if not categorie_ids and len(categories_comptables) == 1:
+        categorie_ids = [categories_comptables[0]['id']]
+
     id_contact = request.args.get('id_contact')
-    categorie_id = request.args.get('categorie_id')
     statut = request.args.get('statut', 'tous')
     type_ecriture = request.args.get('type_ecriture', 'tous')
     type_ecriture_comptable = request.args.get('type_ecriture_comptable', 'tous')
-
-    # ============================================================
-    # 4. Déterminer les comptes à tracer (logique anti « tout charger »)
-    # ============================================================
-    compte_ids = None
-    if compte_id and compte_id.isdigit():
-        # Cas 1 : un compte est explicitement sélectionné
-        compte_ids = [int(compte_id)]
-    elif len(comptes) == 1:
-        # Cas 2 : un seul compte existe → on le prend automatiquement
-        compte_ids = [comptes[0]['id']]
-        compte_id = str(comptes[0]['id'])   # pour que le select soit pré-sélectionné
-    # Cas 3 : aucun compte sélectionné et plusieurs comptes existent
-    #          → on n'appelle PAS le modèle, on affiche une invitation.
 
     statut_filtre = None if statut in (None, '', 'tous') else [statut]
     type_ecriture_filtre = None if type_ecriture in (None, '', 'tous') else type_ecriture
@@ -3867,29 +3851,23 @@ def evolution_ecritures():
         else type_ecriture_comptable
     )
 
-    # ============================================================
-    # 5. Options graphique
-    # ============================================================
+    # ---- Options graphique ----
     granularite = request.args.get('granularite', 'mois')
     mode = request.args.get('mode', 'solde')
     type_graphique = request.args.get('type_graphique', 'ligne')
     afficher_total = request.args.get('afficher_total', '1') == '1'
 
-    # ============================================================
-    # 6. Données + SVG
-    # ============================================================
-    if compte_ids:
-        # Cas 1 ou 2 : on calcule normalement
+    # ---- Données + SVG ----
+    if categorie_ids:
         data = g.models.ecriture_comptable_model.get_evolution_ecritures_periode(
             user_id=current_user.id,
-            compte_ids=compte_ids,
+            categorie_ids=categorie_ids,
             date_debut=date_debut,
             date_fin=date_fin,
             granularite=granularite,
             statut_filtre=statut_filtre,
             type_ecriture=type_ecriture_filtre,
             type_ecriture_comptable=type_ecriture_comptable_filtre,
-            categorie_ids=[int(categorie_id)] if categorie_id and categorie_id.isdigit() else None,
             mode=mode,
             inclure_total=afficher_total,
         )
@@ -3899,18 +3877,15 @@ def evolution_ecritures():
             afficher_total=afficher_total,
         )
     else:
-        # Cas 3 : aucun compte sélectionné → pas de calcul, invitation
         data = {'dates': [], 'series': {}, 'donnees_brutes': {}, 'meta': {}}
         svg = (
             "<svg width='800' height='200' xmlns='http://www.w3.org/2000/svg'>"
             "<text x='400' y='100' text-anchor='middle' font-size='14' fill='#666'>"
-            "Sélectionnez au moins un compte dans les filtres pour afficher le graphique."
+            "Sélectionnez au moins un compte comptable pour afficher le graphique."
             "</text></svg>"
         )
 
-    # ============================================================
-    # 7. Listes d'options (déjà récupérées pour comptes/contacts/catégories)
-    # ============================================================
+    # ---- Listes d'options ----
     statuts_disponibles = [
         {'value': 'tous',      'label': 'Tous les statuts'},
         {'value': 'pending',   'label': 'En attente'},
@@ -3961,9 +3936,8 @@ def evolution_ecritures():
         'comptabilite/evolution_ecritures.html',
         svg=svg,
         data=data,
-        comptes=comptes,
+        categories_comptables=categories_comptables,
         contacts=contacts,
-        categories=categories,
         # Période
         periode_type=periode_type,
         date_reference=date_reference_str,
@@ -3976,9 +3950,8 @@ def evolution_ecritures():
         type_graphique=type_graphique,
         afficher_total=afficher_total,
         # Filtres
-        compte_selectionne=compte_id,
+        categorie_ids=categorie_ids,
         contact_selectionne=id_contact,
-        categorie_id=categorie_id,
         statut_selectionne=statut,
         type_ecriture_selectionne=type_ecriture,
         type_ecriture_comptable_selectionne=type_ecriture_comptable,
@@ -3991,6 +3964,7 @@ def evolution_ecritures():
         types_ecriture_disponibles=types_ecriture_disponibles,
         types_ecriture_comptable_disponibles=types_ecriture_comptable_disponibles,
     )
+    
 @bp.route('/comptabilite/ecritures/by-contact/<int:contact_id>', methods=['GET'])
 @login_required
 def liste_ecritures_par_contact(contact_id):

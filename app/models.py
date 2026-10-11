@@ -7689,77 +7689,85 @@ class EcritureComptable(BaseRepository):
     def get_evolution_ecritures_periode(
         self,
         user_id: int,
-        compte_ids: List[int] = None,
+        categorie_ids: List[int] = None,
         date_debut: date = None,
         date_fin: date = None,
         granularite: str = 'jour',
         statut_filtre: List[str] = None,
         type_ecriture: str = None,               # 'recette' | 'depense' | None
         type_ecriture_comptable: str = None,     # 'principale' | 'complementaire' | None
-        categorie_ids: List[int] = None,
         mode: str = 'solde',                     # 'solde' | 'entrees' | 'sorties'
         inclure_total: bool = True,
     ) -> Dict:
         """
+        Évolution des écritures par compte COMPTABLE (catégorie).
+
         Retourne :
         {
             'dates': [...],
-            'series': { 'Compte A': [...], ... },
-            'donnees_brutes': { 'Compte A': { label: {...}, ... }, ... },
+            'series': { '3000 - Ventes': [...], ... },
+            'donnees_brutes': { '3000 - Ventes': { label: {...} }, ... },
             'meta': {...}
         }
         """
         if not date_debut or not date_fin:
             return {'dates': [], 'series': {}, 'donnees_brutes': {}, 'meta': {}}
+
         try:
             with self.db.get_cursor() as cursor:
-                # 1) Comptes à traiter
-                if not compte_ids:
+                # 1) Catégories à tracer
+                if not categorie_ids:
                     cursor.execute("""
-                        SELECT id, nom_compte, solde_initial
-                        FROM comptes_principaux
-                        WHERE utilisateur_id = %s
-                        ORDER BY nom_compte
+                        SELECT id, numero, nom, type_compte
+                        FROM categories_comptables
+                        WHERE utilisateur_id = %s AND actif = TRUE
+                        ORDER BY numero
                     """, (user_id,))
                 else:
-                    ph = ','.join(['%s'] * len(compte_ids))
+                    ph = ','.join(['%s'] * len(categorie_ids))
                     cursor.execute(f"""
-                        SELECT id, nom_compte, solde_initial
-                        FROM comptes_principaux
-                        WHERE id IN ({ph}) AND utilisateur_id = %s
-                        ORDER BY nom_compte
-                    """, tuple(compte_ids) + (user_id,))
-                comptes = cursor.fetchall()
-                if not comptes:
+                        SELECT id, numero, nom, type_compte
+                        FROM categories_comptables
+                        WHERE id IN ({ph}) AND utilisateur_id = %s AND actif = TRUE
+                        ORDER BY numero
+                    """, tuple(categorie_ids) + (user_id,))
+                categories = cursor.fetchall()
+                if not categories:
                     return {'dates': [], 'series': {}, 'donnees_brutes': {}, 'meta': {}}
-                compte_map = {
+
+                # Clé de série = "numero - nom" (lisible), et on garde le mapping id -> label
+                cat_map = {
                     c['id']: {
-                        'nom': c['nom_compte'],
-                        'solde_initial': safe_decimal(c['solde_initial'] or 0),
-                    } for c in comptes
+                        'label': f"{c['numero']} - {c['nom']}",
+                        'numero': c['numero'],
+                        'nom': c['nom'],
+                        'type_compte': c['type_compte'],
+                    } for c in categories
                 }
 
                 # 2) Bornes des sous-périodes
                 bornes = self._generer_bornes_granularite(date_debut, date_fin, granularite)
 
-                # 3) Requête principale
-                ph_comptes = ','.join(['%s'] * len(compte_map.keys()))
+                # 3) Requête principale — par categorie_id
+                ph_cats = ','.join(['%s'] * len(cat_map.keys()))
                 query = f"""
                     SELECT
-                        e.compte_bancaire_id, e.date_ecriture, e.montant,
-                        e.type_ecriture, e.statut, e.type_ecriture_comptable,
                         e.categorie_id,
+                        e.date_ecriture,
+                        e.montant,
+                        e.type_ecriture,
+                        e.type_ecriture_comptable,
                         c.numero      AS categorie_numero,
                         c.nom         AS categorie_nom,
                         c.type_compte AS categorie_type_compte
                     FROM ecritures_comptables e
-                    LEFT JOIN categories_comptables c ON e.categorie_id = c.id
-                    WHERE e.compte_bancaire_id IN ({ph_comptes})
+                    JOIN categories_comptables c ON e.categorie_id = c.id
+                    WHERE e.categorie_id IN ({ph_cats})
                     AND e.utilisateur_id = %s
                     AND e.date_ecriture >= %s
                     AND e.date_ecriture <= %s
                 """
-                params = list(compte_map.keys()) + [user_id, date_debut, date_fin]
+                params = list(cat_map.keys()) + [user_id, date_debut, date_fin]
 
                 if statut_filtre:
                     ph = ','.join(['%s'] * len(statut_filtre))
@@ -7771,34 +7779,32 @@ class EcritureComptable(BaseRepository):
                 if type_ecriture_comptable:
                     query += " AND e.type_ecriture_comptable = %s"
                     params.append(type_ecriture_comptable)
-                if categorie_ids:
-                    ph = ','.join(['%s'] * len(categorie_ids))
-                    query += f" AND e.categorie_id IN ({ph})"
-                    params.extend(categorie_ids)
 
                 query += " ORDER BY e.date_ecriture ASC, e.id ASC"
                 cursor.execute(query, params)
                 ecritures = cursor.fetchall()
 
-                # 4) Solde de départ (mode solde)
-                soldes_courants = {}
-                for cid, info in compte_map.items():
-                    if mode == 'solde':
-                        cursor.execute("""
-                            SELECT
-                                COALESCE(SUM(CASE WHEN type_ecriture = 'recette' THEN montant ELSE 0 END), 0) AS recettes,
-                                COALESCE(SUM(CASE WHEN type_ecriture = 'depense' THEN montant ELSE 0 END), 0) AS depenses
-                            FROM ecritures_comptables
-                            WHERE compte_bancaire_id = %s
-                            AND utilisateur_id = %s
-                            AND date_ecriture < %s
-                        """, (cid, user_id, date_debut))
-                        row = cursor.fetchone()
-                        recettes = safe_decimal(row['recettes'] or 0)
-                        depenses = safe_decimal(row['depenses'] or 0)
-                        soldes_courants[cid] = info['solde_initial'] + recettes - depenses
-                    else:
-                        soldes_courants[cid] = Decimal('0')
+                # 4) Pour le mode 'solde' : solde cumulé avant date_debut par catégorie
+                soldes_courants = {cid: Decimal('0') for cid in cat_map}
+                if mode == 'solde':
+                    ph_cats2 = ','.join(['%s'] * len(cat_map.keys()))
+                    cursor.execute(f"""
+                        SELECT
+                            categorie_id,
+                            COALESCE(SUM(CASE WHEN type_ecriture = 'recette' THEN montant ELSE 0 END), 0) AS recettes,
+                            COALESCE(SUM(CASE WHEN type_ecriture = 'depense' THEN montant ELSE 0 END), 0) AS depenses
+                        FROM ecritures_comptables
+                        WHERE categorie_id IN ({ph_cats2})
+                        AND utilisateur_id = %s
+                        AND date_ecriture < %s
+                        GROUP BY categorie_id
+                    """, list(cat_map.keys()) + [user_id, date_debut])
+                    for row in cursor.fetchall():
+                        cid = row['categorie_id']
+                        soldes_courants[cid] = (
+                            safe_decimal(row['recettes'] or 0)
+                            - safe_decimal(row['depenses'] or 0)
+                        )
 
                 # 5) Indexation des écritures par sous-période
                 def _index_sous_periode(d):
@@ -7809,7 +7815,7 @@ class EcritureComptable(BaseRepository):
 
                 flux = [
                     {cid: {'entrees': Decimal('0'), 'sorties': Decimal('0')}
-                    for cid in compte_map}
+                    for cid in cat_map}
                     for _ in bornes
                 ]
                 for ec in ecritures:
@@ -7819,7 +7825,7 @@ class EcritureComptable(BaseRepository):
                     idx = _index_sous_periode(dt)
                     if idx < 0:
                         continue
-                    cid = ec['compte_bancaire_id']
+                    cid = ec['categorie_id']
                     montant = safe_decimal(ec['montant'])
                     if ec['type_ecriture'] == 'recette':
                         flux[idx][cid]['entrees'] += montant
@@ -7827,16 +7833,16 @@ class EcritureComptable(BaseRepository):
                         flux[idx][cid]['sorties'] += montant
 
                 # 6) Construction des séries
-                labels = [b[2] for b in bornes]
-                series = {info['nom']: [] for info in compte_map.values()}
+                labels_periodes = [b[2] for b in bornes]
+                series = {cat_map[cid]['label']: [] for cid in cat_map}
                 if inclure_total:
                     series['Total'] = []
-                donnees_brutes = {info['nom']: {} for info in compte_map.values()}
+                donnees_brutes = {cat_map[cid]['label']: {} for cid in cat_map}
 
                 for i, (sp_debut, sp_fin, label) in enumerate(bornes):
                     total_periode = Decimal('0')
-                    for cid, info in compte_map.items():
-                        nom = info['nom']
+                    for cid, info in cat_map.items():
+                        nom = info['label']
                         f = flux[i][cid]
                         if mode == 'solde':
                             soldes_courants[cid] += f['entrees'] - f['sorties']
@@ -7862,7 +7868,7 @@ class EcritureComptable(BaseRepository):
                         series['Total'].append(float(total_periode))
 
                 return {
-                    'dates': labels,
+                    'dates': labels_periodes,
                     'series': series,
                     'donnees_brutes': donnees_brutes,
                     'meta': {
@@ -7872,14 +7878,13 @@ class EcritureComptable(BaseRepository):
                         'statut_filtre': statut_filtre or [],
                         'type_ecriture': type_ecriture,
                         'type_ecriture_comptable': type_ecriture_comptable,
-                        'categorie_ids': categorie_ids or [],
+                        'categorie_ids': list(cat_map.keys()),
                         'mode': mode,
                     },
                 }
         except MySQLError as e:
             logger.exception(f"Erreur get_evolution_ecritures_periode : {e}")
             return {'dates': [], 'series': {}, 'donnees_brutes': {}, 'meta': {}}
-
 
     @staticmethod
     def _pas_gravitation(max_val: float) -> int:

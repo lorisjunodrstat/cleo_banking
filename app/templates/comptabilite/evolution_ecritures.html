@@ -87,16 +87,23 @@
                 </div>
 
                 <!-- Compte -->
-                <div class="col-md-3">
-                    <label for="compte_id" class="form-label">Compte bancaire</label>
-                    <select id="compte_id" name="compte_id" class="form-select">
-                        <option value="">Tous les comptes</option>
-                        {% for compte in comptes %}
-                        <option value="{{ compte.id }}" {% if compte.id == compte_selectionne|int %}selected{% endif %}>
-                            {{ compte.nom_compte }}{% if compte.nom_banque %} ({{ compte.nom_banque }}){% endif %}
+                <div class="col-md-6">
+                    <label for="categorie_ids" class="form-label">
+                        Comptes comptables
+                        <small class="text-muted">(aucun = invitation à choisir)</small>
+                    </label>
+                    <select id="categorie_ids" name="categorie_ids" class="form-select" multiple size="8">
+                        {% for cc in categories_comptables %}
+                        <option value="{{ cc.id }}"
+                                {% if categorie_ids and cc.id in categorie_ids %}selected{% endif %}>
+                            {{ cc.numero }} — {{ cc.nom }}
+                            {% if cc.type_compte %} ({{ cc.type_compte }}){% endif %}
                         </option>
                         {% endfor %}
                     </select>
+                    <div class="form-text">
+                        Astuce : Ctrl (Windows) / Cmd (Mac) pour sélectionner plusieurs comptes.
+                    </div>
                 </div>
 
                 <!-- Contact -->
