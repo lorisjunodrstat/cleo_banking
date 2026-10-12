@@ -3801,20 +3801,17 @@ def export_ecritures():
 @login_required
 def evolution_ecritures():
     """Évolution des écritures par COMPTE COMPTABLE (catégorie)."""
-
     # ---- Période ----
     periode_type = request.args.get('periode_type', 'annee')
     date_reference_str = request.args.get('date_reference')
     date_from_str = request.args.get('date_from')
     date_to_str = request.args.get('date_to')
-
     date_reference = None
     if date_reference_str:
         try:
             date_reference = date.fromisoformat(date_reference_str)
         except ValueError:
             date_reference = None
-
     try:
         date_debut, date_fin = g.models.ecriture_comptable_model._resoudre_periode(
             periode_type=periode_type,
@@ -3826,19 +3823,15 @@ def evolution_ecritures():
         flash(f"Période invalide : {e}", "warning")
         today = date.today()
         date_debut, date_fin = date(today.year, 1, 1), date(today.year, 12, 31)
-
     # ---- Listes pour les sélecteurs ----
     categories_comptables = g.models.categorie_comptable_model.get_all_categories(current_user.id)
     contacts = g.models.contact_model.get_all(current_user.id)
-
     # ---- Filtres ----
     # Comptes comptables : multi-sélection
     categorie_ids = request.args.getlist('categorie_ids', type=int)
-
     # S'il n'y a qu'une seule catégorie, on la pré-sélectionne
     if not categorie_ids and len(categories_comptables) == 1:
         categorie_ids = [categories_comptables[0]['id']]
-
     id_contact_raw = request.args.get('id_contact')
     id_contact = None
     if id_contact_raw not in (None, '', 'tous'):
@@ -3856,18 +3849,17 @@ def evolution_ecritures():
         None if type_ecriture_comptable in (None, '', 'tous')
         else type_ecriture_comptable
     )
-
     # ---- Options graphique ----
     granularite = request.args.get('granularite', 'mois')
     mode = request.args.get('mode', 'solde')
     type_graphique = request.args.get('type_graphique', 'ligne')
     afficher_total = request.args.get('afficher_total', '1') == '1'
-
     # ---- Données + SVG ----
     if categorie_ids:
         data = g.models.ecriture_comptable_model.get_evolution_ecritures_periode(
             user_id=current_user.id,
             categorie_ids=categorie_ids,
+            id_contact=id_contact, 
             date_debut=date_debut,
             date_fin=date_fin,
             granularite=granularite,
@@ -3890,7 +3882,6 @@ def evolution_ecritures():
             "Sélectionnez au moins un compte comptable pour afficher le graphique."
             "</text></svg>"
         )
-
     # ---- Listes d'options ----
     statuts_disponibles = [
         {'value': 'tous',      'label': 'Tous les statuts'},
@@ -3937,7 +3928,6 @@ def evolution_ecritures():
         {'value': 'entrees', 'label': 'Recettes'},
         {'value': 'sorties', 'label': 'Dépenses'},
     ]
-
     return render_template(
         'comptabilite/evolution_ecritures.html',
         svg=svg,
