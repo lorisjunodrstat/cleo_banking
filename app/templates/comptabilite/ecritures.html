@@ -689,6 +689,7 @@ table.table > tbody > tr > td[class*="statut-"] .text-muted {
                     <select name="action" id="action_masse" class="form-select" style="min-width: 160px;" form="form-actions-masse" required>
                         <option value="" disabled selected>Actions groupées...</option>
                         <option value="update_statut">Changer le statut</option>
+                        <option value="ajouter_contact">Ajouter un contact</option>
                     </select>
                     
                     <!-- ✅ Ajout de 'd-none' par défaut pour éviter tout saut de mise en page au chargement -->
@@ -696,6 +697,15 @@ table.table > tbody > tr > td[class*="statut-"] .text-muted {
                         <option value="" disabled selected>Nouveau statut...</option>
                         <option value="validée">✅ Validée</option>
                         <option value="pending">⏳ En attente</option>
+                    </select>
+                    <select name="contact_id" id="contact_select"
+                        class="form-select d-none" style="min-width: 200px;"
+                            form="form-actions-masse">
+                        <option value="" disabled selected>Choisir un contact...</option>
+                        <option value="0">— Retirer le contact —</option>
+                        {% for contact in contacts %}
+                        <option value="{{ contact.id_contact }}">{{ contact.nom }}</option>
+                        {% endfor %}
                     </select>
 
                     <button type="submit" class="btn btn-primary" id="btn-action-masse" disabled form="form-actions-masse" title="Appliquer l'action">
@@ -1190,6 +1200,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnActionMasse = document.getElementById('btn-action-masse');
     const actionMasse = document.getElementById('action_masse');
     const nouveauStatutSelect = document.getElementById('nouveau_statut_select');
+    const contactSelect = document.getElementById('contact_select');
 
     // Fonction pour mettre à jour l'état de la sélection
     function updateSelectionState() {
@@ -1228,18 +1239,27 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Affichage conditionnel du sélecteur de statut
-    if (actionMasse && nouveauStatutSelect) {
-        actionMasse.addEventListener('change', function() {
-            if (this.value === 'update_statut') {
-                nouveauStatutSelect.classList.remove('d-none');
-                nouveauStatutSelect.setAttribute('required', 'required');
-            } else {
-                nouveauStatutSelect.classList.add('d-none');
-                nouveauStatutSelect.removeAttribute('required');
-                nouveauStatutSelect.value = ""; // Réinitialiser la valeur si on change d'action
-            }
-        });
-    }
+    if (actionMasse && nouveauStatutSelect && contactSelect) {
+    actionMasse.addEventListener('change', function() {
+        // Cacher et désactiver tous les sélecteurs conditionnels par défaut
+        nouveauStatutSelect.classList.add('d-none');
+        nouveauStatutSelect.removeAttribute('required');
+        nouveauStatutSelect.value = "";
+
+        contactSelect.classList.add('d-none');
+        contactSelect.removeAttribute('required');
+        contactSelect.value = "";
+
+        // Afficher le bon sélecteur selon l'action choisie
+        if (this.value === 'update_statut') {
+            nouveauStatutSelect.classList.remove('d-none');
+            nouveauStatutSelect.setAttribute('required', 'required');
+        } else if (this.value === 'ajouter_contact') {
+            contactSelect.classList.remove('d-none');
+            contactSelect.setAttribute('required', 'required');
+        }
+    });
+}
 
     // Initialiser l'état au chargement de la page (au cas où le navigateur garde les cases cochées)
     updateSelectionState();

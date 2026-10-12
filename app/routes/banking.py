@@ -3616,6 +3616,29 @@ def liste_ecritures():
             if error_count > 0:
                 flash(f"{error_count} erreur(s) sont survenues lors du traitement.", "danger")
             return redirect(request.referrer or url_for('banking.liste_ecritures'))
+        elif action == 'ajouter_contact':
+            contact_id_str = request.form.get('contact_id')
+            if not contact_id_str or not contact_id_str.isdigit():
+                flash("Aucun contact sélectionné.", "warning")
+                return redirect(request.referrer or url_for('banking.liste_ecritures'))
+            contact_id = int(contact_id_str)
+            # Optionnel : support du "retirer le contact"
+            if contact_id == 0:  # convention : 0 = retirer le contact
+                contact_id = None
+            nb_ok, nb_ko = g.models.ecriture_comptable_model.affecter_contact_en_masse(
+                ecriture_ids=[int(eid) for eid in ecriture_ids if eid.isdigit()],
+                user_id=current_user.id,
+                id_contact=contact_id,
+            )
+            if nb_ok > 0:
+                flash(f"{nb_ok} écriture(s) mise(s) à jour avec le contact.", "success")
+            if nb_ko > 0:
+                flash(f"{nb_ko} écriture(s) n'ont pas pu être mises à jour.", "danger")
+            return redirect(request.referrer or url_for('banking.liste_ecritures'))
+        else:
+            flash("Action non autorisée.", "warning")
+            return redirect(request.referrer or url_for('banking.liste_ecritures'))
+        
         else:
             flash("Action non autorisée.", "warning")
             return redirect(request.referrer or url_for('banking.liste_ecritures'))

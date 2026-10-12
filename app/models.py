@@ -7640,6 +7640,40 @@ class EcritureComptable(BaseRepository):
 
         raise ValueError(f"periode_type inconnu : {periode_type}")
 
+    def affecter_contact_en_masse(self, ecriture_ids: List[int], user_id: int,
+                                id_contact: int) -> Tuple[int, int]:
+        """
+        Affecte un contact à plusieurs écritures.
+        Retourne (nb_succes, nb_echecs).
+        """
+        if not ecriture_ids:
+            return 0, 0
+        if id_contact == 0:
+            id_contact = None
+        try:
+            with self.db.get_cursor() as cursor:
+                # Vérifier que le contact appartient à l'utilisateur
+                cursor.execute("""
+                    SELECT id_contact FROM contacts
+                    WHERE id_contact = %s AND utilisateur_id = %s
+                """, (id_contact, user_id))
+                if not cursor.fetchone():
+                    logger.warning(f"Contact {id_contact} inexistant ou non autorisé")
+                    return 0, len(ecriture_ids)
+
+                # UPDATE en masse
+                ph = ','.join(['%s'] * len(ecriture_ids))
+                cursor.execute(f"""
+                    UPDATE ecritures_comptables
+                    SET id_contact = %s
+                    WHERE id IN ({ph}) AND utilisateur_id = %s
+                """, [id_contact] + ecriture_ids + [user_id])
+                nb_succes = cursor.rowcount
+                nb_echecs = len(ecriture_ids) - nb_succes
+                return nb_succes, nb_echecs
+        except MySQLError as e:
+            logger.exception(f"Erreur affectation contact en masse: {e}")
+            return 0, len(ecriture_ids)
 
     @staticmethod
     def _generer_bornes_granularite(debut: date, fin: date, granularite: str) -> list:
@@ -7702,7 +7736,6 @@ class EcritureComptable(BaseRepository):
     ) -> Dict:
         """
         Évolution des écritures par compte COMPTABLE (catégorie).
-
         Retourne :
         {
             'dates': [...],
@@ -7713,7 +7746,6 @@ class EcritureComptable(BaseRepository):
         """
         if not date_debut or not date_fin:
             return {'dates': [], 'series': {}, 'donnees_brutes': {}, 'meta': {}}
-
         try:
             with self.db.get_cursor() as cursor:
                 # 1) Catégories à tracer
@@ -7735,7 +7767,6 @@ class EcritureComptable(BaseRepository):
                 categories = cursor.fetchall()
                 if not categories:
                     return {'dates': [], 'series': {}, 'donnees_brutes': {}, 'meta': {}}
-
                 # Clé de série = "numero - nom" (lisible), et on garde le mapping id -> label
                 cat_map = {
                     c['id']: {
@@ -7745,10 +7776,8 @@ class EcritureComptable(BaseRepository):
                         'type_compte': c['type_compte'],
                     } for c in categories
                 }
-
                 # 2) Bornes des sous-périodes
                 bornes = self._generer_bornes_granularite(date_debut, date_fin, granularite)
-
                 # 3) Requête principale — par categorie_id
                 ph_cats = ','.join(['%s'] * len(cat_map.keys()))
                 query = f"""
@@ -7772,7 +7801,6 @@ class EcritureComptable(BaseRepository):
                 if id_contact is not None:
                     query += " AND e.id_contact = %s"
                     params.append(id_contact)
-
                 if statut_filtre:
                     ph = ','.join(['%s'] * len(statut_filtre))
                     query += f" AND e.statut IN ({ph})"
@@ -7783,11 +7811,9 @@ class EcritureComptable(BaseRepository):
                 if type_ecriture_comptable:
                     query += " AND e.type_ecriture_comptable = %s"
                     params.append(type_ecriture_comptable)
-
                 query += " ORDER BY e.date_ecriture ASC, e.id ASC"
                 cursor.execute(query, params)
                 ecritures = cursor.fetchall()
-
                 # 4) Pour le mode 'solde' : solde cumulé avant date_debut par catégorie
                 soldes_courants = {cid: Decimal('0') for cid in cat_map}
                 if mode == 'solde':
@@ -7803,12 +7829,10 @@ class EcritureComptable(BaseRepository):
                         AND date_ecriture < %s
                     """
                     params_solde = list(cat_map.keys()) + [user_id, date_debut]
-
                     # ✅ Même filtre contact pour le solde initial
                     if id_contact is not None:
                         query_solde += " AND id_contact = %s"
                         params_solde.append(id_contact)
-
                     query_solde += " GROUP BY categorie_id"
                     cursor.execute(query_solde, params_solde)
                     for row in cursor.fetchall():
@@ -7817,14 +7841,12 @@ class EcritureComptable(BaseRepository):
                             safe_decimal(row['recettes'] or 0)
                             - safe_decimal(row['depenses'] or 0)
                         )
-
                 # 5) Indexation des écritures par sous-période
                 def _index_sous_periode(d):
                     for i, (sp_debut, sp_fin, _) in enumerate(bornes):
                         if sp_debut <= d <= sp_fin:
                             return i
                     return -1
-
                 flux = [
                     {cid: {'entrees': Decimal('0'), 'sorties': Decimal('0')}
                     for cid in cat_map}
@@ -7843,14 +7865,12 @@ class EcritureComptable(BaseRepository):
                         flux[idx][cid]['entrees'] += montant
                     elif ec['type_ecriture'] == 'depense':
                         flux[idx][cid]['sorties'] += montant
-
                 # 6) Construction des séries
                 labels_periodes = [b[2] for b in bornes]
                 series = {cat_map[cid]['label']: [] for cid in cat_map}
                 if inclure_total:
                     series['Total'] = []
                 donnees_brutes = {cat_map[cid]['label']: {} for cid in cat_map}
-
                 for i, (sp_debut, sp_fin, label) in enumerate(bornes):
                     total_periode = Decimal('0')
                     for cid, info in cat_map.items():
@@ -7865,7 +7885,6 @@ class EcritureComptable(BaseRepository):
                             valeur = f['sorties']
                         else:
                             valeur = Decimal('0')
-
                         series[nom].append(float(valeur))
                         donnees_brutes[nom][label] = {
                             'entrees': float(f['entrees']),
@@ -7878,7 +7897,6 @@ class EcritureComptable(BaseRepository):
                         total_periode += valeur
                     if inclure_total:
                         series['Total'].append(float(total_periode))
-
                 return {
                     'dates': labels_periodes,
                     'series': series,
