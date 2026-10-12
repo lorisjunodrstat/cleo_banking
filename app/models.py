@@ -1417,7 +1417,7 @@ class DatabaseManager:
                 );""")
 
                 cursor.execute("""
-                CREATE TABLE receipt_ecritures (
+                CREATE TABLE IF NOT EXISTS receipt_ecritures (
                     id INT(11) NOT NULL AUTO_INCREMENT,
                     receipt_id INT(11) NOT NULL,
                     ecriture_id INT(11) NOT NULL,
