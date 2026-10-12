@@ -3638,10 +3638,6 @@ def liste_ecritures():
         else:
             flash("Action non autorisée.", "warning")
             return redirect(request.referrer or url_for('banking.liste_ecritures'))
-        
-        else:
-            flash("Action non autorisée.", "warning")
-            return redirect(request.referrer or url_for('banking.liste_ecritures'))
     """Affiche la liste des écritures comptables avec filtrage avancé"""
     # Récupération des paramètres de filtrage
     compte_id = request.args.get('compte_id')
