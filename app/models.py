@@ -7690,6 +7690,7 @@ class EcritureComptable(BaseRepository):
         self,
         user_id: int,
         categorie_ids: List[int] = None,
+        id_contact: int = None,
         date_debut: date = None,
         date_fin: date = None,
         granularite: str = 'jour',
@@ -7768,6 +7769,9 @@ class EcritureComptable(BaseRepository):
                     AND e.date_ecriture <= %s
                 """
                 params = list(cat_map.keys()) + [user_id, date_debut, date_fin]
+                if id_contact is not None:
+                    query += " AND e.id_contact = %s"
+                    params.append(id_contact)
 
                 if statut_filtre:
                     ph = ','.join(['%s'] * len(statut_filtre))
@@ -7788,7 +7792,7 @@ class EcritureComptable(BaseRepository):
                 soldes_courants = {cid: Decimal('0') for cid in cat_map}
                 if mode == 'solde':
                     ph_cats2 = ','.join(['%s'] * len(cat_map.keys()))
-                    cursor.execute(f"""
+                    query_solde = f"""
                         SELECT
                             categorie_id,
                             COALESCE(SUM(CASE WHEN type_ecriture = 'recette' THEN montant ELSE 0 END), 0) AS recettes,
@@ -7797,8 +7801,16 @@ class EcritureComptable(BaseRepository):
                         WHERE categorie_id IN ({ph_cats2})
                         AND utilisateur_id = %s
                         AND date_ecriture < %s
-                        GROUP BY categorie_id
-                    """, list(cat_map.keys()) + [user_id, date_debut])
+                    """
+                    params_solde = list(cat_map.keys()) + [user_id, date_debut]
+
+                    # ✅ Même filtre contact pour le solde initial
+                    if id_contact is not None:
+                        query_solde += " AND id_contact = %s"
+                        params_solde.append(id_contact)
+
+                    query_solde += " GROUP BY categorie_id"
+                    cursor.execute(query_solde, params_solde)
                     for row in cursor.fetchall():
                         cid = row['categorie_id']
                         soldes_courants[cid] = (
@@ -7879,6 +7891,7 @@ class EcritureComptable(BaseRepository):
                         'type_ecriture': type_ecriture,
                         'type_ecriture_comptable': type_ecriture_comptable,
                         'categorie_ids': list(cat_map.keys()),
+                        'id_contact': id_contact,
                         'mode': mode,
                     },
                 }

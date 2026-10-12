@@ -1674,7 +1674,7 @@ def retrait():
             return render_template('banking/retrait.html', comptes=comptes, all_comptes=all_comptes, form_data=request.form)
     return render_template('banking/retrait.html', comptes=comptes, all_comptes=all_comptes, now=datetime.now())
 
-@bp.route('/banking/')
+
 @bp.route('/banking/transfert', methods=['GET', 'POST'])
 @login_required
 def banking_transfert():
@@ -3839,7 +3839,13 @@ def evolution_ecritures():
     if not categorie_ids and len(categories_comptables) == 1:
         categorie_ids = [categories_comptables[0]['id']]
 
-    id_contact = request.args.get('id_contact')
+    id_contact_raw = request.args.get('id_contact')
+    id_contact = None
+    if id_contact_raw not in (None, '', 'tous'):
+        try:
+            id_contact = int(id_contact_raw)
+        except (ValueError, TypeError):
+            id_contact = None
     statut = request.args.get('statut', 'tous')
     type_ecriture = request.args.get('type_ecriture', 'tous')
     type_ecriture_comptable = request.args.get('type_ecriture_comptable', 'tous')
@@ -3951,6 +3957,7 @@ def evolution_ecritures():
         afficher_total=afficher_total,
         # Filtres
         categorie_ids=categorie_ids,
+        id_contact=id_contact,
         contact_selectionne=id_contact,
         statut_selectionne=statut,
         type_ecriture_selectionne=type_ecriture,
