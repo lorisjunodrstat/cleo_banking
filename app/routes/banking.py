@@ -5778,61 +5778,61 @@ def delete_ecriture(ecriture_id):
     """Suppression d'une écriture avec gestion des impacts."""
     action = request.form.get('action')
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
     # ============================================================
     # MODE 1 : ANALYSE D'IMPACT (appel AJAX depuis le tableau)
     # ============================================================
     if action == 'confirmer_impact':
         impact = g.models.ecriture_comptable_model.get_impact_suppression(
             ecriture_id, current_user.id)
-        # Vérifier que l'écriture existe avant de rendre le template
+
         if not impact['ecriture']:
             if is_ajax:
                 return jsonify({
                     'success': False,
                     'message': "Écriture introuvable ou non autorisée."
                 }), 404
-            else:
-                flash("Écriture introuvable ou non autorisée.", "error")
-                return redirect(url_for('banking.liste_ecritures'))
+            flash("Écriture introuvable ou non autorisée.", "error")
+            return redirect(url_for('banking.liste_ecritures'))
+
         if is_ajax:
-            # Retourne UNIQUEMENT le fragment HTML du modal
             return render_template(
                 'comptabilite/_modal_confirm_suppression.html',
                 impact=impact)
-        else:
-            # Fallback pour les navigateurs sans JavaScript
-            flash("Veuillez activer JavaScript pour utiliser cette fonctionnalité.", "warning")
-            return redirect(request.referrer or url_for('banking.liste_ecritures'))
+
+        flash("Veuillez activer JavaScript pour utiliser cette fonctionnalité.", "warning")
+        return redirect(request.referrer or url_for('banking.liste_ecritures'))
+
     # ============================================================
     # MODE 2 : SUPPRESSION EFFECTIVE (soumission du modal)
     # ============================================================
     if action == 'supprimer_definitivement':
-        # Re-vérification de l'impact au moment de la soumission
         impact = g.models.ecriture_comptable_model.get_impact_suppression(
             ecriture_id, current_user.id)
-        # Vérifier que l'écriture existe
+
         if not impact['ecriture']:
             flash("Écriture introuvable ou déjà supprimée.", "error")
             return redirect(url_for('banking.liste_ecritures'))
+
         if not impact['peut_supprimer']:
             flash("Impossible de supprimer : " + "; ".join(impact['messages']), "error")
             return redirect(request.referrer or url_for('banking.liste_ecritures'))
-        # Vérifications de sécurité : les cases à cocher doivent être cochées si affichées
-        if impact['est_liee_transaction'] and request.form.get('delier_transaction') != '1':
-            flash("⚠️ Vous devez confirmer la déliaison de la transaction.", "error")
-            return redirect(request.referrer or url_for('banking.liste_ecritures'))
+
+        # ⚠️ On garde la confirmation de cascade si des secondaires existent
         if impact['secondaires'] and request.form.get('supprimer_cascade') != '1':
             flash("⚠️ Vous devez confirmer la suppression des écritures secondaires.", "error")
             return redirect(request.referrer or url_for('banking.liste_ecritures'))
-        # Options validées
-        delier_transaction = request.form.get('delier_transaction') == '1'
+
+        # NOTE : plus de bloc delier_transaction — la transaction est
+        # simplement remise en 'a_comptabiliser' par le modèle.
         supprimer_cascade = request.form.get('supprimer_cascade') == '1'
+
         try:
             success, message = g.models.ecriture_comptable_model.supprimer_avec_impact(
                 ecriture_id=ecriture_id,
                 user_id=current_user.id,
-                delier_transaction=delier_transaction,
-                supprimer_cascade=supprimer_cascade)
+                supprimer_cascade=supprimer_cascade,
+                raison=request.form.get('raison'))
             if success:
                 flash(f"✅ {message}", "success")
             else:
@@ -5840,13 +5840,14 @@ def delete_ecriture(ecriture_id):
         except Exception as e:
             logger.error(f"Erreur suppression écriture: {e}", exc_info=True)
             flash(f"Erreur lors de la suppression: {str(e)}", "error")
+
         return redirect(request.referrer or url_for('banking.liste_ecritures'))
+
     # ============================================================
     # ACTION INVALIDE
     # ============================================================
     flash("Action invalide.", "error")
     return redirect(request.referrer or url_for('banking.liste_ecritures'))
-
 
 @bp.route('/comptabilite/ecritures/groupe/<string:groupe_id>/delete', methods=['POST'])
 @login_required
@@ -5860,8 +5861,8 @@ def delete_groupe_ecritures(groupe_id):
         with g.db_manager.get_cursor(dictionary=True) as cursor:
             cursor.execute("""
                 SELECT id FROM ecritures_comptables
-                WHERE groupe_ecriture_id = %s 
-                  AND utilisateur_id = %s 
+                WHERE groupe_ecriture_id = %s
+                  AND utilisateur_id = %s
                   AND statut != 'supprimee'
                 LIMIT 1
             """, (groupe_id, current_user.id))
@@ -5869,10 +5870,13 @@ def delete_groupe_ecritures(groupe_id):
         if not row:
             flash("Groupe introuvable ou déjà supprimé.", "warning")
             return redirect(request.referrer or url_for('banking.liste_ecritures'))
+        # ✅ Appel unique : supprimer_avec_impact remonte tout le groupe
+        #    via groupe_ecriture_id, pas besoin de boucler.
         success, message = g.models.ecriture_comptable_model.supprimer_avec_impact(
             ecriture_id=row['id'],
             user_id=current_user.id,
-            raison=request.form.get('raison', f'Suppression du groupe {groupe_id}'))
+            raison=request.form.get('raison', f'Suppression du groupe {groupe_id}')
+        )
         if success:
             flash(f"✅ {message}", "success")
         else:
@@ -5880,8 +5884,8 @@ def delete_groupe_ecritures(groupe_id):
     except Exception as e:
         logger.error(f"Erreur suppression groupe {groupe_id}: {e}", exc_info=True)
         flash(f"Erreur lors de la suppression du groupe: {str(e)}", "error")
-    return redirect(request.referrer or url_for('banking.liste_ecritures'))
 
+    return redirect(request.referrer or url_for('banking.liste_ecritures'))
 
 @bp.route('/comptabilite/ecritures/date/<string:date_ecriture>/delete', methods=['POST'])
 @login_required

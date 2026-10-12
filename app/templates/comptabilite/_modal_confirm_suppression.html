@@ -76,15 +76,14 @@
                             </table>
                         </div>
                         <div class="card-footer bg-danger bg-opacity-10">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" 
-                                       name="delier_transaction" value="1" id="delierTx" required>
-                                <label class="form-check-label" for="delierTx">
-                                    <strong>Je confirme vouloir délier la transaction</strong> et supprimer l'écriture.
-                                    <small class="d-block text-muted">
-                                        Les receipts ne seront plus liés à aucune écriture comptable.
-                                    </small>
-                                </label>
+                            {# ✅ Plus de case à cocher : on informe simplement #}
+                            <div class="d-flex align-items-start">
+                                <i class="bi bi-info-circle text-danger me-2 mt-1"></i>
+                                <small class="text-muted">
+                                    Les receipts ci-dessus seront <strong>réinitialisés</strong> :
+                                    ils ne seront plus marqués comme comptabilisés et redeviendront
+                                    disponibles pour une nouvelle comptabilisation.
+                                </small>
                             </div>
                         </div>
                     </div>
@@ -101,12 +100,14 @@
                             <p class="mb-0">Montant : {{ "%.2f"|format(impact.transaction.montant) }} CHF</p>
                         </div>
                         <div class="card-footer">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" 
-                                       name="delier_transaction" value="1" id="delierTx" required>
-                                <label class="form-check-label" for="delierTx">
-                                    Délier la transaction avant suppression
-                                </label>
+                            {# ✅ Plus de case à cocher : on informe simplement #}
+                            <div class="d-flex align-items-start">
+                                <i class="bi bi-info-circle text-warning me-2 mt-1"></i>
+                                <small class="text-muted">
+                                    La transaction bancaire sera <strong>conservée</strong> et
+                                    remise au statut <em>« à comptabiliser »</em>.
+                                    Elle restera visible dans le module bancaire.
+                                </small>
                             </div>
                         </div>
                     </div>
@@ -140,6 +141,7 @@
                             </table>
                         </div>
                         <div class="card-footer">
+                            {# ⚠️ Cette case est TOUJOURS lue par la route → on la garde #}
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" 
                                        name="supprimer_cascade" value="1" id="cascadeSup" required>

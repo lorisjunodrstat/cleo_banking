@@ -8631,14 +8631,11 @@ class EcritureComptable(BaseRepository):
                     """, (tx_id, user_id))
                     receipts_impactes.update(r['id'] for r in cursor.fetchall())
                 # 4. Délier toutes les écritures des transactions concernées
-                if transactions_impactees:
-                    tx_placeholders = ','.join(['%s'] * len(transactions_impactees))
-                    cursor.execute(f"""
-                        UPDATE ecritures_comptables
-                        SET transaction_id = NULL
-                        WHERE transaction_id IN ({tx_placeholders})
-                        AND utilisateur_id = %s
-                    """, list(transactions_impactees) + [user_id])
+                cursor.execute(f"""
+                    UPDATE ecritures_comptables
+                    SET transaction_id = NULL
+                    WHERE id IN ({placeholders}) AND utilisateur_id = %s
+                """, list(ecritures_a_supprimer) + [user_id])
                 # 5. Soft delete de toutes les écritures
                 cursor.execute(f"""
                     UPDATE ecritures_comptables
@@ -8647,29 +8644,16 @@ class EcritureComptable(BaseRepository):
                 """, list(ecritures_a_supprimer) + [user_id])
                 nb_supprimees = cursor.rowcount
                 # 6. Supprimer les transactions bancaires devenues orphelines
-                nb_tx_supprimees = 0
+                nb_tx_maj = 0
                 for tx_id in transactions_impactees:
                     cursor.execute("""
-                        SELECT COUNT(*) AS nb
-                        FROM ecritures_comptables
-                        WHERE transaction_id = %s AND statut != 'supprimee'
-                    """, (tx_id,))
-                    if cursor.fetchone()['nb'] == 0:
-                        # Aucune écriture valide ne pointe plus vers cette transaction
-                        # On peut la supprimer (ou la délier du receipt, selon ta politique)
-                        cursor.execute("""
-                            UPDATE pos_receipts
-                            SET transaction_id = NULL,
-                                comptabilise = FALSE,
-                                etat_comptable = 'non_comptabilise'
-                            WHERE transaction_id = %s AND utilisateur_id = %s
-                        """, (tx_id, user_id))
-                        cursor.execute("""
-                            DELETE FROM transactions
-                            WHERE id = %s AND utilisateur_id = %s
-                        """, (tx_id, user_id))
-                        if cursor.rowcount > 0:
-                            nb_tx_supprimees += 1
+                        UPDATE transactions
+                        SET statut_comptable = 'a_comptabiliser'
+                        WHERE id = %s AND utilisateur_id = %s
+                    """, (tx_id, user_id))
+                    if cursor.rowcount > 0:
+                        nb_tx_maj += 1
+
                 # 7. Réinitialiser les receipts concernés
                 for r_id in receipts_impactes:
                     cursor.execute("""
@@ -8731,8 +8715,8 @@ class EcritureComptable(BaseRepository):
                     logger.warning(f"⚠️ Impossible d'enregistrer l'historique: {e_hist}")
                 # 9. Retour
                 msg = f"{nb_supprimees} écriture(s) supprimée(s)"
-                if nb_tx_supprimees:
-                    msg += f", {nb_tx_supprimees} transaction(s) bancaire(s) annulée(s)"
+                if nb_tx_maj:
+                    msg += f", {nb_tx_maj} transaction(s) remise(s) en 'à comptabiliser'"
                 if receipts_impactes:
                     msg += f", {len(receipts_impactes)} reçu(s) réinitialisé(s)"
                 logger.info(f"✅ {msg} (écriture de départ #{ecriture_id})")
