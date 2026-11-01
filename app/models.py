@@ -9750,7 +9750,7 @@ class EcritureComptable(BaseRepository):
         """Met à jour uniquement le statut d'une écriture"""
         try:
             with self.db.get_cursor() as cursor:
-                date_validation = datetime.now() if est_valide else None
+                date_validation = datetime.now()
                 secondary_ecriture = self.get_ecritures_complementaires(ecriture_id, user_id)
                 if secondary_ecriture:
                     query = """
