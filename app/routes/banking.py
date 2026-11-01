@@ -5164,12 +5164,12 @@ def nouvelle_ecriture():
 @login_required
 def nouvelle_ecriture_multiple():
     if request.method == 'POST':
-        id_contact_principal = int(request.form['id_contact'] if request.form.get('id_contact') else None)
+        id_contact_principal = int(request.form['id_contact']) if request.form.get('id_contact') else None
+        # --- 1. PARSER LES DÉBITS ---
         lignes_debit = _parse_lignes(request.form, 'debit', [
                 'date_debit', 'type_debit', 'compte_bancaire_debit', 'categorie_debit_id', 
                 'montant_debit', 'tva_taux_debit', 'description_debit', 'reference_debit', 'statut_debit'
-        )
-            
+            ])
             # --- 2. PARSER LES CRÉDITS ---
         lignes_credit = _parse_lignes(request.form, 'credit', [
             'date_credit', 'type_credit', 'compte_bancaire_credit', 'categorie_credit_id', 
