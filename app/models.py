@@ -9763,7 +9763,7 @@ class EcritureComptable(BaseRepository):
                 else:
                     # Mettre à jour le statut de l'écriture principale et de ses complémentaires
                     query = """UPDATE ecritures_comptables
-                    SET statut = %s,, date_validation = %s
+                    SET statut = %s, date_validation = %s
                     WHERE id = %s
                     AND utilisateur_id = %s"""
                     cursor.execute(query, (statut, date_validation, ecriture_id, user_id))
