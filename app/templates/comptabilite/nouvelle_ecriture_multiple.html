@@ -2,192 +2,289 @@
 
 {% block content %}
 <div class="container mt-4">
-    <h2>Nouvelles écritures multiples</h2>
+    <h2><i class="bi bi-journal-plus"></i> Nouvelles écritures multiples (Débit / Crédit)</h2>
 
-    <form method="post">
+    <form method="post" id="ecritures-form">
         {% if form %}
         {{ form.hidden_tag() }}
         {% endif %}
 
-        <div class="card mb-4">
-            <div class="card-header bg-light">
-                <h5 class="mb-0">Saisie des écritures comptables</h5>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-bordered" id="ecritures-table">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Date</th>
-                                <th>Type</th>
-                                <th>Compte bancaire</th>
-                                <th>Catégorie</th>
-                                <th>Montant (CHF)</th>
-                                <th>TVA (%)</th>
-                                <th>Description</th>
-                                <th>Référence</th>
-                                <th>Statut</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for i in range(1) %}
-                            <tr>
-                                <td>
-                                    <input type="date" class="form-control form-control-sm" name="date_ecriture[]"
-                                        value="{{ current_date }}" required>
-                                </td>
-                                <td>
-                                    <select class="form-select form-select-sm" name="type_ecriture[]" required>
-                                        <option value="depense">Dépense</option>
-                                        <option value="recette">Recette</option>
-                                    </select>
-                                </td>
-                                <td>
-                                    <select class="form-select form-select-sm" name="compte_bancaire_id[]" required>
-                                        <option value="">Sélectionner...</option>
-                                        {% for compte in comptes %}
-                                        <option value="{{ compte.id }}">
-                                            {{ compte.nom_compte }}
-                                        </option>
-                                        {% endfor %}
-                                    </select>
-                                </td>
-                                <td>
-                                    <select class="form-select form-select-sm" name="categorie_id[]" required>
-                                        <option value="">Sélectionner...</option>
-                                        {% for categorie in categories %}
-                                        <option value="{{ categorie.id }}">
-                                            {{ categorie.numero }} - {{ categorie.nom }}
-                                        </option>
-                                        {% endfor %}
-                                    </select>
-                                </td>
-                                <td>
-                                    <input type="number" step="0.01" class="form-control form-control-sm"
-                                        name="montant[]" required>
-                                </td>
-                                <td>
-                                    <select class="form-select form-select-sm" name="tva_taux[]">
-                                        <option value="0">0%</option>
-                                        {% for taux in taux_disponibles %}
-                                            <option value="{{ taux.taux }}">
-                                                {{ taux.taux }}% ({{ taux.annee }})
-                                            </option>
-                                        {% endfor %}
-                                    </select>
-                                </td>
-                                <td>
-                                    <input type="text" class="form-control form-control-sm" name="description[]">
-                                </td>
-                                <td>
-                                    <input type="text" class="form-control form-control-sm" name="reference[]">
-                                </td>
-                                <td>
-                                    <select class="form-select form-select-sm" name="statut[]">
-                                        {% for statut in statuts_disponibles %}
-                                        <option value="{{ statut.value }}" {% if statut.value=='pending' %}selected{%
-                                            endif %}>
-                                            {{ statut.label }}
-                                        </option>
-                                        {% endfor %}
-                                    </select>
-                                </td>
-                                <td class="text-center">
-                                    {% if i > 0 %}
-                                    <button type="button" class="btn btn-sm btn-outline-danger"
-                                        onclick="removeRow(this)">
-                                        <i class="bi bi-x-lg"></i>
-                                    </button>
-                                    {% endif %}
-                                </td>
-                            </tr>
+        <!-- Contact Principal (Optionnel, utilisé comme fallback) -->
+        <div class="card mb-3">
+            <div class="card-body py-2">
+                <div class="row align-items-center">
+                    <div class="col-md-4">
+                        <label for="id_contact" class="form-label mb-0 fw-bold">Contact principal (optionnel)</label>
+                    </div>
+                    <div class="col-md-8">
+                        <select name="id_contact" id="id_contact" class="form-select form-select-sm">
+                            <option value="">-- Aucun contact spécifique --</option>
+                            {% for contact in contacts %}
+                            <option value="{{ contact.id }}">{{ contact.nom }}</option>
                             {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="mt-3">
-                    <button type="button" class="btn btn-sm btn-success" onclick="addRow()">
-                        <i class="bi bi-plus-circle"></i> Ajouter une ligne
-                    </button>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="d-flex justify-content-between mt-3">
+        <div class="row">
+            <!-- TABLEAU DES DÉBITS -->
+            <div class="col-lg-6">
+                <div class="card border-primary mb-3">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="bi bi-arrow-down-circle"></i> Débits</h5>
+                        <button type="button" class="btn btn-sm btn-light text-primary" onclick="addRow('debit-table')">
+                            <i class="bi bi-plus-circle"></i> Ajouter
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered mb-0" id="debit-table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Compte</th>
+                                        <th>Catégorie</th>
+                                        <th>Montant</th>
+                                        <th>TVA</th>
+                                        <th>Desc.</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for i in range(1) %}
+                                    <tr>
+                                        <td><input type="date" class="form-control form-control-sm" name="date_debit[{{ i }}]" value="{{ today }}" required></td>
+                                        <td>
+                                            <select class="form-select form-select-sm" name="compte_bancaire_debit[{{ i }}]" required>
+                                                <option value="">Choix...</option>
+                                                {% for compte in comptes %}
+                                                <option value="{{ compte.id }}">{{ compte.nom_compte }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <select class="form-select form-select-sm" name="categorie_debit_id[{{ i }}]" required>
+                                                <option value="">Choix...</option>
+                                                {% for categorie in categories %}
+                                                <option value="{{ categorie.id }}">{{ categorie.numero }} - {{ categorie.nom }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </td>
+                                        <td><input type="number" step="0.01" class="form-control form-control-sm calc-debit" name="montant_debit[{{ i }}]" required oninput="calculateTotals()"></td>
+                                        <td>
+                                            <select class="form-select form-select-sm" name="tva_taux_debit[{{ i }}]">
+                                                <option value="0">0%</option>
+                                                {% for taux in taux_disponibles %}
+                                                <option value="{{ taux.taux }}">{{ taux.taux }}%</option>
+                                                {% endfor %}
+                                            </select>
+                                        </td>
+                                        <td><input type="text" class="form-control form-control-sm" name="description_debit[{{ i }}]" placeholder="..."></td>
+                                        <td class="text-center align-middle">
+                                            <button type="button" class="btn btn-sm btn-outline-danger" style="display: none;" onclick="removeRow(this, 'debit-table')">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TABLEAU DES CRÉDITS -->
+            <div class="col-lg-6">
+                <div class="card border-success mb-3">
+                    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="bi bi-arrow-up-circle"></i> Crédits</h5>
+                        <button type="button" class="btn btn-sm btn-light text-success" onclick="addRow('credit-table')">
+                            <i class="bi bi-plus-circle"></i> Ajouter
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered mb-0" id="credit-table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Compte</th>
+                                        <th>Catégorie</th>
+                                        <th>Montant</th>
+                                        <th>Desc.</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for i in range(1) %}
+                                    <tr>
+                                        <td><input type="date" class="form-control form-control-sm" name="date_credit[{{ i }}]" value="{{ today }}" required></td>
+                                        <td>
+                                            <select class="form-select form-select-sm" name="compte_bancaire_credit[{{ i }}]" required>
+                                                <option value="">Choix...</option>
+                                                {% for compte in comptes %}
+                                                <option value="{{ compte.id }}">{{ compte.nom_compte }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <select class="form-select form-select-sm" name="categorie_credit_id[{{ i }}]" required>
+                                                <option value="">Choix...</option>
+                                                {% for categorie in categories %}
+                                                <option value="{{ categorie.id }}">{{ categorie.numero }} - {{ categorie.nom }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </td>
+                                        <td><input type="number" step="0.01" class="form-control form-control-sm calc-credit" name="montant_credit[{{ i }}]" required oninput="calculateTotals()"></td>
+                                        <td><input type="text" class="form-control form-control-sm" name="description_credit[{{ i }}]" placeholder="..."></td>
+                                        <td class="text-center align-middle">
+                                            <button type="button" class="btn btn-sm btn-outline-danger" style="display: none;" onclick="removeRow(this, 'credit-table')">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ZONE DE CONTRÔLE D'ÉQUILIBRE -->
+        <div class="card bg-light border-warning mb-3">
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-4">
+                        <h6 class="text-primary fw-bold">Total Débits</h6>
+                        <h4 id="total-debit">0.00 CHF</h4>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-center justify-content-center">
+                        <div id="balance-indicator" class="badge bg-danger fs-6 p-3">
+                            <i class="bi bi-exclamation-triangle"></i> Déséquilibré
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <h6 class="text-success fw-bold">Total Crédits</h6>
+                        <h4 id="total-credit">0.00 CHF</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between mt-3 mb-5">
             <a href="{{ url_for('banking.liste_ecritures') }}" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left"></i> Retour
             </a>
-            <button type="submit" class="btn btn-primary">
-                <i class="bi bi-save"></i> Enregistrer toutes les écritures
+            <button type="submit" id="submit-btn" class="btn btn-primary" disabled>
+                <i class="bi bi-save"></i> Enregistrer les écritures liées
             </button>
         </div>
     </form>
 </div>
 
-<!-- Solution minimaliste en JavaScript pour gérer les lignes -->
 <script>
-    function addRow() {
-        const table = document.getElementById('ecritures-table');
+    // Fonction pour ajouter une ligne dynamiquement
+    function addRow(tableId) {
+        const table = document.getElementById(tableId);
         const tbody = table.querySelector('tbody');
         const lastRow = tbody.lastElementChild;
         const newRow = lastRow.cloneNode(true);
+        
+        // Le nouvel index est égal au nombre actuel de lignes (0, 1, 2...)
+        const newIndex = tbody.querySelectorAll('tr').length;
 
-        // Réinitialiser les valeurs de la nouvelle ligne
         newRow.querySelectorAll('input, select').forEach(field => {
             if (field.type !== 'hidden') {
+                // Réinitialiser les valeurs
                 if (field.tagName === 'SELECT') {
-                    // Si c'est le select de TVA, on le remet à 0, sinon au premier choix
-                    if (field.name.includes('tva_taux')) {
-                        field.value = '0';
-                    } else {
-                        field.selectedIndex = 0;
-                    }
+                    field.selectedIndex = field.name.includes('tva_taux') ? 0 : 0;
                 } else {
-                    // Pour les inputs texte ou date
-                    field.value = field.type === 'date' ? '{{ current_date }}' : '';
+                    field.value = field.type === 'date' ? '{{ today }}' : '';
                 }
+                // METTRE À JOUR L'INDEX DANS LE NOM (ex: montant_debit[0] -> montant_debit[1])
+                // C'est crucial pour que le regex Python ^champ\[(\d+)\]$ fonctionne
+                field.name = field.name.replace(/\[\d+\]/, `[${newIndex}]`);
             }
         });
 
-        // S'assurer que le bouton de suppression est visible sur les nouvelles lignes
+        // Afficher le bouton de suppression sur les nouvelles lignes
         const removeBtn = newRow.querySelector('.btn-outline-danger');
-        if (removeBtn) {
-            removeBtn.style.display = 'block';
-        } else {
-            const td = newRow.lastElementChild;
-            td.innerHTML = '<button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)"><i class="bi bi-x-lg"></i></button>';
-        }
+        if (removeBtn) removeBtn.style.display = 'inline-block';
 
         tbody.appendChild(newRow);
+        calculateTotals();
     }
 
-    function removeRow(button) {
-        const row = button.closest('tr');
-        if (document.querySelectorAll('#ecritures-table tbody tr').length > 1) {
-            row.remove();
+    // Fonction pour supprimer une ligne
+    function removeRow(button, tableId) {
+        const table = document.getElementById(tableId);
+        const tbody = table.querySelector('tbody');
+        
+        if (tbody.querySelectorAll('tr').length > 1) {
+            button.closest('tr').remove();
+            reindexRows(tableId); // Réindexer pour éviter des trous dans [0], [1], [3]
+            calculateTotals();
         } else {
-            alert('Vous devez garder au moins une écriture.');
+            alert('Vous devez conserver au moins une ligne dans ce tableau.');
         }
     }
+
+    // Réindexe les noms des champs après une suppression pour garder une séquence [0], [1], [2]...
+    function reindexRows(tableId) {
+        const table = document.getElementById(tableId);
+        const rows = table.querySelectorAll('tbody tr');
+        rows.forEach((row, index) => {
+            row.querySelectorAll('input, select').forEach(field => {
+                field.name = field.name.replace(/\[\d+\]/, `[${index}]`);
+            });
+        });
+    }
+
+    // Calcul en temps réel des totaux pour l'UX
+    function calculateTotals() {
+        let totalDebit = 0;
+        let totalCredit = 0;
+
+        document.querySelectorAll('.calc-debit').forEach(input => {
+            totalDebit += parseFloat(input.value) || 0;
+        });
+
+        document.querySelectorAll('.calc-credit').forEach(input => {
+            totalCredit += parseFloat(input.value) || 0;
+        });
+
+        // Affichage
+        document.getElementById('total-debit').textContent = totalDebit.toFixed(2) + ' CHF';
+        document.getElementById('total-credit').textContent = totalCredit.toFixed(2) + ' CHF';
+
+        // Vérification de l'équilibre (avec une petite tolérance pour les flottants)
+        const diff = Math.abs(totalDebit - totalCredit);
+        const indicator = document.getElementById('balance-indicator');
+        const submitBtn = document.getElementById('submit-btn');
+
+        if (diff < 0.01 && totalDebit > 0) {
+            indicator.className = 'badge bg-success fs-6 p-3';
+            indicator.innerHTML = '<i class="bi bi-check-circle"></i> Équilibré';
+            submitBtn.disabled = false;
+        } else {
+            indicator.className = 'badge bg-danger fs-6 p-3';
+            indicator.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Déséquilibré';
+            submitBtn.disabled = true; // Empêche l'envoi si déséquilibré
+        }
+    }
+
+    // Calcul initial au chargement
+    document.addEventListener('DOMContentLoaded', calculateTotals);
 </script>
 
 <style>
-    #ecritures-table th,
-    #ecritures-table td {
-        vertical-align: middle;
-    }
-
-    #ecritures-table input,
-    #ecritures-table select {
-        min-width: 120px;
-    }
-
-    .form-select-sm,
-    .form-control-sm {
-        padding: 0.25rem 0.5rem;
-        font-size: 0.875rem;
-    }
+    .table th { font-size: 0.85rem; font-weight: 600; white-space: nowrap; }
+    .table td { vertical-align: middle; }
+    .form-select-sm, .form-control-sm { min-width: 80px; }
 </style>
 {% endblock %}
