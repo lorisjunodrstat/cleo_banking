@@ -5347,7 +5347,7 @@ def nouvelle_ecriture_multiple():
                 flash("Aucune écriture n'a pu être enregistrée.", "warning")
             return redirect(url_for('banking.liste_ecritures'))
         except Exception as e:
-            flash(fErreur inattendue : {str(e)}", "error")
+            flash(f"Erreur inattendue : {str(e)}", "error")
             return redirect(url_for('banking.liste_ecritures'))
 
     # GET request processing
