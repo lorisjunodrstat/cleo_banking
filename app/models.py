@@ -9750,22 +9750,23 @@ class EcritureComptable(BaseRepository):
         """Met à jour uniquement le statut d'une écriture"""
         try:
             with self.db.get_cursor() as cursor:
+                date_validation = datetime.now() if est_valide else None
                 secondary_ecriture = self.get_ecritures_complementaires(ecriture_id, user_id)
                 if secondary_ecriture:
                     query = """
                     UPDATE ecritures_comptables
-                    SET statut = %s
+                    SET statut = %s, date_validation = %s
                     WHERE (id = %s OR ecriture_principale_id = %s)
                     AND utilisateur_id = %s
                     """
-                    cursor.execute(query, (statut, ecriture_id, ecriture_id, user_id))
+                    cursor.execute(query, (statut, date_validation, ecriture_id, ecriture_id, user_id))
                 else:
                     # Mettre à jour le statut de l'écriture principale et de ses complémentaires
                     query = """UPDATE ecritures_comptables
-                    SET statut = %s
+                    SET statut = %s,, date_validation = %s
                     WHERE id = %s
                     AND utilisateur_id = %s"""
-                    cursor.execute(query, (statut, ecriture_id, user_id))
+                    cursor.execute(query, (statut, date_validation, ecriture_id, user_id))
             return True
         except Error as e:
             logger.error(f"Erreur lors de la mise à jour du statut: {e}")
