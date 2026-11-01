@@ -38,6 +38,7 @@
             <table class="table table-hover align-middle">
                 <thead class="table-light">
                     <tr>
+                        <th>ID</th>
                         <th>Nom de l'article</th>
                         <th>Catégorie</th>
                         <th class="text-end">Prix unitaire</th>
@@ -50,6 +51,7 @@
                 <tbody>
                     {% for item in items %}
                     <tr>
+                        <td>{{ item.id }}</td>
                         <td><strong>{{ item.nom_article }}</strong></td>
                         <td>{{ item.categorie.nom_categorie if item.categorie else '-' }}</td>
                         <td class="text-end">{% if item.is_variable_price %}Variable{% else %}CHF {{ "%.2f"|format(item.prix_unitaire) }}{% endif %}</td>
