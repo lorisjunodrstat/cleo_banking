@@ -19313,7 +19313,7 @@ class ClientPOS(BaseRepository):
                 return {}
             total_depense = float(row.get('total_depense') or 0)
             nombre_visites = int(row.get('nombre_visites') or 0)
-            premeire_visite = row.get('premiere_visite')
+            premiere_visite = row.get('premiere_visite')
             derniere_visite = row.get('derniere_visite')
             duree_jours = self._duree_en_jours(premiere_visite, derniere_visite)
             # Nombre de mois approximatif, minimum 1 mois pour éviter division par zéro
