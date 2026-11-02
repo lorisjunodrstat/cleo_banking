@@ -25,7 +25,7 @@
     <div class="col-md-4">
         <div class="card shadow-sm border-start border-success border-4">
             <div class="card-body">
-                <div class="text-muted small">Clients actifs (< 90 jours)</div>
+                <div class="text-muted small">Clients actifs</div>
                 <div class="fs-3 fw-bold text-success">{{ clients_actifs }}</div>
             </div>
         </div>
@@ -70,19 +70,20 @@
                         <th class="text-center">Visites</th>
                         <th class="text-end">Total dépensé</th>
                         <th class="text-end">Panier moyen</th>
-                        <th>Première visite</th>
-                        <th>Dernière visite</th>
                         <th class="text-center">Segment</th>
                         <th class="text-center">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for client in clients %}
-                    <tr class="{{ '' if client.est_actif else 'table-secondary' }}">
+                    <tr class="{{ '' if client.segment != 'Inactif' else 'table-secondary' }}">
                         <td>
                             <strong>{{ client.nom_client }}</strong>
                             {% if client.code_client %}
                                 <br><small class="text-muted">#{{ client.code_client }}</small>
+                            {% endif %}
+                            {% if client.numero_client %}
+                                <br><small class="text-muted">Réf: {{ client.numero_client }}</small>
                             {% endif %}
                         </td>
                         <td>
@@ -98,19 +99,6 @@
                         </td>
                         <td class="text-end fw-bold">CHF {{ "%.2f"|format(client.total_depense) }}</td>
                         <td class="text-end">CHF {{ "%.2f"|format(client.panier_moyen) }}</td>
-                        <td>
-                            {% if client.premiere_visite %}
-                                {{ client.premiere_visite.strftime('%d/%m/%Y') }}
-                            {% else %}-{% endif %}
-                        </td>
-                        <td>
-                            {% if client.derniere_visite %}
-                                {{ client.derniere_visite.strftime('%d/%m/%Y') }}
-                                {% if client.jours_derniere_visite and client.jours_derniere_visite > 90 %}
-                                    <br><small class="text-danger">({{ client.jours_derniere_visite }}j)</small>
-                                {% endif %}
-                            {% else %}-{% endif %}
-                        </td>
                         <td class="text-center">
                             {% set segment_color = {
                                 'VIP': 'warning',
@@ -120,8 +108,8 @@
                                 'Nouveau': 'secondary',
                                 'Inactif': 'dark'
                             } %}
-                            <span class="badge bg-{{ segment_color.get(client.segment_client, 'secondary') }}">
-                                {{ client.segment_client }}
+                            <span class="badge bg-{{ segment_color.get(client.segment, 'secondary') }}">
+                                {{ client.segment }}
                             </span>
                         </td>
                         <td class="text-center">
@@ -133,7 +121,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="9" class="text-center text-muted py-4">Aucun client trouvé</td>
+                        <td colspan="7" class="text-center text-muted py-4">Aucun client trouvé</td>
                     </tr>
                     {% endfor %}
                 </tbody>
