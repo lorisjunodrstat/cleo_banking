@@ -12369,10 +12369,12 @@ def pos_clients_list():
             clients = [c for c in clients if 
                       search_lower in (c.get('nom_client') or '').lower() or
                       search_lower in str(c.get('numero_client') or '').lower() or
+                      search_lower in str(c.get('code_client') or '').lower() or
                       search_lower in (c.get('email') or '').lower() or
                       search_lower in (c.get('telephone') or '').lower()]
                       
         total_clients = len(clients)
+        # Utilisation de 'segment' pour correspondre à votre classe ClientPOS
         clients_actifs = sum(1 for c in clients if c.get('segment') != 'Inactif')
         total_ca_clients = sum(float(c.get('total_depense', 0) or 0) for c in clients)
     except Exception as e:
