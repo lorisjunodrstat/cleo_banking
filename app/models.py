@@ -19296,7 +19296,7 @@ class ClientPOS(BaseRepository):
                             CASE 
                                 WHEN r.receipt_type = 'Vente' THEN r.date 
                             END
-                        ) AS premeire_visite,
+                        ) AS premiere_visite,
                         MAX(
                             CASE 
                                 WHEN r.receipt_type = 'Vente' THEN r.date 
@@ -19317,7 +19317,7 @@ class ClientPOS(BaseRepository):
             derniere_visite = row.get('derniere_visite')
             duree_jours = self._duree_en_jours(premiere_visite, derniere_visite)
             # Nombre de mois approximatif, minimum 1 mois pour éviter division par zéro
-            months = max(duree_jours / 30.44, 1.0) if premeire_visite else 1.0
+            months = max(duree_jours / 30.44, 1.0) if premiere_visite else 1.0
             frequence_visite = round(nombre_visites / months, 1) if nombre_visites > 0 else 0.0
             panier_moyen = round(total_depense / nombre_visites, 2) if nombre_visites > 0 else 0.0
             row.update({
@@ -19394,6 +19394,18 @@ class ClientPOS(BaseRepository):
         # --- 6. CA formaté avec séparateur de milliers ---
         total = float(client.get('total_depense') or 0)
         client['total_depense_str'] = f"{total:,.2f}".replace(',', "'")
+
+    def _duree_en_jours(self, premiere, derniere) -> int:
+            """Calcule le nombre de jours entre deux dates."""
+            if not premiere or not derniere:
+                return 0
+            if isinstance(premiere, datetime):
+                premiere = premiere.date()
+            if isinstance(derniere, datetime):
+                derniere = derniere.date()
+            if isinstance(premiere, date) and isinstance(derniere, date):
+                return max(0, (derniere - premiere).days)
+            return 0
 
     def get_by_id_with_stats(self, client_id: int, user_id: int) -> Optional[Dict]:
             """
