@@ -12362,7 +12362,7 @@ def pos_clients_list():
     search = request.args.get('search', '').strip()
     try:
         magasin_id = get_magasin_id_courant()
-        clients = g.models.client_pos_model.get_all(current_user.id, magasin_id=magasin_id, limit=200)
+        clients = g.models.client_pos_model.get_all_unique(current_user.id, magasin_id=magasin_id, limit=800)
         
         if search:
             search_lower = search.lower()

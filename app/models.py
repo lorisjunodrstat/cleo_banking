@@ -19469,6 +19469,40 @@ class ClientPOS(BaseRepository):
             logger.exception(f"Erreur récupération clients POS: {e}")
             return []
 
+    def get_all_unique(self, user_id: int, magasin_id: int = None, limit: int = 100) -> List[Dict]:
+            """
+            Récupère une liste unique de clients POS avec leurs statistiques et segments.
+            """
+            try:
+                with self.db.get_cursor(dictionary=True) as cursor:
+                    query = """
+                        SELECT DISTINCT c.*,
+                            (SELECT COUNT(*) FROM pos_receipts WHERE id_client = c.id AND receipt_type = 'Vente') as nombre_visites,
+                            (SELECT COALESCE(SUM(total_collecte), 0) FROM pos_receipts WHERE id_client = c.id AND receipt_type = 'Vente') as total_depense
+                        FROM pos_clients c
+                        WHERE c.utilisateur_id = %s
+                    """
+                    params = [user_id]
+                    if magasin_id:
+                        query += " AND c.magasin_id = %s"
+                        params.append(magasin_id)
+                    query += " ORDER BY c.nom_client LIMIT %s"
+                    params.append(limit)
+                    
+                    cursor.execute(query, params)
+                    clients = cursor.fetchall()
+                    
+                    for client in clients:
+                        client['panier_moyen'] = (
+                            float(client['total_depense']) / client['nombre_visites'] 
+                            if client['nombre_visites'] > 0 else 0
+                        )
+                        client['segment'] = self._calculer_segment(client)
+                    return clients
+            except MySQLError as e:
+                logger.exception(f"Erreur récupération clients POS uniques: {e}")
+                return []
+                
     def _calculer_segment(self, client: Dict) -> str:
         if client['nombre_visites'] == 0:
             return "Inactif"
