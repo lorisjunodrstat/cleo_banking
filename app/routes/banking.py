@@ -12388,38 +12388,16 @@ def pos_clients_list():
 @bp.route('/pos/clients/<int:client_id>')
 @login_required
 def pos_client_detail(client_id):
-    client = g.models.client_pos_model.get_by_id(client_id, current_user.id)
+    # On récupère le client avec toutes ses statistiques calculées via la méthode du repository
+    client = g.models.client_pos_model.get_by_id_with_stats(client_id, current_user.id)
+    
     if not client:
         flash('Client introuvable.', 'error')
         return redirect(url_for('banking.pos_clients_list'))
-    # Stats recalculées depuis les reçus (toujours à jour)
-    db = g.models.receipt_pos_model.db
-    with g.db.get_cursor(dictionary=True) as cursor:
-        cursor.execute("""
-            SELECT COUNT(*) AS nb_visites,
-                   COALESCE(SUM(CASE WHEN receipt_type='Vente' THEN total_collecte ELSE 0 END),0) AS total_depense,
-                   MIN(date) AS premiere_visite,
-                   MAX(date) AS derniere_visite
-            FROM pos_receipts
-            WHERE id_client = %s AND status != 'Annulé'
-        """, (client_id,))
-        s = cursor.fetchone()
-    nb = int(s['nb_visites'] or 0)
-    total_dep = float(s['total_depense'] or 0)
-    client['nombre_visites'] = nb
-    client['total_depense'] = total_dep
-    client['panier_moyen'] = (total_dep / nb) if nb else 0
-    client['premiere_visite'] = s['premiere_visite']
-    client['derniere_visite'] = s['derniere_visite']
-    if s['premiere_visite'] and s['derniere_visite']:
-        jours = (s['derniere_visite'] - s['premiere_visite']).days
-        client['duree_fidelite'] = jours
-        client['frequence_visite'] = round(nb / max(1, jours / 30), 1)
-    else:
-        client['duree_fidelite'] = 0
-        client['frequence_visite'] = 0
+
     visites = g.models.receipt_pos_model.get_by_client(client_id, limit=20)
     top_articles = g.models.receipt_pos_model.get_top_articles_client(client_id, limit=10)
+    
     return render_template('pos/client_detail.html',
                            client=client, visites=visites, top_articles=top_articles)
 

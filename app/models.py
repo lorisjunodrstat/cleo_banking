@@ -12548,7 +12548,7 @@ class Rapport(BaseRepository):
                         e.tva_taux,
                         COUNT(DISTINCT e.id) AS nb_operations,
                         SUM(e.montant_htva) AS base_ht,
-                        SUM(e.tva_montantz) AS tva_deductible,
+                        SUM(e.tva_montant) AS tva_deductible,
                         SUM(e.montant) AS total_ttc
                     FROM ecritures_comptables e
                     JOIN categories_comptables c ON e.categorie_id = c.id
@@ -19395,6 +19395,38 @@ class ClientPOS(BaseRepository):
         total = float(client.get('total_depense') or 0)
         client['total_depense_str'] = f"{total:,.2f}".replace(',', "'")
 
+    def get_by_id_with_stats(self, client_id: int, user_id: int) -> Optional[Dict]:
+            """
+            Récupère le client POS + ses statistiques et prépare les champs pour le template.
+            """
+            client = self.get_by_id(client_id, user_id)
+            if not client:
+                return None
+                
+            stats = self.get_client_stats(client_id, user_id)
+            if stats:
+                client.update(stats)
+                
+            # Calcul de la durée de fidélité en jours si les dates sont présentes
+            premiere = client.get('premiere_visite')
+            derniere = client.get('derniere_visite')
+            if premiere and derniere:
+                # Gère le cas où ce sont des objets date/datetime ou des chaînes
+                if hasattr(premiere, 'date'):
+                    premiere = premiere.date()
+                if hasattr(derniere, 'date'):
+                    derniere = derniere.date()
+                    
+                if isinstance(premiere, date) and isinstance(derniere, date):
+                    jours = (derniere - premiere).days
+                    client['duree_fidelite'] = jours
+                else:
+                    client['duree_fidelite'] = 0
+            else:
+                client['duree_fidelite'] = 0
+
+            self._prepare_client_for_template(client)
+            return client
 
     def get_all(self, user_id: int, magasin_id: int = None, limit: int = 100) -> List[Dict]:
         try:
