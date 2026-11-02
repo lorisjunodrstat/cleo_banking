@@ -12359,16 +12359,19 @@ def pos_affichage_client():
 @login_required
 def pos_clients_list():
     """Liste des clients POS"""
-    search = request.args.get('search', '')
+    search = request.args.get('search', '').strip()
     try:
         magasin_id = get_magasin_id_courant()
         clients = g.models.client_pos_model.get_all(current_user.id, magasin_id=magasin_id, limit=200)
+        
         if search:
             search_lower = search.lower()
             clients = [c for c in clients if 
-                      search_lower in c.get('nom_client', '').lower() or
+                      search_lower in (c.get('nom_client') or '').lower() or
+                      search_lower in str(c.get('numero_client') or '').lower() or
                       search_lower in (c.get('email') or '').lower() or
                       search_lower in (c.get('telephone') or '').lower()]
+                      
         total_clients = len(clients)
         clients_actifs = sum(1 for c in clients if c.get('segment') != 'Inactif')
         total_ca_clients = sum(float(c.get('total_depense', 0) or 0) for c in clients)
@@ -12378,6 +12381,7 @@ def pos_clients_list():
         total_clients = 0
         clients_actifs = 0
         total_ca_clients = 0
+        
     return render_template('pos/clients_list.html',
                          clients=clients,
                          search=search,
