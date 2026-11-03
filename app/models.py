@@ -12383,9 +12383,27 @@ class Rapport(BaseRepository):
                         c.type_compte,
                         c.numero,
                         c.nom AS categorie_nom,
-                        SUM(CASE WHEN e.type_ecriture = 'depense' THEN e.montant_htva ELSE 0 END) AS total_ht,
-                        SUM(CASE WHEN e.type_ecriture = 'depense' THEN e.tva_montant ELSE 0 END) AS total_tva,
-                        SUM(CASE WHEN e.type_ecriture = 'depense' THEN e.montant ELSE 0 END) AS total_ttc,
+                        SUM(
+                            CASE 
+                                WHEN e.type_ecriture = 'depense' THEN e.montant_htva 
+                                WHEN e.type_ecriture = 'recette' THEN -e.montant_htva 
+                                ELSE 0 
+                            END
+                        ) AS total_ht,
+                        SUM(
+                            CASE 
+                                WHEN e.type_ecriture = 'depense' THEN e.tva_montant 
+                                WHEN e.type_ecriture = 'recette' THEN -e.tva_montant 
+                                ELSE 0 
+                            END
+                        ) AS total_tva,
+                        SUM(
+                            CASE 
+                                WHEN e.type_ecriture = 'depense' THEN e.montant 
+                                WHEN e.type_ecriture = 'recette' THEN -e.montant 
+                                ELSE 0 
+                            END
+                        ) AS total_ttc,
                         COUNT(e.id) AS nb_ecritures
                     FROM ecritures_comptables e
                     JOIN categories_comptables c ON e.categorie_id = c.id
