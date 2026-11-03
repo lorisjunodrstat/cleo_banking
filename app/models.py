@@ -9495,8 +9495,10 @@ class EcritureComptable(BaseRepository):
         with self.db.get_cursor() as cursor:
             if type_ecriture == 'recette':
                 type_compte_filter = "'Revenus'"  # Produits (classe 3)
+                condition_type_ecriture = "e.type_ecriture = 'recette'"
             else:  # depense
                 type_compte_filter = "'Charge'"  # Charges (classe 4, 6) - SINGULIER !
+                condition_type_ecriture = "e.type_ecriture IN ('depense', 'recette')"
             
             cursor.execute(f"""
                 SELECT
@@ -9505,21 +9507,22 @@ class EcritureComptable(BaseRepository):
                     c.id AS categorie_id,
                     c.type_compte,
                     COUNT(e.id) AS nombre_ecritures,
-                    SUM(COALESCE(e.montant_htva, 0)) AS montant,
-                    SUM(COALESCE(e.tva_montant, 0)) AS montant_tva,
-                    SUM(COALESCE(e.montant, 0)) AS montant_ttc
+                    SUM(COALESCE(e.montant_htva, 0) * CASE WHEN e.type_ecriture = 'recette' AND c.type_compte IN ('Charge', 'Charges') THEN -1 ELSE 1 END) AS montant,
+                    SUM(COALESCE(e.tva_montant, 0) * CASE WHEN e.type_ecriture = 'recette' AND c.type_compte IN ('Charge', 'Charges') THEN -1 ELSE 1 END) AS montant_tva,
+                    SUM(COALESCE(e.montant, 0) * CASE WHEN e.type_ecriture = 'recette' AND c.type_compte IN ('Charge', 'Charges') THEN -1 ELSE 1 END) AS montant_ttc,
                 FROM ecritures_comptables e
                 JOIN categories_comptables c ON e.categorie_id = c.id
                 WHERE e.utilisateur_id = %s
                 AND e.date_ecriture BETWEEN %s AND %s
-                AND e.type_ecriture = %s
+                AND ({condition_type_ecriture})
                 AND e.statut = 'validée'
                 AND e.type_ecriture_comptable = 'principale'
                 AND c.type_compte IN ({type_compte_filter})
                 GROUP BY c.id, c.numero, c.nom, c.type_compte
                 ORDER BY c.numero
-            """, (user_id, date_from, date_to, type_ecriture))
+            """, (user_id, date_from, date_to))
             return cursor.fetchall()
+        
     def get_compte_de_resultat(self, user_id: int, date_from: str, date_to: str) -> Dict:
         if not (self._validate_date(date_from) and self._validate_date(date_to)):
             logger.error("Format de date invalide dans get_compte_de_resultat")
@@ -9527,6 +9530,10 @@ class EcritureComptable(BaseRepository):
         try:
             produits = self._fetch_ecritures_by_type(user_id, date_from, date_to, 'recette')
             charges = self._fetch_ecritures_by_type(user_id, date_from, date_to, 'depense')
+            
+            produits = self._fetch_ecritures_par_type_compte(user_id, date_from, date_to, ['Revenus', 'Produits'])
+            charges = self._fetch_ecritures_par_type_compte(user_id, date_from, date_to, ['Charge', 'Charges'])
+            
             total_produits = sum(p['montant'] for p in produits)
             total_produits_ttc = sum(p['montant_ttc'] for p in produits)
             total_charges = sum(c['montant'] for c in charges)
