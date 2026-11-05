@@ -7297,7 +7297,7 @@ def compte_resultat_pdf():
         current_user.id, p['date_from'], p['date_to'], p['comp_from'], p['comp_to'],
         niveau=3, show_zero=True)
     entreprise = g.models.entreprise_model.get_or_create_for_user(current_user.id)
-    html = render_template('compte_resultat_pdf.html', data=data, p=p,
+    html = render_template('comptabilite/compte_resultat_pdf.html', data=data, p=p,
                            entreprise=entreprise, user=current_user,
                            date_gen=datetime.now())
     pdf = _pdf_depuis_html(html)   # même helper que pour la TVA
@@ -7312,16 +7312,40 @@ def compte_resultat_csv():
     data = g.models.rapport_model.get_compte_resultat_bexio(
         current_user.id, p['date_from'], p['date_to'], p['comp_from'], p['comp_to'],
         niveau=3, show_zero=True)
+
+    # Neutralise les libellés susceptibles d'être interprétés comme formules Excel
+    def _csv_safe(value):
+        s = str(value) if value is not None else ''
+        if s[:1] in ('=', '+', '-', '@', '\t', '\r'):
+            s = "'" + s  # préfixe apostrophe = texte forcé dans Excel
+        return s
+
     out = io.StringIO()
     out.write('\ufeff')  # BOM UTF-8 pour Excel
-    w = csv.writer(out, delimiter=';')
-    w.writerow(['Compte', f"{p['annee']}", f"{p['annee_comp']}"])
+    w = csv.writer(out, delimiter=';', quoting=csv.QUOTE_MINIMAL, lineterminator='\r\n')
+
+    annee_a = p['annee']
+    annee_b = p.get('annee_comp', '')
+    w.writerow(['Compte', f'Période A ({annee_a})', f'Période B ({annee_b})'])
+
     for r in data['rows']:
-        w.writerow(['    ' * r['level'] + (f"{r['numero']} " if r['numero'] else '') + r['label'],
-                    f"{r['a']:.2f}", f"{r['b']:.2f}"])
-    return Response(out.getvalue(), mimetype='text/csv',
-                    headers={'Content-Disposition':
-                             f'attachment; filename=compte_resultat_{p["annee"]}.csv'})
+        label = '  ' * r['level'] + (f"{r['numero']} " if r.get('numero') else '') + r['label']
+        w.writerow([
+            _csv_safe(label),
+            f"{r['a']:.2f}",
+            f"{r['b']:.2f}",
+        ])
+
+    csv_bytes = out.getvalue().encode('utf-8')
+    filename = f'compte_resultat_{annee_a}.csv'
+    return Response(
+        csv_bytes,
+        mimetype='text/csv; charset=utf-8',
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'Cache-Control': 'no-store',
+        },
+    )
 
 
 ##########################################

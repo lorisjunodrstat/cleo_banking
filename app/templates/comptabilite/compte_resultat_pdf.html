@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Compte de résultat {{ p.annee }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 15mm 12mm;
+        }
+        body {
+            font-family: "Helvetica", "Arial", sans-serif;
+            font-size: 9pt;
+            color: #222;
+            margin: 0;
+        }
+        .header {
+            border-bottom: 2px solid #333;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+        }
+        .header h1 {
+            font-size: 15pt;
+            margin: 0 0 2px 0;
+        }
+        .header .sub {
+            font-size: 9pt;
+            color: #555;
+        }
+        .meta {
+            font-size: 8.5pt;
+            color: #555;
+            margin-bottom: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        thead th {
+            background: #eee;
+            border-bottom: 1px solid #999;
+            padding: 5px 6px;
+            font-size: 8.5pt;
+            text-align: left;
+        }
+        thead th.num {
+            text-align: right;
+        }
+        tbody td {
+            padding: 3px 6px;
+            border-bottom: 1px solid #e5e5e5;
+            vertical-align: top;
+        }
+        tbody td.num {
+            text-align: right;
+            white-space: nowrap;
+            font-family: "Courier New", monospace;
+        }
+        tr.bold td {
+            font-weight: bold;
+        }
+        tr.kind-group td {
+            background: #f3e8c8;
+            border-top: 1px solid #999;
+        }
+        tr.kind-subgroup td {
+            background: #f7f7f7;
+        }
+        tr.kind-result td {
+            background: #dce9f5;
+            border-top: 1px solid #666;
+            border-bottom: 1px solid #666;
+        }
+        .numero {
+            color: #777;
+            margin-right: 6px;
+        }
+        .neg { color: #b00020; }
+        .pos { color: #1b6b1b; }
+        .footer {
+            margin-top: 18px;
+            font-size: 7.5pt;
+            color: #777;
+            border-top: 1px solid #ccc;
+            padding-top: 6px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Compte de résultat {{ p.annee }}</h1>
+        <div class="sub">
+            {% if entreprise %}
+                {{ entreprise.nom or '' }}
+                {% if entreprise.adresse %}&nbsp;—&nbsp;{{ entreprise.adresse }}{% endif %}
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="meta">
+        Période du {{ data.meta.date_from }} au {{ data.meta.date_to }}
+        {% if data.meta.comp_from and data.meta.comp_to %}
+            &nbsp;|&nbsp; Comparaison : du {{ data.meta.comp_from }} au {{ data.meta.comp_to }}
+        {% endif %}
+        &nbsp;|&nbsp; Généré le {{ date_gen.strftime('%d.%m.%Y %H:%M') }}
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th style="width:70%;">Libellé</th>
+                <th class="num" style="width:15%;">Période A (CHF)</th>
+                <th class="num" style="width:15%;">Période B (CHF)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data.rows %}
+            <tr class="{% if row.bold %}bold{% endif %} kind-{{ row.kind }}">
+                <td style="padding-left: {{ row.level * 14 + 6 }}px;">
+                    {% if row.numero %}<span class="numero">{{ row.numero }}</span>{% endif %}
+                    {{ row.label }}
+                </td>
+                <td class="num">
+                    <span class="{% if row.a < 0 %}neg{% else %}pos{% endif %}">
+                        {{ "%.2f"|format(row.a) }}
+                    </span>
+                </td>
+                <td class="num">
+                    <span class="{% if row.b < 0 %}neg{% else %}pos{% endif %}">
+                        {{ "%.2f"|format(row.b) }}
+                    </span>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" style="text-align:center;color:#888;">Aucune donnée.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="footer">
+        Document généré automatiquement — les montants négatifs sont affichés en rouge.
+    </div>
+
+</body>
+</html>
