@@ -13219,21 +13219,13 @@ class Rapport(BaseRepository):
             fin6 = [ch for ch in children.get(g['6']['id'], []) if ch['numero'].startswith('69')]
             op_sans_amort = [ch for ch in op6 if not ch['numero'].startswith('68')]
             amort = [ch for ch in op6 if ch['numero'].startswith('68')]
-            #ebitda = (r2(brut2[0] + sum(s(c['id'], bal_a) for c in op_sans_amort)),
-            #        r2(brut2[1] + sum(s(c['id'], bal_b) for c in op_sans_amort)))
-            ebitda = (r2(brut2[0] - sum(s(c['id'], bal_a) for c in op_sans_amort)),
-                    r2(brut2[1] - sum(s(c['id'], bal_b) for c in op_sans_amort)))
-            #ebit = (r2(ebitda[0] + sum(s(c['id'], bal_a) for c in amort)),
-            #        r2(ebitda[1] + sum(s(c['id'], bal_b) for c in amort)))
-            ebit = (r2(ebitda[0] - sum(s(c['id'], bal_a) for c in amort)),
-                    r2(ebitda[1] - sum(s(c['id'], bal_b) for c in amort)))
-            #avant_impots = (r2(brut2[0] + t6[0] + t7[0]), r2(brut2[1] + t6[1] + t7[1]))
-            #final = (r2(avant_impots[0] + t8[0]), r2(avant_impots[1] + t8[1]))
-
-
+            ebitda = (r2(brut2[0] + sum(s(c['id'], bal_a) for c in op_sans_amort)),
+                    r2(brut2[1] + sum(s(c['id'], bal_b) for c in op_sans_amort)))
             
+            ebit = (r2(ebitda[0] + sum(s(c['id'], bal_a) for c in amort)),
+                    r2(ebitda[1] + sum(s(c['id'], bal_b) for c in amort)))
             
-            avant_impots = (r2(brut2[0] - t6[0] + t7[0]), r2(brut2[1] - t6[1] + t7[1]))
+            avant_impots = (r2(brut2[0] + t6[0] + t7[0]), r2(brut2[1] + t6[1] + t7[1]))
             final = (r2(avant_impots[0] + t8[0]), r2(avant_impots[1] + t8[1]))
             # --- Construction des lignes dans l'ordre bexio ---
             if '3' in g:
