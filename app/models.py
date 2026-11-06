@@ -9509,7 +9509,7 @@ class EcritureComptable(BaseRepository):
                     COUNT(e.id) AS nombre_ecritures,
                     SUM(COALESCE(e.montant_htva, 0) * CASE WHEN e.type_ecriture = 'recette' AND c.type_compte IN ('Charge', 'Charges') THEN -1 ELSE 1 END) AS montant,
                     SUM(COALESCE(e.tva_montant, 0) * CASE WHEN e.type_ecriture = 'recette' AND c.type_compte IN ('Charge', 'Charges') THEN -1 ELSE 1 END) AS montant_tva,
-                    SUM(COALESCE(e.montant, 0) * CASE WHEN e.type_ecriture = 'recette' AND c.type_compte IN ('Charge', 'Charges') THEN -1 ELSE 1 END) AS montant_ttc,
+                    SUM(COALESCE(e.montant, 0) * CASE WHEN e.type_ecriture = 'recette' AND c.type_compte IN ('Charge', 'Charges') THEN -1 ELSE 1 END) AS montant_ttc
                 FROM ecritures_comptables e
                 JOIN categories_comptables c ON e.categorie_id = c.id
                 WHERE e.utilisateur_id = %s
