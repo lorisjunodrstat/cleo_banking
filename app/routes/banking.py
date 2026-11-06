@@ -6792,6 +6792,7 @@ def export_compte_de_resultat():
         niveau=3, show_zero=True)
 
     # ---------- EXCEL / CSV ----------
+    import csv
     if format_export == 'excel':
         def _safe(v):
             s = str(v) if v is not None else ''
