@@ -6648,35 +6648,6 @@ def transactions_by_contact_and_compte(compte_id: int, contact_id: int):
         contact=contact,
         transactions=transactions)
 
-@bp.route('/comptabilite/compte-de-resultat')
-@login_required
-def compte_de_resultat():
-    """Génère le compte de résultat avec structure hiérarchique type Bexio"""
-    try:
-        annee_str = request.args.get('annee', '')
-        if annee_str and annee_str.isdigit():
-            annee = int(annee_str)
-        else:
-            annee = datetime.now().year
-        date_from = f"{annee}-01-01"
-        date_to = f"{annee}-12-31"
-        
-        # Utiliser la méthode Bexio existante
-        compte_resultat = g.models.rapport_model.get_compte_resultat_bexio(
-            user_id=current_user.id,
-            date_from=date_from,
-            date_to=date_to,
-            niveau=3,  # 1=groupes, 2=+sous-groupes, 3=+comptes
-            show_zero=True)  # Afficher toutes les catégories même sans écritures
-        annees_disponibles = g.models.ecriture_comptable_model.get_annees_disponibles(current_user.id)
-        return render_template('comptabilite/compte_de_resultat.html',
-                              compte_resultat=compte_resultat,
-                              annee_selectionnee=annee,
-                              annees_disponibles=annees_disponibles)
-    except Exception as e:
-        flash(f"Erreur lors de la génération du compte de résultat: {str(e)}", "danger")
-        logger.error(f"Erreur compte de résultat: {e}", exc_info=True)
-        return redirect(url_for('banking.banking_dashboard'))
        
 @bp.route('/comptabilite/ecritures/detail/<string:type>/<categorie_id>')
 @login_required
