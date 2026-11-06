@@ -7308,16 +7308,30 @@ def _params_compte_resultat():
 
 @bp.route('/comptabilite/compte-resultat')
 @login_required
-def compte_resultat():
-    p = _params_compte_resultat()
-    data = g.models.rapport_model.get_compte_resultat_bexio(
-        current_user.id, p['date_from'], p['date_to'],
-        p['comp_from'] if p['show_comp'] else None,
-        p['comp_to'] if p['show_comp'] else None,
-        p['niveau'], p['show_zero'])
-    annees = sorted(set(g.models.ecriture_comptable_model.get_annees_disponibles(current_user.id))
-                    | {date.today().year, p['annee'], p['annee_comp']}, reverse=True)
-    return render_template('comptabilite/compte_resultat.html', data=data, p=p, annees=annees)
+def compte_de_resultat():
+    """Génère le compte de résultat avec structure hiérarchique type Bexio"""
+    try:
+        p = _params_compte_resultat()
+        annee = p['annee']
+
+        compte_resultat = g.models.rapport_model.get_compte_resultat_bexio(
+            user_id=current_user.id,
+            date_from=p['date_from'],
+            date_to=p['date_to'],
+            comp_from=p['comp_from'] if p['show_comp'] else None,
+            comp_to=p['comp_to'] if p['show_comp'] else None,
+            niveau=p['niveau'],
+            show_zero=p['show_zero'])
+        annees_disponibles = g.models.ecriture_comptable_model.get_annees_disponibles(current_user.id)
+        return render_template('comptabilite/compte_de_resultat.html',
+                               compte_resultat=compte_resultat,
+                               p=p,
+                               annee_selectionnee=annee,
+                               annees_disponibles=annees_disponibles)
+    except Exception as e:
+        flash(f"Erreur lors de la génération du compte de résultat: {str(e)}", "danger")
+        logger.error(f"Erreur compte de résultat: {e}", exc_info=True)
+        return redirect(url_for('banking.banking_dashboard'))
 
 @bp.route('/comptabilite/compte-resultat/pdf')
 @login_required
