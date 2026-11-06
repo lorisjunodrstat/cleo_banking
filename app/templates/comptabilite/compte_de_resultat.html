@@ -14,13 +14,19 @@
                 <ul class="dropdown-menu">
                     <li>
                         <a class="dropdown-item"
-                            href="{{ url_for('banking.export_compte_de_resultat', format='pdf', annee=annee_selectionnee) }}">
+                            href="{{ url_for('banking.compte_resultat_pdf', annee=p['annee'], annee_comp=p['annee_comp'],
+           show_comp='1' if p['show_comp'] else '0',
+           show_zero='1' if p['show_zero'] else '0',
+           niveau=p['niveau']) }}">
                             <i class="fas fa-file-pdf me-2"></i>PDF
                         </a>
                     </li>
                     <li>
                         <a class="dropdown-item"
-                            href="{{ url_for('banking.export_compte_de_resultat', format='excel', annee=annee_selectionnee) }}">
+                            href="{{ url_for('banking.export_compte_de_resultat', format='excel', annee=p['annee'], annee_comp=p['annee_comp'],
+           show_comp='1' if p['show_comp'] else '0',
+           show_zero='1' if p['show_zero'] else '0',
+           niveau=p['niveau']) }}">
                             <i class="fas fa-file-excel me-2"></i>Excel
                         </a>
                     </li>

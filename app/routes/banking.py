@@ -6807,30 +6807,64 @@ def get_ecritures_compte_resultat():
 
 @bp.route('/comptabilite/compte-de-resultat/export')
 @login_required
+import io, csv
+from datetime import datetime
+
+@bp.route('/comptabilite/compte-resultat/export')
+@login_required
 def export_compte_de_resultat():
-    """Exporte le compte de résultat"""
+    """Export PDF/CSV du compte de résultat détaillé (format Bexio)."""
     format_export = request.args.get('format', 'pdf')
-    annee = request.args.get('annee', datetime.now().year)
-    # Récupération des données
-    #ecriture_model = EcritureComptable(g.db_manager)
-    stats = g.models.ecriture_comptable_model.get_compte_de_resultat(
-        user_id=current_user.id,
-        date_from=f"{annee}-01-01",
-        date_to=f"{annee}-12-31")
+    annee = request.args.get('annee', datetime.now().year, type=int)
+    annee_comp = annee - 1
+
+    data = g.models.rapport_model.get_compte_resultat_bexio(
+        current_user.id,
+        f"{annee}-01-01", f"{annee}-12-31",
+        f"{annee_comp}-01-01", f"{annee_comp}-12-31",
+        niveau=3, show_zero=True)
+
+    # ---------- EXCEL / CSV ----------
     if format_export == 'excel':
-        # Génération Excel
-        output = generate_excel(stats, annee)
-        response = make_response(output)
-        response.headers["Content-Disposition"] = f"attachment; filename=compte_de_resultat_{annee}.xlsx"
-        response.headers["Content-type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        return response
-    else:
-        # Génération PDF
-        pdf = generate_pdf(stats, annee)
-        response = make_response(pdf)
-        response.headers["Content-Disposition"] = f"attachment; filename=compte_de_resultat_{annee}.pdf"
-        response.headers["Content-type"] = "application/pdf"
-        return response
+        def _safe(v):
+            s = str(v) if v is not None else ''
+            return "'" + s if s[:1] in ('=', '+', '-', '@', '\t', '\r') else s
+
+        out = io.StringIO()
+        out.write('\ufeff')
+        w = csv.writer(out, delimiter=';', quoting=csv.QUOTE_MINIMAL,
+                       lineterminator='\r\n')
+        w.writerow(['Compte', f'Période A ({annee})', f'Période B ({annee_comp})'])
+        for r in data['rows']:
+            label = '  ' * r['level'] + (f"{r['numero']} " if r.get('numero') else '') + r['label']
+            w.writerow([_safe(label),
+                        f"{r['a']:.2f}".replace('.', ','),
+                        f"{r['b']:.2f}".replace('.', ',')])
+
+        return Response(
+            out.getvalue().encode('utf-8'),
+            mimetype='text/csv; charset=utf-8',
+            headers={'Content-Disposition':
+                     f'attachment; filename="compte_de_resultat_{annee}.csv"',
+                     'Cache-Control': 'no-store'})
+
+    # ---------- PDF ----------
+    entreprise = g.models.entreprise_model.get_or_create_for_user(current_user.id)
+    html = render_template('comptabilite/compte_resultat_pdf.html',
+                           data=data,
+                           p={'annee': annee, 'annee_comp': annee_comp,
+                              'date_from': f"{annee}-01-01", 'date_to': f"{annee}-12-31",
+                              'comp_from': f"{annee_comp}-01-01", 'comp_to': f"{annee_comp}-12-31",
+                              'show_comp': True, 'niveau': 3, 'show_zero': True},
+                           entreprise=entreprise,
+                           user=current_user,
+                           date_gen=datetime.now())
+    pdf = _pdf_depuis_html(html)
+    return Response(
+        pdf,
+        mimetype='application/pdf',
+        headers={'Content-Disposition':
+                 f'attachment; filename="compte_de_resultat_{annee}.pdf"'})
 
 ##########################################
 ## routes pour le Journal de comptabilité
