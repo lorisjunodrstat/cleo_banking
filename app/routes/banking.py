@@ -6805,10 +6805,6 @@ def get_ecritures_compte_resultat():
         print(f"Erreur récupération écritures compte de résultat: {e}")
         return jsonify({'ecritures': [], 'count': 0, 'total': 0})
 
-@bp.route('/comptabilite/compte-de-resultat/export')
-@login_required
-import io, csv
-from datetime import datetime
 
 @bp.route('/comptabilite/compte-resultat/export')
 @login_required
